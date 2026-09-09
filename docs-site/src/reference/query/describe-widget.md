@@ -103,6 +103,21 @@ widget hides under the configuration the example picked is left out, so what you
 see is what that configuration actually supports. The footer reports how many of
 the widget's hide-rules were recognised; an unrecognised rule never prunes.
 
+A rule can carry several conditions, joined with `and`:
+
+```
+clearable   hidden when optionsSourceType = "boolean"
+                   and optionsSourceType is one of enumeration, boolean
+                   and source = "context"
+```
+
+That is not verbosity — it is the rule. Widget editors nest their branches, and
+a property hidden three levels in is hidden only where **all** three hold.
+Reading out the innermost condition alone would claim the property is hidden far
+more often than it is, so every term is shown and every term must hold before a
+binding is pruned. A rule with one indeterminable term prunes nothing: the
+binding is listed and you decide.
+
 **`LIST WIDGETS` does not exist**, deliberately. `SHOW WIDGETS` already means
 widget *instances placed on pages*, and the definitions are
 `SELECT * FROM CATALOG.WIDGET_DEFINITIONS`.

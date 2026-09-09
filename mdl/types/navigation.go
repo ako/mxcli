@@ -33,6 +33,12 @@ type NavigationProfile struct {
 	NotFoundPage       string              `json:"notFoundPage,omitempty"`
 	MenuItems          []*NavMenuItem      `json:"menuItems,omitempty"`
 	OfflineEntities    []*NavOfflineEntity `json:"offlineEntities,omitempty"`
+	// ThrowPartialSyncError is stored on every WEB profile, online ones
+	// included, and is declared by NEITHER modelsdk/gen NOR
+	// generated/metamodel — measured on ako/TestApp, zero occurrences in each.
+	// It is therefore read and written as raw BSON rather than through the
+	// codec's typed accessors.
+	ThrowPartialSyncError bool `json:"throwPartialSyncError,omitempty"`
 }
 
 // NavHomePage holds a profile's default home page.
@@ -201,6 +207,12 @@ type NavigationProfileSpec struct {
 	// field alone is not enough.
 	OfflineEntities []NavOfflineEntitySpec
 	HasSync         bool
+	// ThrowSyncError is Studio Pro's "Throw error when server rejects objects
+	// during synchronization". A POINTER, so nil means the statement said
+	// nothing and the stored value is left alone — the property is a bare bool
+	// with no unset value of its own, so a non-pointer would silently reset it
+	// on every rewrite.
+	ThrowSyncError *bool
 }
 
 // NavOfflineEntitySpec is one entity's offline sync rule, as MDL can express

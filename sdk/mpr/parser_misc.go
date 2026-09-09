@@ -546,6 +546,13 @@ func parseNavigationProfile(raw map[string]any) *NavigationProfile {
 		}
 	}
 
+	// Studio Pro writes this on every web profile, online ones included, and
+	// neither gen nor generated/metamodel declares it — so it is read straight
+	// off the raw document. Defaulting to true matches every reference profile
+	// and Studio Pro's own checked-by-default box, so a document that somehow
+	// lacks the key is not silently flipped to "do not throw".
+	profile.ThrowPartialSyncError = extractBool(raw["ThrowPartialSyncError"], true)
+
 	// Offline entity configs (both web and native)
 	for _, item := range extractBsonArray(raw["OfflineEntityConfigs"]) {
 		if oeMap, ok := item.(map[string]any); ok {

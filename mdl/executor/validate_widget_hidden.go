@@ -118,15 +118,17 @@ func validateWidgetItemVisibility(parent *ast.WidgetV3, item *ast.WidgetV3,
 		if !itemExplicit[strings.ToLower(rule.PropertyKey)] {
 			continue // the author did not set this sub-property
 		}
-		values := widgetValues
-		if rule.HiddenWhen.Scope == types.ConditionScopeItem {
-			values = itemValues
-		}
-		condVal, known := values[strings.ToLower(rule.HiddenWhen.PropertyKey)]
-		if !known {
-			continue // condition value indeterminable — don't guess
-		}
-		if !rule.HiddenWhen.Hidden(map[string]string{rule.HiddenWhen.PropertyKey: condVal}) {
+		// Each term is resolved in its OWN scope: a nested rule mixes conditions
+		// about the list item with conditions about the widget.
+		fires, determinable := rule.Fires(func(c types.WidgetVisibilityCondition) (string, bool) {
+			values := widgetValues
+			if c.Scope == types.ConditionScopeItem {
+				values = itemValues
+			}
+			v, ok := values[strings.ToLower(c.PropertyKey)]
+			return v, ok
+		})
+		if !determinable || !fires {
 			continue
 		}
 		value := itemValues[strings.ToLower(rule.PropertyKey)]

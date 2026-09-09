@@ -632,8 +632,8 @@ func TestFieldCountDrift(t *testing.T) {
 	// CompatibilityMode to NavOfflineEntity left this test passing while the
 	// new field was silently not carried, which is the exact drift the test
 	// exists to catch.
-	assertFieldCount(t, "mpr.NavigationProfile", mpr.NavigationProfile{}, 9)
-	assertFieldCount(t, "types.NavigationProfile", types.NavigationProfile{}, 9)
+	assertFieldCount(t, "mpr.NavigationProfile", mpr.NavigationProfile{}, 10)
+	assertFieldCount(t, "types.NavigationProfile", types.NavigationProfile{}, 10)
 	assertFieldCount(t, "mpr.NavOfflineEntity", mpr.NavOfflineEntity{}, 4)
 	assertFieldCount(t, "types.NavOfflineEntity", types.NavOfflineEntity{}, 4)
 }

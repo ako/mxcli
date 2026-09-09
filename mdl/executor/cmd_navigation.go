@@ -96,6 +96,7 @@ func execAlterNavigation(ctx *ExecContext, s *ast.AlterNavigationStmt) error {
 		spec.MenuItems = append(spec.MenuItems, convertMenuItemDef(mi))
 	}
 
+	spec.ThrowSyncError = s.ThrowSyncError
 	spec.HasSync = s.HasSyncBlock
 	for _, se := range s.SyncEntries {
 		spec.OfflineEntities = append(spec.OfflineEntities, types.NavOfflineEntitySpec{
@@ -348,6 +349,14 @@ func outputNavigationProfile(ctx *ExecContext, p *types.NavigationProfile) {
 		fmt.Fprintln(ctx.Output, "  menu (")
 		printMenuMDL(ctx.Output, p.MenuItems, 2, "CREATE NAVIGATION")
 		fmt.Fprintln(ctx.Output, "  )")
+	}
+
+	// Only emitted when it differs from the platform default, so the clause
+	// appears exactly when it carries information. Describing every profile
+	// with `on sync error throw` would add a line to every navigation script
+	// that says what would happen anyway.
+	if !p.ThrowPartialSyncError {
+		fmt.Fprintln(ctx.Output, "  on sync error continue")
 	}
 
 	// Offline entities. These are re-executable now, so they are emitted as a

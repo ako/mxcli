@@ -697,11 +697,41 @@ func (e *PluggableWidgetEngine) hiddenUnnamedProperties(def *WidgetDefinition, w
 				continue // still indeterminable — never guess
 			}
 		}
-		if rule.HiddenWhen.Hidden(map[string]string{rule.HiddenWhen.PropertyKey: condVal}) {
+		if firesUnder(rule, condVal, values, stored, defaults) {
 			out[key] = defaults[defaultsKey("", rule.PropertyKey)]
 		}
 	}
 	return out
+}
+
+// firesUnder evaluates every term of a rule's conjunction, resolving each the
+// same way the first term was resolved above: the widget's mapped values, then
+// the stored template, then the declared default. firstVal is the already
+// resolved value of the first term, so that work is not repeated.
+//
+// A term that stays indeterminable makes the whole rule not fire — the
+// serializer never guesses, which is why an unresolvable condition leaves the
+// template's value alone.
+func firesUnder(rule types.WidgetVisibilityRule, firstVal string, values, stored, defaults map[string]string) bool {
+	first := true
+	fires, determinable := rule.Fires(func(c types.WidgetVisibilityCondition) (string, bool) {
+		if first {
+			first = false
+			return firstVal, true
+		}
+		if v, ok := values[c.PropertyKey]; ok && v != "" {
+			return v, true
+		}
+		if v, ok := stored[c.PropertyKey]; ok && v != "" {
+			return v, true
+		}
+		v, ok := defaults[defaultsKey("", c.PropertyKey)]
+		if !ok || v == "" {
+			return "", false
+		}
+		return v, true
+	})
+	return determinable && fires
 }
 
 // visibilityRules is the widget's editorConfig visibility rules: from the

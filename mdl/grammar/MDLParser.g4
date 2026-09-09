@@ -331,6 +331,17 @@ navigationClause
     | NOT FOUND PAGE qualifiedName
     | MENU_KW LPAREN navMenuItemDef* RPAREN
     | SYNC LPAREN navSyncDef* RPAREN
+    // Studio Pro's "Throw error when server rejects objects during
+    // synchronization", stored as the profile-level ThrowPartialSyncError.
+    //
+    // Spelled with the phrase MDL already uses for failure handling — a
+    // microflow's ON ERROR CONTINUE / ON ERROR ROLLBACK — so it needs no new
+    // token and reads as something already learned. "Reject" is the platform's
+    // own word, but REJECT appears ~500 times across the examples and skills
+    // (approve/reject is one of the commonest things a workflow models), and
+    // claiming a heavily-used identifier as a keyword is not worth the closer
+    // paraphrase.
+    | ON SYNC ERROR (THROW | CONTINUE)
     ;
 
 // Offline synchronization, one statement per entity, mirroring the MENU block:

@@ -242,6 +242,38 @@ form. This is the general problem tracked as `mendixlabs/mxcli#750`.
 **The block replaces the stored list**, the way `menu (...)` replaces the menu.
 Omitting it leaves the stored configuration alone.
 
+**Ask the catalog which entities sync, rather than reading the profile.**
+
+```sql
+select EntityQualifiedName, SyncMode, XPathConstraint
+  from CATALOG.OFFLINE_ENTITY_CONFIGS where ProfileName = 'PhoneOffline';
+```
+
+And before changing an entity, ask which profiles download it — an offline
+change reaches every device that already synced:
+
+```
+show references to MyModule.Order
+```
+
+The `sync` row names the profile. Every mode produces one, **including the
+modes that download nothing**: a profile with `sync X never` still names `X`,
+so renaming or dropping it leaves the configuration dangling.
+
+**Errors when the server rejects an object.** Studio Pro's *"Throw error when
+server rejects objects during synchronization"* checkbox:
+
+```sql
+create or replace navigation PhoneOffline
+  home page MyModule.Mobile_Dashboard
+  on sync error continue;      -- default is `throw`
+```
+
+It uses the phrase MDL already has for failure handling — a microflow's
+`on error continue` — rather than a keyword of its own. Omitting the clause
+leaves the stored value alone; `describe navigation` emits it only when it is
+not the default, so existing scripts stay quiet.
+
 **Compatibility mode has no syntax.** mxcli reads it, preserves it across a
 rewrite, and `describe navigation` flags any entity that has it on — it is never
 silently dropped.

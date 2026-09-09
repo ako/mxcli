@@ -317,12 +317,14 @@ func validateWidgetVisibility(w *ast.WidgetV3, registry *WidgetRegistry, locatio
 		if !explicit[strings.ToLower(rule.PropertyKey)] {
 			continue // user didn't set this property — nothing to warn about
 		}
-		condVal, known := values[strings.ToLower(rule.HiddenWhen.PropertyKey)]
-		if !known {
-			continue // condition value indeterminable — don't guess
-		}
-		if !rule.HiddenWhen.Hidden(map[string]string{rule.HiddenWhen.PropertyKey: condVal}) {
-			continue
+		// EVERY term of the rule's conjunction must hold; a rule read through
+		// HiddenWhen alone over-fires (see WidgetVisibilityRule.And).
+		fires, determinable := rule.Fires(func(c types.WidgetVisibilityCondition) (string, bool) {
+			v, ok := values[strings.ToLower(c.PropertyKey)]
+			return v, ok
+		})
+		if !determinable || !fires {
+			continue // indeterminable, or the configuration does not hide it
 		}
 		out = append(out, hiddenPropertyViolation(locationPrefix, w.Name, def.MDLName, "", rule,
 			values[strings.ToLower(rule.PropertyKey)],

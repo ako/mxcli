@@ -114,6 +114,9 @@ type DescribedRule struct {
 	// required only where visible, and Combo box lists eleven bindings of which
 	// its mutually exclusive options-source modes leave about two.
 	Cond *types.WidgetVisibilityCondition `json:"-"`
+	// Rule is the whole rule, conjunction included. Cond above is only its FIRST
+	// term, kept for readers that predate conjunctions; evaluate Rule.
+	Rule types.WidgetVisibilityRule `json:"-"`
 	// Nested marks a rule about an object-list ITEM's property rather than the
 	// widget's own. Those are evaluated against the item, never the widget.
 	Nested bool `json:"-"`
@@ -350,13 +353,36 @@ func rulesToDescribed(rules []types.WidgetVisibilityRule) []DescribedRule {
 		}
 		out = append(out, DescribedRule{
 			Property:   r.PropertyKey,
-			HiddenWhen: conditionText(r.HiddenWhen),
+			HiddenWhen: ruleText(r),
 			Cond:       r.HiddenWhen,
+			Rule:       r,
 			Nested:     r.Nested(),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Property < out[j].Property })
 	return out
+}
+
+// ruleText renders a rule's whole condition as readable English, joining a
+// conjunction with "and" so the reader sees every term rather than the
+// innermost one, which alone reads as a far broader claim than the rule makes.
+func ruleText(r types.WidgetVisibilityRule) string {
+	conds := r.Conditions()
+	parts := make([]string, 0, len(conds))
+	for i := range conds {
+		parts = append(parts, conditionText(&conds[i]))
+	}
+	return strings.Join(parts, " and ")
+}
+
+// rule returns the described rule in structured form, falling back to the
+// single Cond for a DescribedRule built without one (the JSON shape and older
+// callers carry only the condition).
+func (r DescribedRule) rule() types.WidgetVisibilityRule {
+	if r.Rule.HiddenWhen != nil {
+		return r.Rule
+	}
+	return types.WidgetVisibilityRule{PropertyKey: r.Property, HiddenWhen: r.Cond}
 }
 
 // conditionText renders a visibility condition as readable English.
@@ -370,6 +396,14 @@ func conditionText(c *types.WidgetVisibilityCondition) string {
 		return fmt.Sprintf("%s is set", c.PropertyKey)
 	case "falsy":
 		return fmt.Sprintf("%s is not set", c.PropertyKey)
+	case "empty":
+		return fmt.Sprintf("%s is empty", c.PropertyKey)
+	case "notempty":
+		return fmt.Sprintf("%s is not empty", c.PropertyKey)
+	case "in":
+		return fmt.Sprintf("%s is one of %s", c.PropertyKey, strings.ReplaceAll(c.Value, ",", ", "))
+	case "notin":
+		return fmt.Sprintf("%s is not one of %s", c.PropertyKey, strings.ReplaceAll(c.Value, ",", ", "))
 	default:
 		return fmt.Sprintf("%s %s %q", c.PropertyKey, c.Operator, c.Value)
 	}
@@ -738,6 +772,33 @@ func pageBodyParses(body string) bool {
 	return len(errs) == 0
 }
 
+// isEmptinessOperator reports whether an operator's whole question is "did the
+// author pick anything", making an unrecorded value determinable rather than
+// unknown.
+func isEmptinessOperator(op string) bool {
+	return op == "empty" || op == "notempty"
+}
+
+// declaresProperty reports whether the widget declares a property with this key,
+// at any nesting depth. A condition naming something the widget does not declare
+// is not a property that is merely unset — it is a rule we misread, and guessing
+// "" for it would invent a verdict.
+func declaresProperty(d WidgetDescription, key string) bool {
+	var walk func(props []DescribedProperty) bool
+	walk = func(props []DescribedProperty) bool {
+		for _, p := range props {
+			if strings.EqualFold(p.Key, key) {
+				return true
+			}
+			if walk(p.Children) {
+				return true
+			}
+		}
+		return false
+	}
+	return walk(d.Properties)
+}
+
 // exampleValues is the configuration the example describes: each scalar
 // property's default, which is also what the example writes for the required
 // ones. Visibility rules are evaluated against this.
@@ -823,10 +884,27 @@ func hiddenUnder(d WidgetDescription, propertyKey string) bool {
 		if r.Nested || r.Cond == nil || !strings.EqualFold(r.Property, propertyKey) {
 			continue
 		}
-		if _, known := values[r.Cond.PropertyKey]; !known {
-			continue // indeterminable — do not guess, keep asking for it
-		}
-		if r.Cond.Hidden(values) {
+		fires, determinable := r.rule().Fires(func(c types.WidgetVisibilityCondition) (string, bool) {
+			if v, known := values[c.PropertyKey]; known {
+				return v, true
+			}
+			// `empty`/`notempty` ask whether the author picked anything, and for
+			// a property the widget DECLARES, "nothing recorded" is the answer,
+			// not a gap: an unbound datasource or action holds "". Without this
+			// the two operators could never fire, because exampleValues records
+			// a property only when it has a non-empty default — which is exactly
+			// what an unset datasource does not have.
+			//
+			// Deliberately scoped to these two operators. Feeding "" to eq/ne/
+			// truthy/falsy would change verdicts for rules that already exist,
+			// in the direction of hiding a binding the author needs — the one
+			// failure this whole area keeps producing.
+			if !isEmptinessOperator(c.Operator) || !declaresProperty(d, c.PropertyKey) {
+				return "", false // indeterminable — do not guess, keep asking for it
+			}
+			return "", true
+		})
+		if determinable && fires {
 			return true
 		}
 	}
