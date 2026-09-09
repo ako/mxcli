@@ -29,46 +29,22 @@ func execAlterPage(ctx *ExecContext, s *ast.AlterPageStmt) error {
 		return mdlerrors.NewBackend("build hierarchy", err)
 	}
 
-	var unitID model.ID
-	var containerID model.ID
-	containerType := strings.ToLower(s.ContainerType)
-	if containerType == "" {
-		containerType = "page"
+	unitID, containerID, containerType, err := resolveAlterPageUnit(ctx, s, h)
+	if err != nil {
+		return err
 	}
 
-	switch containerType {
-	case "snippet":
-		snippet, modID, err := findSnippetByName(ctx, s.PageName, h)
-		if err != nil {
-			return err
-		}
-		unitID = snippet.ID
-		containerID = modID
-	case "layout":
-		layout, err := findLayoutByQName(ctx, s.PageName)
-		if err != nil {
-			return err
-		}
-		modID := h.FindModuleID(layout.ContainerID)
+	if containerType == "layout" {
 		// The same refusal CREATE LAYOUT makes, for the same reason: a
 		// Marketplace update replaces the module wholesale, so an edit here is
 		// gone at the next update with nothing to show it ever happened.
-		if mod, _ := ctx.Backend.GetModule(modID); isMarketplaceModule(ctx, mod) {
+		if mod, _ := ctx.Backend.GetModule(containerID); isMarketplaceModule(ctx, mod) {
 			return mdlerrors.NewValidation(fmt.Sprintf(
 				"layout %s is in a marketplace module — an edit there is overwritten by the next module update. "+
 					"Copy it into a module of your own first: `describe layout %s`, rename it, run it, "+
 					"then repoint pages with `alter pages set layout = <yours> where layout = %s`",
 				s.PageName.String(), s.PageName.String(), s.PageName.String()))
 		}
-		unitID = layout.ID
-		containerID = modID
-	default:
-		page, err := findPageByName(ctx, s.PageName, h)
-		if err != nil {
-			return err
-		}
-		unitID = page.ID
-		containerID = h.FindModuleID(page.ContainerID)
 	}
 
 	// Open the page for mutation via the backend
@@ -133,6 +109,41 @@ func execAlterPage(ctx *ExecContext, s *ast.AlterPageStmt) error {
 
 	fmt.Fprintf(ctx.Output, "Altered %s %s\n", strings.ToLower(containerType), s.PageName.String())
 	return nil
+}
+
+// resolveAlterPageUnit resolves an ALTER PAGE / SNIPPET / LAYOUT target to the
+// storage unit it edits and the module holding it. One statement type, three
+// document kinds — the visitor sets ContainerType from the keyword, and an empty
+// one means PAGE.
+//
+// It is shared with the check-time dry run (validate_alter_set.go) so both
+// address the same document: a pre-flight that resolved the target differently
+// from exec would be checking a different page than the one about to change.
+func resolveAlterPageUnit(ctx *ExecContext, s *ast.AlterPageStmt, h *ContainerHierarchy) (unitID, containerID model.ID, containerType string, err error) {
+	containerType = strings.ToLower(s.ContainerType)
+	if containerType == "" {
+		containerType = "page"
+	}
+	switch containerType {
+	case "snippet":
+		snippet, modID, err := findSnippetByName(ctx, s.PageName, h)
+		if err != nil {
+			return "", "", containerType, err
+		}
+		return snippet.ID, modID, containerType, nil
+	case "layout":
+		layout, err := findLayoutByQName(ctx, s.PageName)
+		if err != nil {
+			return "", "", containerType, err
+		}
+		return layout.ID, h.FindModuleID(layout.ContainerID), containerType, nil
+	default:
+		page, err := findPageByName(ctx, s.PageName, h)
+		if err != nil {
+			return "", "", containerType, err
+		}
+		return page.ID, h.FindModuleID(page.ContainerID), containerType, nil
+	}
 }
 
 // ============================================================================

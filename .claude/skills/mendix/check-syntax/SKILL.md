@@ -40,7 +40,11 @@ and mxcli's own rules; it does not validate the Mendix model. Run
 
 `mxcli check script.mdl` alone checks syntax and the semantic rules that need no
 model. **Pass `-p` and it also resolves every reference** — modules, entities,
-pages, microflows and icons — against that project:
+pages, microflows and icons — against that project. It reaches inside stored
+documents where a name can only be answered there: an `ALTER PAGE … SET` is
+dry-run against the page it edits, so a widget the page does not have, or a
+property the stored widget does not declare, is reported here rather than
+stopping the script partway through `exec`.
 
 ```bash
 mxcli check script.mdl                 # syntax + model-free rules

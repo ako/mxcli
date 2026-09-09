@@ -54,6 +54,9 @@ type Mutator struct {
 	unitID        model.ID
 	deps          Deps
 	widgetFinder  widgetFinder
+	// probe marks a discardable copy handed out by Probe(), which exists to be
+	// written to and thrown away. Save refuses on one — see probe.go.
+	probe bool
 }
 
 // New constructs a Mutator over an already-decoded unit document. It derives the
@@ -1072,6 +1075,9 @@ func (m *Mutator) FindWidget(name string) bool {
 }
 
 func (m *Mutator) Save() error {
+	if m.probe {
+		return fmt.Errorf("refusing to save a dry-run copy of this %s", m.containerType)
+	}
 	outBytes, err := bson.Marshal(m.rawData)
 	if err != nil {
 		return fmt.Errorf("marshal modified %s: %w", m.containerType, err)
@@ -2798,34 +2804,20 @@ func setWidgetAttributeRefMut(widget bson.D, value any) error {
 // PropertyTypes, and no shipped template or definition has two keys in the same
 // list differing only in case (96 scopes, 1208 keys, 0 collisions — held by
 // TestPluggablePropertyKeysAreUniqueIgnoringCase). An unknown property still
-// errors, which is the author's only signal: `check --references` does not
-// resolve pluggable property names.
+// errors — and `mxcli check --references` now reaches that error before the
+// script runs, by dry-running this setter against a copy of the document rather
+// than re-deriving what it accepts (see probe.go).
 func setPluggableWidgetPropertyMut(widget bson.D, propName string, value any) error {
 	obj := bsonnav.DGetDoc(widget, "Object")
 	if obj == nil {
 		return fmt.Errorf("property %q not found (widget has no pluggable Object)", propName)
 	}
 
-	propTypeKeyMap := make(map[string]string)
-	if widgetType := bsonnav.DGetDoc(widget, "Type"); widgetType != nil {
-		if objType := bsonnav.DGetDoc(widgetType, "ObjectType"); objType != nil {
-			propTypes := bsonnav.DGetArrayElements(bsonnav.DGet(objType, "PropertyTypes"))
-			for _, pt := range propTypes {
-				ptDoc, ok := pt.(bson.D)
-				if !ok {
-					continue
-				}
-				key := bsonnav.DGetString(ptDoc, "PropertyKey")
-				if key == "" {
-					continue
-				}
-				id := bsonnav.ExtractBinaryIDFromDoc(bsonnav.DGet(ptDoc, "$ID"))
-				if id != "" {
-					propTypeKeyMap[id] = key
-				}
-			}
-		}
-	}
+	// The same derivation buildPropKeyMap does, and it used to be spelled out a
+	// second time here. One of the two copies was #1069's bug site, so they are
+	// now one function — a resolver that disagrees with itself is the failure
+	// this whole area keeps producing.
+	propTypeKeyMap := buildPropKeyMap(widget)
 
 	props := bsonnav.DGetArrayElements(bsonnav.DGet(obj, "Properties"))
 	for _, prop := range props {

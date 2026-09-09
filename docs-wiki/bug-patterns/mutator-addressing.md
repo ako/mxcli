@@ -66,6 +66,22 @@ single lookup scope holds two keys differing only in case, which across every
 shipped widget template is 0 of 1208 keys — and a test pins that as templates
 are added.
 
+**The names a mutation may use are not a list, so the pre-flight runs the
+mutation.** The other half of the same story is that `check` could not see any
+of this: the properties reference checking resolved were the ones a statement
+*carried*, and `SET` carries no widget — it names one already stored, whose
+vocabulary is partly a switch in the setter and partly the installed widget
+package's own template keys. Nothing in this repo can state that vocabulary for
+an arbitrary project, so the check does not try: it opens the document, runs the
+real setter against a throwaway copy, and keeps the error. Two resolvers that
+must agree are cheaper to make one resolver than to keep in step — the drift
+here is silent in the direction that hurts, a pre-flight that passes what the
+run then refuses. The cost is that the copy has to be a real copy, which is one
+test, and that a target the script itself adds has to be recognised as
+not-yet-stored rather than missing — by asking whether it resolves, never by
+matching names, since a grid column is inserted under one name and addressed
+under its derived one.
+
 **Hand-built BSON drifts from codec-built BSON.** The mutator constructs
 documents directly while CREATE goes through the codec, so the two encodings of
 "the same" widget diverge — an empty-string value where the codec writes an
