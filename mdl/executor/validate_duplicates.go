@@ -94,6 +94,11 @@ func stmtCreateInfo(stmt ast.Statement) (docType, name string, idempotent bool) 
 	switch s := stmt.(type) {
 	case *ast.CreateModuleStmt:
 		return "module", s.Name, false
+	case *ast.CreateModuleRoleStmt:
+		// Not a document, which is why it was missed when the document types
+		// were swept (mendixlabs/mxcli#1067). exec refuses a plain CREATE of an
+		// existing role, so check has to as well.
+		return "module-role", s.Name.String(), s.CreateOrModify
 	case *ast.CreateEntityStmt:
 		return "entity", s.Name.String(), s.CreateOrModify || s.IfNotExists
 	case *ast.CreateViewEntityStmt:
@@ -154,6 +159,8 @@ func stmtDropInfo(stmt ast.Statement) (docType, name string) {
 	switch s := stmt.(type) {
 	case *ast.DropModuleStmt:
 		return "module", s.Name
+	case *ast.DropModuleRoleStmt:
+		return "module-role", s.Name.String()
 	case *ast.DropEntityStmt:
 		return "entity", s.Name.String()
 	case *ast.DropEnumerationStmt:
@@ -251,6 +258,8 @@ func friendlyDocType(docType string) string {
 		return "java action"
 	case "javascriptaction":
 		return "javascript action"
+	case "module-role":
+		return "module role"
 	case "json-structure":
 		return "JSON structure"
 	case "knowledge-base":
@@ -359,6 +368,7 @@ type projectNameSets struct {
 	associations     map[string]bool
 	rules            map[string]bool
 	javaScriptActs   map[string]bool
+	moduleRoles      map[string]bool
 }
 
 // projectSetFor returns the existence set for the given doc-type key, or nil
@@ -411,6 +421,8 @@ func (ps *projectNameSets) setFor(docType string) map[string]bool {
 		return ps.rules
 	case "javascriptaction":
 		return ps.javaScriptActs
+	case "module-role":
+		return ps.moduleRoles
 	}
 	// "module" is deliberately absent: CREATE MODULE on an existing module is a
 	// no-op that prints "already exists" and exits 0, so `create module M;` is
@@ -548,6 +560,9 @@ func loadProjectNameSets(ctx *ExecContext) *projectNameSets {
 
 	// JavaScript actions
 	ps.javaScriptActs = buildJavaScriptActionQualifiedNames(ctx)
+
+	// Module roles
+	ps.moduleRoles = buildModuleRoleQualifiedNames(ctx)
 
 	// Image collections
 	ps.imageCollections = make(map[string]bool)
