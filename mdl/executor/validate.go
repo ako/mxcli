@@ -316,6 +316,11 @@ func validateProgram(ctx *ExecContext, prog *ast.Program) []error {
 	// member that does not exist reached mxbuild as CE1613
 	// (mendixlabs/mxcli#1049).
 	errors = append(errors, validateXPathMembers(ctx, prog)...)
+	// Dry-run every ALTER … SET against the stored document. The properties of a
+	// widget the statement CARRIES are checked without a project; a SET names a
+	// widget that is already stored, so its property can only be resolved
+	// against the document — which is why it passed check and failed exec.
+	errors = append(errors, validateAlterSetProperties(ctx, prog, sc)...)
 	return errors
 }
 
