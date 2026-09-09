@@ -125,27 +125,7 @@ Examples:
 		// so we can compute the catalog depth they need BEFORE building it. A rule
 		// that needs the refs (full) or graph_* (communities) tables then gets them
 		// automatically instead of silently returning empty results (issue #721).
-		lintRules := []linter.Rule{
-			rules.NewNamingConventionRule(),
-			rules.NewEmptyMicroflowRule(),
-			rules.NewDomainModelSizeRule(),
-			rules.NewValidationFeedbackRule(),
-			rules.NewImageSourceRule(),
-			rules.NewEmptyContainerRule(),
-			rules.NewGallerySelectionListenerRule(),
-			rules.NewDataViewLayoutGridRule(),
-			rules.NewPageNavigationSecurityRule(),
-			rules.NewNoEntityAccessRulesRule(),
-			rules.NewWeakPasswordPolicyRule(),
-			rules.NewDemoUsersActiveRule(),
-			rules.NewOverlappingActivitiesRule(), // MPR008 - requires BSON inspection
-			rules.NewLoopChildContainmentRule(),  // MPR011 - requires BSON inspection
-			rules.NewNoCommitInLoopRule(),        // CONV011-CONV014 - require BSON inspection
-			rules.NewExclusiveSplitCaptionRule(),
-			rules.NewErrorHandlingOnCallsRule(),
-			rules.NewNoContinueErrorHandlingRule(),
-			rules.NewIrreducibleFlowGraphRule(), // MDL-FLOW01 - graph structure vs MDL nesting
-		}
+		lintRules := builtinLintRules()
 		// Search upward from the project for .claude/lint-rules/, so one
 		// directory at the repo root serves an app in a subfolder (#904).
 		lintRulesDir := linter.FindLintRulesDir(projectDir)
@@ -408,4 +388,33 @@ func plural(n int, one, many string) string {
 		return one
 	}
 	return many
+}
+
+// builtinLintRules is the built-in rule set, in one place because more than one
+// caller needs to know what it contains. `--list-rules` prints it, and the
+// generated CLAUDE.md is asserted NOT to restate it — a check that needs the
+// real list rather than a second copy of it, since a second copy is the drift
+// it exists to prevent.
+func builtinLintRules() []linter.Rule {
+	return []linter.Rule{
+		rules.NewNamingConventionRule(),
+		rules.NewEmptyMicroflowRule(),
+		rules.NewDomainModelSizeRule(),
+		rules.NewValidationFeedbackRule(),
+		rules.NewImageSourceRule(),
+		rules.NewEmptyContainerRule(),
+		rules.NewGallerySelectionListenerRule(),
+		rules.NewDataViewLayoutGridRule(),
+		rules.NewPageNavigationSecurityRule(),
+		rules.NewNoEntityAccessRulesRule(),
+		rules.NewWeakPasswordPolicyRule(),
+		rules.NewDemoUsersActiveRule(),
+		rules.NewOverlappingActivitiesRule(), // MPR008 - requires BSON inspection
+		rules.NewLoopChildContainmentRule(),  // MPR011 - requires BSON inspection
+		rules.NewNoCommitInLoopRule(),        // CONV011-CONV014 - require BSON inspection
+		rules.NewExclusiveSplitCaptionRule(),
+		rules.NewErrorHandlingOnCallsRule(),
+		rules.NewNoContinueErrorHandlingRule(),
+		rules.NewIrreducibleFlowGraphRule(), // MDL-FLOW01 - graph structure vs MDL nesting
+	}
 }

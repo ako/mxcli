@@ -636,85 +636,25 @@ func deduplicateActivityNames(activities []workflows.WorkflowActivity) {
 // a jump nested in an outcome flow is still reached in the second pass.
 func deduplicateActivityNamesInFlow(activities []workflows.WorkflowActivity, nameCount map[string]int, jumpPass bool) {
 	for _, act := range activities {
-		switch a := act.(type) {
-		case *workflows.UserTask:
+		switch act.(type) {
+		case *workflows.UserTask, *workflows.CallMicroflowTask, *workflows.CallWorkflowActivity,
+			*workflows.ExclusiveSplitActivity, *workflows.ParallelSplitActivity,
+			*workflows.WaitForTimerActivity, *workflows.WaitForNotificationActivity,
+			*workflows.EndWorkflowActivity:
 			if !jumpPass {
-				a.Name = uniqueName(a.Name, nameCount)
-			}
-			for _, outcome := range a.Outcomes {
-				if outcome.Flow != nil {
-					deduplicateActivityNamesInFlow(outcome.Flow.Activities, nameCount, jumpPass)
-				}
-			}
-		case *workflows.CallMicroflowTask:
-			if !jumpPass {
-				a.Name = uniqueName(a.Name, nameCount)
-			}
-			for _, outcome := range a.Outcomes {
-				switch o := outcome.(type) {
-				case *workflows.BooleanConditionOutcome:
-					if o.Flow != nil {
-						deduplicateActivityNamesInFlow(o.Flow.Activities, nameCount, jumpPass)
-					}
-				case *workflows.EnumerationValueConditionOutcome:
-					if o.Flow != nil {
-						deduplicateActivityNamesInFlow(o.Flow.Activities, nameCount, jumpPass)
-					}
-				case *workflows.VoidConditionOutcome:
-					if o.Flow != nil {
-						deduplicateActivityNamesInFlow(o.Flow.Activities, nameCount, jumpPass)
-					}
-				}
-			}
-		case *workflows.CallWorkflowActivity:
-			if !jumpPass {
-				a.Name = uniqueName(a.Name, nameCount)
-			}
-		case *workflows.ExclusiveSplitActivity:
-			if !jumpPass {
-				a.Name = uniqueName(a.Name, nameCount)
-			}
-			for _, outcome := range a.Outcomes {
-				switch o := outcome.(type) {
-				case *workflows.BooleanConditionOutcome:
-					if o.Flow != nil {
-						deduplicateActivityNamesInFlow(o.Flow.Activities, nameCount, jumpPass)
-					}
-				case *workflows.EnumerationValueConditionOutcome:
-					if o.Flow != nil {
-						deduplicateActivityNamesInFlow(o.Flow.Activities, nameCount, jumpPass)
-					}
-				case *workflows.VoidConditionOutcome:
-					if o.Flow != nil {
-						deduplicateActivityNamesInFlow(o.Flow.Activities, nameCount, jumpPass)
-					}
-				}
-			}
-		case *workflows.ParallelSplitActivity:
-			if !jumpPass {
-				a.Name = uniqueName(a.Name, nameCount)
-			}
-			for _, outcome := range a.Outcomes {
-				if outcome.Flow != nil {
-					deduplicateActivityNamesInFlow(outcome.Flow.Activities, nameCount, jumpPass)
-				}
+				act.SetName(uniqueName(act.GetName(), nameCount))
 			}
 		case *workflows.JumpToActivity:
 			if jumpPass {
-				a.Name = uniqueName(a.Name, nameCount)
+				act.SetName(uniqueName(act.GetName(), nameCount))
 			}
-		case *workflows.WaitForTimerActivity:
-			if !jumpPass {
-				a.Name = uniqueName(a.Name, nameCount)
-			}
-		case *workflows.WaitForNotificationActivity:
-			if !jumpPass {
-				a.Name = uniqueName(a.Name, nameCount)
-			}
-		case *workflows.EndWorkflowActivity:
-			if !jumpPass {
-				a.Name = uniqueName(a.Name, nameCount)
-			}
+		}
+
+		// Same nested-flow enumeration as the auto-bind walk, for the same
+		// reason: this switch was missing the enum-outcome and boundary-event
+		// branches too, so a name collision inside one went undetected.
+		for _, f := range nestedFlows(act) {
+			deduplicateActivityNamesInFlow(f.Activities, nameCount, jumpPass)
 		}
 	}
 }
@@ -756,6 +696,71 @@ func sanitizeActivityName(name string) string {
 	return result
 }
 
+// nestedFlows returns every flow nested inside a workflow activity: condition
+// outcomes (a decision's and a call-microflow's), user-task outcomes, parallel
+// split paths, and boundary-event bodies.
+//
+// It exists because both tree walks over a workflow — autoBindActivitiesInFlow
+// and deduplicateActivityNamesInFlow — used to enumerate the nested flows
+// themselves, with a type switch per outcome kind. Each switch was missing
+// cases: auto-bind never entered an EnumerationValueConditionOutcome or any
+// boundary event, so a `call microflow` inside a decision's enum branch reached
+// Mendix with no parameter mappings and no outcomes (CE6685 + CE6686,
+// ako/mxcli#417) while the identical activity in the MAIN flow was wired.
+// Enumerating the flows in ONE place is what stops the next walk from
+// re-acquiring the gap; the ConditionOutcome interface already exposes GetFlow,
+// so no outcome kind can be silently skipped here.
+func nestedFlows(act workflows.WorkflowActivity) []*workflows.Flow {
+	var flows []*workflows.Flow
+	add := func(f *workflows.Flow) {
+		if f != nil {
+			flows = append(flows, f)
+		}
+	}
+	addConditions := func(outcomes []workflows.ConditionOutcome) {
+		for _, o := range outcomes {
+			if o != nil {
+				add(o.GetFlow())
+			}
+		}
+	}
+	addBoundary := func(events []*workflows.BoundaryEvent) {
+		for _, be := range events {
+			if be != nil {
+				add(be.Flow)
+			}
+		}
+	}
+
+	switch a := act.(type) {
+	case *workflows.CallMicroflowTask:
+		addConditions(a.Outcomes)
+		addBoundary(a.BoundaryEvents)
+	case *workflows.SystemTask:
+		addConditions(a.Outcomes)
+	case *workflows.ExclusiveSplitActivity:
+		addConditions(a.Outcomes)
+	case *workflows.UserTask:
+		for _, o := range a.Outcomes {
+			if o != nil {
+				add(o.Flow)
+			}
+		}
+		addBoundary(a.BoundaryEvents)
+	case *workflows.ParallelSplitActivity:
+		for _, o := range a.Outcomes {
+			if o != nil {
+				add(o.Flow)
+			}
+		}
+	case *workflows.CallWorkflowActivity:
+		addBoundary(a.BoundaryEvents)
+	case *workflows.WaitForNotificationActivity:
+		addBoundary(a.BoundaryEvents)
+	}
+	return flows
+}
+
 // autoBindWorkflowParameters resolves microflow/workflow parameters and generates
 // ParameterMappings, default outcomes, and sanitized names for workflow activities.
 // declaredContextVar is the variable name from the workflow header's
@@ -769,19 +774,6 @@ func autoBindActivitiesInFlow(ctx *ExecContext, activities []workflows.WorkflowA
 		switch a := act.(type) {
 		case *workflows.CallMicroflowTask:
 			autoBindCallMicroflow(ctx, a, norm)
-			// Recurse into outcomes
-			for _, outcome := range a.Outcomes {
-				switch o := outcome.(type) {
-				case *workflows.BooleanConditionOutcome:
-					if o.Flow != nil {
-						autoBindActivitiesInFlow(ctx, o.Flow.Activities, norm)
-					}
-				case *workflows.VoidConditionOutcome:
-					if o.Flow != nil {
-						autoBindActivitiesInFlow(ctx, o.Flow.Activities, norm)
-					}
-				}
-			}
 		case *workflows.CallWorkflowActivity:
 			autoBindCallWorkflow(ctx, a)
 		case *workflows.UserTask:
@@ -791,19 +783,9 @@ func autoBindActivitiesInFlow(ctx *ExecContext, activities []workflows.WorkflowA
 			if xp, ok := a.UserSource.(*workflows.XPathBasedUserSource); ok {
 				xp.XPath = norm.rewrite(xp.XPath)
 			}
-			for _, outcome := range a.Outcomes {
-				if outcome.Flow != nil {
-					autoBindActivitiesInFlow(ctx, outcome.Flow.Activities, norm)
-				}
-			}
 		case *workflows.ParallelSplitActivity:
 			// Sanitize name (spaces not allowed)
 			a.Name = sanitizeActivityName(a.Name)
-			for _, outcome := range a.Outcomes {
-				if outcome.Flow != nil {
-					autoBindActivitiesInFlow(ctx, outcome.Flow.Activities, norm)
-				}
-			}
 		case *workflows.ExclusiveSplitActivity:
 			a.Name = sanitizeActivityName(a.Name)
 			// A decision's condition is an expression over the workflow context,
@@ -813,18 +795,6 @@ func autoBindActivitiesInFlow(ctx *ExecContext, activities []workflows.WorkflowA
 			// name) reached Mendix as undefined variables → CE0117 (issuetracker
 			// #17). Normalize it the same way.
 			a.Expression = norm.rewrite(a.Expression)
-			for _, outcome := range a.Outcomes {
-				switch o := outcome.(type) {
-				case *workflows.BooleanConditionOutcome:
-					if o.Flow != nil {
-						autoBindActivitiesInFlow(ctx, o.Flow.Activities, norm)
-					}
-				case *workflows.VoidConditionOutcome:
-					if o.Flow != nil {
-						autoBindActivitiesInFlow(ctx, o.Flow.Activities, norm)
-					}
-				}
-			}
 		case *workflows.WaitForNotificationActivity:
 			a.Name = sanitizeActivityName(a.Name)
 		case *workflows.WaitForTimerActivity:
@@ -832,6 +802,13 @@ func autoBindActivitiesInFlow(ctx *ExecContext, activities []workflows.WorkflowA
 			a.DelayExpression = norm.rewrite(a.DelayExpression)
 		case *workflows.JumpToActivity:
 			a.Name = sanitizeActivityName(a.Name)
+		}
+
+		// Every nested flow, whatever the activity — enumerating them here rather
+		// than per case is what keeps a decision's enum branch and a boundary
+		// event body from being skipped (ako/mxcli#417).
+		for _, f := range nestedFlows(act) {
+			autoBindActivitiesInFlow(ctx, f.Activities, norm)
 		}
 	}
 }

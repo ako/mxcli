@@ -28,7 +28,7 @@ defect wearing different clothes.
 
 ## How it fits
 
-**Four places the duplication keeps appearing.**
+**Five places the duplication keeps appearing.**
 
 *`check` versus `exec`.* The two passes historically ran different validator sets
 over the same script, so `check` could reject what `exec` wrote and `exec` could
@@ -54,6 +54,17 @@ one reader, one renderer, one resolver — and taking the type set from
 construction. The folder clause is the clean example: every doctype's `FOLDER`
 handling had the same bug, and the report that named one of them read as a
 doctype-specific defect.
+
+*Two walks over one tree.* The duplication does not need two *resolvers* — two
+traversals of the same structure drift the same way, and faster, because each
+hand-enumerates the branches it descends into. Both walks over a workflow's
+activity tree carried their own switch over `ConditionOutcome`; each was missing
+a different subset (one skipped enum outcomes and every boundary-event body, the
+other only the boundary events), so a `call microflow` in a decision's enum
+branch went unwired while the same statement in the main flow was fine. The
+interface already exposed the accessor the switches were standing in for
+(`GetFlow`), which is the tell for this variant: a hand-written switch over an
+interface's implementations answers a question the interface answers already.
 
 **The tell is that the fix for the reported instance is obviously incomplete.**
 When a symptom's cause is "this switch was missing a case", the next question is
