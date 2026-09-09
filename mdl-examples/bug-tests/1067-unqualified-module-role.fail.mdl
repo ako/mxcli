@@ -1,0 +1,23 @@
+-- mendixlabs/mxcli#1067 (a): a module role named without its module.
+--
+-- Every statement below used to pass BOTH `mxcli check` and
+-- `check --references`. The GRANT forms then failed at exec, by which point the
+-- statements before them had already been written (mxcli does not run a script
+-- in one transaction). The `create user role` form did not fail at all: it
+-- stored the reference as ".Wide" and reported success, and only mxbuild
+-- refused the project, with CE1613 "The selected module role '.Wide' no longer
+-- exists."
+--
+-- MDL-GRANT02 reports all of them at check time, with no project: the qualifier
+-- is missing from the script text, so nothing has to be resolved to see it.
+--
+-- Negative test: `mxcli check` MUST exit non-zero on this file.
+
+create module Zz1067;
+create module role Zz1067.Wide;
+create entity Zz1067.Doc ( Subject: String );
+
+-- The entity grant — the commonest GRANT of all, and the one that had no
+-- check-time coverage at all, because MDL-GRANT01 was written for the five
+-- document grants and entity was never added to its switch.
+grant Wide on Zz1067.Doc (read *);

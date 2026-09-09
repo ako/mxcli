@@ -43,6 +43,39 @@ Restrict read and write to specific attributes:
 GRANT Shop.User ON Shop.Customer (READ (Name, Email, Status), WRITE (Email));
 ```
 
+### Members Added Later
+
+A rule also carries a **default for members added after it was written**, and MDL
+derives that default from the grant rather than stating it: `WRITE *` gives
+ReadWrite, `READ *` gives ReadOnly, and a grant written **purely as member
+lists** leaves it at **None**.
+
+So an attribute added later is granted None on a member-listed rule. The model
+is complete and correct — every rule gets an entry for the new member, and the
+build reports no errors — but the attribute renders blank for that role:
+
+```sql
+GRANT Shop.User ON Shop.Customer (READ (Name, Email));
+-- later:
+--   alter entity Shop.Customer add attribute Phone: String;
+-- Phone is granted None to Shop.User. Nothing is broken; it is simply not visible.
+```
+
+`alter entity … add attribute` reports this and prints the GRANT that fixes it:
+
+```
+Added attribute 'Phone' to entity Shop.Customer
+Warning: Shop.Customer.Phone is not readable by Shop.User
+  ...
+    grant Shop.User on Shop.Customer (read (Phone));
+```
+
+What decides this is the rule's **default**, not how narrow its member list is. A
+rule granted `READ *, WRITE (Email)` is narrower than `READ *, WRITE *` and still
+sees new members, because `READ *` set its default to ReadOnly. If you want a
+role to pick up future members automatically, give its rule a `READ *` or
+`WRITE *` and narrow from there with [REVOKE](#revoke-on-entities).
+
 ### XPath Constraints
 
 Limit which objects a role can see or modify using an XPath expression in the `WHERE` clause:
