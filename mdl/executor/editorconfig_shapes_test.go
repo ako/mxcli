@@ -326,3 +326,59 @@ func TestConjunctionWithholdsANewShapeItCannotFullyRead(t *testing.T) {
 		t.Error("no rule survived at all; the withholding is too broad")
 	}
 }
+
+// A chained ternary is an else-if ladder: each branch's BODY is parenthesised,
+// each branch's CONDITION is not. Combo box nests two of them:
+//
+//	"context"===t.source ? ( …,
+//	      ["enumeration","boolean"].includes(t.optionsSourceType) ? ( … )
+//	    : "association"===t.optionsSourceType && ( …hides… ) )
+//	: "database"===t.source ? ( … )
+//
+// The `&&` group's own condition is the operand immediately left of the `&&`.
+// Reading back to the nearest STATEMENT separator instead returns the whole
+// `A ? (…) : B` expression, which is not a comparison — so the chain read as
+// unreadable and these rules went unlifted.
+//
+// Real .mpk, not a reconstruction: the shape that triggers this is specific
+// enough that a hand-written stand-in did not reproduce it last time.
+func TestChainedTernaryBranchConditionIsLifted(t *testing.T) {
+	js, err := mpk.ReadEditorConfig(
+		"../../testdata/expr-checker/widgets/com.mendix.widget.web.Combobox.mpk",
+		"com.mendix.widget.web.combobox.Combobox")
+	if err != nil || js == "" {
+		t.Fatalf("read Combo box editorConfig: %v", err)
+	}
+	rules, _ := extractVisibilityRulesFromJS(js)
+
+	// Each of these sits inside the `"association"===optionsSourceType && (…)`
+	// group, itself the else branch of a ternary inside the `"context"===source`
+	// branch. The rule must carry all three terms — its own, the `&&` operand,
+	// and the outer branch — or it claims hidden where the editor shows it.
+	want := map[string][]string{
+		"menuFooterContent":                   {"showFooter", "optionsSourceType", "source"},
+		"selectAllButtonCaption":              {"selectAllButton", "optionsSourceType", "source"},
+		"optionsSourceAssociationCaptionType": {"optionsSourceAssociationDataSource", "optionsSourceType", "source"},
+	}
+	for prop, terms := range want {
+		var found bool
+		for _, r := range rules {
+			if r.PropertyKey != prop || r.HiddenWhen == nil || r.HiddenWhen.PropertyKey != terms[0] {
+				continue
+			}
+			found = true
+			got := map[string]bool{}
+			for _, c := range r.Conditions() {
+				got[c.PropertyKey] = true
+			}
+			for _, term := range terms {
+				if !got[term] {
+					t.Errorf("%s: conjunction is missing %q (has %v)", prop, term, got)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("no rule lifted for %s guarded by %s", prop, terms[0])
+		}
+	}
+}
