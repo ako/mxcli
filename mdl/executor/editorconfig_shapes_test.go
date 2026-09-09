@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mendixlabs/mxcli/modelsdk/widgets/mpk"
+
 	"github.com/mendixlabs/mxcli/mdl/types"
 )
 
@@ -239,5 +241,88 @@ func TestRuleTextJoinsEveryTerm(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("rendering %q is missing %q", got, want)
 		}
+	}
+}
+
+// A conjunction the walk cannot read is a reason to WITHHOLD a rule this
+// extractor did not previously produce — emitting one states a single conjunct
+// and over-fires. It is not a reason to drop a rule the older, single-condition
+// vocabulary already lifted: that rule's accuracy is unchanged by conjunction
+// support, and removing it loses detection the previous release had.
+//
+// This is the guarantee that failed silently once. The sweep that claimed "zero
+// rules lost" listed widgets from their .def.json files, and Combo box — the
+// widget the work was justified by — has none, so it was never measured. Six of
+// its rules had been dropped.
+func TestConjunctionNeverDropsAPreviouslyLiftedRule(t *testing.T) {
+	// Combo box's REAL editorConfig, not a synthetic stand-in. A hand-written
+	// snippet of the same apparent shape did NOT reproduce this — it was never
+	// flagged conjunctive, so the test passed with the fix reverted and proved
+	// nothing. The nesting that triggers it is three levels deep and specific.
+	js, err := mpk.ReadEditorConfig(
+		"../../testdata/expr-checker/widgets/com.mendix.widget.web.Combobox.mpk",
+		"com.mendix.widget.web.combobox.Combobox")
+	if err != nil || js == "" {
+		t.Fatalf("read Combo box editorConfig: %v", err)
+	}
+
+	rules, _ := extractVisibilityRulesFromJS(js)
+	got := map[string]bool{}
+	for _, r := range rules {
+		got[r.PropertyKey] = true
+	}
+
+	// Each of these was lifted by the older, single-condition vocabulary and sits
+	// inside a group whose guard is about the same object. Conjunction support
+	// must not cost them: their accuracy is unchanged by this work, and dropping
+	// them loses detection the previous release had.
+	//
+	// This guarantee failed once, silently. The sweep that claimed "zero rules
+	// lost" enumerated widgets from their .def.json files, and Combo box has
+	// none — it is described straight from the .mpk — so the widget the work was
+	// justified by was never in the sample. Six rules had gone.
+	for _, want := range []string{
+		"databaseAttributeString",
+		"optionsSourceAssociationCaptionExpression",
+		"optionsSourceAssociationCustomContent",
+		"optionsSourceDatabaseCaptionExpression",
+		"optionsSourceDatabaseCustomContent",
+		"optionsSourceDatabaseValueAttribute",
+	} {
+		if !got[want] {
+			t.Errorf("dropped %s: a rule the single-condition vocabulary already lifted", want)
+		}
+	}
+}
+
+// The other half of that distinction: a NEWLY supported guard shape in the same
+// position IS withheld, because emitting it would ADD an over-firing rule rather
+// than preserve an existing one. Datagrid hides pagingPosition only when
+// pagination is off AND the row count is false, and pagination defaults on.
+func TestConjunctionWithholdsANewShapeItCannotFullyRead(t *testing.T) {
+	js := `function getProperties(t,e){` +
+		`return e.pagination?x.hidePropertiesIn(t,e,["showNumberOfRows"]):` +
+		`(x.hidePropertiesIn(t,e,["showPagingButtons"]),!1===e.showNumberOfRows&&x.hidePropertiesIn(t,e,["pagingPosition"])),t}`
+
+	rules, _ := extractVisibilityRulesFromJS(js)
+	for _, r := range rules {
+		if r.PropertyKey == "pagingPosition" && len(r.And) == 0 {
+			t.Errorf("emitted pagingPosition with only one conjunct (%s %s %q): "+
+				"it is hidden when pagination is OFF *and* the row count is false, "+
+				"and pagination defaults on",
+				r.HiddenWhen.PropertyKey, r.HiddenWhen.Operator, r.HiddenWhen.Value)
+		}
+	}
+	// Control: the sibling hide in the same group, whose guard the walk CAN
+	// attribute, is still lifted — so the test is not passing because extraction
+	// stopped altogether.
+	var sawSibling bool
+	for _, r := range rules {
+		if r.PropertyKey == "showPagingButtons" || r.PropertyKey == "showNumberOfRows" {
+			sawSibling = true
+		}
+	}
+	if !sawSibling {
+		t.Error("no rule survived at all; the withholding is too broad")
 	}
 }

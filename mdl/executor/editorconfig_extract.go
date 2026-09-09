@@ -178,9 +178,23 @@ func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, edit
 				// (…, "openStreet"===B.mapProvider && hide([apiKey, apiKeyExp]))`.
 			default:
 				// The chain could not be read in full, so the terms cannot be
-				// stored. Keep the rule only for the keys the ternary's other
-				// branch hides anyway — there the single condition can
-				// under-report but never claim hidden where the editor shows it.
+				// stored and the rule states one conjunct of a larger condition.
+				//
+				// That is a reason to withhold a rule this extractor did not
+				// previously produce — emitting it would ADD an over-firing rule,
+				// as `!1===e.showNumberOfRows` alone does for Datagrid's
+				// pagingPosition. It is NOT a reason to drop a rule that the
+				// older, single-condition vocabulary already lifted: that rule's
+				// accuracy is unchanged by this work, and removing it would lose
+				// detection the previous release had. Combo box is where that
+				// distinction shows — six of its rules are exactly this shape.
+				//
+				// So: newly-supported guard shapes must earn their place (the
+				// other branch has to hide the property anyway, which makes the
+				// single condition safe); shapes that already worked are kept.
+				if !isNewlySupportedGuard(guardText) {
+					break
+				}
 				kept := keys[:0:0]
 				for _, k := range keys {
 					if hiddenInComplementaryBranch(js, callStart, k) {
@@ -1056,6 +1070,22 @@ func dedupeConditions(own types.WidgetVisibilityCondition, cs []types.WidgetVisi
 		out = append(out, c)
 	}
 	return out
+}
+
+// isNewlySupportedGuard reports whether a guard is one of the shapes this
+// extractor learned alongside conjunctions — `null===x`, a minified boolean,
+// `0===x.length`, `["a","b"].includes(x)`. Those had no rule before, so
+// withholding one under a conjunction loses nothing; the older shapes did, and
+// withholding theirs would be a regression.
+func isNewlySupportedGuard(guard string) bool {
+	for _, re := range []*regexp.Regexp{
+		nullCmpRE, nullCmpRE2, lenCmpRE, lenCmpRE2, boolCmpRE, boolCmpRE2, includesRE,
+	} {
+		if re.MatchString(guard) {
+			return true
+		}
+	}
+	return false
 }
 
 // condsSig renders conditions into a dedupe key.
