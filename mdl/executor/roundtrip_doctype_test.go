@@ -43,10 +43,10 @@ var gateEngines = []gateEngine{
 // (e.g. a known modelsdk gap on a specific document type). A script broken on
 // BOTH engines belongs in scriptSkipList instead. Key format: "<engine>/<file>".
 var engineScriptSkip = map[string]string{
-	// SOAP web-service calls aren't serialized by the codec engine yet — legacy
-	// is the documented fallback for SOAP (cmd/mxcli/engine.go). On modelsdk the
-	// `call web service` activity serializes with no action → CE0008/CE0109.
-	"modelsdk/06b-soap-examples.mdl": "modelsdk doesn't write SOAP web-service calls yet (legacy fallback); tracked",
+	// (modelsdk/06b-soap-examples.mdl was skipped here until the codec engine
+	// learned to write Microflows$CallWebServiceAction. It ran on BOTH engines
+	// from then on, which is the point of the removal: SOAP was the documented
+	// reason the legacy engine still had to exist.)
 	// The legacy widget builder has no `barchart` pluggable-widget template, so
 	// page build fails ("template not found: barchart"). Passes on modelsdk.
 	"legacy/34-chart-widget-examples.mdl": "legacy widget builder lacks the barchart template (works on modelsdk); tracked",
