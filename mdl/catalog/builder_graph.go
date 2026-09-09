@@ -81,13 +81,6 @@ func (b *Builder) buildGraphAnalysis() error {
 	if resolution <= 0 {
 		resolution = 1.0
 	}
-	moduleOf := func(qn string) string {
-		if i := strings.IndexByte(qn, '.'); i > 0 {
-			return qn[:i]
-		}
-		return qn
-	}
-
 	// Communities.
 	comm := g.Communities(resolution)
 	commStmt, err := b.tx.Prepare(

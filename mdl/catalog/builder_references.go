@@ -36,6 +36,7 @@ const (
 	RefKindValidate   = "validate"   // Attribute validation rule uses a regular expression
 	RefKindWidget     = "widget"     // Page/snippet uses a pluggable or custom widget
 	RefKindSettings   = "settings"   // A project setting names a microflow
+	RefKindSync       = "sync"       // An offline navigation profile synchronizes an entity
 )
 
 // collectActionActivities returns all ActionActivity objects from an ObjectCollection,
@@ -494,6 +495,30 @@ func (b *Builder) buildReferences() error {
 
 			// Menu items (recursive)
 			refCount += b.extractMenuItemRefs(stmt, profile.MenuItems, sourceName, projectID, snapshotID)
+
+			// Offline synchronization. Without this edge "which profiles sync
+			// this entity?" is unanswerable, while the same question about a
+			// page or a Java action is one query — and it is exactly the
+			// question an offline change asks, because changing an entity that
+			// a profile downloads changes what every device holds.
+			//
+			// Every sync mode gets an edge, including the ones that download
+			// nothing (NEVER, NONE, ONLINE). The profile still NAMES the
+			// entity, so renaming or dropping it leaves the config dangling —
+			// which is the thing a reference edge exists to reveal. Emitting
+			// only the downloading modes would make the quiet ones invisible
+			// to exactly the query that would catch them.
+			for _, oe := range profile.OfflineEntities {
+				if oe.Entity == "" {
+					continue
+				}
+				_, err = stmt.Exec("NAVIGATION", "", sourceName,
+					"ENTITY", "", oe.Entity,
+					RefKindSync, "", projectID, snapshotID)
+				if err == nil {
+					refCount++
+				}
+			}
 		}
 	}
 

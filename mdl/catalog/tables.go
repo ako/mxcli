@@ -694,6 +694,30 @@ func (c *Catalog) createTables() error {
 		)`,
 		viewWithFullSnapshot("navigation_profiles"),
 
+		// Offline synchronization, one row per configured entity.
+		//
+		// navigation_profiles.OfflineEntityCount says HOW MANY and nothing
+		// else, so "which entities does this profile sync, and how?" — the
+		// question anyone auditing an offline app asks first — needed the
+		// document. A count is not a projection of the data; it is a summary
+		// that cannot be drilled into.
+		//
+		// CompatibilityMode is indexed even though MDL cannot author it: the
+		// catalog reports what is STORED, and a flag invisible to every query
+		// is one nobody discovers until it matters.
+		`CREATE TABLE IF NOT EXISTS offline_entity_configs_data (
+			ProfileName TEXT,
+			ProfileKind TEXT,
+			EntityQualifiedName TEXT,
+			ModuleName TEXT,
+			SyncMode TEXT,
+			XPathConstraint TEXT,
+			CompatibilityMode INTEGER DEFAULT 0,
+			ProjectId TEXT,
+			SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("offline_entity_configs"),
+
 		// Already-clean tables (no denormalized columns) — kept as plain tables.
 		`CREATE TABLE IF NOT EXISTS navigation_menu_items (
 			Id INTEGER PRIMARY KEY AUTOINCREMENT,
