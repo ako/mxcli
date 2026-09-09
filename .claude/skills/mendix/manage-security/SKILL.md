@@ -175,6 +175,19 @@ grant view on page MyModule.Customer_Overview to MyModule.User, MyModule.Admin;
 revoke view on page MyModule.Customer_Overview from MyModule.User;
 ```
 
+### Always Qualify a Module Role
+
+A module role is always `Module.Role`. The grammar makes the module part
+optional, so a bare `Admin` parses — and then either fails at exec (after every
+earlier statement has already been written) or, in `create user role`, is stored
+as `.Admin` and refused by MxBuild with **CE1613**. `mxcli check` reports it as
+**MDL-GRANT02** without needing a project.
+
+```sql
+grant Admin on MyModule.Customer (read *);            -- ✗ MDL-GRANT02
+grant MyModule.Admin on MyModule.Customer (read *);   -- ✓
+```
+
 ### Entity Access (CRUD)
 
 GRANT is **additive** — it merges with existing access, never removes permissions.
@@ -215,6 +228,22 @@ revoke MyModule.User on MyModule.Customer (write (Email));
 -- Partial revoke: remove structural permission
 revoke MyModule.User on MyModule.Customer (delete);
 ```
+
+#### Members added later
+
+A rule also carries a default for members added **after** it was written, and MDL
+derives it from the grant: `write *` → ReadWrite, `read *` → ReadOnly, and a
+grant written **purely as member lists** leaves it at **None**.
+
+So `alter entity … add attribute` gives the new attribute None on a
+member-listed rule. Nothing is broken — every rule gets an entry, the build is
+clean — but the attribute renders blank for that role. `alter entity` warns and
+prints the grant that widens it.
+
+What decides this is the rule's default, **not** how narrow its member list is:
+`read *, write (Email)` is narrower than `read *, write *` and still picks up new
+members, because `read *` set its default to ReadOnly. Give a rule `read *` and
+narrow with `revoke` when the role should follow the entity as it grows.
 
 #### Inherited members
 

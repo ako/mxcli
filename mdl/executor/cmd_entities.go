@@ -1012,6 +1012,13 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 		invalidateHierarchy(ctx)
 		invalidateDomainModelsCache(ctx)
 		fmt.Fprintf(ctx.Output, "Added attribute '%s' to entity %s\n", a.Name, s.Name)
+		// The new attribute joins each access rule at that rule's default member
+		// rights, so a rule granted per-member gets it at None and the roles on
+		// that rule cannot see it. Valid model, clean build, blank field
+		// (mendixlabs/mxcli#1067) — say so rather than leaving it to runtime.
+		if w := newMemberAccessWarning(s.Name.String(), a.Name, rolesBlindToNewMembers(entity)); w != "" {
+			fmt.Fprint(ctx.Output, w)
+		}
 
 	case ast.AlterEntityRenameAttribute:
 		var target *domainmodel.Attribute
