@@ -1,0 +1,156 @@
+-- ============================================================================
+-- mendixlabs/mxcli#1078: DESCRIBE dropped an activity's error handler
+-- ============================================================================
+--
+-- Report: a microflow with one create-variable activity, error handling set to
+-- "custom with rollback", and an error handler wired to an end node. mxcli
+-- v0.21 / Mendix 11.12.3. `describe microflow` returned:
+--
+--   create or modify microflow ExamplesModule.ACT_noerrorhandler () returns String
+--   begin @start(-1196, 200) @position(-1086, 200)
+--     declare $name String = 'NameValue';
+--     @position(-943, 200) return $name; end;
+--
+--   "No error handler! Regenerating looses the error handler."
+--
+-- The report is exactly right, and the loss is silent: the output is valid MDL,
+-- `mxcli check` passes, and mxbuild is never involved — so a describe→edit→exec
+-- cycle deletes the handler from the model with nothing to warn you.
+--
+-- ---------------------------------------------------------------------------
+-- TWO STACKED DEFECTS, which is why fixing one looked like fixing both
+-- ---------------------------------------------------------------------------
+--
+-- 1. THE DESCRIBER (both engines). `getActionErrorHandlingType` was a
+--    hand-maintained switch that had drifted to 17 of the 38 action types that
+--    store ErrorHandlingType. emitActivityStatement walks an activity's error
+--    branch only when hasCustomErrorHandler() agrees, so each of the 21 missing
+--    types lost its ENTIRE `on error { … }` block — not just the suffix.
+--    Create-object and change-object were among them, i.e. most of what a real
+--    microflow is made of. Replaced with a reflection lookup, so a new action
+--    type is covered the moment it exists.
+--
+-- 2. THE LEGACY PARSER (MXCLI_ENGINE=legacy only). Nine parse functions never
+--    read ErrorHandlingType off the BSON, so the value was gone before the
+--    describer could be asked. Measured: after fix 1, the default engine
+--    round-tripped and legacy still dropped the handler.
+--
+-- ---------------------------------------------------------------------------
+-- AND A THIRD THING, which fixing #1 alone would have made WORSE
+-- ---------------------------------------------------------------------------
+-- Eight statement forms had no `onErrorClause` in the grammar — including
+-- `declare`, the reporter's own activity. With only fix #1, DESCRIBE emitted
+--
+--   declare $name String = 'NameValue' on error { … };
+--
+-- which does not parse:
+--   line 3:37 mismatched input 'on' expecting ';'
+--
+-- That trades a silent drop for a broken script. So `declare`, `set`, `change`,
+-- `log`, `show page`, `close page`, `show message` and `validation feedback`
+-- now accept the clause, and the round trip is real rather than cosmetic.
+--
+-- ---------------------------------------------------------------------------
+-- MEASURED on mxbuild 11.14.0 (baseline: the same project before this script)
+-- ---------------------------------------------------------------------------
+-- All eight statements below, with a TERMINATING handler: 0 new errors.
+-- No CE6035 anywhere, i.e. Mendix accepts a custom handler on all eight.
+--
+-- `on error continue` is a different question and the answer is not uniform —
+-- one microflow per row, measured, now enforced by MDL076:
+--
+--   create variable      ok          change object        CE6035
+--   change variable      ok          log message          CE6035
+--                                    show page            CE6035
+--                                    close page           CE6035
+--                                    show message         CE6035
+--                                    validation feedback  CE6035
+--
+-- Note create-VARIABLE and change-VARIABLE accept Continue while change-OBJECT
+-- does not. No rule of thumb predicts that; it was measured.
+--
+-- A NON-terminating handler is a different matter and is NOT an mxcli bug: when
+-- the handler body falls through, the branch merges back into the main flow, and
+-- a variable defined after the merge point is out of scope on the error path —
+-- CE0108, which Studio Pro reports for the same model. The handlers below all
+-- terminate, matching the reporter's (his goes to an end node).
+--
+-- ---------------------------------------------------------------------------
+-- WHAT THIS SCRIPT PROVES, AND WHAT IT DOES NOT
+-- ---------------------------------------------------------------------------
+-- Run it, then `describe microflow` each one: the handlers come back, and
+-- describe→exec→describe is byte-identical (verified: the re-exec reports
+-- "Unchanged microflow", so nothing was even written).
+--
+-- It exercises the WRITE and READ paths together, which is what the issue is
+-- about. It does NOT prove the fix against a STUDIO PRO-authored document —
+-- the handler here is one mxcli wrote. The reporter's document is the case that
+-- motivated it; the unit tests in mdl/executor/microflow_error_handler_*_test.go
+-- carry the controls (revert the lookup, all seven cases fail).
+--
+-- Entities assumed: MyFirstModule.Car with a Brand attribute, and a page
+-- MyFirstModule.Home_Web. Adjust the names for your project.
+-- ============================================================================
+
+-- The reporter's exact shape: a create-variable with "custom with rollback"
+-- whose handler terminates. Before the fix, DESCRIBE returned this microflow
+-- with the `on error` block and the `return` inside it both gone.
+create or modify microflow MyFirstModule.ACT_1078_Declare () returns String
+begin
+  declare $name String = 'NameValue' on error {
+    return 'declare failed';
+  };
+  return $name;
+end;
+
+-- All eight newly-authorable statements in one flow. Every handler terminates,
+-- so the whole microflow builds at 0 errors.
+create or modify microflow MyFirstModule.ACT_1078_All () returns String
+begin
+  declare $name String = 'NameValue' on error {
+    return 'declare failed';
+  };
+  $name = 'changed' on error {
+    return 'set failed';
+  };
+  $Car = create MyFirstModule.Car (Brand = 'Ford') on error {
+    return 'create failed';
+  };
+  change $Car (Brand = 'Opel') on error {
+    return 'change failed';
+  };
+  log info node 'Bug1078' 'hello' on error {
+    return 'log failed';
+  };
+  validation feedback $Car/Brand message 'bad brand' on error {
+    return 'validation failed';
+  };
+  show message 'hi' on error {
+    return 'message failed';
+  };
+  close page on error {
+    return 'close failed';
+  };
+  return $name;
+end;
+
+-- `on error without rollback` must survive as its own value, not collapse into
+-- the plain custom handler — the two differ at runtime.
+create or modify microflow MyFirstModule.ACT_1078_WithoutRollback () returns String
+begin
+  declare $name String = 'NameValue' on error without rollback {
+    return 'declare failed';
+  };
+  return $name;
+end;
+
+-- Control for the whole file. No clause is written here, so DESCRIBE must emit
+-- none: an invented `on error rollback` is #840, the same bug pointing the other
+-- way. Rollback is what an activity with no authored clause stores, so it can
+-- never be rendered back.
+create or modify microflow MyFirstModule.ACT_1078_NoHandler () returns String
+begin
+  declare $name String = 'NameValue';
+  log info node 'Bug1078' 'no handler here';
+  return $name;
+end;

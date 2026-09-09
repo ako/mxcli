@@ -168,10 +168,11 @@ func (s *DropNanoflowStmt) isStatement() {}
 
 // DeclareStmt represents: DECLARE $Var Type = expr
 type DeclareStmt struct {
-	Variable     string               // Variable name (without $ prefix)
-	Type         DataType             // Variable type
-	InitialValue Expression           // Optional initial value
-	Annotations  *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	Variable      string               // Variable name (without $ prefix)
+	Type          DataType             // Variable type
+	InitialValue  Expression           // Optional initial value
+	Annotations   *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	ErrorHandling *ErrorHandlingClause // Optional ON ERROR clause
 }
 
 func (s *DeclareStmt) isMicroflowStatement() {}
@@ -232,9 +233,10 @@ func (s *CastObjectStmt) isMicroflowStatement() {}
 // MfSetStmt represents: SET $Var = expr or SET $Var/Attr = expr
 // (Named MfSetStmt to avoid conflict with existing SetStmt for SET key = value)
 type MfSetStmt struct {
-	Target      string               // Variable name or attribute path
-	Value       Expression           // Value to assign
-	Annotations *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	Target        string               // Variable name or attribute path
+	Value         Expression           // Value to assign
+	Annotations   *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	ErrorHandling *ErrorHandlingClause // Optional ON ERROR clause
 }
 
 func (s *MfSetStmt) isMicroflowStatement() {}
@@ -394,6 +396,7 @@ type ChangeObjectStmt struct {
 	Commit          CommitFlag           // Commit setting (default CommitNo)
 	RefreshInClient bool                 // Whether to refresh in client
 	Annotations     *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	ErrorHandling   *ErrorHandlingClause // Optional ON ERROR clause
 }
 
 func (s *ChangeObjectStmt) isMicroflowStatement() {}
@@ -534,11 +537,12 @@ func (p *TemplateParam) IsDataSourceRef() bool {
 
 // LogStmt represents: LOG LEVEL [NODE expr] message [WITH params]
 type LogStmt struct {
-	Level       LogLevel             // Log level (INFO, WARNING, etc.)
-	Node        Expression           // Optional log node expression
-	Message     Expression           // Message expression
-	Template    []TemplateParam      // Optional WITH template params
-	Annotations *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	Level         LogLevel             // Log level (INFO, WARNING, etc.)
+	Node          Expression           // Optional log node expression
+	Message       Expression           // Message expression
+	Template      []TemplateParam      // Optional WITH template params
+	Annotations   *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	ErrorHandling *ErrorHandlingClause // Optional ON ERROR clause
 }
 
 func (s *LogStmt) isMicroflowStatement() {}
@@ -725,6 +729,10 @@ type ListOperationStmt struct {
 	OffsetExpr     Expression           // Offset expression for RANGE
 	LimitExpr      Expression           // Limit expression for RANGE
 	Annotations    *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	// ErrorHandling is recorded only so the clause can be REFUSED. Mendix's
+	// ListOperationsAction has no ErrorHandlingType, so an ON ERROR here has
+	// nowhere to go; parsing it and reporting it beats dropping it silently.
+	ErrorHandling *ErrorHandlingClause
 }
 
 func (s *ListOperationStmt) isMicroflowStatement() {}
@@ -785,6 +793,9 @@ type AggregateListStmt struct {
 	ReturnType   *DataType
 
 	Annotations *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	// ErrorHandling is recorded only so the clause can be REFUSED — Mendix's
+	// AggregateAction has no ErrorHandlingType. See ListOperationStmt.
+	ErrorHandling *ErrorHandlingClause
 }
 
 func (s *AggregateListStmt) isMicroflowStatement() {}
@@ -829,13 +840,14 @@ type ShowPageArg struct {
 
 // ShowPageStmt represents: SHOW PAGE Module.Page($param = $value) [FOR $obj] [WITH (settings)]
 type ShowPageStmt struct {
-	PageName    QualifiedName        // Page to show
-	Arguments   []ShowPageArg        // Page parameter arguments
-	ForObject   string               // Optional FOR variable (without $ prefix)
-	Title       string               // Optional title override
-	Location    string               // Optional location: Content, Popup, Modal (default: Content)
-	ModalForm   bool                 // Whether to show as modal
-	Annotations *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	PageName      QualifiedName        // Page to show
+	Arguments     []ShowPageArg        // Page parameter arguments
+	ForObject     string               // Optional FOR variable (without $ prefix)
+	Title         string               // Optional title override
+	Location      string               // Optional location: Content, Popup, Modal (default: Content)
+	ModalForm     bool                 // Whether to show as modal
+	Annotations   *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	ErrorHandling *ErrorHandlingClause // Optional ON ERROR clause
 }
 
 func (s *ShowPageStmt) isMicroflowStatement() {}
@@ -844,6 +856,7 @@ func (s *ShowPageStmt) isMicroflowStatement() {}
 type ClosePageStmt struct {
 	NumberOfPages int                  // Number of pages to close (default 1)
 	Annotations   *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	ErrorHandling *ErrorHandlingClause // Optional ON ERROR clause
 }
 
 func (s *ClosePageStmt) isMicroflowStatement() {}
@@ -857,10 +870,11 @@ func (s *ShowHomePageStmt) isMicroflowStatement() {}
 
 // ShowMessageStmt represents: SHOW MESSAGE 'text' TYPE Information OBJECTS [$Var1, $Var2];
 type ShowMessageStmt struct {
-	Message      Expression           // The message text (string template)
-	Type         string               // Information, Warning, Error (default: Information)
-	TemplateArgs []Expression         // Template arguments for message placeholders {1}, {2}, etc.
-	Annotations  *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	Message       Expression           // The message text (string template)
+	Type          string               // Information, Warning, Error (default: Information)
+	TemplateArgs  []Expression         // Template arguments for message placeholders {1}, {2}, etc.
+	Annotations   *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	ErrorHandling *ErrorHandlingClause // Optional ON ERROR clause
 }
 
 func (s *ShowMessageStmt) isMicroflowStatement() {}
@@ -895,6 +909,7 @@ type ValidationFeedbackStmt struct {
 	Message       Expression           // The feedback message (string template)
 	TemplateArgs  []Expression         // Template arguments for message placeholders
 	Annotations   *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	ErrorHandling *ErrorHandlingClause // Optional ON ERROR clause
 }
 
 func (s *ValidationFeedbackStmt) isMicroflowStatement() {}

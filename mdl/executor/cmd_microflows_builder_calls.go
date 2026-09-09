@@ -77,9 +77,11 @@ func (fb *flowBuilder) addLogMessageAction(s *ast.LogStmt) model.ID {
 		logNodeName = fb.exprToString(s.Node)
 	}
 
+	activityX := fb.posX
+
 	action := &microflows.LogMessageAction{
 		BaseElement:       model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType: fb.ehType(nil),
+		ErrorHandlingType: explicitErrorHandling(fb, s.ErrorHandling),
 		LogLevel:          logLevel,
 		LogNodeName:       logNodeName,
 		MessageTemplate: &model.Text{
@@ -99,12 +101,16 @@ func (fb *flowBuilder) addLogMessageAction(s *ast.LogStmt) model.ID {
 				Size:        model.Size{Width: ActivityWidth, Height: ActivityHeight},
 			},
 			AutoGenerateCaption: true,
+			ErrorHandlingType:   fb.ehType(s.ErrorHandling),
 		},
 		Action: action,
 	}
 
 	fb.objects = append(fb.objects, activity)
 	fb.posX += fb.spacing
+
+	fb.finishCustomErrorHandler(activity.ID, activityX, s.ErrorHandling, "")
+
 	return activity.ID
 }
 
@@ -945,9 +951,11 @@ func (fb *flowBuilder) addShowPageAction(s *ast.ShowPageStmt) model.ID {
 	// Create the action
 	// Use PageName (BY_NAME_REFERENCE) instead of PageID (BY_ID_REFERENCE)
 	// The modern Mendix format uses FormSettings.Form as a qualified name string
+	activityX := fb.posX
+
 	action := &microflows.ShowPageAction{
 		BaseElement:           model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType:     fb.ehType(nil),
+		ErrorHandlingType:     explicitErrorHandling(fb, s.ErrorHandling),
 		PageName:              pageQN, // BY_NAME_REFERENCE - qualified name string
 		PageSettings:          pageSettings,
 		PageParameterMappings: mappings,
@@ -977,12 +985,16 @@ func (fb *flowBuilder) addShowPageAction(s *ast.ShowPageStmt) model.ID {
 				Size:        model.Size{Width: ActivityWidth, Height: ActivityHeight},
 			},
 			AutoGenerateCaption: true,
+			ErrorHandlingType:   fb.ehType(s.ErrorHandling),
 		},
 		Action: action,
 	}
 
 	fb.objects = append(fb.objects, activity)
 	fb.posX += fb.spacing
+
+	fb.finishCustomErrorHandler(activity.ID, activityX, s.ErrorHandling, "")
+
 	return activity.ID
 }
 
@@ -1039,9 +1051,11 @@ func (fb *flowBuilder) addShowMessageAction(s *ast.ShowMessageStmt) model.ID {
 		msgType = microflows.MessageTypeInformation
 	}
 
+	activityX := fb.posX
+
 	action := &microflows.ShowMessageAction{
 		BaseElement:        model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType:  fb.ehType(nil),
+		ErrorHandlingType:  explicitErrorHandling(fb, s.ErrorHandling),
 		Template:           template,
 		Type:               msgType,
 		TemplateParameters: templateParams,
@@ -1055,12 +1069,16 @@ func (fb *flowBuilder) addShowMessageAction(s *ast.ShowMessageStmt) model.ID {
 				Size:        model.Size{Width: ActivityWidth, Height: ActivityHeight},
 			},
 			AutoGenerateCaption: true,
+			ErrorHandlingType:   fb.ehType(s.ErrorHandling),
 		},
 		Action: action,
 	}
 
 	fb.objects = append(fb.objects, activity)
 	fb.posX += fb.spacing
+
+	fb.finishCustomErrorHandler(activity.ID, activityX, s.ErrorHandling, "")
+
 	return activity.ID
 }
 
@@ -1138,9 +1156,11 @@ func (fb *flowBuilder) addClosePageAction(s *ast.ClosePageStmt) model.ID {
 		numPages = 1
 	}
 
+	activityX := fb.posX
+
 	action := &microflows.ClosePageAction{
 		BaseElement:       model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType: fb.ehType(nil),
+		ErrorHandlingType: explicitErrorHandling(fb, s.ErrorHandling),
 		NumberOfPages:     numPages,
 	}
 
@@ -1152,12 +1172,16 @@ func (fb *flowBuilder) addClosePageAction(s *ast.ClosePageStmt) model.ID {
 				Size:        model.Size{Width: ActivityWidth, Height: ActivityHeight},
 			},
 			AutoGenerateCaption: true,
+			ErrorHandlingType:   fb.ehType(s.ErrorHandling),
 		},
 		Action: action,
 	}
 
 	fb.objects = append(fb.objects, activity)
 	fb.posX += fb.spacing
+
+	fb.finishCustomErrorHandler(activity.ID, activityX, s.ErrorHandling, "")
+
 	return activity.ID
 }
 
@@ -1254,9 +1278,11 @@ func (fb *flowBuilder) addValidationFeedbackAction(s *ast.ValidationFeedbackStmt
 		varName = varName[1:]
 	}
 
+	activityX := fb.posX
+
 	action := &microflows.ValidationFeedbackAction{
 		BaseElement:        model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType:  fb.ehType(nil),
+		ErrorHandlingType:  explicitErrorHandling(fb, s.ErrorHandling),
 		ObjectVariable:     varName,
 		AttributeName:      attributeName,
 		AssociationName:    associationName,
@@ -1272,12 +1298,16 @@ func (fb *flowBuilder) addValidationFeedbackAction(s *ast.ValidationFeedbackStmt
 				Size:        model.Size{Width: ActivityWidth, Height: ActivityHeight},
 			},
 			AutoGenerateCaption: true,
+			ErrorHandlingType:   fb.ehType(s.ErrorHandling),
 		},
 		Action: action,
 	}
 
 	fb.objects = append(fb.objects, activity)
 	fb.posX += fb.spacing
+
+	fb.finishCustomErrorHandler(activity.ID, activityX, s.ErrorHandling, "")
+
 	return activity.ID
 }
 
