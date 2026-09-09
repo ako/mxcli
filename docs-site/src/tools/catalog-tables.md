@@ -208,6 +208,41 @@ not assume it parses as an integer.
 select QualifiedName, Parallelism, ClusterWide from CATALOG.QUEUES;
 ```
 
+### Offline synchronization
+
+`CATALOG.OFFLINE_ENTITY_CONFIGS` — one row per entity an offline navigation
+profile synchronizes.
+
+```sql
+select ProfileName, EntityQualifiedName, SyncMode, XPathConstraint
+  from CATALOG.OFFLINE_ENTITY_CONFIGS
+ where SyncMode = 'All';
+```
+
+`CATALOG.NAVIGATION_PROFILES.OfflineEntityCount` says how many and nothing
+else; this table is what makes "which entities does this profile sync, and
+how?" answerable — the first question anyone auditing an offline app asks.
+
+`SyncMode` is the value Mendix stores, not the caption Studio Pro shows: `All`,
+`Constrained`, `Never`, `None`, `NoneAndPreserveData`, `Online`. Its dialog's
+"All Objects" is `All` and "By XPath" is `Constrained`.
+
+`CompatibilityMode` is indexed although MDL cannot author it. The catalog
+reports what is stored, and a flag invisible to every query is one nobody
+discovers until it matters.
+
+A configured entity also produces a `sync` row in `CATALOG.REFS`, so
+`show references to Sales.Order` names the profiles that download it:
+
+```sql
+select SourceName, TargetName from CATALOG.REFS where RefKind = 'sync';
+```
+
+**Every mode gets an edge, including the ones that download nothing.** A
+profile with `sync Sales.Audit never` still *names* that entity, so renaming or
+dropping it leaves the configuration dangling — which is precisely what a
+reference edge exists to reveal.
+
 ## Graph-Analysis Tables
 
 The dependency graph (`CATALOG.REFS`, full refresh) is analysed by a family of
