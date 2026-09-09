@@ -798,7 +798,13 @@ func ApplyVisibilityRules(object bson.D, propertyTypeIDs map[string]pages.Proper
 			hidden[rule.PropertyKey] = false
 		}
 		// Several rules may govern one property; any one of them hiding it wins.
-		if rule.HiddenWhen.Hidden(values) {
+		// Within a rule, every term of its conjunction must hold — reading only
+		// HiddenWhen would hide a template in configurations the editor shows.
+		fires, determinable := rule.Fires(func(c types.WidgetVisibilityCondition) (string, bool) {
+			v, ok := values[c.PropertyKey]
+			return v, ok
+		})
+		if determinable && fires {
 			hidden[rule.PropertyKey] = true
 		}
 	}
