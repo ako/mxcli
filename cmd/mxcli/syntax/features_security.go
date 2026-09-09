@@ -33,10 +33,12 @@ func init() {
 			"entity access", "grant", "revoke", "read", "write",
 			"create", "delete", "xpath", "row-level security",
 		},
-		Syntax: "GRANT <role> ON <module>.<entity> (<rights>) [WHERE '<xpath>'];\n" +
-			"REVOKE <role> ON <module>.<entity>;\n" +
-			"REVOKE <role> ON <module>.<entity> (<rights>);\n\n" +
+		Syntax: "GRANT <module>.<role> ON <module>.<entity> (<rights>) [WHERE '<xpath>'];\n" +
+			"REVOKE <module>.<role> ON <module>.<entity>;\n" +
+			"REVOKE <module>.<role> ON <module>.<entity> (<rights>);\n\n" +
 			"Rights: CREATE, DELETE, READ *, READ (<attr>,...), WRITE *, WRITE (<attr>,...)\n\n" +
+			"A module role is always Module.Role. A bare role name parses but is\n" +
+			"refused (MDL-GRANT02) \u2014 mxcli cannot tell which module it belongs to.\n\n" +
 			"Inherited members:\n" +
 			"  Mendix inheritance is multi-table — a child adds attributes to its\n" +
 			"  parent's, and ALL the parent's members belong to the child. Name them\n" +

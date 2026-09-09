@@ -175,6 +175,19 @@ grant view on page MyModule.Customer_Overview to MyModule.User, MyModule.Admin;
 revoke view on page MyModule.Customer_Overview from MyModule.User;
 ```
 
+### Always Qualify a Module Role
+
+A module role is always `Module.Role`. The grammar makes the module part
+optional, so a bare `Admin` parses — and then either fails at exec (after every
+earlier statement has already been written) or, in `create user role`, is stored
+as `.Admin` and refused by MxBuild with **CE1613**. `mxcli check` reports it as
+**MDL-GRANT02** without needing a project.
+
+```sql
+grant Admin on MyModule.Customer (read *);            -- ✗ MDL-GRANT02
+grant MyModule.Admin on MyModule.Customer (read *);   -- ✓
+```
+
 ### Entity Access (CRUD)
 
 GRANT is **additive** — it merges with existing access, never removes permissions.
