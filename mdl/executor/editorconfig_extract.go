@@ -138,6 +138,7 @@ func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, edit
 	var stats editorConfigExtractStats
 	var pending []ternaryThenCandidate // resolved after the loop
 	seen := map[string]bool{}          // dedupe propertyKey+condition
+	consts := stringArrayConsts(js)    // module-level arrays, for `[…].concat(N)`
 
 	for _, loc := range hideCallRE.FindAllStringIndex(js, -1) {
 		stats.TotalHideCalls++
@@ -147,7 +148,7 @@ func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, edit
 			stats.SkippedComplex++
 			continue
 		}
-		listKey, keys, condKeys, ok := hideTargetKeys(args)
+		listKey, keys, condKeys, ok := hideTargetKeys(args, consts)
 		if !ok || (len(keys) == 0 && len(condKeys) == 0) {
 			stats.SkippedComplex++
 			continue
@@ -387,7 +388,7 @@ func negate(c types.WidgetVisibilityCondition) (types.WidgetVisibilityCondition,
 //
 // ok is false for a shape it does not recognize; the caller counts it as skipped
 // and emits no rule, which degrades to "not hidden".
-func hideTargetKeys(args string) (listKey string, keys []string, condKeys []ternaryKey, ok bool) {
+func hideTargetKeys(args string, consts map[string][]string) (listKey string, keys []string, condKeys []ternaryKey, ok bool) {
 	parts := splitTopLevelCommas(args)
 	// Collect string-literal positional args and any array literal.
 	var stringArgs []string
@@ -395,7 +396,20 @@ func hideTargetKeys(args string) (listKey string, keys []string, condKeys []tern
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
 		if strings.HasPrefix(p, "[") {
-			for _, el := range splitTopLevelCommas(strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(p), "["), "]")) {
+			// The argument may be `[…].concat(N, W)`, so read the literal with a
+			// balanced scan and resolve the concatenated arrays separately —
+			// trimming a trailing "]" would stop at the first element and drop
+			// everything after it.
+			body, bodyOK := balancedArgs(p, 1)
+			if !bodyOK {
+				body = strings.TrimSuffix(strings.TrimPrefix(p, "["), "]")
+			}
+			if bodyOK {
+				if extra, extraOK := concatMembers(p[len(body)+2:], consts); extraOK {
+					arrayKeys = append(arrayKeys, extra...)
+				}
+			}
+			for _, el := range splitTopLevelCommas(body) {
 				if tk, ok := ternaryElement(el); ok {
 					// `cond ? "a" : "b"` as an array ELEMENT. Harvesting its string
 					// literals would invent a key from the comparison value and mark
@@ -430,6 +444,119 @@ func hideTargetKeys(args string) (listKey string, keys []string, condKeys []tern
 		return stringArgs[0], stringArgs[1:], condKeys, true // hidePropertyIn(…, "groups", i, "key")
 	default:
 		return "", nil, condKeys, false
+	}
+}
+
+// arrayDeclRE finds a module-level array binding — `z=["lazyLoading",…]` in the
+// minified bundle. Combo box's biggest hide lists are built by concatenating
+// three such arrays onto a literal one, so without resolving them the call is
+// counted as recognized while most of its properties are silently dropped.
+var arrayDeclRE = regexp.MustCompile(`(?:^|[,;({=\s])([A-Za-z_$][\w$]*)\s*=\s*\[`)
+
+// concatCallRE matches the `.concat(` that follows a hide call's array argument.
+var concatCallRE = regexp.MustCompile(`^\s*\.concat\(`)
+
+// stringArrayConsts maps each identifier bound to an array of STRING LITERALS to
+// its members. An identifier bound more than once is dropped rather than
+// guessed at: the minifier reuses short names across scopes, and resolving one
+// to the wrong array would invent hide rules for properties the editor shows.
+// Arrays holding anything but string literals (an element list, a data URI
+// built by a call) are skipped for the same reason.
+func stringArrayConsts(js string) map[string][]string {
+	out := map[string][]string{}
+	ambiguous := map[string]bool{}
+	for _, loc := range arrayDeclRE.FindAllStringSubmatchIndex(js, -1) {
+		name := js[loc[2]:loc[3]]
+		if ambiguous[name] {
+			continue
+		}
+		body, ok := balancedArgs(js, loc[1]) // loc[1] is just past the '['
+		if !ok {
+			continue
+		}
+		members, ok := stringArrayMembers(body)
+		if !ok {
+			continue
+		}
+		if prev, seen := out[name]; seen && !sameStrings(prev, members) {
+			delete(out, name)
+			ambiguous[name] = true
+			continue
+		}
+		out[name] = members
+	}
+	return out
+}
+
+// stringArrayMembers reads an array literal's body as a list of string literals.
+// ok is false if ANY element is something else — a partial read would drop
+// members without saying so, which is the defect this exists to fix.
+func stringArrayMembers(body string) ([]string, bool) {
+	if strings.TrimSpace(body) == "" {
+		return nil, false
+	}
+	var out []string
+	for _, el := range splitTopLevelCommas(body) {
+		el = strings.TrimSpace(el)
+		m := stringLitRE.FindStringSubmatch(el)
+		if m == nil || !strings.HasPrefix(el, `"`) || len(m[0]) != len(el) {
+			return nil, false
+		}
+		out = append(out, m[1])
+	}
+	return out, true
+}
+
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// concatMembers reads the `.concat(a, b)` chain trailing an array literal and
+// returns the members its arguments contribute. Each argument must be either an
+// inline string array or an identifier in consts; anything else (a call such as
+// `.concat(i(a))`) yields ok=false, and the caller keeps the literal keys alone
+// rather than emitting a list it knows to be short.
+func concatMembers(tail string, consts map[string][]string) ([]string, bool) {
+	var out []string
+	for {
+		m := concatCallRE.FindStringIndex(tail)
+		if m == nil {
+			return out, true
+		}
+		args, ok := balancedArgs(tail, m[1])
+		if !ok {
+			return out, false
+		}
+		for _, a := range splitTopLevelCommas(args) {
+			a = strings.TrimSpace(a)
+			switch {
+			case strings.HasPrefix(a, "["):
+				body, ok := balancedArgs(a, 1)
+				if !ok {
+					return out, false
+				}
+				members, ok := stringArrayMembers(body)
+				if !ok {
+					return out, false
+				}
+				out = append(out, members...)
+			default:
+				members, ok := consts[a]
+				if !ok {
+					return out, false
+				}
+				out = append(out, members...)
+			}
+		}
+		tail = tail[m[1]+len(args)+1:] // past the closing ')', for a chained .concat
 	}
 }
 

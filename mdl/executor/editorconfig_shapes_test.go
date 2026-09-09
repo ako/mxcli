@@ -382,3 +382,112 @@ func TestChainedTernaryBranchConditionIsLifted(t *testing.T) {
 		}
 	}
 }
+
+func TestConcatenatedHideListsAreResolved(t *testing.T) {
+	js, err := mpk.ReadEditorConfig(
+		"../../testdata/expr-checker/widgets/com.mendix.widget.web.Combobox.mpk",
+		"com.mendix.widget.web.combobox.Combobox")
+	if err != nil || js == "" {
+		t.Fatalf("read Combo box editorConfig: %v", err)
+	}
+	rules, _ := extractVisibilityRulesFromJS(js)
+
+	// Combo box builds its biggest hide lists by concatenating module-level
+	// arrays onto the literal one:
+	//
+	//	"context" === t.source && hidePropertiesIn(e, t, [ …3 literals… ].concat(N))
+	//
+	// where N is ten database properties. Reading only the literal array counts
+	// the call as recognized and silently drops the rest, so the describe output
+	// says nothing about them — and the generated example then offers properties
+	// the editor does not show.
+	want := []struct {
+		prop, guard string
+	}{
+		// …].concat(N) under `"context" === t.source`
+		{"optionsSourceDatabaseDataSource", "source"},
+		{"optionsSourceDatabaseItemSelection", "source"},
+		{"onChangeDatabaseEvent", "source"},
+		{"optionsSourceDatabaseCaptionType", "source"},
+		{"databaseAttributeString", "source"},
+		// …].concat(W, z) under `["enumeration","boolean"].includes(optionsSourceType)`
+		{"attributeAssociation", "optionsSourceType"},
+		{"optionsSourceAssociationDataSource", "optionsSourceType"},
+		{"lazyLoading", "optionsSourceType"},
+	}
+	for _, w := range want {
+		var found bool
+		for _, r := range rules {
+			if r.PropertyKey != w.prop {
+				continue
+			}
+			for _, c := range r.Conditions() {
+				if c.PropertyKey == w.guard {
+					found = true
+				}
+			}
+		}
+		if !found {
+			t.Errorf("no rule lifted for %s guarded by %s — concat member dropped", w.prop, w.guard)
+		}
+	}
+}
+
+func TestConcatResolverRefusesWhatItCannotRead(t *testing.T) {
+	cases := []struct {
+		name   string
+		js     string
+		want   []string // property keys that MUST be lifted
+		reject []string // keys that must NOT appear — inventing one is worse than missing it
+	}{{
+		name: "inline array literal",
+		js:   `f=function(t,e){"a"===t.mode&&hidePropertiesIn(e,t,["p"].concat(["q","r"]))}`,
+		want: []string{"p", "q", "r"},
+	}, {
+		name: "chained concat of two consts",
+		js:   `A=["q"],B=["r"];f=function(t,e){"a"===t.mode&&hidePropertiesIn(e,t,["p"].concat(A).concat(B))}`,
+		want: []string{"p", "q", "r"},
+	}, {
+		// `.concat(n(x))` — a call on a computed key. Resolving it would mean
+		// evaluating the widget's own code, so the literal keys stand alone and
+		// nothing is invented. Eight such sites exist across the fixture.
+		name:   "computed concat argument",
+		js:     `A=["q"];f=function(t,e){"a"===t.mode&&hidePropertiesIn(e,t,["p"].concat(n(A[t.kind])))}`,
+		want:   []string{"p"},
+		reject: []string{"q"},
+	}, {
+		// The minifier reuses short names across scopes. A name bound to two
+		// different arrays is dropped rather than guessed at — picking either
+		// would hide properties the editor shows.
+		name:   "identifier bound twice to different arrays",
+		js:     `A=["q"];g=function(){A=["zzz"]};f=function(t,e){"a"===t.mode&&hidePropertiesIn(e,t,["p"].concat(A))}`,
+		want:   []string{"p"},
+		reject: []string{"q", "zzz"},
+	}, {
+		// Not every array is a property list.
+		name:   "array of non-strings",
+		js:     `A=[1,2];f=function(t,e){"a"===t.mode&&hidePropertiesIn(e,t,["p"].concat(A))}`,
+		want:   []string{"p"},
+		reject: []string{"1"},
+	}}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rules, _ := extractVisibilityRulesFromJS(tc.js)
+			got := map[string]bool{}
+			for _, r := range rules {
+				got[r.PropertyKey] = true
+			}
+			for _, w := range tc.want {
+				if !got[w] {
+					t.Errorf("missing rule for %q (got %v)", w, got)
+				}
+			}
+			for _, b := range tc.reject {
+				if got[b] {
+					t.Errorf("invented a rule for %q — the resolver must withhold, not guess (got %v)", b, got)
+				}
+			}
+		})
+	}
+}

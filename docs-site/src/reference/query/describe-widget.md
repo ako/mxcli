@@ -103,6 +103,15 @@ widget hides under the configuration the example picked is left out, so what you
 see is what that configuration actually supports. The footer reports how many of
 the widget's hide-rules were recognised; an unrecognised rule never prunes.
 
+The count is of **hide-calls whose condition was read**, which is not the same
+as every property being accounted for. A widget editor often builds one call's
+property list by concatenating shared arrays onto a literal one — Combo box
+hides ten database properties that way in a single call. Those are resolved, so
+the rules appear; but where the concatenated argument is computed at runtime
+(`.concat(n(b.static))`) it cannot be resolved statically, and only the literal
+names are reported. Nothing is guessed: an unresolvable list contributes its
+literal members and no more.
+
 A rule can carry several conditions, joined with `and`:
 
 ```
