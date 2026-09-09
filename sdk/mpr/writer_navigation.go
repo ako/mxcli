@@ -200,6 +200,13 @@ func patchWebProfile(doc bson.D, spec NavigationProfileSpec) bson.D {
 			buildOfflineConfigsBson(getBsonArray(doc, "OfflineEntityConfigs"), spec.OfflineEntities))
 	}
 
+	// Kept identical to the modelsdk engine: nil leaves the stored flag alone,
+	// because neither generated source declares the property and a non-pointer
+	// would reset it on every rewrite that never mentions it.
+	if spec.ThrowSyncError != nil {
+		doc = setBsonField(doc, "ThrowPartialSyncError", *spec.ThrowSyncError)
+	}
+
 	return doc
 }
 

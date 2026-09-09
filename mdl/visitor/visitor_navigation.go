@@ -84,6 +84,11 @@ func (b *Builder) processNavigationClause(stmt *ast.AlterNavigationStmt, ctx *pa
 			item := buildNavMenuItemDef(itemCtx)
 			stmt.MenuItems = append(stmt.MenuItems, item)
 		}
+	} else if ctx.ON() != nil && ctx.SYNC() != nil && ctx.ERROR() != nil {
+		// ON SYNC ERROR THROW|CONTINUE. Checked before the bare SYNC block
+		// because both alternatives carry a SYNC token.
+		throw := ctx.THROW() != nil
+		stmt.ThrowSyncError = &throw
 	} else if ctx.SYNC() != nil {
 		// SYNC (navSyncDef*)
 		stmt.HasSyncBlock = true

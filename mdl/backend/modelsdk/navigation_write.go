@@ -202,6 +202,14 @@ func navPatchWebProfile(doc bson.D, spec types.NavigationProfileSpec) bson.D {
 		doc = navSetField(doc, "OfflineEntityConfigs",
 			navOfflineConfigs(navGetArray(doc, "OfflineEntityConfigs"), spec.OfflineEntities))
 	}
+
+	// ThrowPartialSyncError is declared by neither generated source, so it can
+	// only be written as a raw key — which is why nil means "the statement said
+	// nothing" and the stored value is left exactly as it is. A non-pointer
+	// would reset the flag on every rewrite that never mentions it.
+	if spec.ThrowSyncError != nil {
+		doc = navSetField(doc, "ThrowPartialSyncError", *spec.ThrowSyncError)
+	}
 	return doc
 }
 
