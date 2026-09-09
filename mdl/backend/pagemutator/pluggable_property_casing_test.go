@@ -107,8 +107,9 @@ func TestSetPluggableProperty_MatchesTemplateKeyRegardlessOfCase(t *testing.T) {
 // TestSetPluggableProperty_UnknownPropertyStillErrors is the control for the
 // test above: relaxing the comparison to case-insensitive must not turn a
 // genuinely unknown property into a silent no-op. A typo has to keep failing —
-// that is the only signal the author gets, since `mxcli check --references`
-// does not resolve pluggable property names.
+// and this error is now also what `mxcli check --references` reports, because
+// the pre-flight dry-runs this setter rather than re-deriving what it accepts
+// (probe.go). Weakening it here would go quiet in two places at once.
 func TestSetPluggableProperty_UnknownPropertyStillErrors(t *testing.T) {
 	rawData := makeRawPage(makePluggableWidget("dgProducts", "pageSize", "20"))
 	m := &Mutator{rawData: rawData, widgetFinder: findBsonWidget}

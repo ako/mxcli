@@ -466,9 +466,16 @@ included, so a spelling `CREATE PAGE` accepts is a spelling `ALTER PAGE` accepts
 same statement. This is what makes DESCRIBE output re-executable: `describe page`
 prints the capitalised `PageSize:`, while the widget template stores `pageSize`
 (mendixlabs/mxcli#1069). A property the widget does not declare is still an
-error, and it is the only signal you get — `mxcli check --references` does not
-resolve pluggable property names, so a typo checks clean and fails at exec, after
-earlier statements in the script have already been written.
+error — and `mxcli check … --references` reports it **before** the script runs,
+so a typo no longer lands halfway through. The pre-flight resolves the name
+against the stored document rather than a list, so it is right about whatever
+widget package this project has installed; the error names the widget's own
+property keys. `ON` a widget the page does not have is caught the same way.
+
+Two things it deliberately stays quiet about, because it cannot answer them: a
+page the script itself creates (nothing is stored yet — the widgets there are
+checked where they are written), and a widget an `INSERT` in the same script
+adds. Both still fail at exec if they are genuinely wrong.
 
 ## Common Mistakes
 
@@ -477,7 +484,7 @@ earlier statements in the script have already been written.
 | Missing `on widgetName` for widget SET | Add `on widgetName` (only page-level properties — `Title`, `PopupWidth`, `PopupHeight`, `PopupResizable`, `Class`, `Style` — omit ON) |
 | `unsupported page-level property: title` | Page-level property names are case-sensitive — use `Title`, `PopupWidth`, `PopupHeight`, `PopupResizable`, `Class`, `Style` |
 | Using unquoted pluggable property names | Quote pluggable props: `set 'showLabel' = false on cb` |
-| `pluggable property "X" not found` | The widget does not declare it — casing is not the problem (any casing resolves). Check the real name with `describe widget <type>` or `describe page` |
+| `pluggable property "X" not found` | The widget does not declare it — casing is not the problem (any casing resolves). The error lists the keys it does declare; `describe widget <type>` or `describe page` shows them in context. Run `mxcli check … --references` to get this before the script runs |
 | Wrong widget name | Use `describe page Module.Name` to see widget names |
 | SET on non-existent widget | Widget names are case-sensitive; check with DESCRIBE |
 | Missing semicolons between operations | Each operation inside `{ }` ends with `;` |
