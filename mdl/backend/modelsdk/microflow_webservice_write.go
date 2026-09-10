@@ -38,32 +38,39 @@ import (
 // measured rather than assumed. This file first claimed no Studio Pro-authored
 // SOAP document existed to pin against; one does — ako/TestApp carries three
 // (Clients.GetOrders / GetCustomerOrders / SaveOrder, Mendix 11.14.0), and
-// against them legacy is wrong in five places that this file faithfully
-// reproduces:
+// against them legacy was wrong in six places. Three are now FIXED in both
+// engines, each verified by writing a call against TestApp's real service and
+// running mx check:
 //
 //   - ServiceName is the WSDL SERVICE name ("OrdersWS"), not the local part of
-//     the imported service's qualified name — Studio Pro writes ServiceName
-//     "OrdersWS" beside ImportedService "Clients.OrderSoapClient".
-//   - ImportMappingCall.ContentType is "Xml" for a SOAP import mapping, not the
-//     hardcoded "Json".
+//     the imported service's qualified name ("OrderSoapClient"). Deriving it
+//     gave CE0386 "Operation 'GetOrder' does not exist in consumed web service".
+//     Now resolved from the document by the executor (resolveWebServiceName),
+//     with the old derivation kept as a fallback.
+//   - ImportMappingCall.ContentType is "Xml", not the hardcoded "Json".
+//   - ReturnValueMapping is the mapping's QUALIFIED NAME. The executor used to
+//     resolve it to the mapping's unit `$ID`, which made the project impossible
+//     to LOAD — mx check stopped at a StorageLoadException before validation.
+//     That one only fired when the reference RESOLVED, so the only SOAP fixture
+//     (whose mappings deliberately do not exist) never triggered it.
+//
+// Three remain, and each is the next error mx check reports once the ones above
+// are fixed — measured, in this order:
+//
+//   - VariableType is the result's REAL type (DataTypes$ObjectType with an
+//     Entity, DataTypes$BooleanType, …), not DataTypes$VoidType. Writing Void
+//     gives CE0243 ("the mapping used to return 'Nothing'") and CE0366 ("cannot
+//     store in variable when there is no return value"). Needs the receive
+//     mapping's root entity, which the semantic ImportMapping does not carry.
 //   - Range.SingleObject follows the operation's cardinality; a list result
 //     writes false, not the hardcoded true.
-//   - VariableType is the result's REAL type (DataTypes$ObjectType with an
-//     Entity, DataTypes$BooleanType, …), not DataTypes$VoidType.
-//   - A SEND MAPPING is Microflows$MappingRequestHandling {ContentType,
-//     MappingId, MappingVariableName} — a type this engine ALREADY writes for
-//     REST. It is not the "Mendix$AdvancedRequestHandling" the legacy comment
-//     guessed at, which occurs in none of the three documents.
-//
-// Operation arguments are the sixth: Studio Pro carries them as
-// Microflows$WebServiceOperationSimpleParameterMapping entries inside
-// RequestBodyHandling.ParameterMappings, keyed by an escaped ParameterPath
-// ("http%3A//www.example.com/:GetOrder|OrderId"). Both engines write that list
-// empty, so a call's arguments do not reach the model.
-//
-// None of that is fixed here: this change is scoped to the silent drop, and
-// reproducing what ships is what makes it safe to land. Closing the gaps is
-// follow-up work against those reference documents.
+//   - Operation ARGUMENTS are Microflows$WebServiceOperationSimpleParameterMapping
+//     entries inside RequestBodyHandling.ParameterMappings, keyed by an escaped
+//     ParameterPath ("http%3A//www.example.com/:GetOrder|OrderId" — the
+//     operation's RequestBodyElementName, escaped, plus "|" plus the parameter).
+//     Writing that list empty gives CE0178 "Body parameter mapping needs to be
+//     refreshed". This one also needs MDL SYNTAX: callWebServiceStatement has no
+//     argument list at all, so there is nothing to write yet.
 //
 // Two shapes are deliberately NOT re-derived here:
 //
@@ -114,7 +121,7 @@ func webServiceCallActionToGen(a *microflows.WebServiceCallAction) element.Eleme
 	addPart(g, "RequestBodyHandling", simpleRequestHandlingToGen())
 	addPart(g, "RequestHeaderHandling", simpleRequestHandlingToGen())
 	addStr(g, "RequestProxyType", "DefaultProxy")
-	addStr(g, "ServiceName", webServiceLocalName(string(a.ServiceID)))
+	addStr(g, "ServiceName", webServiceName(a))
 	addStr(g, "TimeOutExpression", orDefault(a.TimeoutExpression, "300"))
 	addBool(g, "UseRequestTimeOut", true)
 	return g
@@ -149,7 +156,10 @@ func webServiceResultHandlingToGen(a *microflows.WebServiceCallAction) element.E
 	if a.ReceiveMappingID != "" {
 		imc := newElem("Microflows$ImportMappingCall", "")
 		addStr(imc, "Commit", "YesWithoutEvents")
-		addStr(imc, "ContentType", "Json")
+		// Xml, not Json: a SOAP response IS XML, and Studio Pro writes "Xml" in
+		// both reference calls that carry an import mapping (ako/TestApp,
+		// Clients.GetOrders and GetCustomerOrders, 11.14.0).
+		addStr(imc, "ContentType", "Xml")
 		addBool(imc, "ForceSingleOccurrence", false)
 		addStr(imc, "ObjectHandlingBackup", "Create")
 		addStr(imc, "ParameterVariableName", "")
@@ -178,9 +188,21 @@ func simpleRequestHandlingToGen() element.Element {
 	return rh
 }
 
-// webServiceLocalName is the service's local name — the part after the last dot
-// of the qualified name. Mendix stores both: ImportedService is qualified,
-// ServiceName is not.
+// webServiceName is the WSDL <wsdl:service name=…> Mendix resolves the operation
+// within. The executor reads it off the imported service document; the fallback
+// below is what BOTH engines used to do unconditionally, and it is right only
+// when the document happens to be named after the service — otherwise Mendix
+// reports CE0386 "Operation … does not exist in consumed web service …". Kept as
+// a fallback rather than an error because it is what ships today, and a call
+// against an unresolvable service is no worse than before.
+func webServiceName(a *microflows.WebServiceCallAction) string {
+	if a.ServiceName != "" {
+		return a.ServiceName
+	}
+	return webServiceLocalName(string(a.ServiceID))
+}
+
+// webServiceLocalName is the part after the last dot of a qualified name.
 func webServiceLocalName(qualified string) string {
 	if i := strings.LastIndex(qualified, "."); i >= 0 {
 		return qualified[i+1:]

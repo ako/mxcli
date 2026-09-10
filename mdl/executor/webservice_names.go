@@ -1,0 +1,184 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package executor
+
+import (
+	"strings"
+
+	"go.mongodb.org/mongo-driver/bson"
+
+	"github.com/mendixlabs/mxcli/mdl/backend"
+)
+
+// A SOAP call stores TWO names for the service it calls, and they are not the
+// same string:
+//
+//	ImportedService  "Clients.OrderSoapClient"   the DOCUMENT, qualified
+//	ServiceName      "OrdersWS"                  the WSDL <wsdl:service name=…>
+//
+// Both engines derived the second from the first by taking the part after the
+// last dot, which is right only when someone happened to name the document after
+// the service. Mendix resolves the operation WITHIN the named service, so when
+// they differ the call does not merely look odd — it fails to validate. Measured
+// on Mendix 11.14.0 against ako/TestApp, whose baseline is 0 errors:
+//
+//	[CE0386] "Operation 'GetOrder' does not exist in consumed web service
+//	          'Clients.OrderSoapClient'."
+//
+// GetOrder does exist. Mendix looked for it inside a service called
+// "OrderSoapClient", which the WSDL does not define.
+//
+// The real name is in the imported service document, in structured form — no
+// WSDL parsing needed. `Description.Services[]` holds WebServices$ServiceInfoImpl
+// entries, each with a Name and an Operations list of
+// WebServices$OperationInfoImpl.
+
+// importedServiceType is the stored $Type of an imported (consumed) SOAP
+// service, in FULL — including the `Impl` suffix.
+//
+// Two things measured on ako/TestApp, both of which cost a debugging round:
+//
+//   - ListRawUnitsByType matches the type EXACTLY, despite its parameter being
+//     called typePrefix. "WebServices$ImportedServiceImpl" returns the document;
+//     "WebServices$ImportedService" and "WebServices" both return nothing.
+//   - The type is `ImportedServiceImpl`, not `ImportedWebService`.
+//     resolveWebServiceReference in cmd_microflows_format_action.go asks for
+//     "WebServices$ImportedWebService" and therefore resolves nothing on a real
+//     project — a separate defect, on the DESCRIBE side, left alone here.
+const importedServiceType = "WebServices$ImportedServiceImpl"
+
+// resolveWebServiceName returns the WSDL service name for the imported service
+// document named by qualifiedName, and the operation names it declares.
+//
+// It returns "" when the answer cannot be established — an unresolvable
+// document, a backend that cannot list raw units, a document whose shape does
+// not match, or a name that matches more than one document. The caller then
+// falls back to the old derivation: a wrong ServiceName is no worse than the one
+// shipping today, and an invented one would be.
+//
+// The match is on the document's BARE name. A raw unit carries its container id
+// rather than a module name, and resolving that needs the ExecContext the flow
+// builder does not hold; ambiguity is refused instead of resolved, which costs a
+// fallback in the rare two-modules-same-name case and never picks the wrong
+// service.
+func resolveWebServiceName(b backend.FullBackend, qualifiedName, operationName string) string {
+	if b == nil || qualifiedName == "" {
+		return ""
+	}
+	units, err := b.ListRawUnitsByType(importedServiceType)
+	if err != nil || len(units) == 0 {
+		return ""
+	}
+	_, bare, ok := strings.Cut(qualifiedName, ".")
+	if !ok || bare == "" {
+		bare = qualifiedName
+	}
+
+	var matched []byte
+	for _, unit := range units {
+		if unit == nil || len(unit.Contents) == 0 {
+			continue
+		}
+		if !strings.EqualFold(rawUnitName(unit.Contents), bare) {
+			continue
+		}
+		if matched != nil {
+			return "" // ambiguous — two documents of this name
+		}
+		matched = unit.Contents
+	}
+	if matched == nil {
+		return ""
+	}
+	return serviceNameFromImportedService(matched, operationName)
+}
+
+// serviceNameFromImportedService reads Description.Services[] and returns the
+// name of the service to call.
+//
+// A WSDL may define more than one service, so the operation decides: the service
+// DECLARING it is the one Mendix resolves against. With one service the operation
+// is not consulted, and with none — or an operation no service declares — the
+// answer is "" rather than a guess, since guessing reproduces CE0386 with a
+// different name in it.
+func serviceNameFromImportedService(contents []byte, operationName string) string {
+	var doc map[string]any
+	if err := bson.Unmarshal(contents, &doc); err != nil {
+		return ""
+	}
+	services := typedArrayElements(docLookup(doc["Description"], "Services"))
+	if len(services) == 0 {
+		return ""
+	}
+
+	names := make([]string, 0, len(services))
+	for _, svc := range services {
+		name, _ := docLookup(svc, "Name").(string)
+		if name == "" {
+			continue
+		}
+		names = append(names, name)
+		if operationName != "" && serviceDeclaresOperation(svc, operationName) {
+			return name
+		}
+	}
+	if len(names) == 1 {
+		return names[0]
+	}
+	return ""
+}
+
+// serviceDeclaresOperation reports whether a WebServices$ServiceInfoImpl lists an
+// operation of this name.
+func serviceDeclaresOperation(svc any, operationName string) bool {
+	for _, op := range typedArrayElements(docLookup(svc, "Operations")) {
+		if name, _ := docLookup(op, "Name").(string); strings.EqualFold(name, operationName) {
+			return true
+		}
+	}
+	return false
+}
+
+// typedArrayElements drops the leading version marker from a Mendix typed array
+// and returns the elements. A value that is not an array yields none.
+func typedArrayElements(v any) []any {
+	var arr []any
+	switch a := v.(type) {
+	case bson.A:
+		arr = a
+	case []any:
+		arr = a
+	default:
+		return nil
+	}
+	if len(arr) == 0 {
+		return nil
+	}
+	switch arr[0].(type) {
+	case int32, int64, int:
+		return arr[1:]
+	}
+	return arr
+}
+
+// docLookup reads a key from a BSON sub-document whichever way the driver
+// decoded it.
+//
+// This is not defensive dressing: a unit unmarshalled into map[string]any nests
+// its sub-documents as map[string]any, while the same bytes decoded into a
+// bson.D nest as bson.D. Asserting only the second silently found nothing, and
+// "found nothing" here is indistinguishable from "no such service" — it fell
+// back to the wrong name instead of failing.
+func docLookup(v any, key string) any {
+	switch d := v.(type) {
+	case map[string]any:
+		return d[key]
+	case bson.D:
+		for _, e := range d {
+			if e.Key == key {
+				return e.Value
+			}
+		}
+	}
+	return nil
+}

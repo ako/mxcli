@@ -548,9 +548,33 @@ func (fb *flowBuilder) addCallWebServiceAction(s *ast.CallWebServiceStmt) model.
 		BaseElement:       model.BaseElement{ID: model.ID(types.GenerateID())},
 		ErrorHandlingType: convertErrorHandlingType(s.ErrorHandling),
 		ServiceID:         model.ID(s.ServiceID),
-		OperationName:     s.OperationName,
-		SendMappingID:     model.ID(fb.resolveMappingRefForWrite(s.SendMappingID, true)),
-		ReceiveMappingID:  model.ID(fb.resolveMappingRefForWrite(s.ReceiveMappingID, false)),
+		// The WSDL service name, read off the imported service document. Empty
+		// when it cannot be established (a dangling reference, a backend that
+		// cannot list raw units), and the writers then derive it as before.
+		ServiceName:   resolveWebServiceName(fb.backend, s.ServiceID, s.OperationName),
+		OperationName: s.OperationName,
+		// The QUALIFIED NAME, verbatim.
+		//
+		// Both are BY_NAME_REFERENCEs: the stored ImportMappingCall's
+		// ReturnValueMapping is an ImportMappingIdentifier, and Studio Pro
+		// writes "Clients.SoapOrdersImportMapping" there. These used to be
+		// resolved to the mapping's unit `$ID`, which does not merely fail
+		// validation — it makes the project impossible to LOAD. Measured on
+		// 11.14.0 against ako/TestApp (baseline 0 errors): one
+		// `receive mapping Clients.SoapOrdersImportMapping` written by mxcli
+		// and `mx check` stops before validation with
+		// StorageLoadException, "The text 'c2d1682f-…' is not a valid
+		// ImportMappingIdentifier."
+		//
+		// Why it survived is worth more than the fix: the substitution only
+		// happened when the lookup SUCCEEDED, and the only SOAP fixture
+		// (06b-soap-examples.mdl) names mappings that do not exist, on
+		// purpose, to show dangling refs. It took the fallback every time and
+		// passed. The gate was green BECAUSE the fixture was broken — a valid
+		// reference was the one input that triggered the defect, and nothing
+		// tested one.
+		SendMappingID:     model.ID(s.SendMappingID),
+		ReceiveMappingID:  model.ID(s.ReceiveMappingID),
 		OutputVariable:    s.OutputVariable,
 		UseReturnVariable: s.OutputVariable != "",
 	}
@@ -593,32 +617,6 @@ func (fb *flowBuilder) addCallWebServiceAction(s *ast.CallWebServiceStmt) model.
 	}
 
 	return activity.ID
-}
-
-func (fb *flowBuilder) resolveMappingRefForWrite(ref string, preferExport bool) string {
-	if ref == "" || !strings.Contains(ref, ".") || fb.backend == nil {
-		return ref
-	}
-	moduleName, name, ok := strings.Cut(ref, ".")
-	if !ok || moduleName == "" || name == "" {
-		return ref
-	}
-	if preferExport {
-		if mapping, err := fb.backend.GetExportMappingByQualifiedName(moduleName, name); err == nil && mapping != nil {
-			return string(mapping.ID)
-		}
-		if mapping, err := fb.backend.GetImportMappingByQualifiedName(moduleName, name); err == nil && mapping != nil {
-			return string(mapping.ID)
-		}
-	} else {
-		if mapping, err := fb.backend.GetImportMappingByQualifiedName(moduleName, name); err == nil && mapping != nil {
-			return string(mapping.ID)
-		}
-		if mapping, err := fb.backend.GetExportMappingByQualifiedName(moduleName, name); err == nil && mapping != nil {
-			return string(mapping.ID)
-		}
-	}
-	return ref
 }
 
 // resolveExternalActionReturnKind looks up the called OData action in the

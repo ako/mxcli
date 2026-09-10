@@ -156,12 +156,40 @@ func TestWebServiceCallAction_ResultHandlingBindsTheReceiveMapping(t *testing.T)
 	if got := docGet(imc, "ReturnValueMapping"); got != "SampleSOAP.OrderResponse" {
 		t.Errorf("ReturnValueMapping = %#v, want the qualified mapping name", got)
 	}
+	// Xml, not Json. A SOAP response is XML, and Studio Pro writes "Xml" in both
+	// reference calls carrying an import mapping (ako/TestApp, 11.14.0). Legacy
+	// hardcoded "Json"; both engines now write Xml.
+	if got := docGet(imc, "ContentType"); got != "Xml" {
+		t.Errorf("ContentType = %#v, want Xml", got)
+	}
 	rng, ok := docGet(imc, "Range").(bsonv1.D)
 	if !ok {
 		t.Fatalf("Range = %#v, want a document", docGet(imc, "Range"))
 	}
 	if got := docGet(rng, "$Type"); got != "Microflows$ConstantRange" {
 		t.Errorf("Range.$Type = %#v", got)
+	}
+}
+
+// TestWebServiceCallAction_ServiceNameIsTheWsdlService — ServiceName is the
+// WSDL <wsdl:service name=…>, resolved by the executor off the imported service
+// document, NOT the local part of the qualified document name. Writing the
+// derived name made Mendix look for the operation in a service that does not
+// exist: CE0386, measured on 11.14.0 against ako/TestApp.
+func TestWebServiceCallAction_ServiceNameIsTheWsdlService(t *testing.T) {
+	a := fullWebServiceCall()
+	a.ServiceName = "OrdersWS"
+
+	if got := docGet(encodeMicroflowAction(t, a), "ServiceName"); got != "OrdersWS" {
+		t.Errorf("ServiceName = %#v, want the resolved WSDL service name", got)
+	}
+
+	// Control: unresolved, the writer falls back to the derivation that ships
+	// today rather than writing nothing. A call against a service mxcli cannot
+	// resolve is then no worse off than before.
+	a.ServiceName = ""
+	if got := docGet(encodeMicroflowAction(t, a), "ServiceName"); got != "OrderService" {
+		t.Errorf("fallback ServiceName = %#v, want the derived OrderService", got)
 	}
 }
 
