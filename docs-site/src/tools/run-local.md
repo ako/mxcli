@@ -403,11 +403,20 @@ every later one fails. Measured against mxbuild 11.14.0 over its own HTTP API wi
 no mxcli involved: the same `/build` request POSTed twice, model untouched between
 them, goes Success then Failure.
 
-Neither obvious remedy works. **Switching the app bundler does not help** — with
-*App > Settings > Runtime > App bundler* set to Rspack the failure is identical and
-names `rspack.config.mjs`. **Deleting `deployment/` does not help** either; the next
-second build fails the same way. `run --local` prints an explanation when it sees
-this, so the failure does not read as a corrupt `deployment/`.
+No remedy from outside the process works, and three were measured:
+
+| Attempt | Result |
+|---|---|
+| Switch *App > Settings > Runtime > App bundler* to Rspack | Identical failure, naming `rspack.config.mjs` |
+| Delete `deployment/` and start over | Next second build fails the same way |
+| Restore the config (it exists for ~1.5s mid-build) | Rebuilds fine **while the model is unchanged**; fails as soon as a page changes |
+
+That last one is the interesting near-miss: the config carries nothing
+model-specific, so it can be captured and put back — but doing so only rescues the
+case a warm loop never needs. There are two regressions here, and the second one
+(the per-document client export) has no external fix. `run --local` prints an
+explanation when it sees either, so the failure does not read as a corrupt
+`deployment/`.
 
 For contrast, a one-shot `mxbuild --target=deploy` run twice into the same
 deployment directory succeeds both times — it is the serve process, not the 11.14

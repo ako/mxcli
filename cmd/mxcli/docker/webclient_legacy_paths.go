@@ -32,8 +32,29 @@ import (
 // It is not the app's choice of bundler. With App Settings > Runtime > App
 // bundler flipped to Rspack the shape is identical, naming the other file:
 // "Failed to load Rspack configuration file … web/rspack.config.mjs". So
-// switching bundlers is not a workaround, and neither is anything mxcli can do
-// from outside the process.
+// switching bundlers is not a workaround.
+//
+// Nor is restoring the deleted config, which was worth ruling out because the
+// config IS recoverable: it appears on disk for ~1.5s mid-build and carries
+// nothing model-specific (no page list, no widget list, no hashes; its input is
+// just index.js, with page discovery delegated to a rollup plugin at build
+// time), so it could be captured and put back the way `mxcli fix widgets`
+// harvests mxbuild's own output. Measured, that rescues only the case nobody
+// needs:
+//
+//	build   model      state                     result
+//	1       -          cold                      Success
+//	2,3     unchanged  config restored           Success
+//	2'      CHANGED    config restored           Failure - missing web/pages/*.js
+//	3'      CHANGED    config restored + dirs    Failure - widget export
+//
+// So there are two regressions, not one. The config deletion is the visible,
+// recoverable half; underneath it the per-document client export expects
+// deployment state 11.14's cold build no longer produces, and supplying the
+// missing directories only moves the failure to exporting two pluggable widgets
+// that ship with a blank app. Across 2' and 3', web/dist/index.js never moved
+// off its cold-build timestamp. Nothing outside the process fixes that half,
+// which is why this file reports rather than repairs.
 //
 // The controls that place this in mxbuild rather than here: a one-shot
 // `mxbuild --target=deploy` run TWICE into the same deployment directory
