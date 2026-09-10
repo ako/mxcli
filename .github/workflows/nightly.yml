@@ -44,8 +44,14 @@ jobs:
       - name: Setup mxbuild ${{ matrix.mendix-version }}
         run: ./bin/mxcli setup mxbuild --version ${{ matrix.mendix-version }}
 
+      # The full engine matrix runs here, not on every push. "all" is the
+      # default, so this is belt and braces — but it is the line that makes the
+      # nightly the place legacy is verified, and it should survive someone
+      # changing the default.
       - name: Integration tests (Mendix ${{ matrix.mendix-version }})
         run: make test-integration
+        env:
+          MXCLI_TEST_ENGINES: all
         timeout-minutes: 30
 
   nightly:

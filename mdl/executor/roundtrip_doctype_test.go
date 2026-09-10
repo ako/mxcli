@@ -33,9 +33,73 @@ type gateEngine struct {
 	factory func() backend.FullBackend
 }
 
-var gateEngines = []gateEngine{
+var allGateEngines = []gateEngine{
 	{"modelsdk", func() backend.FullBackend { return modelsdkbackend.New() }},
 	{"legacy", func() backend.FullBackend { return mprbackend.New() }},
+}
+
+// gateEnginesEnv narrows the matrix above to a subset, as a comma- or
+// space-separated list of engine names ("modelsdk", "legacy"); empty or "all"
+// means every engine.
+//
+// It exists because the matrix is most of what the gate costs: each script is
+// executed and then handed to mxbuild once PER ENGINE, and mxbuild dominates.
+// On CI the per-push job runs `modelsdk` alone (see .github/workflows/
+// push-test.yml) and the nightly runs the full matrix across the Mendix-version
+// matrix (nightly.yml), so legacy stays verified daily without every push
+// paying for it.
+//
+// The DEFAULT is every engine, deliberately. Nightly could have relied on a
+// default of "modelsdk" and set "all" itself, but then a mistake in EITHER
+// workflow file loses legacy coverage silently, and a lost gate is the failure
+// this repo has already shipped once (#808, an integration test that had only
+// ever skipped). With this default a mistake in the per-push file costs
+// minutes, not coverage — the failure mode is biased the right way. For the
+// same reason a narrowed matrix is announced in TestMain rather than applied
+// quietly: a run that covered less than it looks like it did should say so.
+const gateEnginesEnv = "MXCLI_TEST_ENGINES"
+
+// gateEngines is the matrix every gate test loops over.
+var gateEngines, unknownGateEngines = selectGateEngines(os.Getenv(gateEnginesEnv), allGateEngines)
+
+// selectGateEngines filters the engine matrix by name, preserving matrix order
+// so the subset runs in the same sequence as the whole. Unrecognised names are
+// returned rather than ignored: a typo that silently selects NOTHING would turn
+// the gate into a no-op that still reports success, which is the one outcome a
+// gate must never have.
+func selectGateEngines(spec string, all []gateEngine) (selected []gateEngine, unknown []string) {
+	fields := strings.FieldsFunc(spec, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' })
+	if len(fields) == 0 {
+		return all, nil
+	}
+	wanted := make(map[string]bool, len(fields))
+	for _, f := range fields {
+		name := strings.ToLower(strings.TrimSpace(f))
+		if name == "all" {
+			return all, nil
+		}
+		wanted[name] = true
+	}
+	for _, eng := range all {
+		if wanted[eng.name] {
+			selected = append(selected, eng)
+			delete(wanted, eng.name)
+		}
+	}
+	for name := range wanted {
+		unknown = append(unknown, name)
+	}
+	sort.Strings(unknown)
+	return selected, unknown
+}
+
+// gateEngineNames renders an engine list for a log line.
+func gateEngineNames(engines []gateEngine) string {
+	names := make([]string, 0, len(engines))
+	for _, e := range engines {
+		names = append(names, e.name)
+	}
+	return strings.Join(names, ", ")
 }
 
 // engineScriptSkip marks (engine/script) pairs to skip, with a reason. Use only

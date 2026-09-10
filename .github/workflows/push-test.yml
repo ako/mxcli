@@ -102,8 +102,16 @@ jobs:
         run: ./scripts/check-skill-mdl.sh ./bin/mxcli docs-site/src
       - name: Setup mxbuild
         run: ./bin/mxcli setup mxbuild --version 11.12.2
+      # Per-push, the gate runs the DEFAULT engine only. The doctype gate hands
+      # every script to mxbuild once per engine and mxbuild dominates the cost,
+      # so the second engine is roughly half of this step. The legacy engine is
+      # still shipped and still selectable (--engine legacy), so it is not
+      # untested: the nightly runs the full matrix, across every Mendix version.
+      # Drop this env to bring legacy back to every push.
       - name: Integration tests
         run: make test-integration
+        env:
+          MXCLI_TEST_ENGINES: modelsdk
         timeout-minutes: 30
       - name: Lint Go
         run: make lint-go
