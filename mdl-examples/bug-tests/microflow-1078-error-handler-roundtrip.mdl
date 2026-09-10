@@ -69,6 +69,14 @@
 -- Note create-VARIABLE and change-VARIABLE accept Continue while change-OBJECT
 -- does not. No rule of thumb predicts that; it was measured.
 --
+-- IN A NANOFLOW the answer is different again, and stricter: only `declare` and
+-- `set` take a clause AT ALL. `change`, `log`, `show page`, `close page`,
+-- `show message` and `validation feedback` are CE6035 there in every form, so
+-- mxcli refuses the clause rather than writing a nanoflow mxbuild rejects.
+-- A nanoflow activity aborts the flow on error by default — there is no
+-- transaction to roll back, which is also why writing `Rollback` there is an
+-- error rather than a no-op. Everything below is a MICROFLOW for that reason.
+--
 -- A NON-terminating handler is a different matter and is NOT an mxcli bug: when
 -- the handler body falls through, the branch merges back into the main flow, and
 -- a variable defined after the merge point is out of scope on the error path —

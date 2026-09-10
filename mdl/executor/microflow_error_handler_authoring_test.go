@@ -109,10 +109,19 @@ func TestAuthorOnError_EightStatementsThatCouldNotCarryTheClause(t *testing.T) {
 	}
 }
 
-// Control for the table above. Without the clause the action must carry NO
-// error-handling type: writing one would make DESCRIBE render `on error` on an
-// activity the author never put one on, which is #840 in reverse.
-func TestAuthorOnError_AbsentClauseLeavesTheActionUnset(t *testing.T) {
+// Control for the table above. Without a clause the activity must keep the
+// flow's own default and gain no error branch.
+//
+// The default is Rollback in a microflow (Abort in a nanoflow — see
+// TestAuthorOnError_NanoflowKeepsAbortWithoutAClause), NOT the empty string.
+// Empty was this test's original expectation and it was wrong in the direction
+// that matters: it is what the writer turns into a literal "Rollback"
+// regardless of flow flavour, which is CE6035 inside a nanoflow.
+//
+// Rollback is also exactly the value DESCRIBE must NOT render a suffix for
+// (#840), so the two halves of the round trip agree: store the default, print
+// nothing.
+func TestAuthorOnError_AbsentClauseKeepsTheFlowDefault(t *testing.T) {
 	for _, body := range []string{
 		"declare $name String = 'NameValue';",
 		"log info node 'B' 'hi';",
@@ -124,10 +133,14 @@ func TestAuthorOnError_AbsentClauseLeavesTheActionUnset(t *testing.T) {
 			t.Fatalf("%s: no action activity", body)
 		}
 		for _, errType := range types {
-			if errType != "" {
-				t.Errorf("%s: ErrorHandlingType = %q, want empty — no clause was written",
-					body, errType)
+			if errType != microflows.ErrorHandlingTypeRollback {
+				t.Errorf("%s: ErrorHandlingType = %q, want %q (the microflow default)",
+					body, errType, microflows.ErrorHandlingTypeRollback)
 			}
+		}
+		// The part that actually gates DESCRIBE: no custom handler, no branch.
+		if n := countErrorHandling(fb, microflows.ErrorHandlingTypeCustom); n != 0 {
+			t.Errorf("%s: %d activities came back Custom with no clause written", body, n)
 		}
 		for _, f := range fb.flows {
 			if f.IsErrorHandler {
@@ -194,4 +207,164 @@ func checkMicroflowBodyForTest(t *testing.T, body string) string {
 		b.WriteString(viol.RuleID + ": " + viol.Message + "\n")
 	}
 	return b.String()
+}
+
+// The regression #1078 shipped and CI caught: a NANOFLOW activity with no
+// clause must keep Abort, not fall through to the writer's "Rollback".
+//
+// Eight builders here previously set fb.ehType(nil) — context-dependent, and
+// Abort inside a nanoflow. Switching them to explicitErrorHandling (which
+// returns empty for "no clause") made the writer's literal "Rollback" apply
+// instead, and mxbuild reports CE6035 "Error handling type is not supported" on
+// every un-annotated change/log/close-page/validation-feedback activity in a
+// nanoflow. Retrieve and Delete legitimately use explicitErrorHandling — their
+// writers emitted a hardcoded "Rollback" those two actions accept everywhere —
+// so the helper is right there and wrong here.
+//
+// go test ./... never saw it: the failure is in the mx-check integration suite
+// (-tags integration), not the unit suite.
+func TestAuthorOnError_NanoflowKeepsAbortWithoutAClause(t *testing.T) {
+	for _, tc := range []struct{ name, body string }{
+		{"change object", "change $Car (Brand = 'Opel');"},
+		{"log", "log info node 'B' 'hi';"},
+		{"close page", "close page;"},
+		{"show message", "show message 'hi';"},
+		{"validation feedback", "validation feedback $Car/Brand message 'bad';"},
+		{"declare", "declare $name String = 'v';"},
+		{"set", "declare $name String = 'v';\n$name = 'w';"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fb := buildNanoflowFromMDL(t, tc.body)
+			for _, got := range actionErrorHandlingTypes(fb) {
+				if got != microflows.ErrorHandlingTypeAbort {
+					t.Errorf("nanoflow activity carries ErrorHandlingType %q, want %q — "+
+						"an empty value falls through to the writer's \"Rollback\", which "+
+						"mxbuild rejects as CE6035 in a nanoflow",
+						got, microflows.ErrorHandlingTypeAbort)
+				}
+			}
+		})
+	}
+
+	// Control: the same statements in a MICROFLOW must not become Abort.
+	fb := buildFlowFromMDL(t, "log info node 'B' 'hi';")
+	for _, got := range actionErrorHandlingTypes(fb) {
+		if got == microflows.ErrorHandlingTypeAbort {
+			t.Errorf("microflow activity got Abort, which is CE6035 outside a nanoflow")
+		}
+	}
+}
+
+// buildNanoflowFromMDL is buildFlowFromMDL with the nanoflow flag set, which is
+// the only thing that changes the no-clause default.
+func buildNanoflowFromMDL(t *testing.T, body string) *flowBuilder {
+	t.Helper()
+	prog, errs := visitor.Build("create microflow M.ACT_T()\nbegin\n" + body + "\nend;")
+	if len(errs) > 0 {
+		t.Fatalf("parsing:\n%s\nerrors: %v", body, errs)
+	}
+	mf := prog.Statements[0].(*ast.CreateMicroflowStmt)
+	fb := &flowBuilder{
+		posX: 100, posY: 100, spacing: HorizontalSpacing, isNanoflow: true,
+		varTypes: map[string]string{}, declaredVars: map[string]string{},
+	}
+	fb.buildFlowGraph(mf.Body, nil)
+	return fb
+}
+
+// A nanoflow's error-handler BODY is walked for actions nanoflows cannot run.
+// The eight statements #1078 opened up had to be added to getErrorHandling for
+// that walk to reach them — otherwise a Java action nested in
+// `declare … on error { … }` is accepted and fails only at build time.
+func TestNanoflow_HandlerBodyOfNewStatementsIsValidated(t *testing.T) {
+	// Control first: a statement that could ALREADY carry the clause. If this
+	// stops reporting, the walk itself broke and the rows below prove nothing.
+	if errs := nanoflowErrorsFor(t,
+		"commit $Obj on error {\n  call java action M.SomeJava();\n};"); len(errs) == 0 {
+		t.Fatal("control failed: a Java action inside a commit handler was accepted, " +
+			"so this test cannot detect anything")
+	}
+
+	for _, tc := range []struct{ name, body string }{
+		{"declare", "declare $n String = 'v' on error {\n  call java action M.SomeJava();\n};"},
+		{"set", "declare $n String = 'v';\n$n = 'w' on error {\n  call java action M.SomeJava();\n};"},
+		{"change object", "change $Car (Brand = 'x') on error {\n  call java action M.SomeJava();\n};"},
+		{"log", "log info node 'B' 'hi' on error {\n  call java action M.SomeJava();\n};"},
+		{"show page", "show page M.Home on error {\n  call java action M.SomeJava();\n};"},
+		{"close page", "close page on error {\n  call java action M.SomeJava();\n};"},
+		{"show message", "show message 'hi' on error {\n  call java action M.SomeJava();\n};"},
+		{"validation feedback", "validation feedback $Car/Brand message 'b' on error {\n  call java action M.SomeJava();\n};"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if errs := nanoflowErrorsFor(t, tc.body); len(errs) == 0 {
+				t.Errorf("a Java action inside this handler was accepted — the nanoflow "+
+					"walk does not reach %s's error body", tc.name)
+			}
+		})
+	}
+}
+
+// nanoflowErrorsFor parses a nanoflow body and returns the nanoflow-specific
+// validation errors.
+func nanoflowErrorsFor(t *testing.T, body string) []string {
+	t.Helper()
+	prog, errs := visitor.Build("create nanoflow M.NF_T()\nbegin\n" + body + "\nreturn;\nend;")
+	if len(errs) > 0 {
+		t.Fatalf("parsing:\n%s\nerrors: %v", body, errs)
+	}
+	// validateNanoflowBody, not the exported ValidateNanoflowBody: the latter
+	// runs the variable/semantic checks, the former is the disallowed-action walk
+	// this test is about.
+	return validateNanoflowBody(prog.Statements[0].(*ast.CreateNanoflowStmt).Body)
+}
+
+// A nanoflow accepts error handling on almost none of the eight statements
+// #1078 opened up: measured on 11.14.0, only the two VARIABLE activities take a
+// clause, and the other six are CE6035 whichever form is written. Refused at
+// exec rather than written into a nanoflow mxbuild rejects.
+func TestNanoflow_RefusesErrorHandlingWhereMendixRejectsIt(t *testing.T) {
+	for _, tc := range []struct{ name, body string }{
+		{"change object", "change $Car (Brand = 'x') on error { show message 'e'; };"},
+		{"log", "log info node 'B' 'hi' on error { show message 'e'; };"},
+		{"show page", "show page M.Home on error { show message 'e'; };"},
+		{"close page", "close page on error { show message 'e'; };"},
+		{"show message", "show message 'hi' on error { close page; };"},
+		{"validation feedback", "validation feedback $Car/Brand message 'b' on error { close page; };"},
+		// Log is the activity measured in all three forms; all three are CE6035,
+		// which is why the rule refuses the clause rather than one spelling.
+		{"log continue", "log info node 'B' 'hi' on error continue;"},
+		{"log rollback", "log info node 'B' 'hi' on error rollback;"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := nanoflowErrorsFor(t, tc.body)
+			if !containsSubstringAny(errs, "on error") {
+				t.Errorf("accepted in a nanoflow, but mxbuild reports CE6035: %v", errs)
+			}
+		})
+	}
+
+	// Control 1: the permissive pair. Refusing these would reject nanoflows that
+	// build today — measured, both accept a custom handler on 11.14.0.
+	for _, body := range []string{
+		"declare $n String = 'v' on error { show message 'e'; };",
+		"declare $n String = 'v';\n$n = 'w' on error { show message 'e'; };",
+	} {
+		if errs := nanoflowErrorsFor(t, body); containsSubstringAny(errs, "on error") {
+			t.Errorf("a variable activity was refused, but Mendix accepts it: %v", errs)
+		}
+	}
+
+	// Control 2: no clause at all must never be refused.
+	if errs := nanoflowErrorsFor(t, "log info node 'B' 'hi';"); containsSubstringAny(errs, "on error") {
+		t.Errorf("an activity with no clause was refused: %v", errs)
+	}
+}
+
+func containsSubstringAny(errs []string, want string) bool {
+	for _, e := range errs {
+		if strings.Contains(e, want) {
+			return true
+		}
+	}
+	return false
 }

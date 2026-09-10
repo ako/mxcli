@@ -659,6 +659,11 @@ close page on error { return; };
 - **The list-operation and aggregate forms of `set`** (`$x = head($l)`,
   `$n = count($l)`) have no error handling in Mendix at all — **MDL077**.
 
+**In a nanoflow, almost none of them take a clause at all.** `change`, `log`,
+`show page`, `close page`, `show message` and `validation feedback` are CE6035
+there whichever form is written; only `declare` and `set` accept one. See
+`write-nanoflows`.
+
 **End the handler.** A handler body that does not finish with `return` or `throw`
 merges back into the main flow, so a variable created *after* the merge point is
 out of scope on the error path — CE0108, which Studio Pro reports for the same

@@ -138,6 +138,11 @@ func init() {
 			"--   The list-operation and aggregate forms of SET ($x = head($l),\n" +
 			"--   $n = count($l)) have no error handling in Mendix at all -> MDL077.\n" +
 			"--\n" +
+			"-- IN A NANOFLOW only DECLARE and SET take a clause at all. CHANGE, LOG,\n" +
+			"-- SHOW PAGE, CLOSE PAGE, SHOW MESSAGE and VALIDATION FEEDBACK are CE6035\n" +
+			"-- there in EVERY form, and are refused: a nanoflow activity aborts the\n" +
+			"-- flow on error by default and has no transaction to roll back.\n" +
+			"--\n" +
 			"-- A handler that does NOT end in RETURN/THROW merges back into the main\n" +
 			"-- flow, so a variable created after the merge is out of scope on the error\n" +
 			"-- path (CE0108). End the handler, or expect that.",

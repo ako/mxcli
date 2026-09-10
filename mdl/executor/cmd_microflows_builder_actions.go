@@ -34,8 +34,9 @@ func (fb *flowBuilder) addCreateVariableAction(s *ast.DeclareStmt) model.ID {
 	activityX := fb.posX
 
 	action := &microflows.CreateVariableAction{
-		BaseElement:       model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType: explicitErrorHandling(fb, s.ErrorHandling),
+		BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+		// fb.ehType, not explicitErrorHandling — see ehType's doc comment.
+		ErrorHandlingType: fb.ehType(s.ErrorHandling),
 		VariableName:      s.Variable,
 		DataType:          convertASTToMicroflowDataType(declType, nil),
 		InitialValue:      fb.exprToString(s.InitialValue),
@@ -74,8 +75,9 @@ func (fb *flowBuilder) addChangeVariableAction(s *ast.MfSetStmt) model.ID {
 	activityX := fb.posX
 
 	action := &microflows.ChangeVariableAction{
-		BaseElement:       model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType: explicitErrorHandling(fb, s.ErrorHandling),
+		BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+		// fb.ehType, not explicitErrorHandling — see ehType's doc comment.
+		ErrorHandlingType: fb.ehType(s.ErrorHandling),
 		VariableName:      s.Target,
 		Value:             fb.exprToString(s.Value),
 	}
@@ -331,8 +333,9 @@ func (fb *flowBuilder) addChangeObjectAction(s *ast.ChangeObjectStmt) model.ID {
 	activityX := fb.posX
 
 	action := &microflows.ChangeObjectAction{
-		BaseElement:       model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType: explicitErrorHandling(fb, s.ErrorHandling),
+		BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+		// fb.ehType, not explicitErrorHandling — see ehType's doc comment.
+		ErrorHandlingType: fb.ehType(s.ErrorHandling),
 		ChangeVariable:    s.Variable,
 		Commit:            commitTypeOf(s.Commit),
 		RefreshInClient:   s.RefreshInClient || len(s.Changes) == 0,

@@ -80,8 +80,9 @@ func (fb *flowBuilder) addLogMessageAction(s *ast.LogStmt) model.ID {
 	activityX := fb.posX
 
 	action := &microflows.LogMessageAction{
-		BaseElement:       model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType: explicitErrorHandling(fb, s.ErrorHandling),
+		BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+		// fb.ehType, not explicitErrorHandling — see ehType's doc comment.
+		ErrorHandlingType: fb.ehType(s.ErrorHandling),
 		LogLevel:          logLevel,
 		LogNodeName:       logNodeName,
 		MessageTemplate: &model.Text{
@@ -954,8 +955,9 @@ func (fb *flowBuilder) addShowPageAction(s *ast.ShowPageStmt) model.ID {
 	activityX := fb.posX
 
 	action := &microflows.ShowPageAction{
-		BaseElement:           model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType:     explicitErrorHandling(fb, s.ErrorHandling),
+		BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+		// fb.ehType, not explicitErrorHandling — see ehType's doc comment.
+		ErrorHandlingType:     fb.ehType(s.ErrorHandling),
 		PageName:              pageQN, // BY_NAME_REFERENCE - qualified name string
 		PageSettings:          pageSettings,
 		PageParameterMappings: mappings,
@@ -1054,8 +1056,9 @@ func (fb *flowBuilder) addShowMessageAction(s *ast.ShowMessageStmt) model.ID {
 	activityX := fb.posX
 
 	action := &microflows.ShowMessageAction{
-		BaseElement:        model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType:  explicitErrorHandling(fb, s.ErrorHandling),
+		BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+		// fb.ehType, not explicitErrorHandling — see ehType's doc comment.
+		ErrorHandlingType:  fb.ehType(s.ErrorHandling),
 		Template:           template,
 		Type:               msgType,
 		TemplateParameters: templateParams,
@@ -1159,8 +1162,9 @@ func (fb *flowBuilder) addClosePageAction(s *ast.ClosePageStmt) model.ID {
 	activityX := fb.posX
 
 	action := &microflows.ClosePageAction{
-		BaseElement:       model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType: explicitErrorHandling(fb, s.ErrorHandling),
+		BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+		// fb.ehType, not explicitErrorHandling — see ehType's doc comment.
+		ErrorHandlingType: fb.ehType(s.ErrorHandling),
 		NumberOfPages:     numPages,
 	}
 
@@ -1281,8 +1285,9 @@ func (fb *flowBuilder) addValidationFeedbackAction(s *ast.ValidationFeedbackStmt
 	activityX := fb.posX
 
 	action := &microflows.ValidationFeedbackAction{
-		BaseElement:        model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType:  explicitErrorHandling(fb, s.ErrorHandling),
+		BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+		// fb.ehType, not explicitErrorHandling — see ehType's doc comment.
+		ErrorHandlingType:  fb.ehType(s.ErrorHandling),
 		ObjectVariable:     varName,
 		AttributeName:      attributeName,
 		AssociationName:    associationName,
