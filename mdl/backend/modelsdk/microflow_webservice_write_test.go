@@ -193,6 +193,38 @@ func TestWebServiceCallAction_ServiceNameIsTheWsdlService(t *testing.T) {
 	}
 }
 
+// TestWebServiceCallAction_VariableTypeIsTheMappingsEntity — the result's type
+// is the entity the receive mapping produces. VoidType says the call returns
+// nothing: CE0243 and CE0366, measured on 11.14.0 against ako/TestApp.
+func TestWebServiceCallAction_VariableTypeIsTheMappingsEntity(t *testing.T) {
+	a := fullWebServiceCall()
+	a.ResultEntity = "Clients.Order"
+
+	rh, ok := docGet(encodeMicroflowAction(t, a), "NewResultHandling").(bsonv1.D)
+	if !ok {
+		t.Fatal("NewResultHandling missing")
+	}
+	vt, ok := docGet(rh, "VariableType").(bsonv1.D)
+	if !ok {
+		t.Fatalf("VariableType = %#v, want a document", docGet(rh, "VariableType"))
+	}
+	if got := docGet(vt, "$Type"); got != "DataTypes$ObjectType" {
+		t.Errorf("VariableType.$Type = %#v, want DataTypes$ObjectType", got)
+	}
+	if got := docGet(vt, "Entity"); got != "Clients.Order" {
+		t.Errorf("VariableType.Entity = %#v, want Clients.Order", got)
+	}
+
+	// Control: unresolved, it stays VoidType — wrong, but what ships, so an
+	// unresolvable mapping is no worse off than before.
+	a.ResultEntity = ""
+	rh2, _ := docGet(encodeMicroflowAction(t, a), "NewResultHandling").(bsonv1.D)
+	vt2, _ := docGet(rh2, "VariableType").(bsonv1.D)
+	if got := docGet(vt2, "$Type"); got != "DataTypes$VoidType" {
+		t.Errorf("fallback VariableType.$Type = %#v, want DataTypes$VoidType", got)
+	}
+}
+
 // TestWebServiceCallAction_NoOutputVariable — a call that binds nothing writes
 // Bind false and an explicitly null ImportMappingCall, rather than omitting the
 // result handling.

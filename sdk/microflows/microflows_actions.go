@@ -793,6 +793,11 @@ type WebServiceCallAction struct {
 	OutputVariable    string   `json:"outputVariable,omitempty"`
 	UseReturnVariable bool     `json:"useReturnVariable"`
 	TimeoutExpression string   `json:"timeoutExpression,omitempty"`
+	// ResultEntity is the qualified entity the RECEIVE mapping produces, which
+	// Mendix stores as the call's result VariableType. Resolved from the mapping
+	// document by the executor; empty means it could not be established and the
+	// writers keep DataTypes$VoidType.
+	ResultEntity string `json:"resultEntity,omitempty"`
 }
 
 func (WebServiceCallAction) isMicroflowAction() {}

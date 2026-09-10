@@ -844,12 +844,24 @@ func serializeWebServiceCallAction(a *microflows.WebServiceCallAction) bson.D {
 	} else {
 		resultHandling = append(resultHandling, bson.E{Key: "ImportMappingCall", Value: nil})
 	}
+	// VariableType is the type the call RETURNS — the entity the receive mapping
+	// produces. VoidType says it returns nothing, which contradicts the mapping
+	// (CE0243) and makes assigning the result an error too (CE0366). It stays the
+	// fallback for a mapping mxcli could not resolve.
+	variableType := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(GenerateID())},
+		{Key: "$Type", Value: "DataTypes$VoidType"},
+	}
+	if a.ResultEntity != "" {
+		variableType = bson.D{
+			{Key: "$ID", Value: idToBsonBinary(GenerateID())},
+			{Key: "$Type", Value: "DataTypes$ObjectType"},
+			{Key: "Entity", Value: a.ResultEntity},
+		}
+	}
 	resultHandling = append(resultHandling,
 		bson.E{Key: "ResultVariableName", Value: a.OutputVariable},
-		bson.E{Key: "VariableType", Value: bson.D{
-			{Key: "$ID", Value: idToBsonBinary(GenerateID())},
-			{Key: "$Type", Value: "DataTypes$VoidType"},
-		}},
+		bson.E{Key: "VariableType", Value: variableType},
 	)
 	doc = append(doc, bson.E{Key: "NewResultHandling", Value: resultHandling})
 

@@ -182,3 +182,75 @@ func docLookup(v any, key string) any {
 	}
 	return nil
 }
+
+// importMappingType is the stored $Type of an import mapping document. As with
+// importedServiceType, this is matched EXACTLY — and note it is
+// `ImportMappings$ImportMapping`, not the `Mappings$…` prefix its child elements
+// use (Mappings$ObjectMappingElement also appears in these documents).
+const importMappingType = "ImportMappings$ImportMapping"
+
+// resolveImportMappingEntity returns the qualified entity an import mapping
+// produces — the Entity of its root ObjectMappingElement.
+//
+// It is what Mendix stores as the SOAP call's result VariableType. Writing
+// DataTypes$VoidType instead (which both engines did) tells Mendix the call
+// returns nothing, and assigning that to a variable is two errors at once,
+// measured on 11.14.0 against ako/TestApp:
+//
+//	[CE0243] "The mapping used to return a value of type 'Nothing', but now
+//	          returns a value of type 'Clients.Order'."
+//	[CE0366] "Cannot store in variable when there is no return value."
+//
+// "" when it cannot be established, and the writers then keep VoidType — which
+// is wrong, but is what ships today, so an unresolvable mapping is no worse off.
+func resolveImportMappingEntity(b backend.FullBackend, qualifiedName string) string {
+	if b == nil || qualifiedName == "" {
+		return ""
+	}
+	units, err := b.ListRawUnitsByType(importMappingType)
+	if err != nil || len(units) == 0 {
+		return ""
+	}
+	_, bare, ok := strings.Cut(qualifiedName, ".")
+	if !ok || bare == "" {
+		bare = qualifiedName
+	}
+
+	var matched []byte
+	for _, unit := range units {
+		if unit == nil || len(unit.Contents) == 0 {
+			continue
+		}
+		if !strings.EqualFold(rawUnitName(unit.Contents), bare) {
+			continue
+		}
+		if matched != nil {
+			return "" // ambiguous — refuse, as with the service lookup
+		}
+		matched = unit.Contents
+	}
+	if matched == nil {
+		return ""
+	}
+	return rootMappingEntity(matched)
+}
+
+// rootMappingEntity reads Elements[] and returns the first object mapping
+// element's Entity.
+//
+// The root is the only element whose entity the CALL is typed on; the children
+// are value mappings and nested objects, which belong to the mapping's own
+// structure rather than to the result.
+func rootMappingEntity(contents []byte) string {
+	var doc map[string]any
+	if err := bson.Unmarshal(contents, &doc); err != nil {
+		return ""
+	}
+	for _, el := range typedArrayElements(doc["Elements"]) {
+		entity, _ := docLookup(el, "Entity").(string)
+		if entity != "" {
+			return entity
+		}
+	}
+	return ""
+}

@@ -165,3 +165,78 @@ func TestTypedArrayElements(t *testing.T) {
 		t.Errorf("non-array = %v, want nil", got)
 	}
 }
+
+// importMappingDoc builds an ImportMappings$ImportMapping whose root object
+// mapping element names an entity.
+func importMappingDoc(t *testing.T, name, rootEntity string) []byte {
+	t.Helper()
+	elements := bson.A{int32(2)}
+	if rootEntity != "" {
+		elements = append(elements, bson.M{
+			"$Type":  "ImportMappings$ObjectMappingElement",
+			"Entity": rootEntity,
+			// A value child, to prove the root is what is read rather than the
+			// first element carrying any key at all.
+			"Children": bson.A{int32(2), bson.M{
+				"$Type":     "ImportMappings$ValueMappingElement",
+				"Attribute": rootEntity + ".SomeAttr",
+			}},
+		})
+	}
+	out, err := bson.Marshal(bson.M{
+		"$Type": importMappingType, "Name": name, "Elements": elements,
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return out
+}
+
+// TestResolveImportMappingEntity is the regression test for CE0243/CE0366.
+//
+// The call's result VariableType is the entity the receive mapping produces.
+// Both engines wrote DataTypes$VoidType — "returns nothing" — which contradicts
+// the mapping and makes assigning the result an error of its own. Measured on
+// 11.14.0 against ako/TestApp: writing Void gave
+//
+//	[CE0243] "The mapping used to return a value of type 'Nothing', but now
+//	          returns a value of type 'Clients.Order'."
+//	[CE0366] "Cannot store in variable when there is no return value."
+//
+// and both cleared once the entity was read off the mapping.
+func TestResolveImportMappingEntity(t *testing.T) {
+	b := backendWithUnits(importMappingDoc(t, "SoapOrdersImportMapping", "Clients.Order"))
+
+	if got := resolveImportMappingEntity(b, "Clients.SoapOrdersImportMapping"); got != "Clients.Order" {
+		t.Errorf("resolveImportMappingEntity = %q, want Clients.Order", got)
+	}
+}
+
+// TestResolveImportMappingEntity_UnresolvableIsEmpty — every way the entity
+// cannot be established returns "", and the writers then keep VoidType. That is
+// still wrong, but it is what ships today: an unresolvable mapping must not be
+// made worse, and must not be guessed at.
+func TestResolveImportMappingEntity_UnresolvableIsEmpty(t *testing.T) {
+	doc := importMappingDoc(t, "SoapOrdersImportMapping", "Clients.Order")
+
+	for _, tc := range []struct {
+		name string
+		b    *mock.MockBackend
+		qn   string
+	}{
+		{"no such mapping", backendWithUnits(doc), "Clients.Missing"},
+		{"no mappings at all", backendWithUnits(), "Clients.SoapOrdersImportMapping"},
+		{"empty name", backendWithUnits(doc), ""},
+		{"mapping has no root entity", backendWithUnits(importMappingDoc(t, "Bare", "")), "M.Bare"},
+		{"ambiguous name", backendWithUnits(doc, doc), "Clients.SoapOrdersImportMapping"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := resolveImportMappingEntity(tc.b, tc.qn); got != "" {
+				t.Errorf("= %q, want \"\"", got)
+			}
+		})
+	}
+	if got := resolveImportMappingEntity(nil, "Clients.SoapOrdersImportMapping"); got != "" {
+		t.Errorf("nil backend = %q, want \"\"", got)
+	}
+}

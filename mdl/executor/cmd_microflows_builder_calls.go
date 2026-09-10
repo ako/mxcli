@@ -573,8 +573,11 @@ func (fb *flowBuilder) addCallWebServiceAction(s *ast.CallWebServiceStmt) model.
 		// passed. The gate was green BECAUSE the fixture was broken — a valid
 		// reference was the one input that triggered the defect, and nothing
 		// tested one.
-		SendMappingID:     model.ID(s.SendMappingID),
-		ReceiveMappingID:  model.ID(s.ReceiveMappingID),
+		SendMappingID:    model.ID(s.SendMappingID),
+		ReceiveMappingID: model.ID(s.ReceiveMappingID),
+		// The entity the receive mapping produces, which types the result
+		// variable. Empty when unresolvable, and the writers keep VoidType.
+		ResultEntity:      resolveImportMappingEntity(fb.backend, s.ReceiveMappingID),
 		OutputVariable:    s.OutputVariable,
 		UseReturnVariable: s.OutputVariable != "",
 	}

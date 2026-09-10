@@ -38,9 +38,10 @@ import (
 // measured rather than assumed. This file first claimed no Studio Pro-authored
 // SOAP document existed to pin against; one does — ako/TestApp carries three
 // (Clients.GetOrders / GetCustomerOrders / SaveOrder, Mendix 11.14.0), and
-// against them legacy was wrong in six places. Three are now FIXED in both
+// against them legacy was wrong in six places. FOUR are now fixed in both
 // engines, each verified by writing a call against TestApp's real service and
-// running mx check:
+// running mx check — the errors came one at a time, each hidden by the one
+// before it (StorageLoadException -> CE0386 -> CE0243+CE0366 -> CE0178):
 //
 //   - ServiceName is the WSDL SERVICE name ("OrdersWS"), not the local part of
 //     the imported service's qualified name ("OrderSoapClient"). Deriving it
@@ -53,24 +54,27 @@ import (
 //     to LOAD — mx check stopped at a StorageLoadException before validation.
 //     That one only fired when the reference RESOLVED, so the only SOAP fixture
 //     (whose mappings deliberately do not exist) never triggered it.
+//   - VariableType is the result's REAL type, read off the receive mapping's
+//     root ObjectMappingElement (resolveImportMappingEntity). DataTypes$VoidType
+//     said the call returns nothing, which contradicted the mapping (CE0243) and
+//     made assigning the result its own error (CE0366). VoidType stays the
+//     fallback for a mapping that cannot be resolved.
 //
-// Three remain, and each is the next error mx check reports once the ones above
-// are fixed — measured, in this order:
+// Two remain:
 //
-//   - VariableType is the result's REAL type (DataTypes$ObjectType with an
-//     Entity, DataTypes$BooleanType, …), not DataTypes$VoidType. Writing Void
-//     gives CE0243 ("the mapping used to return 'Nothing'") and CE0366 ("cannot
-//     store in variable when there is no return value"). Needs the receive
-//     mapping's root entity, which the semantic ImportMapping does not carry.
-//   - Range.SingleObject follows the operation's cardinality; a list result
-//     writes false, not the hardcoded true.
+//   - Range.SingleObject follows the operation's cardinality; both reference
+//     calls write false where both engines write true. No error has been
+//     measured from it, so it is left until one is — the reference roots carry
+//     MaxOccurs 1 while the calls carry SingleObject false, so it is NOT simply
+//     the mapping's cardinality and would be a guess today.
 //   - Operation ARGUMENTS are Microflows$WebServiceOperationSimpleParameterMapping
 //     entries inside RequestBodyHandling.ParameterMappings, keyed by an escaped
 //     ParameterPath ("http%3A//www.example.com/:GetOrder|OrderId" — the
 //     operation's RequestBodyElementName, escaped, plus "|" plus the parameter).
 //     Writing that list empty gives CE0178 "Body parameter mapping needs to be
-//     refreshed". This one also needs MDL SYNTAX: callWebServiceStatement has no
-//     argument list at all, so there is nothing to write yet.
+//     refreshed" — now the ONLY error left on a real call. It needs MDL SYNTAX
+//     before it can be written at all: callWebServiceStatement has no argument
+//     list, so there is nothing to serialize yet.
 //
 // Two shapes are deliberately NOT re-derived here:
 //
@@ -175,8 +179,24 @@ func webServiceResultHandlingToGen(a *microflows.WebServiceCallAction) element.E
 	}
 
 	addStr(rh, "ResultVariableName", a.OutputVariable)
-	addPart(rh, "VariableType", newElem("DataTypes$VoidType", ""))
+	addPart(rh, "VariableType", webServiceVariableType(a))
 	return rh
+}
+
+// webServiceVariableType is the type of the value the call returns: the entity
+// the receive mapping produces. VoidType — what both engines wrote
+// unconditionally — says the call returns NOTHING, which contradicts the mapping
+// (CE0243 "the mapping used to return a value of type 'Nothing'") and makes
+// assigning the result an error in its own right (CE0366 "cannot store in
+// variable when there is no return value"). Kept as the fallback for a mapping
+// that could not be resolved.
+func webServiceVariableType(a *microflows.WebServiceCallAction) element.Element {
+	if a.ResultEntity == "" {
+		return newElem("DataTypes$VoidType", "")
+	}
+	vt := newElem("DataTypes$ObjectType", "")
+	addStr(vt, "Entity", a.ResultEntity)
+	return vt
 }
 
 // simpleRequestHandlingToGen builds the Microflows$SimpleRequestHandling used for
