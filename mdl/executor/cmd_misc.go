@@ -214,7 +214,10 @@ Catalog Queries:
   (* only populated with refresh catalog full)
   (** only populated with refresh catalog full source)
 
-  Cache is stored in .mxcli/catalog.db next to the .mpr file.
+  Cache is stored in .mxcli/catalog.db next to the .mpr file. Its mode is
+  sticky: once a project has a full or source cache, a refresh rebuilds at
+  that level and a command needing less never writes a narrower one over it.
+  To drop back to a cheaper level, delete .mxcli/catalog.db and refresh.
 
 Code Search (requires refresh catalog full):
   show callers of Module.Microflow [transitive];
