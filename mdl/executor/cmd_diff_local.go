@@ -437,8 +437,16 @@ func attributeBsonToMDL(_ *ExecContext, raw map[string]any) string {
 		}
 	}
 
-	// Check for type object which contains the actual type
-	if typeObj, ok := raw["Type"].(map[string]any); ok {
+	// Check for the type object, which carries the actual type. Mendix stores
+	// it under the STORAGE name "NewType"; "Type" is the SDK name and is not
+	// a key any real document has. Reading only "Type" left every attribute
+	// rendering as "Unknown", so a String(200) -> String(50) change diffed to
+	// nothing at all while the summary still counted the unit as modified.
+	typeObj, ok := raw["NewType"].(map[string]any)
+	if !ok {
+		typeObj, ok = raw["Type"].(map[string]any)
+	}
+	if ok {
 		if typeType := extractString(typeObj["$Type"]); typeType != "" {
 			switch {
 			case strings.Contains(typeType, "StringAttributeType"):
