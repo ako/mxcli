@@ -656,6 +656,9 @@ func RunLocal(opts LocalRunOptions) error {
 	var watcher *WebClientWatcher
 	if opts.Watch {
 		fmt.Fprintln(w, "Starting incremental web client bundler...")
+		// A nil watcher is not a failure: on Mendix 11.14+ mxbuild's serve build
+		// writes web/dist itself, so there is no bundler to keep hot. Every
+		// watcher method is nil-safe, so the watch loop needs no branch.
 		watcher, err = StartWebClientWatch(WebClientOptions{DeployDir: opts.DeployDir, MxBuildPath: mxbuildPath, Stdout: w})
 		if err != nil {
 			return fmt.Errorf("starting web client bundler: %w", err)
@@ -1265,6 +1268,11 @@ func watchAndApply(opts LocalRunOptions, serve *ServeServer, rt *LocalRuntime, w
 				if raw := strings.TrimSpace(string(build.Raw)); raw != "" && raw != build.Message {
 					fmt.Fprintf(opts.Stderr, "    %s\n", raw)
 				}
+				// One failure shape is not the user's model: on Mendix 11.14+ the
+				// incremental build writes the pre-11.14 per-page client into
+				// directories the cold build never made, so every rebuild fails on
+				// paths inside deployment/ and reads as a corrupt deployment.
+				fmt.Fprint(opts.Stderr, legacyClientBuildHint(opts.DeployDir, build.Message))
 				continue
 			}
 			// If the serve build touched web/ source, wait (briefly) for the

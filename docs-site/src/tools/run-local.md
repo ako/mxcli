@@ -375,6 +375,32 @@ not just headless checks.
   re-bundles **only when the edit touched client source**: a microflow/entity edit
   skips the bundle and just hot-reloads.
 
+**Mendix 11.14+ bundles the client itself**, so there is no rollup step to run and
+no bundler to keep hot — `run --local` prints a line saying so and skips it. Both
+paths work; the bundle is mxbuild's rather than mxcli's.
+
+### `--watch` on Mendix 11.14
+
+**`--watch` is not usable on 11.14 yet.** It starts and the app boots, but every
+*rebuild* fails inside mxbuild:
+
+```
+Could not find a part of the path '…/deployment/web/pages/MyModule.Home_Web.js'
+```
+
+11.14's cold build writes the pre-bundled client into `web/dist/` and creates no
+`web/pages/` or `web/layouts/`, but each incremental build still writes the older
+one-file-per-page client into them. Creating those directories is **not** a
+workaround — the same build then fails exporting pluggable widgets, because the
+whole incremental path is the older client. `run --local` prints an explanation
+when it sees this, so the failure does not read as a corrupt `deployment/`.
+
+Until mxbuild closes this, use a restart per change:
+
+```bash
+mxcli run --local --screenshot -p app.mpr
+```
+
 ## Pixel-perfect page loop
 
 Pass `--screenshot` and each applied change is captured to a PNG (default
