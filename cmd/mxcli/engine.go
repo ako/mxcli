@@ -18,7 +18,10 @@ import (
 // This is the single selection seam for the engine swap described in
 // docs/plans/2026-06-05-adopt-modelsdk-engine.md. The codec engine ("modelsdk")
 // is now the default; "legacy" (sdk/mpr) remains an explicit fallback for the few
-// constructs the codec path doesn't yet write (notably SOAP web services).
+// constructs the codec path doesn't yet write. SOAP `call web service` is no
+// longer among them — it was the last one this comment named, and the codec
+// engine now writes it at byte-parity with legacy (mdl/backend/modelsdk/
+// microflow_webservice_write.go).
 // "compare" is recognised so the contract is stable but still fails fast.
 type engineKind string
 
@@ -58,7 +61,7 @@ func resolveEngine() engineKind {
 // modelsdk (default) runs the codec engine: complete reads and writes, validated
 // at parity with legacy across the doctype suite. The legacy (sdk/mpr) engine is
 // the explicit fallback for the few constructs the codec path doesn't yet write
-// (notably SOAP web services) — select it with --engine legacy or
+// — select it with --engine legacy or
 // MXCLI_ENGINE=legacy. compare needs the run-both diff harness (not yet wired)
 // and fails fast. An unknown value was already rejected by resolveEngine.
 func newBackendFactory() func() backend.FullBackend {

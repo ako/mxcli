@@ -195,6 +195,9 @@ func parseCodeActionParameterValue(raw map[string]any) microflows.CodeActionPara
 func parseShowPageAction(raw map[string]any) *microflows.ShowPageAction {
 	action := &microflows.ShowPageAction{}
 	action.ID = model.ID(extractBsonID(raw["$ID"]))
+	// ErrorHandlingType gates the whole error branch in DESCRIBE, not just a
+	// suffix — see getActionErrorHandlingType (mendixlabs/mxcli#1078).
+	action.ErrorHandlingType = microflows.ErrorHandlingType(extractString(raw["ErrorHandlingType"]))
 	action.PageID = model.ID(extractBsonID(raw["Page"]))
 	action.PassedObject = extractString(raw["PassedObjectVariableName"])
 
@@ -294,6 +297,9 @@ func parseShowHomePageAction(raw map[string]any) *microflows.ShowHomePageAction 
 func parseClosePageAction(raw map[string]any) *microflows.ClosePageAction {
 	action := &microflows.ClosePageAction{}
 	action.ID = model.ID(extractBsonID(raw["$ID"]))
+	// ErrorHandlingType gates the whole error branch in DESCRIBE, not just a
+	// suffix — see getActionErrorHandlingType (mendixlabs/mxcli#1078).
+	action.ErrorHandlingType = microflows.ErrorHandlingType(extractString(raw["ErrorHandlingType"]))
 	// Issue #585: collapse the int32/int64 dispatch to the shared extractInt
 	// helper. Default of 1 is preserved when the field is absent.
 	// Storage name is "NumberOfPages"; also accept the legacy "NumberOfPagesToClose"
@@ -311,6 +317,9 @@ func parseClosePageAction(raw map[string]any) *microflows.ClosePageAction {
 func parseShowMessageAction(raw map[string]any) *microflows.ShowMessageAction {
 	action := &microflows.ShowMessageAction{}
 	action.ID = model.ID(extractBsonID(raw["$ID"]))
+	// ErrorHandlingType gates the whole error branch in DESCRIBE, not just a
+	// suffix — see getActionErrorHandlingType (mendixlabs/mxcli#1078).
+	action.ErrorHandlingType = microflows.ErrorHandlingType(extractString(raw["ErrorHandlingType"]))
 	action.Blocking = extractBool(raw["Blocking"], false)
 
 	if msgType, ok := raw["Type"].(string); ok {
@@ -342,6 +351,9 @@ func parseShowMessageAction(raw map[string]any) *microflows.ShowMessageAction {
 func parseValidationFeedbackAction(raw map[string]any) *microflows.ValidationFeedbackAction {
 	action := &microflows.ValidationFeedbackAction{}
 	action.ID = model.ID(extractBsonID(raw["$ID"]))
+	// ErrorHandlingType gates the whole error branch in DESCRIBE, not just a
+	// suffix — see getActionErrorHandlingType (mendixlabs/mxcli#1078).
+	action.ErrorHandlingType = microflows.ErrorHandlingType(extractString(raw["ErrorHandlingType"]))
 	action.ObjectVariable = extractString(raw["ValidationVariableName"])
 	action.AttributeName = extractString(raw["Attribute"])     // BY_NAME_REFERENCE
 	action.AssociationName = extractString(raw["Association"]) // BY_NAME_REFERENCE
@@ -372,6 +384,9 @@ func parseDownloadFileAction(raw map[string]any) *microflows.DownloadFileAction 
 func parseLogMessageAction(raw map[string]any) *microflows.LogMessageAction {
 	action := &microflows.LogMessageAction{}
 	action.ID = model.ID(extractBsonID(raw["$ID"]))
+	// ErrorHandlingType gates the whole error branch in DESCRIBE, not just a
+	// suffix — see getActionErrorHandlingType (mendixlabs/mxcli#1078).
+	action.ErrorHandlingType = microflows.ErrorHandlingType(extractString(raw["ErrorHandlingType"]))
 	action.LogNodeName = extractString(raw["Node"])
 	action.IncludeLastStackTrace = extractBool(raw["IncludeLatestStackTrace"], false)
 

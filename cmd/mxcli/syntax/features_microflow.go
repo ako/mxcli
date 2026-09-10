@@ -121,8 +121,34 @@ func init() {
 			"error", "error handling", "on error", "continue",
 			"rollback", "throw", "exception", "try", "catch",
 		},
-		Syntax:  "COMMIT $Obj ON ERROR CONTINUE;\nCOMMIT $Obj ON ERROR ROLLBACK;\nCOMMIT $Obj ON ERROR { <statements> };\nCOMMIT $Obj ON ERROR WITHOUT ROLLBACK { <statements> };",
-		Example: "COMMIT $Order ON ERROR {\n  LOG ERROR 'Failed to save order';\n  RETURN empty;\n};\n\nCOMMIT $Batch ON ERROR WITHOUT ROLLBACK {\n  LOG WARNING 'Batch save failed, continuing';\n};",
+		Syntax: "COMMIT $Obj ON ERROR CONTINUE;\nCOMMIT $Obj ON ERROR ROLLBACK;\n" +
+			"COMMIT $Obj ON ERROR { <statements> };\nCOMMIT $Obj ON ERROR WITHOUT ROLLBACK { <statements> };\n\n" +
+			"-- The clause goes on the ACTIVITY that may fail. Most statements take it:\n" +
+			"-- DECLARE, SET, CREATE, CHANGE, COMMIT, DELETE, RETRIEVE, every CALL,\n" +
+			"-- LOG, SHOW PAGE, CLOSE PAGE, SHOW MESSAGE, VALIDATION FEEDBACK,\n" +
+			"-- SYNCHRONIZE, DOWNLOAD FILE and the mapping/REST statements.\n" +
+			"--\n" +
+			"-- Two limits, both enforced rather than silently ignored:\n" +
+			"--\n" +
+			"--   ON ERROR CONTINUE is rejected by Mendix (CE6035) on CREATE, CHANGE,\n" +
+			"--   COMMIT, LOG, SHOW PAGE, CLOSE PAGE, SHOW MESSAGE and VALIDATION\n" +
+			"--   FEEDBACK -> MDL076. A custom handler IS accepted on all of them, and\n" +
+			"--   CONTINUE is fine on DECLARE, SET, RETRIEVE, DELETE and CALL MICROFLOW.\n" +
+			"--\n" +
+			"--   The list-operation and aggregate forms of SET ($x = head($l),\n" +
+			"--   $n = count($l)) have no error handling in Mendix at all -> MDL077.\n" +
+			"--\n" +
+			"-- IN A NANOFLOW only DECLARE and SET take a clause at all. CHANGE, LOG,\n" +
+			"-- SHOW PAGE, CLOSE PAGE, SHOW MESSAGE and VALIDATION FEEDBACK are CE6035\n" +
+			"-- there in EVERY form, and are refused: a nanoflow activity aborts the\n" +
+			"-- flow on error by default and has no transaction to roll back.\n" +
+			"--\n" +
+			"-- A handler that does NOT end in RETURN/THROW merges back into the main\n" +
+			"-- flow, so a variable created after the merge is out of scope on the error\n" +
+			"-- path (CE0108). End the handler, or expect that.",
+		Example: "COMMIT $Order ON ERROR {\n  LOG ERROR 'Failed to save order';\n  RETURN empty;\n};\n\n" +
+			"COMMIT $Batch ON ERROR WITHOUT ROLLBACK {\n  LOG WARNING 'Batch save failed, continuing';\n};\n\n" +
+			"DECLARE $Name String = 'default' ON ERROR {\n  RETURN 'could not initialise';\n};",
 		SeeAlso: []string{"microflow.control-flow"},
 	})
 
