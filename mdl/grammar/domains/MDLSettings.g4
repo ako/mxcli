@@ -508,6 +508,14 @@ annotationParamName
     | TRUE
     | FALSE
     | TAIL        // @anchor(... tail: (...))
+    // @annotation(id: n1, text: '…', position: (x, y), size: (w, h)) — #1077.
+    // `id` and `size` are already IDENTIFIER; these two are lexer keywords, and
+    // a keyword key does NOT fail to parse — annotationParam falls through to
+    // its positional alternative, so the parameter is accepted and silently
+    // means nothing. Anything added here must be listed, not assumed.
+    | POSITION    // the note's own place on the canvas, distinct from the
+                  // @position of the activity it documents
+    | TEXT
     ;
 
 annotationValue

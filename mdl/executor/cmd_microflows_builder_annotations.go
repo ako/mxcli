@@ -128,11 +128,11 @@ func (fb *flowBuilder) mergeStatementAnnotations(stmt ast.MicroflowStatement) {
 	if ann.Color != "" {
 		fb.pendingAnnotations.Color = ann.Color
 	}
-	if ann.AnnotationText != "" {
-		fb.pendingAnnotations.AnnotationText = ann.AnnotationText
+	if len(ann.Notes) > 0 {
+		fb.pendingAnnotations.Notes = append(fb.pendingAnnotations.Notes, ann.Notes...)
 	}
-	if len(ann.FreeAnnotations) > 0 {
-		fb.pendingAnnotations.FreeAnnotations = append(fb.pendingAnnotations.FreeAnnotations, ann.FreeAnnotations...)
+	if len(ann.FreeNotes) > 0 {
+		fb.pendingAnnotations.FreeNotes = append(fb.pendingAnnotations.FreeNotes, ann.FreeNotes...)
 	}
 	if ann.Anchor != nil {
 		fb.pendingAnnotations.Anchor = ann.Anchor
@@ -206,9 +206,10 @@ func (fb *flowBuilder) applyAnnotations(activityID model.ID, ann *ast.ActivityAn
 		}
 	}
 
-	// @annotation — attach an annotation object
-	if ann.AnnotationText != "" {
-		fb.attachAnnotation(ann.AnnotationText, activityID)
+	// @annotation — attach the notes. All of them: an activity can carry more
+	// than one, and keeping only the last silently deleted the others (#1077).
+	for i, note := range ann.Notes {
+		fb.attachAnnotation(note, activityID, i)
 	}
 }
 
@@ -314,46 +315,124 @@ func (fb *flowBuilder) addErrorEvent() model.ID {
 	return errorEvent.ID
 }
 
-// attachAnnotation creates an Annotation object positioned above the given activity
-// and connects them with an AnnotationFlow.
-func (fb *flowBuilder) attachAnnotation(text string, activityID model.ID) {
-	// Find the activity's position to place annotation above it
-	var actX, actY int
-	for _, obj := range fb.objects {
-		if obj.GetID() == activityID {
-			pos := obj.GetPosition()
-			actX = pos.X
-			actY = pos.Y
-			break
+// DefaultAnnotationSize is the note box Studio Pro creates, and what the writer
+// uses when the script does not say (`@annotation 'text'` with no `size:`).
+var DefaultAnnotationSize = model.Size{Width: 200, Height: 50}
+
+// defaultAnnotationGeometry is where an unplaced note goes: above the activity it
+// documents, stacked upwards when several share one activity so the boxes do not
+// land on top of each other.
+//
+// The DESCRIBER calls this too, to decide whether to emit `position:`/`size:` at
+// all —
+// a value the writer re-derives is omitted, which is what keeps a round-tripped
+// note on the short `@annotation 'text'` form and makes only a hand-placed note
+// pay for its geometry.
+//
+// Both sides MUST go through here. Two copies of the formula drift, and the
+// failure is silent in the worst way: the describer omits a position the builder
+// then re-derives differently, so the note creeps further on every round trip.
+// TestAnnotationGeometryDefaultIsSharedByBothSides pins that.
+func defaultAnnotationGeometry(activityPos model.Point, index int) (model.Point, model.Size) {
+	return model.Point{X: activityPos.X, Y: activityPos.Y - 100 - index*(DefaultAnnotationSize.Height+10)}, DefaultAnnotationSize
+}
+
+// attachAnnotation attaches one note to an activity.
+//
+// A LABELLED note is created once and reused: `@annotation(id: n1, text: '…')`
+// followed by `@annotation(id: n1)` on another activity yields ONE Annotation
+// with two AnnotationFlows, which is how Mendix stores a note wired to several
+// activities. Minting a fresh Annotation per mention is what duplicated the
+// reporter's note on every round trip (#1077).
+//
+// index is the note's ordinal among those attached to this activity, used only
+// to place unpositioned notes so they stack instead of overlapping.
+func (fb *flowBuilder) attachAnnotation(note ast.MicroflowAnnotation, activityID model.ID, index int) {
+	if note.Label != "" {
+		if existing, ok := fb.annotationsByLabel[note.Label]; ok {
+			if note.Text != "" && note.Text != existing.Caption {
+				fb.addError("annotation id '%s' is declared twice with different text (%q, then %q) — "+
+					"an id names ONE note; drop the id from the second one to make it a separate note",
+					note.Label, existing.Caption, note.Text)
+				return
+			}
+			fb.linkAnnotation(existing.ID, activityID)
+			return
+		}
+		if note.Text == "" {
+			fb.addError("@annotation(id: %s) refers to an annotation that has not been declared — "+
+				"the first mention must carry the text, as @annotation(id: %s, text: '…')",
+				note.Label, note.Label)
+			return
 		}
 	}
 
-	annotation := &microflows.Annotation{
-		BaseMicroflowObject: microflows.BaseMicroflowObject{
-			BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
-			Position:    model.Point{X: actX, Y: actY - 100},
-			Size:        model.Size{Width: 200, Height: 50},
-		},
-		Caption: text,
+	var activityPos model.Point
+	for _, obj := range fb.objects {
+		if obj.GetID() == activityID {
+			activityPos = obj.GetPosition()
+			break
+		}
 	}
-	fb.objects = append(fb.objects, annotation)
+	pos, size := defaultAnnotationGeometry(activityPos, index)
+	if note.Position != nil {
+		pos = model.Point{X: note.Position.X, Y: note.Position.Y}
+	}
+	if note.Size != nil {
+		size = model.Size{Width: note.Size.Width, Height: note.Size.Height}
+	}
 
-	fb.annotationFlows = append(fb.annotationFlows, &microflows.AnnotationFlow{
-		BaseElement:   model.BaseElement{ID: model.ID(types.GenerateID())},
-		OriginID:      annotation.ID,
-		DestinationID: activityID,
-	})
+	fb.linkAnnotation(fb.newAnnotation(note, pos, size).ID, activityID)
 }
 
-// attachFreeAnnotation creates a free-floating Annotation not connected to any activity.
-func (fb *flowBuilder) attachFreeAnnotation(text string) {
+// attachFreeAnnotation creates a free-floating Annotation not connected to any
+// activity. A label on one is accepted and reused, so a note can be shared
+// between the canvas and an activity.
+func (fb *flowBuilder) attachFreeAnnotation(note ast.MicroflowAnnotation) {
+	if note.Label != "" {
+		if _, ok := fb.annotationsByLabel[note.Label]; ok {
+			// Already created; a free mention adds no flow, so there is
+			// nothing left to do.
+			return
+		}
+	}
+	pos := model.Point{X: fb.posX, Y: fb.posY - 100}
+	if note.Position != nil {
+		pos = model.Point{X: note.Position.X, Y: note.Position.Y}
+	}
+	size := DefaultAnnotationSize
+	if note.Size != nil {
+		size = model.Size{Width: note.Size.Width, Height: note.Size.Height}
+	}
+	fb.newAnnotation(note, pos, size)
+}
+
+// newAnnotation creates the Annotation object and, when the note is labelled,
+// records it so a later mention of the same id attaches to THIS one instead of
+// creating another.
+func (fb *flowBuilder) newAnnotation(note ast.MicroflowAnnotation, pos model.Point, size model.Size) *microflows.Annotation {
 	annotation := &microflows.Annotation{
 		BaseMicroflowObject: microflows.BaseMicroflowObject{
 			BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
-			Position:    model.Point{X: fb.posX, Y: fb.posY - 100},
-			Size:        model.Size{Width: 200, Height: 50},
+			Position:    pos,
+			Size:        size,
 		},
-		Caption: text,
+		Caption: note.Text,
 	}
 	fb.objects = append(fb.objects, annotation)
+	if note.Label != "" {
+		if fb.annotationsByLabel == nil {
+			fb.annotationsByLabel = map[string]*microflows.Annotation{}
+		}
+		fb.annotationsByLabel[note.Label] = annotation
+	}
+	return annotation
+}
+
+func (fb *flowBuilder) linkAnnotation(annotationID, activityID model.ID) {
+	fb.annotationFlows = append(fb.annotationFlows, &microflows.AnnotationFlow{
+		BaseElement:   model.BaseElement{ID: model.ID(types.GenerateID())},
+		OriginID:      annotationID,
+		DestinationID: activityID,
+	})
 }

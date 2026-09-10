@@ -721,6 +721,11 @@ func (fb *flowBuilder) addErrorHandlerFlow(sourceActivityID model.ID, sourceX in
 		hierarchy:    fb.hierarchy,
 		restServices: fb.restServices,
 		isNanoflow:   fb.isNanoflow,
+		// A handler's activities are merged into the PARENT's object collection
+		// below, so a note declared outside the handler and referenced inside it
+		// (or the reverse) lands in one collection — sharing the registry is
+		// sound here in a way it is not across a loop boundary (#1077).
+		annotationsByLabel: fb.annotationsByLabel,
 	}
 
 	var lastErrID model.ID
@@ -751,9 +756,19 @@ func (fb *flowBuilder) addErrorHandlerFlow(sourceActivityID model.ID, sourceX in
 		}
 	}
 
-	// Append error handler objects and flows to the main builder
+	// Append error handler objects and flows to the main builder.
+	//
+	// annotationFlows and errors are part of that: without them a note written
+	// inside `on error { … }` arrived as an Annotation with no edge — a
+	// free-floating sticky note instead of one attached to the activity — and a
+	// refusal raised in the handler body never reached the caller (#1077).
 	fb.objects = append(fb.objects, errBuilder.objects...)
 	fb.flows = append(fb.flows, errBuilder.flows...)
+	fb.annotationFlows = append(fb.annotationFlows, errBuilder.annotationFlows...)
+	fb.errors = append(fb.errors, errBuilder.errors...)
+	if fb.annotationsByLabel == nil {
+		fb.annotationsByLabel = errBuilder.annotationsByLabel
+	}
 
 	// If the error handler ends with RAISE ERROR or RETURN, it terminates there.
 	// Otherwise, return the last activity ID so caller can create a merge.
