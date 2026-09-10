@@ -80,14 +80,27 @@ func (r *nameRegistry) renameModule(oldMod, newMod string) {
 // ----------------------------------------------------------------------------
 
 // stmtCreateInfo returns the doc-type key, qualified name, and whether the
-// CREATE is idempotent (OR MODIFY / OR REPLACE). Returns empty strings when
-// the statement is not a tracked CREATE.
+// CREATE is idempotent. Returns empty strings when the statement is not a
+// tracked CREATE.
+//
+// Idempotent means "exec will not fail on an element that already exists".
+// There are three spellings, not two: OR MODIFY, OR REPLACE, and IF NOT EXISTS
+// — the last skips the element rather than rewriting it, which is why
+// re-runnable domain scripts use it. Missing it makes the check disagree with
+// what exec does, and the check is wrong: a `create entity if not exists` was
+// reported as a conflict for a statement exec cleanly skips.
+// TestIfNotExistsCountsAsIdempotent guards the mapping.
 func stmtCreateInfo(stmt ast.Statement) (docType, name string, idempotent bool) {
 	switch s := stmt.(type) {
 	case *ast.CreateModuleStmt:
 		return "module", s.Name, false
+	case *ast.CreateModuleRoleStmt:
+		// Not a document, which is why it was missed when the document types
+		// were swept (mendixlabs/mxcli#1067). exec refuses a plain CREATE of an
+		// existing role, so check has to as well.
+		return "module-role", s.Name.String(), s.CreateOrModify
 	case *ast.CreateEntityStmt:
-		return "entity", s.Name.String(), s.CreateOrModify
+		return "entity", s.Name.String(), s.CreateOrModify || s.IfNotExists
 	case *ast.CreateViewEntityStmt:
 		return "entity", s.Name.String(), s.CreateOrModify || s.CreateOrReplace
 	case *ast.CreateExternalEntityStmt:
@@ -95,7 +108,7 @@ func stmtCreateInfo(stmt ast.Statement) (docType, name string, idempotent bool) 
 	case *ast.CreateEnumerationStmt:
 		return "enumeration", s.Name.String(), s.CreateOrModify
 	case *ast.CreateAssociationStmt:
-		return "association", s.Name.String(), s.CreateOrModify
+		return "association", s.Name.String(), s.CreateOrModify || s.IfNotExists
 	case *ast.CreateConstantStmt:
 		return "constant", s.Name.String(), s.CreateOrModify
 	case *ast.CreateMicroflowStmt:
@@ -146,6 +159,8 @@ func stmtDropInfo(stmt ast.Statement) (docType, name string) {
 	switch s := stmt.(type) {
 	case *ast.DropModuleStmt:
 		return "module", s.Name
+	case *ast.DropModuleRoleStmt:
+		return "module-role", s.Name.String()
 	case *ast.DropEntityStmt:
 		return "entity", s.Name.String()
 	case *ast.DropEnumerationStmt:
@@ -158,6 +173,8 @@ func stmtDropInfo(stmt ast.Statement) (docType, name string) {
 		return "microflow", s.Name.String()
 	case *ast.DropNanoflowStmt:
 		return "nanoflow", s.Name.String()
+	case *ast.DropRuleStmt:
+		return "rule", s.Name.String()
 	case *ast.DropPageStmt:
 		return "page", s.Name.String()
 	case *ast.DropSnippetStmt:
@@ -239,6 +256,10 @@ func friendlyDocType(docType string) string {
 		return "import mapping"
 	case "javaaction":
 		return "java action"
+	case "javascriptaction":
+		return "javascript action"
+	case "module-role":
+		return "module role"
 	case "json-structure":
 		return "JSON structure"
 	case "knowledge-base":
@@ -344,6 +365,10 @@ type projectNameSets struct {
 	consumedMcp      map[string]bool
 	agents           map[string]bool
 	imageCollections map[string]bool
+	associations     map[string]bool
+	rules            map[string]bool
+	javaScriptActs   map[string]bool
+	moduleRoles      map[string]bool
 }
 
 // projectSetFor returns the existence set for the given doc-type key, or nil
@@ -390,7 +415,20 @@ func (ps *projectNameSets) setFor(docType string) map[string]bool {
 		return ps.agents
 	case "image-collection":
 		return ps.imageCollections
+	case "association":
+		return ps.associations
+	case "rule":
+		return ps.rules
+	case "javascriptaction":
+		return ps.javaScriptActs
+	case "module-role":
+		return ps.moduleRoles
 	}
+	// "module" is deliberately absent: CREATE MODULE on an existing module is a
+	// no-op that prints "already exists" and exits 0, so `create module M;` is
+	// the standard script preamble. Flagging it would be a false positive on
+	// essentially every script. TestEveryCreateDocTypeIsProjectChecked carries
+	// this exemption explicitly so it stays a decision rather than an omission.
 	return nil
 }
 
@@ -513,6 +551,18 @@ func loadProjectNameSets(ctx *ExecContext) *projectNameSets {
 			ps.agents[h.GetQualifiedName(a.ContainerID, a.Name)] = true
 		}
 	}
+
+	// Associations (intra-module and cross-module)
+	ps.associations = buildAssociationQualifiedNames(ctx)
+
+	// Rules
+	ps.rules = buildRuleQualifiedNames(ctx)
+
+	// JavaScript actions
+	ps.javaScriptActs = buildJavaScriptActionQualifiedNames(ctx)
+
+	// Module roles
+	ps.moduleRoles = buildModuleRoleQualifiedNames(ctx)
 
 	// Image collections
 	ps.imageCollections = make(map[string]bool)

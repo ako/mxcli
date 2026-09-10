@@ -11,31 +11,50 @@ package executor
 import (
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/linter"
 )
 
-// wfOutcomeIdentRe matches a valid Mendix EnumerationValueIdentifier: dotted
-// identifier segments, no spaces or other punctuation. Decision /
-// call-microflow outcome names must be enum value identifiers; free text like
-// 'Confirmed closed' is rejected by MxBuild.
+// A decision / call-microflow outcome is stored in
+// EnumerationValueConditionOutcome.Value, which Mendix loads through
+// EnumerationValueIdentifier.FromString. That parse is strict and it runs at
+// LOAD time, before any consistency check: a value it rejects does not produce
+// a CE number, it makes the whole project unopenable in Studio Pro and mxbuild
+// (`StorageLoadException`, UnitLoader). mxcli wrote the outcome label verbatim,
+// so a perfectly ordinary script corrupted the model while `check`, `exec` and
+// `describe` all reported success — ako/mxcli#1031, ako/mxcli#1065.
 //
-// The qualified form is what Studio Pro actually stores — every
-// EnumerationValueConditionOutcome in the demo corpus holds
-// Module.Enum.Value (7 of 7 non-empty), so `describe workflow` emits it and a
-// bare-identifier-only rule refused mxcli's own output (ako/mxcli#408). Bare
-// values stay accepted: the rule's job is to catch free text, not to pick a
-// spelling.
-var wfOutcomeIdentRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$`)
+// The identifier is qualified to exactly three segments,
+// Module.Enumeration.Value. Measured on 11.10.0, one workflow per copy of the
+// same app, verdict = the literal mx check line:
+//
+//	'OutcomeA'             (1 segment)  -> StorageLoadException, project unloadable
+//	'Status.OutcomeA'      (2 segments) -> StorageLoadException, project unloadable
+//	'WFP.Status.OutcomeA'  (3 segments) -> 0 errors
+//
+// which agrees with the stored corpus: every EnumerationValueConditionOutcome
+// in the demo apps holds Module.Enum.Value (7 of 7 non-empty). The two-segment
+// row is the one worth keeping — "qualify it" is ambiguous without it, and
+// enum-in-the-same-module is exactly the case an author would shorten.
+//
+// wfOutcomeQualifiedRe is what Mendix accepts; wfOutcomeIdentRe is only used to
+// tell an author who wrote a plausible identifier from one who wrote free text,
+// so the two get different advice.
+var (
+	wfOutcomeQualifiedRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*$`)
+	wfOutcomeIdentRe     = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$`)
+)
 
 // ValidateWorkflow checks a workflow for constructs that pass parsing but are
 // rejected by MxBuild, without requiring a project connection.
 //
 //   - MDL-WF01: user task without a page (CE1834)
 //   - MDL-WF02: single-outcome user task containing nested activities (CE1876)
-//   - MDL-WF03: decision / call-microflow outcome that is not a valid
-//     enumeration value identifier
+//   - MDL-WF03: decision / call-microflow outcome that is not a qualified
+//     enumeration value identifier (Module.Enumeration.Value) — a value the
+//     loader rejects makes the project unopenable, not merely un-buildable
 //   - MDL-WF06: enumeration outcomes with no empty-valued branch (CE6686)
 //   - MDL-WF04: standalone `annotation` in a workflow body (unloadable model)
 //   - MDL-WF05: `jump to` a target that names no activity (see validate_workflow_jump.go)
@@ -95,75 +114,71 @@ func ValidateWorkflow(stmt *ast.CreateWorkflowStmt) []linter.Violation {
 	return out
 }
 
-// ValidateAlterWorkflow applies the outcome-set rule to the activities an ALTER
-// WORKFLOW statement introduces (MDL-WF06).
-//
-// ALTER reaches the same build error as CREATE: an `INSERT AFTER … decision`
-// whose outcomes name enumeration values but no empty one is CE6686, measured on
-// mxbuild 11.10.0 against a project that was at 0 errors before the ALTER. The
-// activity-shaped ops carry an ordinary WorkflowActivityNode, so the check is
-// the CREATE one over the introduced subtree — the same shape
-// validateAlterWorkflowRefs uses for references.
-//
-// Only MDL-WF06 runs here. The others are not simply un-ported: MDL-WF01/WF02
-// describe a state a later op in the same script can still repair (`SET ACTIVITY
-// … PAGE`), and MDL-WF05 resolves jump targets against activities the statement
-// cannot see. The outcome set of an inserted activity is complete where it is
-// written — `INSERT OUTCOME` cannot extend it, since on a decision it writes a
-// UserTaskOutcome into a ConditionOutcome list and yields a model Mendix cannot
-// load at all.
-func ValidateAlterWorkflow(stmt *ast.AlterWorkflowStmt) []linter.Violation {
-	loc := linter.Location{
-		Module:       stmt.Name.Module,
-		DocumentType: "workflow",
-		DocumentName: stmt.Name.Name,
-	}
-	var added []ast.WorkflowActivityNode
-	for _, op := range stmt.Operations {
-		switch o := op.(type) {
-		case *ast.InsertAfterOp:
-			added = append(added, o.NewActivity)
-		case *ast.ReplaceActivityOp:
-			added = append(added, o.NewActivity)
-		case *ast.InsertOutcomeOp:
-			added = append(added, o.Activities...)
-		case *ast.InsertPathOp:
-			added = append(added, o.Activities...)
-		case *ast.InsertBranchOp:
-			added = append(added, o.Activities...)
-		case *ast.InsertBoundaryEventOp:
-			added = append(added, o.Activities...)
-		}
-	}
-	var out []linter.Violation
-	walkWorkflowActivities(added, func(a ast.WorkflowActivityNode) {
-		switch n := a.(type) {
-		case *ast.WorkflowDecisionNode:
-			out = append(out, checkWorkflowEmptyEnumOutcome(n.Outcomes, "decision", workflowDecisionLabel(n), loc)...)
-		case *ast.WorkflowCallMicroflowNode:
-			out = append(out, checkWorkflowEmptyEnumOutcome(n.Outcomes, "call microflow", workflowCallMicroflowLabel(n), loc)...)
-		}
-	})
-	return out
-}
-
 // checkWorkflowOutcomeNames flags condition-outcome values (decision / call
-// microflow branches) that are not valid enumeration value identifiers (MDL-WF03).
+// microflow branches) that Mendix cannot load as an EnumerationValueIdentifier
+// (MDL-WF03). See the regex block above for the measurements.
+//
+// The empty value is skipped deliberately: an enumeration decision carries one
+// extra outcome with Value "" for "none of the above", which Studio Pro writes
+// on every enum decision and the loader accepts.
 func checkWorkflowOutcomeNames(outcomes []ast.WorkflowConditionOutcomeNode, kind string, loc linter.Location) []linter.Violation {
 	var out []linter.Violation
 	for _, o := range outcomes {
-		if o.Value == "" || wfOutcomeIdentRe.MatchString(o.Value) {
-			continue
+		if v := checkWorkflowOutcomeValue(o.Value, kind, loc); v != nil {
+			out = append(out, *v)
 		}
-		out = append(out, linter.Violation{
-			RuleID:     "MDL-WF03",
-			Severity:   linter.SeverityError,
-			Location:   loc,
-			Message:    fmt.Sprintf("%s outcome '%s' is not a valid enumeration value identifier — MxBuild rejects outcome names with spaces or punctuation", kind, o.Value),
-			Suggestion: "Use an enumeration value identifier — bare ('ConfirmedClosed') or qualified ('Module.Enum.ConfirmedClosed'); a decision branches on the enumeration returned by its expression, so outcome names must match that enum's value identifiers.",
-		})
 	}
 	return out
+}
+
+// checkWorkflowOutcomeValue applies MDL-WF03 to a single outcome value. It is
+// split out because ALTER WORKFLOW … INSERT BRANCH writes the same field
+// through a different door (wfmutator.InsertBranch), and a guard that covered
+// only CREATE would leave the corrupting write one statement away.
+func checkWorkflowOutcomeValue(value, kind string, loc linter.Location) *linter.Violation {
+	if value == "" || wfOutcomeQualifiedRe.MatchString(value) {
+		return nil
+	}
+	// "True" / "False" / "Default" never reach storage as an enumeration value —
+	// the builder turns them into a Boolean or Void outcome.
+	switch value {
+	case "True", "False", "Default":
+		return nil
+	}
+
+	var why, fix string
+	if wfOutcomeIdentRe.MatchString(value) {
+		why = "is not fully qualified"
+		fix = fmt.Sprintf(
+			"Write the outcome as Module.Enumeration.Value (e.g. 'Sales.ENUM_Status.%s'). "+
+				"Mendix stores it as an EnumerationValueIdentifier and parses it when the project is LOADED, "+
+				"so a short name is not a build error — it makes the project unopenable in Studio Pro and mxbuild. "+
+				"Two segments are refused as firmly as one, including when the enumeration is in the same module.",
+			lastSegment(value))
+	} else {
+		why = "is not an enumeration value identifier"
+		fix = "Write the outcome as Module.Enumeration.Value. A decision branches on the enumeration returned by " +
+			"its expression, so each outcome must name one of that enumeration's values — free text with spaces or " +
+			"punctuation is not a name Mendix can resolve."
+	}
+
+	return &linter.Violation{
+		RuleID:   "MDL-WF03",
+		Severity: linter.SeverityError,
+		Location: loc,
+		Message: fmt.Sprintf(
+			"%s outcome '%s' %s — Mendix cannot load a project whose EnumerationValueConditionOutcome.Value "+
+				"is not Module.Enumeration.Value (StorageLoadException, no CE number)", kind, value, why),
+		Suggestion: fix,
+	}
+}
+
+// lastSegment returns the part after the final dot, for use in a suggestion.
+func lastSegment(s string) string {
+	if i := strings.LastIndex(s, "."); i >= 0 {
+		return s[i+1:]
+	}
+	return s
 }
 
 // checkWorkflowEmptyEnumOutcome flags an activity that branches on an
@@ -306,4 +321,74 @@ func walkWorkflowActivities(acts []ast.WorkflowActivityNode, visit func(ast.Work
 			}
 		}
 	}
+}
+
+// ValidateAlterWorkflow applies the rules that ALTER WORKFLOW can reach:
+// MDL-WF03 to … INSERT CONDITION, and MDL-WF06 to every activity the statement
+// introduces. Both writes land in exactly the fields a CREATE-time outcome
+// does, so guarding only CREATE would leave each one a keyword away.
+//
+// The other rules are not simply un-ported. MDL-WF01/WF02 describe a state a
+// later op in the same script can still repair (`SET ACTIVITY … PAGE`), and
+// MDL-WF05 resolves jump targets against activities the statement cannot see.
+// An inserted activity's outcome SET, by contrast, is complete where it is
+// written — `INSERT OUTCOME` cannot extend it, since on a decision it writes a
+// UserTaskOutcome into a ConditionOutcome list and yields a model Mendix cannot
+// load at all (ako/mxcli#415).
+func ValidateAlterWorkflow(stmt *ast.AlterWorkflowStmt) []linter.Violation {
+	var out []linter.Violation
+	loc := linter.Location{
+		Module:       stmt.Name.Module,
+		DocumentType: "workflow",
+		DocumentName: stmt.Name.Name,
+	}
+
+	// MDL-WF06 over the activities the statement adds.
+	var added []ast.WorkflowActivityNode
+	for _, op := range stmt.Operations {
+		switch o := op.(type) {
+		case *ast.InsertAfterOp:
+			added = append(added, o.NewActivity)
+		case *ast.ReplaceActivityOp:
+			added = append(added, o.NewActivity)
+		case *ast.InsertOutcomeOp:
+			added = append(added, o.Activities...)
+		case *ast.InsertPathOp:
+			added = append(added, o.Activities...)
+		case *ast.InsertBranchOp:
+			added = append(added, o.Activities...)
+		case *ast.InsertBoundaryEventOp:
+			added = append(added, o.Activities...)
+		}
+	}
+	walkWorkflowActivities(added, func(a ast.WorkflowActivityNode) {
+		switch n := a.(type) {
+		case *ast.WorkflowDecisionNode:
+			out = append(out, checkWorkflowEmptyEnumOutcome(n.Outcomes, "decision", workflowDecisionLabel(n), loc)...)
+		case *ast.WorkflowCallMicroflowNode:
+			out = append(out, checkWorkflowEmptyEnumOutcome(n.Outcomes, "call microflow", workflowCallMicroflowLabel(n), loc)...)
+		}
+	})
+
+	// MDL-WF03 over the condition an INSERT CONDITION writes.
+	for _, op := range stmt.Operations {
+		ins, ok := op.(*ast.InsertBranchOp)
+		if !ok {
+			continue
+		}
+		// The mutator lower-cases before dispatching, so any casing of these
+		// three becomes a Boolean or Void outcome and never reaches the
+		// enumeration field. CREATE is stricter — there a quoted 'true' IS
+		// written as an enumeration value — so the fold lives here, not in the
+		// shared check.
+		if strings.EqualFold(ins.Condition, "true") ||
+			strings.EqualFold(ins.Condition, "false") ||
+			strings.EqualFold(ins.Condition, "default") {
+			continue
+		}
+		if v := checkWorkflowOutcomeValue(ins.Condition, "insert condition", loc); v != nil {
+			out = append(out, *v)
+		}
+	}
+	return out
 }

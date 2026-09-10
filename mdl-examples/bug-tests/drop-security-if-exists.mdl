@@ -1,0 +1,60 @@
+-- `drop demo user` and `drop user role` had no IF EXISTS form, so a one-time
+-- cleanup either broke every later run of its slice script or had to be
+-- commented out (ako/CapTrackV4 R5, and 024 for how it was found).
+--
+-- The check that finds this class is one loop — the thing a fresh clone does:
+--
+--   for f in $(ls mdlsource/*.mdl | sort); do ./mxcli exec "$f" -p app.mpr; done
+--
+-- Five statement forms in that project succeeded once and failed after. Four had
+-- an idempotent spelling already (`create or modify` for entities, associations,
+-- enumerations and user roles); these two had none at all, which is why they are
+-- the ones that got commented out. A script that only works once works for
+-- whoever wrote it and fails for the next person.
+--
+-- The spelling is the one ALTER ENTITY already uses (`drop attribute if
+-- exists`), so this reuses the grammar's own ifExists rule rather than inventing
+-- a second way to say it.
+--
+-- Verify:
+--
+--   mxcli exec drop-security-if-exists.mdl -p app.mpr
+--   mxcli exec drop-security-if-exists.mdl -p app.mpr    -- again, same output
+--
+-- Then perturb:
+--
+--   remove `if exists` from either drop below
+--     -> `Error: user role not found: DropIf_Role` on the second run, and the
+--        statements after it never execute.
+
+create or modify module role CapTrack.DropIf_Role;
+/
+
+create or modify user role DropIf_Role (CapTrack.DropIf_Role, System.User);
+/
+
+create demo user 'dropif_demo' password 'Password12345!' (DropIf_Role);
+/
+
+-- The cleanup. Both must be skippable, because on the second run the objects
+-- above have already been removed by the first.
+drop demo user if exists 'dropif_demo';
+/
+
+drop user role if exists DropIf_Role;
+/
+
+-- ...and again, with nothing there at all. This is the run that used to fail.
+drop demo user if exists 'dropif_demo';
+/
+
+drop user role if exists DropIf_Role;
+/
+
+-- CONTROL: a drop of something that never existed is still skipped quietly,
+-- so `if exists` is about presence and not about "we just deleted it".
+drop user role if exists DropIf_NeverExisted;
+/
+
+drop demo user if exists 'dropif_never_existed';
+/

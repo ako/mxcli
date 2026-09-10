@@ -97,7 +97,7 @@ func TestQUAL004EntryKindsAreRealRefKinds(t *testing.T) {
 		RefKindGeneralize, RefKindAssociate, RefKindLayout, RefKindDatasource,
 		RefKindParameter, RefKindAction, RefKindHomePage, RefKindLoginPage,
 		RefKindMenuItem, RefKindChange, RefKindDelete, RefKindCalculate,
-		RefKindReturn, RefKindSchedule, RefKindValidate,
+		RefKindReturn, RefKindSchedule, RefKindValidate, RefKindSettings,
 	} {
 		known[k] = true
 	}
@@ -123,6 +123,7 @@ func TestQUAL004CountsEveryEntryPointKind(t *testing.T) {
 
 	for _, want := range []string{
 		RefKindCall, RefKindSchedule, RefKindDatasource, RefKindAction, RefKindCalculate,
+		RefKindSettings,
 	} {
 		if !contains(starListItems(src, "MICROFLOW_ENTRY_KINDS"), want) {
 			t.Errorf("MICROFLOW_ENTRY_KINDS is missing %q — a microflow reached only that way "+
@@ -146,4 +147,52 @@ func contains(hay []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+// An `if` in a microflow produces BOTH an ExclusiveSplit and the ExclusiveMerge
+// that closes it. CONV010's ALLOWED_ACTIVITY_TYPES held the split and not the
+// merge, so an ACT_ microflow that guards anything — "do not open a page with an
+// empty parameter", the most ordinary thing an action microflow does — was
+// flagged for its own closing brace while the branch it closes was permitted.
+//
+// Measured on a microflow whose only violation was the merge, and 122 times over
+// on one real project (ako/CapTrackV4 R11).
+//
+// This package had already settled the question in the other direction:
+// countMicroflowActivities excludes ExclusiveMerge as structural, with a comment
+// saying so. CONV010 was the only place that treated it as business logic.
+func TestCONV010AllowsBothHalvesOfAnIf(t *testing.T) {
+	src := readRule(t, "conv010_act_microflow_content.star")
+	allowed := starListItems(src, "ALLOWED_ACTIVITY_TYPES")
+
+	split := getMicroflowObjectType(&microflows.ExclusiveSplit{})
+	merge := getMicroflowObjectType(&microflows.ExclusiveMerge{})
+
+	if !contains(allowed, split) {
+		t.Fatalf("CONV010 does not allow %q — the control for the assertion below", split)
+	}
+	if !contains(allowed, merge) {
+		t.Errorf("CONV010 allows %q but not %q, and an `if` emits both. Every guard in "+
+			"an ACT_ microflow is reported for the join it cannot avoid creating.", split, merge)
+	}
+}
+
+// CONTROL: allowing the merge must not quietly allow the rest of the structural
+// vocabulary. A LOOP in an ACT_ microflow is business logic and CONV010 is right
+// to flag it, so a fix that widened the list to "anything not an ActionActivity"
+// would pass the test above and gut the rule.
+func TestCONV010StillFlagsALoop(t *testing.T) {
+	src := readRule(t, "conv010_act_microflow_content.star")
+	allowed := starListItems(src, "ALLOWED_ACTIVITY_TYPES")
+
+	for _, obj := range []microflows.MicroflowObject{
+		&microflows.LoopedActivity{},
+		&microflows.InheritanceSplit{},
+	} {
+		label := getMicroflowObjectType(obj)
+		if contains(allowed, label) {
+			t.Errorf("CONV010 now allows %q in an ACT_ microflow — that is business logic, "+
+				"and the rule exists to move it to a SUB_ microflow", label)
+		}
+	}
 }

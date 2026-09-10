@@ -152,3 +152,100 @@ func TestValidateDesignProperties_UnknownWidgetSkipped(t *testing.T) {
 		t.Errorf("expected no violations when widget type has no registry metadata, got %d", n)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// The design-properties key of a keyword that writes a PLUGGABLE widget
+// ---------------------------------------------------------------------------
+
+// MDL-WIDGET11 resolved `datagrid` against Atlas Core's `DataGrid` — the
+// DEPRECATED data grid — while MDL's `datagrid` has always written Data grid 2
+// from the DataWidgets module. Their design properties are disjoint:
+//
+//	Atlas Core   DataGrid                                  Style, Hover style, Row size
+//	DataWidgets  com.mendix.widget.web.datagrid.Datagrid   Borders, Compact, Hover, Striped
+//
+// So the tool warned that Compact / Hover / Striped were "not defined for this
+// widget type" — they are exactly its properties — and suggested Style and Row
+// size, which mxbuild refuses with CE6083 "not supported by your theme". Taking
+// the advice turned 16 warnings into 17 build errors (ako/CapTrackV4 010).
+//
+// Three more were wrong in the quieter direction. `combobox`, `gallery` and
+// `image` named keys that no web design-properties.json defines, so the registry
+// lookup missed and validateWidgetDesignProps skipped those widgets entirely —
+// silence that reads as approval.
+//
+// Each pairing below was measured by writing the widget and reading its type
+// back out of the catalog, not inferred from the builder.
+func TestResolveDesignPropsKey_PluggableKeywordsUseTheirWidgetID(t *testing.T) {
+	for keyword, want := range map[string]string{
+		"datagrid": "com.mendix.widget.web.datagrid.Datagrid",
+		"gallery":  "com.mendix.widget.web.gallery.Gallery",
+		"combobox": "com.mendix.widget.web.combobox.Combobox",
+		"image":    "com.mendix.widget.web.image.Image",
+	} {
+		if got := resolveDesignPropsKey(keyword); got != want {
+			t.Errorf("resolveDesignPropsKey(%q) = %q, want %q — design-properties.json "+
+				"keys a pluggable widget by its id, and this keyword writes one",
+				keyword, got, want)
+		}
+		// Case-insensitively too: the validator is handed whatever the author typed.
+		if got := resolveDesignPropsKey(strings.ToUpper(keyword)); got != want {
+			t.Errorf("resolveDesignPropsKey(%q) = %q, want %q", strings.ToUpper(keyword), got, want)
+		}
+	}
+}
+
+// CONTROL: the native widgets must keep their Atlas keys. A fix that routed
+// every keyword through the widget registry would break these, and they are the
+// majority — `container` alone carries most of the design properties an author
+// ever writes.
+func TestResolveDesignPropsKey_NativeKeywordsUnchanged(t *testing.T) {
+	for keyword, want := range map[string]string{
+		"container":         "DivContainer",
+		"actionbutton":      "Button",
+		"dataview":          "DataView",
+		"listview":          "ListView",
+		"layoutgrid":        "LayoutGrid",
+		"referenceselector": "ReferenceSelector",
+		"staticimage":       "StaticImageViewer",
+	} {
+		if got := resolveDesignPropsKey(keyword); got != want {
+			t.Errorf("resolveDesignPropsKey(%q) = %q, want %q", keyword, got, want)
+		}
+	}
+}
+
+// CONTROL: an unrecognised type falls through unchanged, so a pluggable id
+// written directly with PLUGGABLEWIDGET is already the key it needs to be.
+func TestResolveDesignPropsKey_UnknownFallsThrough(t *testing.T) {
+	const id = "com.example.widget.web.thing.Thing"
+	if got := resolveDesignPropsKey(id); got != id {
+		t.Errorf("resolveDesignPropsKey(%q) = %q, want it unchanged", id, got)
+	}
+}
+
+// The two halves have to stay disjoint. A keyword named in both tables is a
+// silent ambiguity: pluggableKeywordIDs wins, so the native entry becomes dead
+// and the next person to edit it changes nothing.
+func TestDesignPropsKeyTablesDoNotOverlap(t *testing.T) {
+	for keyword := range pluggableKeywordIDs() {
+		if native, ok := mdlKeywordToDesignPropsKey[keyword]; ok {
+			t.Errorf("%q is in both tables (native %q and a pluggable id). "+
+				"The native entry is dead — remove it.", keyword, native)
+		}
+	}
+}
+
+// The registry half must actually load. If NewWidgetRegistry ever fails here the
+// map silently falls back to the dispatch table alone, and the three quiet cases
+// go back to being skipped with no test failing.
+func TestPluggableKeywordIDs_IncludesRegistryDefinitions(t *testing.T) {
+	ids := pluggableKeywordIDs()
+	if _, ok := ids["datagrid"]; !ok {
+		t.Error("datagrid missing — the keyword dispatch table did not contribute")
+	}
+	if _, ok := ids["gallery"]; !ok {
+		t.Error("gallery missing — the embedded widget definitions did not load, so " +
+			"every registry-defined keyword silently keeps its old (wrong) key")
+	}
+}

@@ -4,10 +4,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -53,6 +55,7 @@ so nothing reaches a pull request until someone has looked at it.`,
   mxcli brain staged -p app.mpr
   mxcli brain promote a1b2c3 -p app.mpr
   mxcli brain capture "Orders must be approvable by a manager" --slice 02-approvals -a @Sales.ACT_Order_Approve -p app.mpr
+  mxcli brain brief --slice 02-approvals -p app.mpr
   mxcli brain plan -p app.mpr
   mxcli brain check -p app.mpr
   mxcli brain show -p app.mpr`,
@@ -125,13 +128,53 @@ var brainCaptureCmd = &cobra.Command{
 var brainStagedCmd = &cobra.Command{
 	Use:   "staged",
 	Short: "List the queue, with the shard each entry would land in",
+	Long: `List what has been captured and not yet promoted.
+
+With no flags this is the review list a person reads before promoting.
+
+--since <id> narrows it to what has been staged since that entry, which is how
+a dispatcher asks what one slice recorded: note the last id in the queue before
+dispatching, pass it afterwards, and refuse to advance on an empty answer
+(--fail-if-empty exits 1 so a script does not have to parse for that).
+
+--since is the boundary rather than a date or a slice because neither of those
+can express it. Entry.Date is a day, so every capture in a session shares one
+value. And --slice matches only requirements — 'capture --slice' is what MAKES
+an entry a requirement, so a decision found while building a slice carries no
+slice at all, and a slice's findings are mostly decisions. The queue is
+append-only, so its own order is the honest timeline.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		entries, err := brain.NewQueue(brainProjectDir(cmd)).Load()
+		all, err := brain.NewQueue(brainProjectDir(cmd)).Load()
 		if err != nil {
 			brainFatal(err)
 		}
+		entries := all
+		filter := brain.StagedFilter{}
+		filter.SinceID, _ = cmd.Flags().GetString("since")
+		filter.Slice, _ = cmd.Flags().GetString("slice")
+		entries, err = brain.FilterStaged(entries, filter)
+		if err != nil {
+			brainFatal(err)
+		}
+		failIfEmpty, _ := cmd.Flags().GetBool("fail-if-empty")
+		defer func() {
+			if failIfEmpty && len(entries) == 0 {
+				os.Exit(1)
+			}
+		}()
+		if globalJSONFlag {
+			brainJSON(stagedReport(all, entries, filter))
+			return
+		}
 		if len(entries) == 0 {
-			fmt.Println("Nothing staged.")
+			if filter.Empty() {
+				fmt.Println("Nothing staged.")
+			} else {
+				// Distinguished on purpose: "nothing matched" is the answer a
+				// dispatcher acts on, and reading it as "the queue is empty"
+				// would hide entries a person still has to promote.
+				fmt.Println("Nothing staged matching that filter.")
+			}
 			return
 		}
 		for _, e := range entries {
@@ -217,6 +260,13 @@ var brainShowCmd = &cobra.Command{
 		}
 		// Width is computed from the names actually present: a module shard is
 		// named after its module, and those run long.
+		if len(args) == 1 {
+			usage = slices.DeleteFunc(usage, func(u brain.Usage) bool { return u.Shard != args[0] })
+		}
+		if globalJSONFlag {
+			brainJSON(map[string]any{"shards": usage})
+			return
+		}
 		width := len("SHARD")
 		for _, u := range usage {
 			if n := len(shardLabel(u.Shard)); n > width {
@@ -225,9 +275,6 @@ var brainShowCmd = &cobra.Command{
 		}
 		fmt.Printf("%-*s %8s %8s %12s\n", width, "SHARD", "ENTRIES", "LINES", "HEADROOM")
 		for _, u := range usage {
-			if len(args) == 1 && u.Shard != args[0] {
-				continue
-			}
 			note := ""
 			if u.Over() {
 				note = "  OVER CAP"
@@ -285,11 +332,18 @@ mxcli maintains.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		projectPath := brainProjectPath(cmd)
 		store := brain.NewStore(filepath.Dir(projectPath))
-		slices, err := store.ListSlices()
+		sliceShards, err := store.ListSlices()
 		if err != nil {
 			brainFatal(err)
 		}
-		if len(slices) == 0 {
+		if only, _ := cmd.Flags().GetString("slice"); only != "" {
+			want := brain.PlanShard(only)
+			if !slices.Contains(sliceShards, want) {
+				brainFatal(fmt.Errorf("no slice %q; 'mxcli brain plan' lists them", only))
+			}
+			sliceShards = []string{want}
+		}
+		if len(sliceShards) == 0 {
 			fmt.Println("No slices yet. Record one with:")
 			fmt.Println("  mxcli brain capture \"<requirement>\" --slice 01-<name> -a @Module.Element")
 			return
@@ -300,9 +354,13 @@ mxcli maintains.`,
 		}
 		defer closeFn()
 
-		rep, err := brain.Check(store, resolver, slices)
+		rep, err := brain.Check(store, resolver, sliceShards)
 		if err != nil {
 			brainFatal(err)
+		}
+		if globalJSONFlag {
+			brainJSON(planReport(rep.Slices))
+			return
 		}
 		printBrainPlan(rep.Slices)
 	},
@@ -327,6 +385,70 @@ func printBrainPlan(slices []brain.SliceProgress) {
 		total += sl.Total()
 	}
 	fmt.Printf("\n%d of %d requirements built, across %d slice(s).\n", built, total, len(slices))
+}
+
+var brainBriefCmd = &cobra.Command{
+	Use:   "brief",
+	Short: "The reading pack for a slice: project + its modules + its plan",
+	Long: `Emit exactly the shards a session needs, as one bounded read.
+
+The store is sharded so a session can load project.md plus the modules it is
+touching instead of the whole thing. Nothing produced that pack, though —
+docs/brain/ is a directory, so a session either read all of it or guessed.
+
+  mxcli brain brief --slice 07-planning     project + the modules that slice's
+                                            requirements anchor into + its plan
+  mxcli brain brief --module Sales --module Finance
+                                            project + those modules, no plan
+                                            (maintenance rather than roadmap)
+
+Which modules a slice needs is DERIVED from its requirements' anchors, not
+configured: asking the caller which modules its slice touches would be asking
+it the thing it opened the brief to find out.
+
+The pack goes to stdout and the size line to stderr, so it can be piped
+straight into a prompt. --json gives the shards separately with their paths.`,
+	Example: `  mxcli brain brief --slice 07-planning -p app.mpr
+  mxcli brain brief --module Sales -p app.mpr --json`,
+	Run: func(cmd *cobra.Command, args []string) {
+		store := brain.NewStore(brainProjectDir(cmd))
+		if !store.Exists() {
+			fmt.Println("No store yet. Create one with 'mxcli brain init'.")
+			return
+		}
+		slice, _ := cmd.Flags().GetString("slice")
+		modules, _ := cmd.Flags().GetStringSlice("module")
+		if slice == "" && len(modules) == 0 {
+			brainFatal(fmt.Errorf("say what the session is working on: --slice <name> or --module <Module>"))
+		}
+		if slice != "" && len(modules) > 0 {
+			// Refused rather than merged: a brief's value is what it leaves
+			// out, and silently widening the pack past what was asked for is
+			// the whole-store read it exists to replace.
+			brainFatal(fmt.Errorf("--slice and --module are different questions; pass one"))
+		}
+
+		var (
+			b   brain.Brief
+			err error
+		)
+		if slice != "" {
+			b, err = store.Brief(slice)
+		} else {
+			b, err = store.BriefForModules(modules)
+		}
+		if err != nil {
+			brainFatal(err)
+		}
+
+		if globalJSONFlag {
+			brainJSON(b)
+			return
+		}
+		fmt.Print(b.Text())
+		// stderr, so `brain brief | ...` pipes the pack and not the commentary.
+		fmt.Fprintln(os.Stderr, b.Summary())
+	},
 }
 
 var brainCheckCmd = &cobra.Command{
@@ -376,9 +498,14 @@ anchors into other modules are fine, because a fact can genuinely span two.`,
 		if err != nil {
 			brainFatal(err)
 		}
-		if ci, _ := cmd.Flags().GetBool("ci"); ci {
+		switch ci, _ := cmd.Flags().GetBool("ci"); {
+		case globalJSONFlag:
+			// --json wins over --ci: both exist for a machine, and one of them
+			// carries the states and counts rather than only the problems.
+			brainJSON(rep)
+		case ci:
 			printBrainReportCI(rep)
-		} else {
+		default:
 			printBrainReport(rep)
 		}
 		if rep.Failed() {
@@ -639,12 +766,100 @@ func init() {
 		"Record this as a requirement of the named slice (plan/<slice>.md) instead of a decision")
 	brainPromoteCmd.Flags().String("to", "",
 		"Override the derived shard (use 'project' for a cross-cutting fact)")
+	brainStagedCmd.Flags().String("since", "",
+		"Only entries staged after this entry id — the slice boundary (see 'mxcli brain staged --help')")
+	brainStagedCmd.Flags().String("slice", "",
+		"Only requirements of this slice (decisions carry no slice; use --since for a slice's findings)")
+	brainStagedCmd.Flags().Bool("fail-if-empty", false,
+		"Exit 1 when nothing matches, so a dispatcher can refuse to advance on a slice that recorded nothing")
 	brainCheckCmd.Flags().Bool("changed", false, "Only check shards touched by the working tree")
 	brainCheckCmd.Flags().Bool("ci", false, "Machine-friendly output for CI")
 
 	brainPlanCmd.Flags().StringP("project", "p", "", "Path to the .mpr file")
+	brainPlanCmd.Flags().String("slice", "",
+		"Report only this slice, instead of every slice in the plan")
+	brainBriefCmd.Flags().StringP("project", "p", "", "Path to the .mpr file")
+	brainBriefCmd.Flags().String("slice", "",
+		"The slice being worked; its modules are derived from its requirements' anchors")
+	brainBriefCmd.Flags().StringSlice("module", nil,
+		"Modules being worked, for a session with no slice; repeatable")
 	brainResolveCmd.Flags().StringP("project", "p", "", "Path to the .mpr file")
 	brainCmd.AddCommand(brainInitCmd, brainCaptureCmd, brainStagedCmd,
-		brainPromoteCmd, brainDropCmd, brainShowCmd, brainCheckCmd, brainPlanCmd, brainResolveCmd)
+		brainPromoteCmd, brainDropCmd, brainShowCmd, brainCheckCmd, brainPlanCmd,
+		brainResolveCmd, brainBriefCmd)
 	rootCmd.AddCommand(brainCmd)
+}
+
+// brainJSON writes v to stdout as indented JSON. Every brain command printed
+// for a human only, which is what made the store unusable as the channel
+// between sub-agents: an orchestrator dispatching one agent per slice has to
+// DECIDE on `staged` and `check`, not read them.
+//
+// Indented on purpose. These outputs are small (a queue, a plan, a report), and
+// the consumer is as often a person eyeballing what the machine will see as a
+// parser.
+func brainJSON(v any) {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		brainFatal(err)
+	}
+	fmt.Println(string(b))
+}
+
+// stagedEntry is one queued entry as a machine sees it. The shard is included
+// because it is derived (an entry's first anchor names its file), so a caller
+// would otherwise have to reimplement the routing rule to know where a promote
+// would put it.
+type stagedEntry struct {
+	brain.Entry
+	Shard string `json:"shard"`
+}
+
+// stagedReport renders the queue for a machine. `all` is the unfiltered queue
+// and `shown` what survived the filter — both are needed, because the two
+// figures a dispatcher wants come from different sides of it.
+func stagedReport(all, shown []brain.Entry, filter brain.StagedFilter) map[string]any {
+	out := make([]stagedEntry, 0, len(shown))
+	for _, e := range shown {
+		out = append(out, stagedEntry{Entry: e, Shard: e.Shard()})
+	}
+	rep := map[string]any{"staged": out, "count": len(out)}
+
+	// The id to pass as --since next time. It comes from the UNFILTERED queue
+	// and is reported even when nothing matched, which is exactly the case a
+	// dispatcher needs it in: a slice that staged nothing must still hand the
+	// next slice a boundary, or the next one re-reports this one's captures.
+	if len(all) > 0 {
+		rep["last_id"] = all[len(all)-1].ID
+	}
+	rep["queue_size"] = len(all)
+
+	// A count of 0 means two different things and the number cannot say which:
+	// the queue is empty, or the filter matched nothing.
+	if !filter.Empty() {
+		rep["filtered"] = true
+		if filter.SinceID != "" {
+			rep["since"] = filter.SinceID
+		}
+		if filter.Slice != "" {
+			rep["slice"] = filter.Slice
+		}
+	}
+	return rep
+}
+
+// planReport carries the totals as well as the slices. A dispatcher's question
+// is usually "is this slice done", and the answer is a comparison it should not
+// have to assemble from four counters.
+func planReport(slices []brain.SliceProgress) map[string]any {
+	var built, total int
+	for _, sl := range slices {
+		built += sl.Built
+		total += sl.Total()
+	}
+	return map[string]any{
+		"slices": slices,
+		"built":  built,
+		"total":  total,
+	}
 }

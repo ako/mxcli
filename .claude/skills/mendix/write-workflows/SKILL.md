@@ -86,19 +86,19 @@ begin
     with (Module.ACT_Validate.Item = '$WorkflowContext');
 
   -- Decision: a boolean or enum exclusive split. The name is optional; give one
-  -- when a `jump to` targets it. Outcome values are enumeration value
-  -- identifiers — bare or qualified (Module.Enum.Value).
+  -- when a `jump to` targets it.
   decision decision1 '$WorkflowContext/Total > 1000'
     outcomes
       true  -> { call microflow Module.ACT_Escalate; }
       false -> { call microflow Module.ACT_AutoApprove; };
 
-  -- An ENUM decision needs every value PLUS the empty one (see below).
-  decision decision2 '$WorkflowContext/Kind'
+  -- An enum decision: each outcome is a FULLY QUALIFIED enumeration value
+  -- (Module.Enumeration.Value), plus one '' outcome for "none of the above".
+  decision decision2 '$WorkflowContext/Status'
     outcomes
-      'Module.Kind.Standard' -> { }
-      'Module.Kind.Priority' -> { }
-      ''                     -> { };
+      'Module.ENUM_Status.Approved' -> { }
+      'Module.ENUM_Status.Rejected' -> { }
+      '' -> { };
 
   -- Parallel split: independent branches run concurrently
   parallel split split1
@@ -287,15 +287,27 @@ documented in `system-module`.
   task (`CE1834`). Bind the page to `System.WorkflowUserTask`.
 - A user task / decision with a single outcome and no activity can trip
   `CE1876` — give each branch a body or a distinct outcome.
-- An **enumeration** decision needs an outcome for the **empty value** as well
-  as one per enumeration value: Mendix generates that set and MxBuild compares
-  the stored outcomes against it, so anything else is `CE6686` ("Regenerate the
-  outcomes"). Write `'' -> { }` alongside the named values; `check` reports a
-  missing one as `MDL-WF06`. The same applies to a `call microflow` activity
-  branching on an enumeration return, and to a decision introduced by
-  `ALTER WORKFLOW … INSERT AFTER` / `REPLACE ACTIVITY`. A **required
-  (`not null`) attribute does not exempt it** — measured, the empty outcome is
-  still required. Boolean (`true`/`false`) decisions do not take one.
+- **An enum decision's outcome must be `Module.Enumeration.Value`.** Mendix
+  stores it as an `EnumerationValueIdentifier` and parses it when the project is
+  **loaded**, before any consistency check — so a short name is not a build
+  error with a CE number, it leaves a project Studio Pro and mxbuild cannot open
+  (`StorageLoadException`). Measured: `'Approved'` and `'Status.Approved'` both
+  make the project unloadable; `'Sales.ENUM_Status.Approved'` checks at 0
+  errors. Shortening it because the enumeration is in the same module does not
+  work. `mxcli check` refuses all three of these as `MDL-WF03`, and `exec`
+  refuses to run a script it flags.
+- **An enum decision also needs one `'' -> { }` outcome** for "none of the
+  above": Mendix generates one outcome per enumeration value plus the empty one,
+  and MxBuild compares the stored set against that, so anything else is `CE6686`
+  ("Regenerate the outcomes"). `check` reports a missing one as `MDL-WF06`. It
+  applies equally to a `call microflow` activity branching on an enumeration
+  return, and to a decision introduced by `ALTER WORKFLOW … INSERT AFTER` /
+  `REPLACE ACTIVITY`. A **required (`not null`) attribute does not exempt it** —
+  measured, the empty outcome is still required. Boolean (`true`/`false`)
+  decisions do not take one.
+- **A `with (...)` parameter value is a quoted string**, not a bare variable:
+  `with (Request = '$WorkflowContext')`. The unquoted spelling used elsewhere in
+  MDL is a syntax error here (it used to crash the binary — ako/mxcli#1023).
 - The context **Parameter entity must be persistent**.
 - Write the context variable as **`$WorkflowContext`**, matching the parameter
   name exactly. Mendix expressions are case-sensitive on 11.9+, so a lowercase

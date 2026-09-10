@@ -7,16 +7,40 @@ import "github.com/mendixlabs/mxcli/mdl/types"
 // AlterNavigationStmt represents: CREATE [OR REPLACE] NAVIGATION <profile> [clauses...]
 // This is a full-replacement command: omitted clauses clear that section.
 type AlterNavigationStmt struct {
-	ProfileName    string           // e.g. "Responsive"
-	HomePages      []NavHomePageDef // HOME PAGE/MICROFLOW ... [FOR role]
-	LoginPage      *QualifiedName   // LOGIN PAGE ...
-	NotFoundPage   *QualifiedName   // NOT FOUND PAGE ...
-	MenuItems      []NavMenuItemDef // MENU (...) block
-	HasMenuBlock   bool             // true if MENU (...) was present (even if empty → clears menu)
-	CreateOrModify bool             // true if CREATE OR REPLACE/MODIFY was used
+	ProfileName  string           // e.g. "Responsive"
+	HomePages    []NavHomePageDef // HOME PAGE/MICROFLOW ... [FOR role]
+	LoginPage    *QualifiedName   // LOGIN PAGE ...
+	NotFoundPage *QualifiedName   // NOT FOUND PAGE ...
+	MenuItems    []NavMenuItemDef // MENU (...) block
+	HasMenuBlock bool             // true if MENU (...) was present (even if empty → clears menu)
+	SyncEntries  []NavSyncDef     // SYNC (...) block — offline synchronization
+	HasSyncBlock bool             // true if SYNC (...) was present (even if empty → clears the list)
+	// ThrowSyncError is ON SYNC ERROR THROW|CONTINUE, and is a POINTER so an
+	// omitted clause leaves the stored value alone. A plain bool would make
+	// every rewrite that never mentions it reset the flag to false — the
+	// guard-don't-drop failure, in the one property on this statement that is
+	// a bare boolean and so has no "unset" value of its own.
+	ThrowSyncError *bool
+	CreateOrModify bool // true if CREATE OR REPLACE/MODIFY was used
 }
 
 func (s *AlterNavigationStmt) isStatement() {}
+
+// NavSyncDef represents one `SYNC <entity> <mode>` line inside a SYNC block.
+//
+// Mode carries the STORED enum member, not the word the user typed: the visitor
+// maps ONLINE/ALL/NEVER/NONE/NONE PRESERVE DATA/WHERE onto Online/All/Never/
+// None/NoneAndPreserveData/Constrained, so nothing downstream has to know the
+// spelling. Studio Pro's captions ("All Objects", "By XPath") are not members
+// of the enumeration and never appear here.
+type NavSyncDef struct {
+	Entity QualifiedName
+	Mode   string
+	// Constraint is the XPath from a WHERE clause, and is set only when Mode is
+	// Constrained — the two are derived from the same alternative precisely so
+	// they cannot disagree.
+	Constraint string
+}
 
 // NavHomePageDef represents a HOME PAGE or HOME MICROFLOW clause.
 type NavHomePageDef struct {

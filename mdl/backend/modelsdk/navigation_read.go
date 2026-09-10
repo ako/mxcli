@@ -95,6 +95,7 @@ func webNavProfileFromGen(p *genNav.NavigationProfile) *types.NavigationProfile 
 		}
 	}
 	appendOfflineEntities(profile, p.OfflineEntityConfigsItems())
+	profile.ThrowPartialSyncError = throwPartialSyncError(p.Raw())
 	return profile
 }
 
@@ -217,9 +218,10 @@ func appendOfflineEntities(profile *types.NavigationProfile, items []element.Ele
 			continue
 		}
 		e := &types.NavOfflineEntity{
-			Entity:     oe.EntityQualifiedName(),
-			SyncMode:   oe.SyncMode(),
-			Constraint: oe.Constraint(),
+			Entity:            oe.EntityQualifiedName(),
+			SyncMode:          oe.SyncMode(),
+			Constraint:        oe.Constraint(),
+			CompatibilityMode: oe.CompatibilityMode(),
 		}
 		if e.Entity != "" {
 			profile.OfflineEntities = append(profile.OfflineEntities, e)
@@ -340,4 +342,28 @@ func textOf(el element.Element) string {
 		}
 	}
 	return ""
+}
+
+// throwPartialSyncError reads a property NEITHER modelsdk/gen NOR
+// generated/metamodel declares — measured on ako/TestApp, zero occurrences in
+// each — so there is no typed accessor to call. element.Base keeps the raw
+// document, which is what makes reading it possible without a second load.
+//
+// Absent means TRUE: every reference profile carries true and Studio Pro's box
+// is checked by default, so a document without the key must not be read as
+// "do not throw".
+//
+// Web profiles only. Both of ako/TestApp's carry it; whether a native profile
+// does is unmeasured, and nativeNavProfileFromGen is deliberately left alone
+// rather than given a default nothing has verified.
+func throwPartialSyncError(raw bson.Raw) bool {
+	v, err := raw.LookupErr("ThrowPartialSyncError")
+	if err != nil {
+		return true
+	}
+	b, ok := v.BooleanOK()
+	if !ok {
+		return true
+	}
+	return b
 }

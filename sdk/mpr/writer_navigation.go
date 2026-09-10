@@ -15,6 +15,7 @@ import (
 // NavigationProfileSpec describes the desired state for a navigation profile.
 // Aliased from mdl/types to avoid duplicate definitions.
 type NavigationProfileSpec = types.NavigationProfileSpec
+type NavOfflineEntitySpec = types.NavOfflineEntitySpec
 
 // NavHomePageSpec describes a home page entry.
 type NavHomePageSpec = types.NavHomePageSpec
@@ -193,7 +194,60 @@ func patchWebProfile(doc bson.D, spec NavigationProfileSpec) bson.D {
 		})
 	}
 
+	// --- Offline synchronization ---
+	if spec.HasSync {
+		doc = setBsonField(doc, "OfflineEntityConfigs",
+			buildOfflineConfigsBson(getBsonArray(doc, "OfflineEntityConfigs"), spec.OfflineEntities))
+	}
+
+	// Kept identical to the modelsdk engine: nil leaves the stored flag alone,
+	// because neither generated source declares the property and a non-pointer
+	// would reset it on every rewrite that never mentions it.
+	if spec.ThrowSyncError != nil {
+		doc = setBsonField(doc, "ThrowPartialSyncError", *spec.ThrowSyncError)
+	}
+
 	return doc
+}
+
+// buildOfflineConfigsBson rebuilds OfflineEntityConfigs from the spec, carrying
+// forward the properties MDL cannot express.
+//
+// Kept deliberately identical in behaviour to the modelsdk engine's
+// navOfflineConfigs: CompatibilityMode is preserved per entity, and
+// DownloadMode/ShouldDownload are not written at all — they occur zero times in
+// ako/TestApp's configs, and a property absent from every real document is one
+// Studio Pro fills in on load. A cross-engine test asserts the two agree,
+// because two writers drifting apart is how an engine-specific defect hides.
+func buildOfflineConfigsBson(stored bson.A, specs []NavOfflineEntitySpec) bson.A {
+	compat := map[string]bool{}
+	for _, item := range stored {
+		var cfg map[string]any
+		switch v := item.(type) {
+		case bson.D:
+			cfg = v.Map()
+		case map[string]any:
+			cfg = v
+		default:
+			continue // the leading typed-array marker
+		}
+		if e := extractString(cfg["Entity"]); e != "" {
+			compat[e] = extractBool(cfg["CompatibilityMode"], false)
+		}
+	}
+
+	out := bson.A{navMarkerItems}
+	for _, sp := range specs {
+		out = append(out, bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "Navigation$OfflineEntityConfig"},
+			{Key: "CompatibilityMode", Value: compat[sp.Entity]},
+			{Key: "Constraint", Value: sp.Constraint},
+			{Key: "Entity", Value: sp.Entity},
+			{Key: "SyncMode", Value: sp.SyncMode},
+		})
+	}
+	return out
 }
 
 // patchNativeProfile applies the spec to a native navigation profile.

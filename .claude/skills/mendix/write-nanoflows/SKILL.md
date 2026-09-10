@@ -550,6 +550,23 @@ For per-action error handling without CONTINUE:
 $Result = CALL NANOFLOW Sales.NAV_Risky () ON ERROR ROLLBACK;
 ```
 
+### Most activities take NO error handling in a nanoflow
+
+An `ON ERROR` clause of **any** form is rejected on these six, with
+**CE6035** "Error handling type is not supported" — measured on Mendix 11.14.0:
+
+| Refused in a nanoflow | Accepted |
+|---|---|
+| `CHANGE`, `LOG`, `SHOW PAGE`, `CLOSE PAGE`, `SHOW MESSAGE`, `VALIDATION FEEDBACK` | `DECLARE`, `SET` (the two *variable* activities) |
+
+mxcli refuses the clause rather than writing a nanoflow mxbuild rejects. The
+split is by activity, not by "client-side vs server-side" — `SHOW MESSAGE` is as
+client-side as it gets and still refuses one.
+
+A nanoflow activity **aborts the flow** on error by default (a nanoflow has no
+transaction to roll back), which is why there is nothing to configure. That
+default is also why writing `Rollback` there is an error and not a no-op.
+
 ## Security (GRANT/REVOKE)
 
 ```mdl

@@ -616,7 +616,31 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 		},
 		Syntax:  "SHOW ICON COLLECTIONS [IN Module];\nDESCRIBE ICON COLLECTION Module.Name;   -- lists every icon + its reference form",
 		Example: "-- Icon collections ship with the theme/Atlas (read-only). Their icons are\n-- referenced from a widget as Module.Collection.IconName (e.g. a button's icon:).\nSHOW ICON COLLECTIONS;\nDESCRIBE ICON COLLECTION Atlas_Core.Atlas_Filled;\n-- → then: ACTIONBUTTON b (Caption: 'Edit', Action: ..., Icon: 'Atlas_Core.Atlas_Filled.pencil')",
-		SeeAlso: []string{"image-collection", "page.action"},
+		SeeAlso: []string{"image-collection", "glyph", "page.action"},
+	})
+
+	Register(SyntaxFeature{
+		Path:    "glyph",
+		Summary: "Glyph icons — the numeric codes `icon glyph <n>` accepts, and their names",
+		Keywords: []string{
+			"glyph", "glyphs", "show glyphs", "describe glyph", "icon glyph",
+			"glyphicon", "glyph code", "menu icon", "navigation icon",
+		},
+		Syntax: "SHOW GLYPHS [LIKE 'text'];       -- LIKE matches the icon NAME\n" +
+			"DESCRIBE GLYPH 57350;            -- by character code\n" +
+			"DESCRIBE GLYPH 'star';           -- or by name",
+		Example: "-- A glyph is a character code in the Mendix glyph font, not a document in the\n" +
+			"-- project, so there is no module to scope and no connection needed.\n" +
+			"SHOW GLYPHS LIKE 'star';\n" +
+			"--   57350  star        icon glyph 57350\n" +
+			"--   57351  star-empty  icon glyph 57351\n" +
+			"DESCRIBE GLYPH 'star';\n" +
+			"-- → then: MENU ITEM 'Favourites' PAGE M.Favourites ICON GLYPH 57350;\n" +
+			"\n" +
+			"-- Prefer an icon COLLECTION reference where the icon exists there: it is a\n" +
+			"-- model reference that `check --references` resolves, while a glyph code is\n" +
+			"-- an unchecked integer until MDL078 sees it.",
+		SeeAlso: []string{"icon-collection", "navigation.create"},
 	})
 
 	// ── Import / Export Mappings ──────────────────────────────────────

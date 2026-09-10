@@ -1,0 +1,56 @@
+-- ako/mxcli#417: a `call microflow` nested in a decision branch was not auto-wired
+--
+-- Symptom: `mxcli check` passed and `exec` reported success, but mxbuild gave
+-- 4 errors on the workflow below:
+--
+--   [CE6685] The parameters of the selected microflow have changed, please
+--            update them in the properties.                            (x2)
+--   [CE6686] The current outcomes of the call microflow activity do not match
+--            the configured microflow. Regenerate the outcomes.        (x2)
+--
+-- `describe workflow` showed the two nested activities written with no
+-- `with (...)` and no `outcomes` clause, while the CONTROL — the identical
+-- activity in the workflow's MAIN flow — was auto-wired to
+-- `with (Ctx = '$WorkflowContext') outcomes DEFAULT -> { }` and checked clean.
+--
+-- Cause: autoBindActivitiesInFlow enumerated the flows to recurse into with a
+-- per-outcome type switch that handled BooleanConditionOutcome and
+-- VoidConditionOutcome only. An EnumerationValueConditionOutcome's flow — and
+-- every boundary-event body — was never visited, so nothing auto-generated the
+-- ParameterMappings or the default outcome for the activities inside it.
+--
+-- Fix: one `nestedFlows` helper enumerates every nested flow of an activity
+-- (condition outcomes via the ConditionOutcome interface, user-task outcomes,
+-- parallel split paths, boundary event bodies); both tree walks over a workflow
+-- use it, so no outcome kind can be skipped.
+--
+-- Expected: 0 errors from mxbuild. All three call-microflow activities carry
+-- `with (Ctx = ...)` and an `outcomes DEFAULT -> { }` clause.
+
+create enumeration WF417.Status (
+  OutcomeA 'Outcome A',
+  OutcomeB 'Outcome B'
+);
+
+create persistent entity WF417.Ctx (
+  Status: enum WF417.Status
+);
+
+create microflow WF417.ACT_Noop ($Ctx: WF417.Ctx)
+begin
+  @position(200,200)
+  return;
+end;
+
+create workflow WF417.Dec parameter $Ctx: WF417.Ctx
+begin
+  -- CONTROL: main-flow activity, auto-wired before this fix and after it.
+  call microflow WF417.ACT_Noop as callMicroflowControl;
+
+  decision decision1 '$WorkflowContext/Status'
+    outcomes
+      'WF417.Status.OutcomeA' -> { call microflow WF417.ACT_Noop as callMicroflow1; }
+      'WF417.Status.OutcomeB' -> { call microflow WF417.ACT_Noop as callMicroflow2; }
+      '' -> { }
+  ;
+end workflow;

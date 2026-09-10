@@ -29,6 +29,11 @@ type editorConfigExtractStats struct {
 // the group properties that make an authored widget fail CE0463 (upstream #931).
 var hideCallRE = regexp.MustCompile(`hide(?:Property|Properties|NestedProperties)In\(`)
 
+// hideCallTailRE matches a hide call's NAME where it ends a string, so
+// stripGroupSiblings can tell a hide sibling from any other comma-separated
+// expression.
+var hideCallTailRE = regexp.MustCompile(`hide(?:Property|Properties|NestedProperties)In$`)
+
 // aliasAssignRE finds `IDENT=OBJ.PROP` (a `var x=e.selection`-style alias).
 // Resolution is scoped to the enclosing function body (see enclosingAliases),
 // because minified editorConfig reuses single-letter identifiers across scopes.
@@ -153,7 +158,56 @@ func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, edit
 		if listKey != "" {
 			itemIdent = enclosingForEachParam(js, callStart)
 		}
-		cond, guardText, ok := parseGuard(js, callStart, itemIdent)
+		cond, guardText, ok, conjunctive := parseGuard(js, callStart, itemIdent)
+		// A guard inside `outer ? ( … inner && hide(x) … )` states only the INNER
+		// term; the branch runs on outer too. Collect the enclosing group guards
+		// so the rule carries the whole conjunction — Combo box nests three deep,
+		// and a rule keeping only the innermost term claims hidden in
+		// configurations the editor shows.
+		var extra []types.WidgetVisibilityCondition
+		if ok && conjunctive {
+			enclosing, enclosed := enclosingGroupConditions(js, callStart, itemIdent)
+			switch {
+			case enclosed:
+				// The whole chain read: the rule carries every term and is exact.
+				extra = dedupeConditions(cond, enclosing)
+			case impliesGroupGuard(js, callStart, cond):
+				// The group's condition is about the SAME property and holds
+				// wherever this one does, so the conjunction reduces to this
+				// condition alone. Maps: `"googleMaps"!==B.mapProvider ?
+				// (…, "openStreet"===B.mapProvider && hide([apiKey, apiKeyExp]))`.
+			default:
+				// The chain could not be read in full, so the terms cannot be
+				// stored and the rule states one conjunct of a larger condition.
+				//
+				// That is a reason to withhold a rule this extractor did not
+				// previously produce — emitting it would ADD an over-firing rule,
+				// as `!1===e.showNumberOfRows` alone does for Datagrid's
+				// pagingPosition. It is NOT a reason to drop a rule that the
+				// older, single-condition vocabulary already lifted: that rule's
+				// accuracy is unchanged by this work, and removing it would lose
+				// detection the previous release had. Combo box is where that
+				// distinction shows — six of its rules are exactly this shape.
+				//
+				// So: newly-supported guard shapes must earn their place (the
+				// other branch has to hide the property anyway, which makes the
+				// single condition safe); shapes that already worked are kept.
+				if !isNewlySupportedGuard(guardText) {
+					break
+				}
+				kept := keys[:0:0]
+				for _, k := range keys {
+					if hiddenInComplementaryBranch(js, callStart, k) {
+						kept = append(kept, k)
+					}
+				}
+				if len(kept) == 0 && len(condKeys) == 0 {
+					stats.SkippedComplex++
+					continue
+				}
+				keys = kept
+			}
+		}
 		if !ok {
 			// `<outer> ? <inner> && hide(...)` — a ternary THEN branch carrying a
 			// second condition. Held back and resolved after the loop, once the
@@ -193,7 +247,7 @@ func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, edit
 					stats.SkippedComplex++
 					continue
 				}
-				sig := listKey + "\x00" + tk.key + "\x00" + c.PropertyKey + c.Operator + c.Value + c.Scope
+				sig := listKey + "\x00" + tk.key + "\x00" + c.PropertyKey + c.Operator + c.Value + c.Scope + condsSig(extra)
 				if seen[sig] {
 					continue
 				}
@@ -203,12 +257,13 @@ func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, edit
 					PropertyKey:     tk.key,
 					ListPropertyKey: listKey,
 					HiddenWhen:      &cc,
+					And:             extra,
 				})
 			}
 		}
 		stats.Recognized++
 		for _, key := range keys {
-			sig := listKey + "\x00" + key + "\x00" + cond.PropertyKey + cond.Operator + cond.Value + cond.Scope
+			sig := listKey + "\x00" + key + "\x00" + cond.PropertyKey + cond.Operator + cond.Value + cond.Scope + condsSig(extra)
 			if seen[sig] {
 				continue
 			}
@@ -218,6 +273,7 @@ func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, edit
 				PropertyKey:     key,
 				ListPropertyKey: listKey,
 				HiddenWhen:      &c,
+				And:             extra,
 			})
 		}
 	}
@@ -476,7 +532,11 @@ var nsPrefixRE = regexp.MustCompile(`[A-Za-z_$][\w$]*\.$`)
 // parseGuard reads the guard expression immediately preceding a hide call and
 // converts it to a WidgetVisibilityCondition. callStart points at the hide
 // function name; the connector just before it is `&&`, `||`, or `?`.
-func parseGuard(js string, callStart int, itemIdent string) (types.WidgetVisibilityCondition, string, bool) {
+// The fourth result marks a guard that is one conjunct of a larger condition
+// (it sits inside a grouping paren carrying its own guard). Such a rule is only
+// safe when the ternary's other branch hides the same property anyway — see
+// hiddenInComplementaryBranch, which the caller consults.
+func parseGuard(js string, callStart int, itemIdent string) (types.WidgetVisibilityCondition, string, bool, bool) {
 	pre := strings.TrimRight(js[:callStart], " ")
 	// Strip the widget-editor namespace prefix (any `<ident>.`, not just `_.`).
 	if loc := nsPrefixRE.FindStringIndex(pre); loc != nil {
@@ -485,6 +545,15 @@ func parseGuard(js string, callStart int, itemIdent string) (types.WidgetVisibil
 	pre = strings.TrimRight(pre, " ")
 	// Strip an optional grouping paren: `cond && ( hide(...), … )` groups several
 	// hides under one condition; the first hide sits right after the `(`.
+	//
+	// The LATER hides in that group sit after a comma instead, so their guard is
+	// their sibling's. Skipping back over the preceding call expressions reaches
+	// the same `(` and the same condition. Without this the second hide in
+	// `cond ? (hide(a), hide(b))` gets no rule at all: `pre` ends with `,`, which
+	// is not a connector, and the property reads as always visible. Combobox's
+	// `attributeEnumeration` is that case — it is the FIRST hide of one group and
+	// the second of another, so it was extracted once and missed once.
+	pre = stripGroupSiblings(pre)
 	if strings.HasSuffix(pre, "(") {
 		pre = strings.TrimRight(pre[:len(pre)-1], " ")
 	}
@@ -514,17 +583,17 @@ func parseGuard(js string, callStart int, itemIdent string) (types.WidgetVisibil
 		// with showLabel false. See the CE0463 that produced (ledger #104).
 		cond, ok := ternaryCondition(pre[:len(pre)-1])
 		if !ok {
-			return types.WidgetVisibilityCondition{}, pre, false
+			return types.WidgetVisibilityCondition{}, pre, false, false
 		}
 		pre = cond
 		falsy = true
 	default:
-		return types.WidgetVisibilityCondition{}, pre, false
+		return types.WidgetVisibilityCondition{}, pre, false, false
 	}
 	guard, boundary := lastGuardExpr(pre)
 	guard = stripReturnPrefix(guard) // getProperties' first statement is `return <guard> && hide…`
 	if guard == "" {
-		return types.WidgetVisibilityCondition{}, guard, false
+		return types.WidgetVisibilityCondition{}, guard, false, false
 	}
 	// Skip guards nested inside a larger expression. A clean statement-level guard
 	// is bounded by a statement separator (`,`, `;`, `{`, or start-of-input); a
@@ -545,6 +614,33 @@ func parseGuard(js string, callStart int, itemIdent string) (types.WidgetVisibil
 	//
 	// The `&&` connector gets no such rule: there, hiding needs BOTH operands
 	// truthy, which a single condition cannot express.
+	// A `,` boundary reads as statement-level but is not one when the guard sits
+	// inside a grouping paren that carries its OWN condition: the hide fires on
+	// the CONJUNCTION, and a single condition can only express one conjunct —
+	// which over-fires, hiding a property in configurations where the editor
+	// shows it. Datagrid is the case:
+	//
+	//	e.pagination ? hide("showNumberOfRows")
+	//	             : (hide("showPagingButtons"), !1===e.showNumberOfRows && hide("pagingPosition"))
+	//
+	// pagingPosition is hidden only when pagination is off AND showNumberOfRows
+	// is false. Reading the `!1===` alone hides it whenever the row count is off,
+	// pagination or not — and `pagination` defaults ON, so that is the common
+	// configuration. Emitting no rule leaves it visible, which is the safe way to
+	// be wrong.
+	// Conjunctive only when the enclosing group's own condition is about the SAME
+	// object this guard reads — i.e. another of the widget's properties.
+	//
+	// editorConfig's getProperties also receives the target PLATFORM, and widgets
+	// branch on it: TreeNode hides its icon properties under
+	// `"web"===platform ? (e.advancedMode || hide([...])) : …`. That outer
+	// conjunct is not part of the widget's configuration and is always true for
+	// the pages MDL writes, so folding it away loses nothing — whereas dropping
+	// Datagrid's `e.pagination` conjunct, a real property with a real default,
+	// changes what the rule claims.
+	conjunctive := boundary == ',' &&
+		insideOpenGroup(pre[:len(pre)-len(guard)]) &&
+		sameReceiver(groupGuard(js, callStart), guard)
 	switch boundary {
 	case 0, ',', ';', '{':
 		// clean
@@ -553,17 +649,17 @@ func parseGuard(js string, callStart int, itemIdent string) (types.WidgetVisibil
 		// (`outer ? inner && hide(...)`). Hand back the WHOLE expression, `?`
 		// included, so the caller can split it and decide whether the else branch
 		// makes the pair expressible — see ternaryThenCandidate (#238).
-		return types.WidgetVisibilityCondition{}, pre, false
+		return types.WidgetVisibilityCondition{}, pre, false, false
 	case '&':
 		if !falsy {
-			return types.WidgetVisibilityCondition{}, guard, false
+			return types.WidgetVisibilityCondition{}, guard, false, false
 		}
 	default:
-		return types.WidgetVisibilityCondition{}, guard, false
+		return types.WidgetVisibilityCondition{}, guard, false, false
 	}
 	aliases := enclosingAliases(js, callStart)
 	c, ok := guardToCondition(guard, falsy, aliases, itemIdent)
-	return c, guard, ok
+	return c, guard, ok, conjunctive
 }
 
 // ternaryCondition returns the text preceding the `?` that matches a trailing
@@ -689,6 +785,26 @@ var (
 	eqCmpRE2 = regexp.MustCompile(`^([A-Za-z_$][\w$.]*)==="([^"]*)"$`)
 	neCmpRE2 = regexp.MustCompile(`^([A-Za-z_$][\w$.]*)!=="([^"]*)"$`)
 	refRE    = regexp.MustCompile(`^(!?)([A-Za-z_$][\w$.]*)$`)
+
+	// Shapes that mean "the author has not picked anything", which editorConfig
+	// writes two ways. Both are narrower than falsy — see the `empty` operator's
+	// note in mdl/types/widget_visibility.go.
+	//   null === ref   /  ref === null
+	nullCmpRE  = regexp.MustCompile(`^null(===|!==)([A-Za-z_$][\w$.]*)$`)
+	nullCmpRE2 = regexp.MustCompile(`^([A-Za-z_$][\w$.]*)(===|!==)null$`)
+	//   0 === ref.length  /  ref.length === 0
+	lenCmpRE  = regexp.MustCompile(`^0(===|!==)([A-Za-z_$][\w$.]*)\.length$`)
+	lenCmpRE2 = regexp.MustCompile(`^([A-Za-z_$][\w$.]*)\.length(===|!==)0$`)
+
+	// Minified booleans: terser writes `false` as `!1` and `true` as `!0`, so a
+	// guard reading `!1===e.showFooter` is `false===e.showFooter`. Mapped to
+	// eq/ne against the literal rather than to falsy/truthy, because `===false`
+	// does NOT fire on an unset property and falsy would.
+	boolCmpRE  = regexp.MustCompile(`^!([01])(===|!==)([A-Za-z_$][\w$.]*)$`)
+	boolCmpRE2 = regexp.MustCompile(`^([A-Za-z_$][\w$.]*)(===|!==)!([01])$`)
+
+	// ["a","b"].includes(ref) — a set-membership test over enum values.
+	includesRE = regexp.MustCompile(`^\[([^\]]*)\]\.includes\(([A-Za-z_$][\w$.]*)\)$`)
 )
 
 // guardToCondition parses a single guard expression into a visibility
@@ -735,6 +851,53 @@ func guardToCondition(guard string, falsy bool, aliases map[string]string, itemI
 		}
 		return types.WidgetVisibilityCondition{}, false
 	}
+	// null === ref — "no datasource / action picked". Distinct from falsy.
+	if m := nullCmpRE.FindStringSubmatch(guard); m != nil {
+		return emptyCond(m[2], m[1], falsy, aliases, itemIdent)
+	}
+	if m := nullCmpRE2.FindStringSubmatch(guard); m != nil {
+		return emptyCond(m[1], m[2], falsy, aliases, itemIdent)
+	}
+	// 0 === ref.length — the same claim about a string or list property.
+	if m := lenCmpRE.FindStringSubmatch(guard); m != nil {
+		return emptyCond(m[2], m[1], falsy, aliases, itemIdent)
+	}
+	if m := lenCmpRE2.FindStringSubmatch(guard); m != nil {
+		return emptyCond(m[1], m[2], falsy, aliases, itemIdent)
+	}
+	// !1 === ref  /  ref === !0 — minified boolean comparison.
+	if m := boolCmpRE.FindStringSubmatch(guard); m != nil {
+		return boolCond(m[3], m[2], m[1], falsy, aliases, itemIdent)
+	}
+	if m := boolCmpRE2.FindStringSubmatch(guard); m != nil {
+		return boolCond(m[1], m[2], m[3], falsy, aliases, itemIdent)
+	}
+	// ["a","b"].includes(ref) — set membership.
+	if m := includesRE.FindStringSubmatch(guard); m != nil {
+		members := stringLitRE.FindAllStringSubmatch(m[1], -1)
+		if len(members) == 0 {
+			return types.WidgetVisibilityCondition{}, false
+		}
+		vals := make([]string, 0, len(members))
+		for _, mm := range members {
+			if strings.ContainsRune(mm[1], ',') {
+				// A comma inside a member would make the joined Value ambiguous.
+				// Not observed in any marketplace widget; refuse rather than
+				// store a set that decodes wrong.
+				return types.WidgetVisibilityCondition{}, false
+			}
+			vals = append(vals, mm[1])
+		}
+		key, scope, ok := resolveRef(m[2], aliases, itemIdent)
+		if !ok {
+			return types.WidgetVisibilityCondition{}, false
+		}
+		op := "in"
+		if falsy {
+			op = "notin"
+		}
+		return types.WidgetVisibilityCondition{PropertyKey: key, Operator: op, Value: strings.Join(vals, ","), Scope: scope}, true
+	}
 	// bare ref (truthy) or !ref (falsy), combined with the connector polarity:
 	//   ref && hide   → hide when ref truthy
 	//   ref || hide   → hide when ref falsy   (falsy==true here)
@@ -754,6 +917,559 @@ func guardToCondition(guard string, falsy bool, aliases map[string]string, itemI
 		return types.WidgetVisibilityCondition{PropertyKey: key, Operator: op, Scope: scope}, true
 	}
 	return types.WidgetVisibilityCondition{}, false
+}
+
+// impliesGroupGuard reports whether cond alone entails the enclosing group's
+// condition, which happens when both constrain the same property and cond pins
+// it to a value the group's condition accepts. The conjunction is then
+// redundant and the single condition is exact rather than an over-fire.
+func impliesGroupGuard(js string, callStart int, cond types.WidgetVisibilityCondition) bool {
+	if cond.Operator != "eq" || cond.PropertyKey == "" {
+		return false
+	}
+	text := groupGuard(js, callStart)
+	if text == "" {
+		return false
+	}
+	outer, ok := guardToCondition(text, groupIsElseBranch(js, callStart), enclosingAliases(js, callStart), "")
+	if !ok || outer.PropertyKey != cond.PropertyKey {
+		return false
+	}
+	// The group's condition must HOLD where this one does. Note the sense: the
+	// group guard is the condition under which the branch RUNS, and the branch
+	// running is what makes the hide fire, so it must be satisfied — Hidden()
+	// here is just the evaluator, not a claim about hiding.
+	return outer.Hidden(map[string]string{cond.PropertyKey: cond.Value})
+}
+
+// groupIsElseBranch reports whether the group enclosing callStart is the ELSE
+// branch of a ternary, in which case its condition is negated.
+func groupIsElseBranch(js string, callStart int) bool {
+	open := enclosingGroupOpen(js, callStart)
+	if open < 0 {
+		return false
+	}
+	head := strings.TrimRight(js[:open], " ")
+	return strings.HasSuffix(head, ":") || strings.HasSuffix(head, "||")
+}
+
+// groupGuard returns the condition text attached to the grouping paren that
+// encloses the hide at callStart ("" when there is none).
+func groupGuard(js string, callStart int) string {
+	open := enclosingGroupOpen(js, callStart)
+	if open < 0 {
+		return ""
+	}
+	head := strings.TrimRight(js[:open], " ")
+	for _, c := range []string{"&&", "||"} {
+		if strings.HasSuffix(head, c) {
+			return stripReturnPrefix(operandBefore(head[:len(head)-2]))
+		}
+	}
+	for _, c := range []string{"?", ":"} {
+		if strings.HasSuffix(head, c) {
+			head = head[:len(head)-1]
+			if c == ":" {
+				q := matchingTernaryQuestion(head)
+				if q < 0 {
+					return ""
+				}
+				head = head[:q]
+			}
+			// trailingExpr, not lastGuardExpr: the ternary is rarely the first
+			// thing in its function — ProgressCircle's is preceded by a whole
+			// `switch` — and taking everything back to the enclosing `{` hands
+			// the guard parser a fragment with an unbalanced `}`, which reads as
+			// "unsupported shape" and drops a sound rule.
+			return stripReturnPrefix(trailingExpr(head))
+		}
+	}
+	return ""
+}
+
+// operandBefore returns the single expression immediately to the left of a
+// connector, which is the group's own condition.
+//
+// `trailingExpr` alone is too greedy here. It stops at a STATEMENT separator,
+// and a chained ternary contains none — so for Combo box's
+//
+//	["enumeration","boolean"].includes(t.optionsSourceType)
+//	  ? ( …hides… )
+//	  : "association"===t.optionsSourceType && ( …hides… )
+//
+// it returns the whole `A ? (…) : B` expression as the "condition" of the `&&`
+// group, which is not a comparison, so the chain reads as unreadable and six
+// rules go unlifted. `lastGuardExpr` bounds at `:` and `?` as well and yields
+// exactly `"association"===t.optionsSourceType`.
+//
+// It is not a straight swap: `lastGuardExpr` bounds at `{` too, so where the
+// expression is preceded by a block — ProgressCircle's ternary follows a whole
+// `switch` — it hands back a fragment with an unbalanced `}`. So take
+// lastGuardExpr's answer only when it stopped at a boundary INSIDE an
+// expression (`:`, `?`, `,`), and fall back to trailingExpr otherwise.
+func operandBefore(head string) string {
+	guard, boundary := lastGuardExpr(head)
+	switch boundary {
+	case ':', '?', ',':
+		if guard != "" {
+			return guard
+		}
+	}
+	return trailingExpr(head)
+}
+
+// matchingTernaryQuestion returns the index of the `?` matching the `:` that
+// ends head, skipping over parenthesised groups and nested ternaries. A plain
+// LastIndexByte finds the innermost `?` instead — in Maps that is a nested
+// `B.geodecodeApiKey?…`, whose receiver is the widget, so the outer
+// platform test read as a configuration conjunct and dropped a sound rule.
+func matchingTernaryQuestion(head string) int {
+	depth, pending := 0, 0
+	inStr := byte(0)
+	for i := len(head) - 1; i >= 0; i-- {
+		c := head[i]
+		if inStr != 0 {
+			if c == inStr && (i == 0 || head[i-1] != '\\') {
+				inStr = 0
+			}
+			continue
+		}
+		switch c {
+		case '"', '\'':
+			inStr = c
+		case ')':
+			depth++
+		case '(':
+			if depth == 0 {
+				return -1 // ran out of the enclosing group
+			}
+			depth--
+		case ':':
+			if depth == 0 {
+				pending++
+			}
+		case '?':
+			if depth == 0 {
+				if pending == 0 {
+					return i
+				}
+				pending--
+			}
+		case '{', ';':
+			if depth == 0 {
+				return -1
+			}
+		}
+	}
+	return -1
+}
+
+// sameReceiver reports whether two guards read properties off the same object.
+// An empty receiver on either side (a bare identifier, a literal-only guard)
+// answers false: not demonstrably the same object, so not treated as a
+// configuration conjunct.
+func sameReceiver(a, b string) bool {
+	ra, rb := guardReceiver(a), guardReceiver(b)
+	return ra != "" && ra == rb
+}
+
+// guardReceiver returns the object part of the first `obj.prop` reference in a
+// guard, or "" when it reads no property off an object.
+func guardReceiver(guard string) string {
+	m := receiverRE.FindStringSubmatch(guard)
+	if m == nil {
+		return ""
+	}
+	return m[1]
+}
+
+var receiverRE = regexp.MustCompile(`([A-Za-z_$][\w$]*)\.[A-Za-z_$][\w$]*`)
+
+// dedupeConditions drops terms equal to the rule's own condition or to an
+// earlier term. The innermost enclosing group is often the very group whose
+// guard the hide already carries — `cond ? (hide(x), …)` gives the first hide
+// its condition through the paren strip — and a conjunction repeating a term
+// says nothing extra while reading as though it did.
+func dedupeConditions(own types.WidgetVisibilityCondition, cs []types.WidgetVisibilityCondition) []types.WidgetVisibilityCondition {
+	seen := map[types.WidgetVisibilityCondition]bool{own: true}
+	out := cs[:0:0]
+	for _, c := range cs {
+		if seen[c] {
+			continue
+		}
+		seen[c] = true
+		out = append(out, c)
+	}
+	return out
+}
+
+// isNewlySupportedGuard reports whether a guard is one of the shapes this
+// extractor learned alongside conjunctions — `null===x`, a minified boolean,
+// `0===x.length`, `["a","b"].includes(x)`. Those had no rule before, so
+// withholding one under a conjunction loses nothing; the older shapes did, and
+// withholding theirs would be a regression.
+func isNewlySupportedGuard(guard string) bool {
+	for _, re := range []*regexp.Regexp{
+		nullCmpRE, nullCmpRE2, lenCmpRE, lenCmpRE2, boolCmpRE, boolCmpRE2, includesRE,
+	} {
+		if re.MatchString(guard) {
+			return true
+		}
+	}
+	return false
+}
+
+// condsSig renders conditions into a dedupe key.
+func condsSig(cs []types.WidgetVisibilityCondition) string {
+	var b strings.Builder
+	for _, c := range cs {
+		b.WriteString("\x00")
+		b.WriteString(c.PropertyKey)
+		b.WriteString(c.Operator)
+		b.WriteString(c.Value)
+		b.WriteString(c.Scope)
+	}
+	return b.String()
+}
+
+// enclosingGroupConditions walks outward from a hide call, collecting the
+// condition of every grouping paren that encloses it, innermost first.
+//
+// ok is false when any link cannot be read as a condition — a platform test, a
+// computed expression, a shape the guard vocabulary does not cover. The caller
+// then emits nothing rather than a partial conjunction.
+//
+// A guard about something other than the widget's own properties is SKIPPED
+// rather than failing the walk: editorConfig's getProperties also receives the
+// target platform, and widgets branch on it (`"web"===platform ? (…)`). That
+// term is not part of the configuration an MDL author writes and is always true
+// for the pages MDL produces, so folding it away loses nothing.
+func enclosingGroupConditions(js string, callStart int, itemIdent string) ([]types.WidgetVisibilityCondition, bool) {
+	var out []types.WidgetVisibilityCondition
+	at := callStart
+	for depth := 0; depth < maxGroupNesting; depth++ {
+		open := enclosingGroupOpen(js, at)
+		if open < 0 {
+			return out, true // reached statement level: the chain is complete
+		}
+		text := groupGuard(js, at)
+		if text == "" {
+			return nil, false
+		}
+		c, ok := guardToCondition(text, groupIsElseBranch(js, at), enclosingAliases(js, at), itemIdent)
+		if ok {
+			out = append(out, c)
+		} else if guardReceiver(text) != "" {
+			// Reads a property off an object but is not a shape we understand —
+			// a real term we cannot represent, so the conjunction is incomplete.
+			return nil, false
+		}
+		at = open
+	}
+	return nil, false
+}
+
+// maxGroupNesting bounds the outward walk. Combo box reaches three; a file that
+// nests further answers "cannot read" and its rules are simply not lifted.
+const maxGroupNesting = 8
+
+// hiddenInComplementaryBranch reports whether the OTHER branch of the ternary
+// enclosing this hide also hides propertyKey.
+//
+// That is what separates a conjunctive guard that is merely imprecise from one
+// that is wrong. Both of these hide on `outer AND inner`, and both are stored as
+// `inner` alone:
+//
+//	ProgressBar   showLabel ? (… "text"!==labelType && hide("labelText"))
+//	                        : hide(["customLabel","labelText","labelType"])
+//	Datagrid      pagination ? hide("showNumberOfRows")
+//	                         : (…, !1===showNumberOfRows && hide("pagingPosition"))
+//
+// labelText is hidden in the else branch too, so `labelType != "text"` can only
+// fail to fire where the widget hides it anyway — it over-lists, never hides a
+// binding the author needs. pagingPosition is hidden in neither complementary
+// case, so the same reading claims hidden with pagination on, which is its
+// default. The first is kept, the second dropped.
+//
+// The scan is textual and bounded to the sibling branch. It answers "no" when
+// the shape is not recognised, which drops the rule — the safe direction.
+func hiddenInComplementaryBranch(js string, callStart int, propertyKey string) bool {
+	open := enclosingGroupOpen(js, callStart)
+	if open < 0 {
+		return false
+	}
+	// The group is one branch of `cond ? A : B`. Find the sibling branch: for a
+	// then-group `? ( … )` it follows the matching `)`; for an else-group
+	// `: ( … )` it is the text between the `?` and this `:`.
+	pre := strings.TrimRight(js[:open], " ")
+	var sibling string
+	switch {
+	case strings.HasSuffix(pre, "?"):
+		close := matchingCloseParen(js, open)
+		if close < 0 {
+			return false
+		}
+		rest := js[close+1:]
+		i := strings.IndexByte(rest, ':')
+		if i < 0 {
+			return false
+		}
+		sibling = rest[i+1:]
+		if len(sibling) > complementScanLimit {
+			sibling = sibling[:complementScanLimit]
+		}
+	case strings.HasSuffix(pre, ":"):
+		q := strings.LastIndexByte(pre[:len(pre)-1], '?')
+		if q < 0 {
+			return false
+		}
+		sibling = pre[q+1 : len(pre)-1]
+	default:
+		return false
+	}
+	return mentionsHiddenProperty(sibling, propertyKey)
+}
+
+// complementScanLimit bounds the then-branch scan, whose end is not delimited by
+// a paren the way the else-branch's is. Every observed ternary branch is far
+// shorter; a longer one simply answers "no" and drops the rule.
+const complementScanLimit = 4000
+
+// mentionsHiddenProperty reports whether s contains a hide call naming
+// propertyKey as a quoted argument.
+func mentionsHiddenProperty(s, propertyKey string) bool {
+	lit := `"` + propertyKey + `"`
+	for _, loc := range hideCallRE.FindAllStringIndex(s, -1) {
+		args, ok := balancedArgs(s, loc[1])
+		if !ok {
+			continue
+		}
+		if strings.Contains(args, lit) {
+			return true
+		}
+	}
+	return false
+}
+
+// enclosingGroupOpen returns the index of the unmatched '(' that opens the group
+// containing callStart, or -1 when the hide is not inside one.
+func enclosingGroupOpen(js string, callStart int) int {
+	depth := 0
+	inStr := byte(0)
+	for i := callStart - 1; i >= 0; i-- {
+		c := js[i]
+		if inStr != 0 {
+			if c == inStr && (i == 0 || js[i-1] != '\\') {
+				inStr = 0
+			}
+			continue
+		}
+		switch c {
+		case '"', '\'':
+			inStr = c
+		case ')':
+			depth++
+		case '(':
+			if depth == 0 {
+				head := strings.TrimRight(js[:i], " ")
+				if strings.HasSuffix(head, "?") || strings.HasSuffix(head, ":") ||
+					strings.HasSuffix(head, "&&") || strings.HasSuffix(head, "||") {
+					return i
+				}
+				return -1
+			}
+			depth--
+		case '{', ';':
+			if depth == 0 {
+				return -1
+			}
+		}
+	}
+	return -1
+}
+
+// matchingCloseParen returns the index of the ')' matching the '(' at open.
+func matchingCloseParen(js string, open int) int {
+	depth := 0
+	inStr := byte(0)
+	for i := open; i < len(js); i++ {
+		c := js[i]
+		if inStr != 0 {
+			if c == inStr && js[i-1] != '\\' {
+				inStr = 0
+			}
+			continue
+		}
+		switch c {
+		case '"', '\'':
+			inStr = c
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// insideOpenGroup reports whether prefix leaves a grouping paren open — i.e. the
+// guard that follows it is one operand inside `cond ? ( … )` rather than a
+// statement of its own.
+//
+// The scan is backwards and stops at the enclosing statement (`{` or `;` at
+// depth zero), so the parens of an enclosing `function(a,b){…}` or a
+// `.forEach((function(o,r){…}))` are not miscounted as an open group — without
+// that bound every nested (object-list) rule would read as conjunctive.
+func insideOpenGroup(prefix string) bool {
+	depth := 0
+	inStr := byte(0)
+	for i := len(prefix) - 1; i >= 0; i-- {
+		c := prefix[i]
+		if inStr != 0 {
+			if c == inStr && (i == 0 || prefix[i-1] != '\\') {
+				inStr = 0
+			}
+			continue
+		}
+		switch c {
+		case '"', '\'':
+			inStr = c
+		case ')':
+			depth++
+		case '(':
+			if depth == 0 {
+				// An unmatched open paren — but only a paren that FOLLOWS a
+				// conditional connector groups a guarded branch. `switch(a,b,c)`,
+				// `if(...)` and an ordinary call also leave one open, and their
+				// contents are not conditioned on anything, so treating them as
+				// groups would drop sound rules: Timeline writes its hides inside
+				// `switch(A, B, e.groupByKey)`.
+				head := strings.TrimRight(prefix[:i], " ")
+				return strings.HasSuffix(head, "?") || strings.HasSuffix(head, ":") ||
+					strings.HasSuffix(head, "&&") || strings.HasSuffix(head, "||")
+			}
+			depth--
+		case '{', ';':
+			if depth == 0 {
+				return false // reached the enclosing statement cleanly
+			}
+		}
+	}
+	return false
+}
+
+// stripGroupSiblings walks back over `hide…(…),` siblings so a hide that is not
+// the first in a comma group is attributed to the group's guard.
+//
+// Only a preceding *hide call* is skipped, never an arbitrary expression: a
+// comma in editorConfig also separates object literals and array elements, and
+// skipping one of those would attach a guard belonging to something else. The
+// walk stops at anything it does not recognise, which leaves pre where it was
+// and the hide unattributed — today's behaviour, and the safe direction.
+func stripGroupSiblings(pre string) string {
+	walked := stripGroupSiblingsRaw(pre)
+	// Commit only when the walk lands on the group's own `(`. Landing anywhere
+	// else means the "sibling" was not a comma-group member at all: in
+	// `A ? B : hide(x), hide(y)` the text before hide(y) is a ternary ELSE
+	// branch, and attributing y to `A` is simply wrong — Maps hides `advanced`
+	// there, and the mis-read made it "hidden when geodecodeApiKey is not set".
+	if strings.HasSuffix(walked, "(") {
+		return walked
+	}
+	return pre
+}
+
+func stripGroupSiblingsRaw(pre string) string {
+	for {
+		trimmed := strings.TrimRight(pre, " ")
+		if !strings.HasSuffix(trimmed, ",") {
+			return pre
+		}
+		body := strings.TrimRight(trimmed[:len(trimmed)-1], " ")
+		if !strings.HasSuffix(body, ")") {
+			return pre
+		}
+		open := matchingOpenParen(body)
+		if open < 0 {
+			return pre
+		}
+		head := strings.TrimRight(body[:open], " ")
+		loc := hideCallTailRE.FindStringIndex(head)
+		if loc == nil || loc[1] != len(head) {
+			return pre // not a hide call — do not cross this comma
+		}
+		pre = strings.TrimRight(head[:loc[0]], " ")
+		if l := nsPrefixRE.FindStringIndex(pre); l != nil {
+			pre = strings.TrimRight(pre[:l[0]], " ")
+		}
+	}
+}
+
+// matchingOpenParen returns the index of the '(' matching the ')' that ends s,
+// or -1 when it is unbalanced. Quoted strings are skipped so a paren inside a
+// caption literal does not throw the count off.
+func matchingOpenParen(s string) int {
+	depth := 0
+	inStr := byte(0)
+	for i := len(s) - 1; i >= 0; i-- {
+		c := s[i]
+		if inStr != 0 {
+			if c == inStr && (i == 0 || s[i-1] != '\\') {
+				inStr = 0
+			}
+			continue
+		}
+		switch c {
+		case '"', '\'':
+			inStr = c
+		case ')':
+			depth++
+		case '(':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// emptyCond builds an empty/notempty condition for `null===ref` and
+// `0===ref.length`. cmp is the JS operator as written; falsy is the connector
+// polarity, and the two compose — `!==` under `||` cancels back to "empty".
+func emptyCond(ref, cmp string, falsy bool, aliases map[string]string, itemIdent string) (types.WidgetVisibilityCondition, bool) {
+	key, scope, ok := resolveRef(ref, aliases, itemIdent)
+	if !ok {
+		return types.WidgetVisibilityCondition{}, false
+	}
+	wantEmpty := (cmp == "===") != falsy // XOR
+	op := "notempty"
+	if wantEmpty {
+		op = "empty"
+	}
+	return types.WidgetVisibilityCondition{PropertyKey: key, Operator: op, Scope: scope}, true
+}
+
+// boolCond builds an eq/ne condition against a minified boolean literal, where
+// digit is terser's "1" for false (`!1`) and "0" for true (`!0`).
+func boolCond(ref, cmp, digit string, falsy bool, aliases map[string]string, itemIdent string) (types.WidgetVisibilityCondition, bool) {
+	key, scope, ok := resolveRef(ref, aliases, itemIdent)
+	if !ok {
+		return types.WidgetVisibilityCondition{}, false
+	}
+	lit := "false"
+	if digit == "0" {
+		lit = "true"
+	}
+	wantEq := (cmp == "===") != falsy // XOR
+	op := "ne"
+	if wantEq {
+		op = "eq"
+	}
+	return types.WidgetVisibilityCondition{PropertyKey: key, Operator: op, Value: lit, Scope: scope}, true
 }
 
 // resolveRef turns a guard reference into a property key and the scope that key

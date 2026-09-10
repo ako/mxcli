@@ -100,9 +100,27 @@ func (s *Store) LoadShard(shard string) ([]Entry, []string, error) {
 // SaveShard writes a shard, deleting it when it has no entries left. Leaving an
 // empty file behind would make the directory accumulate husks that read as
 // "this module has decisions" when it has none.
+//
+// Any YAML frontmatter already on the file is carried across. A shard is
+// re-rendered from its parsed entries, which is right for the parts mxcli owns
+// — title and preamble are regenerated so they cannot drift — but frontmatter
+// is not one of them, and discarding it silently broke every markdown tool that
+// keeps per-file metadata there. This is the single write choke point, so
+// preserving here covers promote, replace, drop and rename at once
+// (guard-don't-drop, ADR-0005).
 func (s *Store) SaveShard(shard string, entries []Entry) error {
+	return s.saveShardWith(shard, entries, s.Frontmatter(shard))
+}
+
+// saveShardWith writes a shard beneath an explicitly supplied frontmatter
+// block. Only the module-rename move needs it: that writes to a path with no
+// existing file, so there is nothing there to read the block back off.
+func (s *Store) saveShardWith(shard string, entries []Entry, frontmatter string) error {
 	path := s.ShardPath(shard)
 	if len(entries) == 0 && shard != ProjectShard {
+		// The file goes, frontmatter included. A shard with no decisions left
+		// is not a shard, and keeping a husk alive for its metadata is the
+		// accumulation this branch exists to prevent.
 		err := os.Remove(path)
 		if os.IsNotExist(err) {
 			return nil
@@ -112,7 +130,20 @@ func (s *Store) SaveShard(shard string, entries []Entry) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(RenderShard(shard, entries)), 0644)
+	return os.WriteFile(path, []byte(RenderShardWithFrontmatter(shard, entries, frontmatter)), 0644)
+}
+
+// Frontmatter returns the YAML block at the top of a shard, or "" if the shard
+// has none or does not exist yet.
+func (s *Store) Frontmatter(shard string) string {
+	b, err := os.ReadFile(s.ShardPath(shard))
+	if err != nil {
+		// An unreadable shard is not this function's problem to report: the
+		// caller is about to read or write it and will surface the error there.
+		// Returning "" only means "no frontmatter to carry".
+		return ""
+	}
+	return extractFrontmatter(string(b))
 }
 
 // ListShards returns every shard that exists, project first and modules sorted.
@@ -183,7 +214,11 @@ func (s *Store) Promote(e Entry, shard string) error {
 		}
 	}
 	next := append(entries, e)
-	if lines, limit := CountLines(RenderShard(shard, next)), CapFor(shard); lines > limit {
+	// Counted WITH frontmatter: the cap is what a session pays to load the
+	// shard, `brain show` measures the file on disk, and the two disagreeing
+	// would show up exactly when a shard is near its limit.
+	rendered := RenderShardWithFrontmatter(shard, next, s.Frontmatter(shard))
+	if lines, limit := CountLines(rendered), CapFor(shard); lines > limit {
 		return &ErrCapExceeded{Shard: shard, Would: lines, Cap: limit}
 	}
 	return s.SaveShard(shard, next)

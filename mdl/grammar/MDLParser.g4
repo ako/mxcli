@@ -330,6 +330,50 @@ navigationClause
     | LOGIN PAGE qualifiedName
     | NOT FOUND PAGE qualifiedName
     | MENU_KW LPAREN navMenuItemDef* RPAREN
+    | SYNC LPAREN navSyncDef* RPAREN
+    // Studio Pro's "Throw error when server rejects objects during
+    // synchronization", stored as the profile-level ThrowPartialSyncError.
+    //
+    // Spelled with the phrase MDL already uses for failure handling — a
+    // microflow's ON ERROR CONTINUE / ON ERROR ROLLBACK — so it needs no new
+    // token and reads as something already learned. "Reject" is the platform's
+    // own word, but REJECT appears ~500 times across the examples and skills
+    // (approve/reject is one of the commonest things a workflow models), and
+    // claiming a heavily-used identifier as a keyword is not worth the closer
+    // paraphrase.
+    | ON SYNC ERROR (THROW | CONTINUE)
+    ;
+
+// Offline synchronization, one statement per entity, mirroring the MENU block:
+// a list of rules rather than a property bag, so it diffs a line at a time.
+//
+// WHERE implies the Constrained mode rather than naming it. A constrained
+// entity with no constraint and a constraint with no mode are both nonsense,
+// so deriving one from the other makes the invalid pair unspellable instead of
+// merely diagnosable — and leaves Constrained with no bare word, which is
+// correct because there is nothing to say without the XPath.
+navSyncDef
+    : SYNC qualifiedName navSyncMode SEMICOLON?
+    ;
+
+// Every alternative maps to exactly one Navigation$SyncMode member. The words
+// are not the captions Studio Pro shows -- "All Objects" and "By XPath" are not
+// members of the enumeration at all -- so the mapping lives in the visitor with
+// a test asserting each target is a declared member.
+navSyncMode
+    : ONLINE
+    | ALL
+    | NEVER
+    | NONE PRESERVE DATA
+    | NONE
+    // The bracket form is the first-class one and is what DESCRIBE emits: an
+    // XPath constraint routinely contains quoted literals, and inside a quoted
+    // MDL string every one of them doubles — the stored value already carries
+    // Mendix's own escaping, so the two compose into runs of six quotes
+    // (mendixlabs/mxcli#750). Brackets take the XPath verbatim.
+    //
+    // The quoted form still parses, because scripts already use it.
+    | WHERE (xpathConstraint | STRING_LITERAL)
     ;
 
 // The icon is a qualifiedName, like every other reference into the model, and

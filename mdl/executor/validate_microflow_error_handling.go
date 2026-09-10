@@ -25,11 +25,17 @@ const continueUnsupportedRule = "MDL076"
 //	Retrieve            ok         ok        ok
 //	Delete              ok         ok        ok
 //	MicroflowCall       ok         ok      CE6035
+//	CreateVariable      ok         ok         -
+//	ChangeVariable      ok         ok         -
 //	Log                 ok       CE6035    CE6035
 //	Create              ok       CE6035    CE6035
 //	Change              ok       CE6035    CE6035
 //	Commit              ok       CE6035    CE6035
 //	Aggregate           ok       CE6035    CE6035
+//	ShowPage            ok       CE6035      -
+//	ClosePage           ok       CE6035      -
+//	ShowMessage         ok       CE6035      -
+//	ValidationFeedback  ok       CE6035      -
 //
 // A DENY-list rather than an allow-list, deliberately. The statements not named
 // here were never measured, and refusing them would reject scripts that may well
@@ -37,14 +43,21 @@ const continueUnsupportedRule = "MDL076"
 // That is also why the table is per-statement and not "activities that write to
 // the database": Delete writes and is fine, Aggregate does not and is not.
 //
-// Only CREATE and COMMIT appear, because they are the only rejecting activities
-// MDL can even put the clause on: `logStatement` and the change statement carry
-// no onErrorClause in the grammar, so Log and Change are unreachable from a
-// script however badly they behave in a stored document. Adding them would be
-// dead code that reads as coverage.
+// The bottom nine rows became REACHABLE with mendixlabs/mxcli#1078, which gave
+// eight more statements an onErrorClause so a Studio Pro error handler could
+// survive DESCRIBE. Before that they were unreachable from a script and this list
+// held only create and commit. Note the split it exposes, which no rule of thumb
+// predicts: create-VARIABLE and change-VARIABLE accept Continue while
+// change-OBJECT does not — measured on 11.14.0, one microflow per row.
 var continueUnsupportedOn = map[string]string{
-	"create": "Create object activity",
-	"commit": "Commit object(s) activity",
+	"create":              "Create object activity",
+	"commit":              "Commit object(s) activity",
+	"change":              "Change object activity",
+	"log":                 "Log message activity",
+	"show page":           "Show page activity",
+	"close page":          "Close page activity",
+	"show message":        "Show message activity",
+	"validation feedback": "Validation feedback activity",
 }
 
 // checkErrorHandlingContinueSupported reports `ON ERROR CONTINUE` on a statement
@@ -89,8 +102,61 @@ func continueUnsupportedStatement(stmt ast.MicroflowStatement) (keyword, activit
 		keyword = "create"
 	case *ast.MfCommitStmt:
 		keyword = "commit"
+	case *ast.ChangeObjectStmt:
+		keyword = "change"
+	case *ast.LogStmt:
+		keyword = "log"
+	case *ast.ShowPageStmt:
+		keyword = "show page"
+	case *ast.ClosePageStmt:
+		keyword = "close page"
+	case *ast.ShowMessageStmt:
+		keyword = "show message"
+	case *ast.ValidationFeedbackStmt:
+		keyword = "validation feedback"
 	default:
+		// DeclareStmt and MfSetStmt are deliberately absent: create-variable and
+		// change-variable accept Continue on 11.14.0.
 		return "", ""
 	}
 	return keyword, continueUnsupportedOn[keyword]
+}
+
+// errorHandlingUnavailableRule flags an ON ERROR clause on a statement whose
+// Mendix activity has no ErrorHandlingType property at all.
+const errorHandlingUnavailableRule = "MDL077"
+
+// checkErrorHandlingSupported reports an ON ERROR clause the stored activity
+// cannot hold.
+//
+// The `set` statement is overloaded: `$x = $y` is a Change variable activity,
+// which HAS an ErrorHandlingType, while `$x = head($list)` and `$x = count($list)`
+// are List operation and Aggregate activities, which do not — the property is
+// absent from Microflows$ListOperationsAction and Microflows$AggregateAction in
+// the metamodel, not merely unset. One MDL statement form therefore spans
+// activities that can and cannot carry the clause.
+//
+// Refused rather than dropped. #1078 exists because an error handler that
+// disappears between the model and the script is invisible until someone
+// re-executes the script and finds the handler gone; accepting a clause here and
+// writing nothing would rebuild that same trap one statement over.
+func (v *microflowValidator) checkErrorHandlingSupported(stmt ast.MicroflowStatement) {
+	if stmtErrorHandling(stmt) == nil {
+		return
+	}
+	var form, activity string
+	switch stmt.(type) {
+	case *ast.ListOperationStmt:
+		form, activity = "a list operation", "List operation activity"
+	case *ast.AggregateListStmt:
+		form, activity = "an aggregate", "Aggregate list activity"
+	default:
+		return
+	}
+	v.addViolation(errorHandlingUnavailableRule, linter.SeverityError,
+		fmt.Sprintf("`on error` is not available on %s — Mendix's %s has no error-handling "+
+			"property, so the clause could only be discarded", form, activity),
+		"Drop the clause. To handle a failure around it, put the statement inside the "+
+			"custom handler of an activity that does support one, or split the expression "+
+			"out into a plain `set` (a Change variable activity), which does.")
 }

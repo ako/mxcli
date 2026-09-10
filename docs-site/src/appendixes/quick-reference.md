@@ -214,7 +214,7 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 | Drop module role | `DROP MODULE ROLE Mod.Role;` | |
 | Create user role | `CREATE USER ROLE Name (Mod.Role, ...) [MANAGE ALL ROLES];` | Aggregates module roles |
 | Alter user role | `ALTER USER ROLE Name ADD\|REMOVE MODULE ROLES (Mod.Role, ...);` | |
-| Drop user role | `DROP USER ROLE Name;` | |
+| Drop user role | `DROP USER ROLE [IF EXISTS] Name;` | `IF EXISTS` makes a cleanup script re-runnable |
 | Grant microflow access | `GRANT EXECUTE ON MICROFLOW Mod.MF TO Mod.Role, ...;` | |
 | Revoke microflow access | `REVOKE EXECUTE ON MICROFLOW Mod.MF FROM Mod.Role, ...;` | |
 | Grant page access | `GRANT VIEW ON PAGE Mod.Page TO Mod.Role, ...;` | |
@@ -225,7 +225,7 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 | Toggle demo users | `ALTER PROJECT SECURITY DEMO USERS ON\|OFF;` | |
 | Toggle guest access | `ALTER PROJECT SECURITY GUEST ACCESS ON ROLE UserRole\|OFF;` | Anonymous users; role required (CE0133) |
 | Create demo user | `CREATE DEMO USER 'name' PASSWORD 'pass' [ENTITY Module.Entity] (UserRole, ...);` | |
-| Drop demo user | `DROP DEMO USER 'name';` | |
+| Drop demo user | `DROP DEMO USER [IF EXISTS] 'name';` | `IF EXISTS` makes a cleanup script re-runnable |
 
 ## Workflows
 

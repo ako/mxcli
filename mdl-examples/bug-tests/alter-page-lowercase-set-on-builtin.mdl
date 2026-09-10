@@ -23,8 +23,13 @@
 -- After fix:
 --   setRawWidgetPropertyMut matches first-class properties via strings.ToLower, so
 --   `set class`/`set dynamicclasses`/`set caption` (any case) work on built-in
---   widgets. The pluggable fallback keeps original casing (template keys are
---   case-sensitive).
+--   widgets.
+--
+--   The pluggable fallback was left case-SENSITIVE here, on the belief that
+--   template keys must be matched exactly. That was wrong the same way, and
+--   surfaced as mendixlabs/mxcli#1069: `set PageSize` failed on a grid CREATE had
+--   just written with `PageSize: 20`. It now resolves case-insensitively too —
+--   see alter-page-pluggable-property-casing.mdl.
 --
 -- Usage:
 --   mxcli exec mdl-examples/bug-tests/alter-page-lowercase-set-on-builtin.mdl -p app.mpr

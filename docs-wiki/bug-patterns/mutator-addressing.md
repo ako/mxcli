@@ -48,10 +48,39 @@ BEFORE and AFTER position a widget among siblings, and treating them as INTO
 would silently put widgets somewhere the script did not ask for.
 
 **Property lookup is per-shape, and the shapes differ.** A button's text is a
-`CaptionTemplate`, not a `Caption`. Page-level property names are case-sensitive
-while widget ones are matched lowercase. A column's value kind comes from the
+`CaptionTemplate`, not a `Caption`. A column's value kind comes from the
 schema — expression, primitive or text template — and writing a string where a
 reference belongs is accepted by everything and visible to nothing.
+
+**A key stored case-sensitively still has to be matched case-insensitively.**
+CREATE has always resolved the author's spelling case-insensitively, so any
+resolver on the ALTER side that does not is a verb the tool accepts on the way in
+and rejects on the way back out — and DESCRIBE, which prints canonical capitalised
+names, hands the author the spelling that fails. This has now been the cause
+twice: first for first-class widget properties (`set class`), then for pluggable
+ones (`set PageSize` on a grid CREATE had just written with `PageSize: 20`), where
+the second fix was blocked for a month by the first one's comment asserting that
+template keys must match exactly. The way to settle it is to **measure the
+ambiguity rather than assume it**: relaxing the match is safe exactly when no
+single lookup scope holds two keys differing only in case, which across every
+shipped widget template is 0 of 1208 keys — and a test pins that as templates
+are added.
+
+**The names a mutation may use are not a list, so the pre-flight runs the
+mutation.** The other half of the same story is that `check` could not see any
+of this: the properties reference checking resolved were the ones a statement
+*carried*, and `SET` carries no widget — it names one already stored, whose
+vocabulary is partly a switch in the setter and partly the installed widget
+package's own template keys. Nothing in this repo can state that vocabulary for
+an arbitrary project, so the check does not try: it opens the document, runs the
+real setter against a throwaway copy, and keeps the error. Two resolvers that
+must agree are cheaper to make one resolver than to keep in step — the drift
+here is silent in the direction that hurts, a pre-flight that passes what the
+run then refuses. The cost is that the copy has to be a real copy, which is one
+test, and that a target the script itself adds has to be recognised as
+not-yet-stored rather than missing — by asking whether it resolves, never by
+matching names, since a grid column is inserted under one name and addressed
+under its derived one.
 
 **Hand-built BSON drifts from codec-built BSON.** The mutator constructs
 documents directly while CREATE goes through the codec, so the two encodings of

@@ -852,6 +852,12 @@ func microflowActionToGen(action microflows.MicroflowAction) element.Element {
 		// "call external action" — Microflows$CallExternalAction. Without this
 		// the activity serialized with no action → CE0008 "No action defined".
 		return callExternalActionToGen(a)
+	case *microflows.WebServiceCallAction:
+		// "call web service" (legacy SOAP) — Microflows$CallWebServiceAction.
+		// Same CE0008 shape as the two cases above, and the reason the legacy
+		// engine was still the documented fallback for SOAP. See
+		// microflow_webservice_write.go.
+		return webServiceCallActionToGen(a)
 	default:
 		return nil // not yet supported (added in later groups)
 	}

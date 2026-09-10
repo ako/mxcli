@@ -77,9 +77,12 @@ func (fb *flowBuilder) addLogMessageAction(s *ast.LogStmt) model.ID {
 		logNodeName = fb.exprToString(s.Node)
 	}
 
+	activityX := fb.posX
+
 	action := &microflows.LogMessageAction{
-		BaseElement:       model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType: fb.ehType(nil),
+		BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+		// fb.ehType, not explicitErrorHandling — see ehType's doc comment.
+		ErrorHandlingType: fb.ehType(s.ErrorHandling),
 		LogLevel:          logLevel,
 		LogNodeName:       logNodeName,
 		MessageTemplate: &model.Text{
@@ -99,12 +102,16 @@ func (fb *flowBuilder) addLogMessageAction(s *ast.LogStmt) model.ID {
 				Size:        model.Size{Width: ActivityWidth, Height: ActivityHeight},
 			},
 			AutoGenerateCaption: true,
+			ErrorHandlingType:   fb.ehType(s.ErrorHandling),
 		},
 		Action: action,
 	}
 
 	fb.objects = append(fb.objects, activity)
 	fb.posX += fb.spacing
+
+	fb.finishCustomErrorHandler(activity.ID, activityX, s.ErrorHandling, "")
+
 	return activity.ID
 }
 
@@ -665,10 +672,25 @@ func (fb *flowBuilder) resolveExternalActionReturnKind(serviceRef ast.QualifiedN
 	return "", ""
 }
 
-// externalParamKind is one action parameter's resolved Mendix type.
+// externalParamKind is one action parameter's resolved Mendix type, plus
+// whether the contract lets the argument be left empty.
 type externalParamKind struct {
-	kind   string // "String", "Object", … — same vocabulary as the return type
-	entity string // set only for Object/List
+	kind       string // "String", "Object", … — same vocabulary as the return type
+	entity     string // set only for Object/List
+	canBeEmpty bool   // the contract's Nullable, which Mendix stores as CanBeEmpty
+}
+
+// paramCanBeEmpty reads a parameter's nullability the way Mendix does.
+//
+// CSDL makes Nullable OPTIONAL on <Parameter> and defaults it to true, so an
+// absent attribute means nullable — the opposite of Go's zero value. Getting
+// this backwards is invisible in a contract that spells every Nullable out and
+// only shows up on one that does not.
+func paramCanBeEmpty(p *types.EdmActionParameter) bool {
+	if p.Nullable == nil {
+		return true
+	}
+	return *p.Nullable
 }
 
 // resolveExternalActionParameterKinds types every parameter of the called action
@@ -703,14 +725,16 @@ func (fb *flowBuilder) resolveExternalActionParameterKinds(serviceRef ast.Qualif
 				continue
 			}
 			for _, p := range act.Parameters {
+				// Nullability is recorded even when the type does not resolve:
+				// CanBeEmpty is read straight off the contract and does not
+				// depend on mxcli being able to name the Mendix type.
+				pk := externalParamKind{canBeEmpty: paramCanBeEmpty(p)}
 				if kind := edmReturnTypeToKind(p.Type); kind != "" && kind != "Void" {
-					out[strings.ToLower(p.Name)] = externalParamKind{kind: kind}
-					continue
+					pk.kind = kind
+				} else if kind, entity := fb.resolveExternalActionReturnEntity(serviceRef, p.Type); kind != "" {
+					pk.kind, pk.entity = kind, entity
 				}
-				// Entity-typed parameter: same resolution as an entity return.
-				if kind, entity := fb.resolveExternalActionReturnEntity(serviceRef, p.Type); kind != "" {
-					out[strings.ToLower(p.Name)] = externalParamKind{kind: kind, entity: entity}
-				}
+				out[strings.ToLower(p.Name)] = pk
 			}
 			return out
 		}
@@ -847,6 +871,10 @@ func (fb *flowBuilder) addCallExternalActionAction(s *ast.CallExternalActionStmt
 		if pk, ok := paramKinds[strings.ToLower(arg.Name)]; ok {
 			mapping.ParameterDataType = pk.kind
 			mapping.ParameterEntity = pk.entity
+			// Mendix compares CanBeEmpty against the contract's Nullable and
+			// raises CE7252 when they disagree, so leaving it at Go's false
+			// makes every call on a nullable parameter unbuildable.
+			mapping.CanBeEmpty = pk.canBeEmpty
 		}
 		mappings = append(mappings, mapping)
 	}
@@ -924,9 +952,12 @@ func (fb *flowBuilder) addShowPageAction(s *ast.ShowPageStmt) model.ID {
 	// Create the action
 	// Use PageName (BY_NAME_REFERENCE) instead of PageID (BY_ID_REFERENCE)
 	// The modern Mendix format uses FormSettings.Form as a qualified name string
+	activityX := fb.posX
+
 	action := &microflows.ShowPageAction{
-		BaseElement:           model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType:     fb.ehType(nil),
+		BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+		// fb.ehType, not explicitErrorHandling — see ehType's doc comment.
+		ErrorHandlingType:     fb.ehType(s.ErrorHandling),
 		PageName:              pageQN, // BY_NAME_REFERENCE - qualified name string
 		PageSettings:          pageSettings,
 		PageParameterMappings: mappings,
@@ -956,12 +987,16 @@ func (fb *flowBuilder) addShowPageAction(s *ast.ShowPageStmt) model.ID {
 				Size:        model.Size{Width: ActivityWidth, Height: ActivityHeight},
 			},
 			AutoGenerateCaption: true,
+			ErrorHandlingType:   fb.ehType(s.ErrorHandling),
 		},
 		Action: action,
 	}
 
 	fb.objects = append(fb.objects, activity)
 	fb.posX += fb.spacing
+
+	fb.finishCustomErrorHandler(activity.ID, activityX, s.ErrorHandling, "")
+
 	return activity.ID
 }
 
@@ -1018,9 +1053,12 @@ func (fb *flowBuilder) addShowMessageAction(s *ast.ShowMessageStmt) model.ID {
 		msgType = microflows.MessageTypeInformation
 	}
 
+	activityX := fb.posX
+
 	action := &microflows.ShowMessageAction{
-		BaseElement:        model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType:  fb.ehType(nil),
+		BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+		// fb.ehType, not explicitErrorHandling — see ehType's doc comment.
+		ErrorHandlingType:  fb.ehType(s.ErrorHandling),
 		Template:           template,
 		Type:               msgType,
 		TemplateParameters: templateParams,
@@ -1034,12 +1072,16 @@ func (fb *flowBuilder) addShowMessageAction(s *ast.ShowMessageStmt) model.ID {
 				Size:        model.Size{Width: ActivityWidth, Height: ActivityHeight},
 			},
 			AutoGenerateCaption: true,
+			ErrorHandlingType:   fb.ehType(s.ErrorHandling),
 		},
 		Action: action,
 	}
 
 	fb.objects = append(fb.objects, activity)
 	fb.posX += fb.spacing
+
+	fb.finishCustomErrorHandler(activity.ID, activityX, s.ErrorHandling, "")
+
 	return activity.ID
 }
 
@@ -1117,9 +1159,12 @@ func (fb *flowBuilder) addClosePageAction(s *ast.ClosePageStmt) model.ID {
 		numPages = 1
 	}
 
+	activityX := fb.posX
+
 	action := &microflows.ClosePageAction{
-		BaseElement:       model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType: fb.ehType(nil),
+		BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+		// fb.ehType, not explicitErrorHandling — see ehType's doc comment.
+		ErrorHandlingType: fb.ehType(s.ErrorHandling),
 		NumberOfPages:     numPages,
 	}
 
@@ -1131,12 +1176,16 @@ func (fb *flowBuilder) addClosePageAction(s *ast.ClosePageStmt) model.ID {
 				Size:        model.Size{Width: ActivityWidth, Height: ActivityHeight},
 			},
 			AutoGenerateCaption: true,
+			ErrorHandlingType:   fb.ehType(s.ErrorHandling),
 		},
 		Action: action,
 	}
 
 	fb.objects = append(fb.objects, activity)
 	fb.posX += fb.spacing
+
+	fb.finishCustomErrorHandler(activity.ID, activityX, s.ErrorHandling, "")
+
 	return activity.ID
 }
 
@@ -1233,9 +1282,12 @@ func (fb *flowBuilder) addValidationFeedbackAction(s *ast.ValidationFeedbackStmt
 		varName = varName[1:]
 	}
 
+	activityX := fb.posX
+
 	action := &microflows.ValidationFeedbackAction{
-		BaseElement:        model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType:  fb.ehType(nil),
+		BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+		// fb.ehType, not explicitErrorHandling — see ehType's doc comment.
+		ErrorHandlingType:  fb.ehType(s.ErrorHandling),
 		ObjectVariable:     varName,
 		AttributeName:      attributeName,
 		AssociationName:    associationName,
@@ -1251,12 +1303,16 @@ func (fb *flowBuilder) addValidationFeedbackAction(s *ast.ValidationFeedbackStmt
 				Size:        model.Size{Width: ActivityWidth, Height: ActivityHeight},
 			},
 			AutoGenerateCaption: true,
+			ErrorHandlingType:   fb.ehType(s.ErrorHandling),
 		},
 		Action: action,
 	}
 
 	fb.objects = append(fb.objects, activity)
 	fb.posX += fb.spacing
+
+	fb.finishCustomErrorHandler(activity.ID, activityX, s.ErrorHandling, "")
+
 	return activity.ID
 }
 

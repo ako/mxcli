@@ -32,6 +32,23 @@ func convertErrorHandlingType(eh *ast.ErrorHandlingClause) microflows.ErrorHandl
 // ehType returns the error handling type for an activity in this flow context.
 // Nanoflows default to "Abort" because they have no transactions; microflows
 // default to "Rollback". An explicit ON ERROR clause always overrides the default.
+//
+// Most builders want THIS, not explicitErrorHandling below, and the two are not
+// interchangeable — picking the wrong one is a silent CE6035. Which is right
+// depends entirely on what the call site did before:
+//
+//   - A builder that already supplied a default here (every create/change/log/
+//     page/message/validation activity) must keep using ehType. Returning empty
+//     discards the flow flavour, and the writer's literal "Rollback" is CE6035 on
+//     every un-annotated activity in a NANOFLOW, whose default is Abort. That is
+//     mendixlabs/mxcli#1078's regression: green unit suite, 11 errors under
+//     `make test-integration`.
+//   - Retrieve and Delete use explicitErrorHandling because their writers emitted
+//     a hardcoded "Rollback" that those two actions accept in every flow flavour,
+//     so empty is a no-op there.
+//
+// Same helper pair, opposite correct answer. Ask what the old expression returned
+// in EVERY context before replacing it, not just the one under test.
 func (fb *flowBuilder) ehType(eh *ast.ErrorHandlingClause) microflows.ErrorHandlingType {
 	if fb.isNanoflow && eh == nil {
 		return microflows.ErrorHandlingTypeAbort

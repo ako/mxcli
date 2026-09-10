@@ -44,9 +44,12 @@ type AlterUserRoleStmt struct {
 
 func (s *AlterUserRoleStmt) isStatement() {}
 
-// DropUserRoleStmt represents: DROP USER ROLE Name
+// DropUserRoleStmt represents: DROP USER ROLE [IF EXISTS] Name
 type DropUserRoleStmt struct {
-	Name string
+	// IfExists downgrades "not found" to a no-op, so a one-time cleanup can sit
+	// in a slice script that is re-run.
+	IfExists bool
+	Name     string
 }
 
 func (s *DropUserRoleStmt) isStatement() {}
@@ -213,8 +216,10 @@ type CreateDemoUserStmt struct {
 
 func (s *CreateDemoUserStmt) isStatement() {}
 
-// DropDemoUserStmt represents: DROP DEMO USER 'name'
+// DropDemoUserStmt represents: DROP DEMO USER [IF EXISTS] 'name'
 type DropDemoUserStmt struct {
+	// IfExists downgrades "not found" to a no-op; see DropUserRoleStmt.
+	IfExists bool
 	UserName string
 }
 

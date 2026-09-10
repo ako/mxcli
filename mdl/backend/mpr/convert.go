@@ -220,11 +220,13 @@ func convertNavProfile(in *mpr.NavigationProfile) *types.NavigationProfile {
 			p.MenuItems[i] = convertNavMenuItem(mi)
 		}
 	}
+	p.ThrowPartialSyncError = in.ThrowPartialSyncError
 	if in.OfflineEntities != nil {
 		p.OfflineEntities = make([]*types.NavOfflineEntity, len(in.OfflineEntities))
 		for i, oe := range in.OfflineEntities {
 			p.OfflineEntities[i] = &types.NavOfflineEntity{
 				Entity: oe.Entity, SyncMode: oe.SyncMode, Constraint: oe.Constraint,
+				CompatibilityMode: oe.CompatibilityMode,
 			}
 		}
 	}

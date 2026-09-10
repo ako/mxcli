@@ -40,7 +40,11 @@ and mxcli's own rules; it does not validate the Mendix model. Run
 
 `mxcli check script.mdl` alone checks syntax and the semantic rules that need no
 model. **Pass `-p` and it also resolves every reference** — modules, entities,
-pages, microflows and icons — against that project:
+pages, microflows and icons — against that project. It reaches inside stored
+documents where a name can only be answered there: an `ALTER PAGE … SET` is
+dry-run against the page it edits, so a widget the page does not have, or a
+property the stored widget does not declare, is reported here rather than
+stopping the script partway through `exec`.
 
 ```bash
 mxcli check script.mdl                 # syntax + model-free rules
@@ -53,6 +57,33 @@ printed an unqualified `Check passed!` having resolved nothing — a misspelled
 icon or entity sailed through a command that had been handed the project. A run
 without a project now says what it did not check, so a pass is never read as
 more than it is.
+
+### It also reports a name the PROJECT already has
+
+A plain `create` of a document the project already carries is a `check` error,
+not something to discover at exec time:
+
+```
+statement 4: association already exists in project: Sales.Order_Customer — use CREATE OR MODIFY to update it
+```
+
+The reason it belongs in `check` is that **`exec` stops at the first one having
+already written everything before it**. A script whose fourth statement
+conflicts leaves three statements' worth of changes in the project and no
+fourth — so "run it and see" is not a free experiment. `check` reports every
+conflict in the script before anything is written.
+
+Three spellings say "fine if it already exists", and none is reported:
+`create or modify`, `create or replace`, and `create … if not exists` (which
+leaves the stored element untouched rather than rewriting it). `create module M;`
+is never reported either — it is a no-op when the module exists, which is what
+lets it open every script.
+
+The types covered are the ones `exec` refuses: entity, enumeration, constant,
+association, microflow, nanoflow, rule, page, snippet, java action, javascript
+action, workflow, and the integration/agent document types. If you find one that
+`exec` refuses and `check` does not, that is a bug of exactly the shape
+`TestEveryCreateDocTypeIsProjectChecked` exists to prevent.
 
 ### It resolves MEMBER names too, where it can establish the entity
 

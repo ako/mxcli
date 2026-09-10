@@ -286,6 +286,13 @@ check-tunnel-deps:
 	@./scripts/check-tunnel-deps.sh
 
 # Run integration tests (requires mx binary / mxbuild)
+#
+# The gate runs every doctype script through exec + mx check once PER ENGINE.
+# MXCLI_TEST_ENGINES narrows that matrix — `MXCLI_TEST_ENGINES=modelsdk make
+# test-integration` skips the legacy engine and takes roughly 60% off the
+# doctype gate (measured: 588s -> 232s). Unset means every engine, which is what
+# the nightly runs; the per-push CI job narrows it to modelsdk. An unrecognised
+# engine name is fatal rather than silently selecting nothing.
 test-integration:
 	CGO_ENABLED=0 go test -tags integration -count=1 -timeout 30m ./...
 

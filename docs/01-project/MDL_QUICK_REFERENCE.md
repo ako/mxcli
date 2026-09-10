@@ -553,7 +553,7 @@ it is for pages.
 | Execute DB query | `$Result = execute database query Module.Conn.Query;` | 3-part name; supports DYNAMIC, params, CONNECTION override |
 | Import mapping | `[$Var =] import from mapping Module.IMM($SourceVar) [all\|first\|limit <e> [offset <e>]];` | Apply import mapping to string variable. Trailing clause is Studio Pro's Range; omitted = infer from the mapping's root. `first` binds one OBJECT (`limit 1` is a one-element LIST). Mendix rejects `offset` on a non-list mapping (CE6100) |
 | Export mapping | `$Var = export to mapping Module.EMM($EntityVar);` | Apply export mapping to entity, returns string |
-| Error handling | `... on error continue\|rollback\|{ handler };` | Not supported on EXECUTE DATABASE QUERY |
+| Error handling | `... on error continue\|rollback\|{ handler }\|without rollback { handler };` | Goes on the activity that may fail — including `declare`, `set`, `change`, `log`, `show page`, `close page`, `show message` and `validation feedback`, which gained it in mendixlabs/mxcli#1078 so a Studio Pro handler survives DESCRIBE. `on error continue` is refused (MDL076) where Mendix raises CE6035: create, change, commit, log, show page, close page, show message, validation feedback — a custom `{ handler }` is accepted on all of them. The list-operation and aggregate forms of `set` have no error handling at all (MDL077). Not supported on EXECUTE DATABASE QUERY. **In a nanoflow** only `declare` and `set` take a clause at all — `change`, `log`, `show page`, `close page`, `show message` and `validation feedback` are CE6035 there in every form, and are refused. A handler that does not end in `return`/`throw` merges back into the main flow, so a later variable is out of scope on the error path (CE0108) |
 
 **Activity defaults.** An omitted modifier always means Mendix's own default, so a
 bare MDL statement produces the same activity as dragging a fresh one onto the
@@ -618,14 +618,15 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 | Drop module role | `drop module role Mod.Role;` | |
 | Create user role | `create user role Name (Mod.Role, ...) [manage all roles];` | Aggregates module roles |
 | Alter user role | `alter user role Name add\|remove module roles (Mod.Role, ...);` | |
-| Drop user role | `drop user role Name;` | |
+| Drop user role | `drop user role [if exists] Name;` | `if exists` makes a cleanup script re-runnable |
 | Grant microflow access | `grant execute on microflow Mod.MF to Mod.Role, ...;` | |
 | Revoke microflow access | `revoke execute on microflow Mod.MF from Mod.Role, ...;` | |
 | Grant nanoflow access | `grant execute on nanoflow Mod.NF to Mod.Role, ...;` | |
 | Revoke nanoflow access | `revoke execute on nanoflow Mod.NF from Mod.Role, ...;` | |
 | Grant page access | `grant view on page Mod.Page to Mod.Role, ...;` | |
 | Revoke page access | `revoke view on page Mod.Page from Mod.Role, ...;` | |
-| Grant entity access | `grant Mod.Role on Mod.Entity (create, delete, read *, write *);` | Additive — merges with existing. Inherited members are named like the entity's own (`read *` covers them); an unknown name is an error. Entities extending `System.User` are the exception — their platform members must not be granted |
+| Grant entity access | `grant Mod.Role on Mod.Entity (create, delete, read *, write *);` | Additive — merges with existing. A module role must be qualified: a bare `Role` parses but is refused (MDL-GRANT02). Inherited members are named like the entity's own (`read *` covers them); an unknown name is an error. Entities extending `System.User` are the exception — their platform members must not be granted |
+| Access for members added later | — | A rule's default for new members is derived from the grant: `write *` → ReadWrite, `read *` → ReadOnly, member lists alone → **None**. So an attribute added later is granted None on a member-listed rule — clean build, blank field. `alter entity … add attribute` warns and prints the widening grant. The rule's *default* decides this, not how narrow its member list is |
 | Revoke entity access | `revoke Mod.Role on Mod.Entity;` | Full revoke — removes entire rule |
 | Revoke entity access (partial) | `revoke Mod.Role on Mod.Entity (read (attr));` | Partial — downgrades specific rights |
 | Set security level | `alter project security level off\|prototype\|production;` | |
@@ -633,7 +634,7 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 | Enable guest access | `alter project security guest access on role UserRole;` | Anonymous users. The role is what visitors get — its entity access is the public surface. Mendix fails the build without one (CE0133), so `on` is refused unless a role is given or already stored. mxcli validates the role exists; Mendix does not |
 | Disable guest access | `alter project security guest access off;` | Keeps the stored role, so re-enabling needs no `role` clause |
 | Create demo user | `create demo user 'name' password 'pass' [entity Module.Entity] (UserRole, ...);` | |
-| Drop demo user | `drop demo user 'name';` | |
+| Drop demo user | `drop demo user [if exists] 'name';` | `if exists` makes a cleanup script re-runnable |
 
 ## Workflows
 
@@ -646,9 +647,9 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 
 **Workflow Activity Types:**
 - `user task <name> '<caption>' [page Mod.Page] [targeting [users|groups] microflow Mod.MF] [targeting [users|groups] xpath '<expr>'] [outcomes '<out>' { } ...];`
-- `call microflow Mod.MF [as <name>] [comment '<text>'] [outcomes '<out>' { } ...];`
-- `call workflow Mod.WF [as <name>] [comment '<text>'];`
-- `decision [<name>] ['<caption>'] outcomes '<out>' { } ...;`
+- `call microflow Mod.MF [as <name>] [comment '<text>'] [with (<Param> = '<expr>', ...)] [outcomes '<out>' -> { } ...];`
+- `call workflow Mod.WF [as <name>] [comment '<text>'] [with (<Param> = '<expr>', ...)];`
+- `decision [<name>] ['<expression>'] outcomes <true|false|'Module.Enum.Value'> -> { } ...;`
 - `parallel split [<name>] path 1 { } path 2 { };`
 - `jump to <activity-name>;`
 - `wait for timer [<name>] ['<expr>'];`
@@ -664,9 +665,17 @@ and when reproducing a workflow Studio Pro authored: Studio Pro names activities
 by type and ordinal (`decision1`, `split1`, `callMicroflow1`) regardless of
 caption, so `describe workflow` emits the name whenever it is not derivable.
 
-**Decision outcomes** are enumeration value identifiers, bare (`Approved`) or
-qualified (`Module.Enum.Approved` — the form Studio Pro stores). Free text with
-spaces is rejected (`MDL-WF03`).
+**Decision outcomes** are `true` / `false` for a boolean decision, and a **fully
+qualified** enumeration value identifier — `Module.Enumeration.Value` — for an
+enum decision, plus one `'' -> { }` outcome for "none of the above" (without it
+the build fails `CE6686`). Anything shorter is refused as `MDL-WF03`, and by
+`exec`: Mendix parses the value when the project is **loaded**, so a bare
+`'Approved'` — or `'Status.Approved'`, even when the enumeration is in the same
+module — is not a build error but a `StorageLoadException` that leaves the
+project unopenable in Studio Pro and mxbuild.
+
+**Parameter values in `with (...)` are quoted strings**, not bare variables:
+`call microflow Mod.MF with (Request = '$WorkflowContext')`.
 
 **An enumeration decision also needs an empty outcome.** Mendix generates one
 outcome per enumeration value **plus one for the empty value**, and MxBuild
@@ -787,6 +796,7 @@ alter workflow Module.OrderApproval
 | Show home pages | `show navigation homes;` | Home page assignments across profiles |
 | Describe navigation | `describe navigation [Profile];` | Full MDL output (round-trippable) |
 | Create/replace navigation | `create or replace navigation Profile ...;` | Full replacement — and **creates** the profile if the project does not have it |
+| Offline sync | `sync ( sync Mod.Entity all; ... )` | A clause of CREATE NAVIGATION. Modes: `online`, `all`, `where '<xpath>'`, `never`, `none`, `none preserve data`. **Not** Studio Pro's captions — its "All Objects" is `all`, its "By XPath" is `where`. An offline profile downloads nothing without this |
 | Profile kinds | `Responsive` · `Phone` · `Tablet` · `ResponsiveOffline` · `PhoneOffline` · `TabletOffline` | A closed set. An invented name (`Mobile`) is an error, not a new profile: the runtime routes on User-Agent to Mendix's own kinds. Native profiles are a different document type and are not creatable |
 | Offline profiles | `create or replace navigation TabletOffline ...;` | Same properties as the online twin, but every page the profile can reach may bind an attribute across **at most one** association hop (**CE6206**). Creating one reports the documents that already exceed that |
 
@@ -831,6 +841,27 @@ name at all:
 | `icon Atlas_Core.Atlas.home` | `Forms$IconCollectionIcon` | a name in an icon collection |
 | `icon glyph 57377` | `Forms$GlyphIcon` | a numeric character code |
 | `icon image MyModule.Images.logo` | `Forms$ImageIcon` | a name in an image collection |
+
+**Browse the glyph codes with `show glyphs`.** A glyph is a character code in a
+font, not a document in the project, so there is nothing to scope with `IN` and
+no connection is needed:
+
+```sql
+show glyphs;                  -- all 247, with names
+show glyphs like 'star';      -- 57350 star, 57351 star-empty
+describe glyph 57350;         -- by code
+describe glyph 'star';        -- or by name
+```
+
+**A glyph code the font does not define is reported (MDL078, a warning).** A
+glyph code is a bare integer, so nothing resolves it: `mxcli check` and `mx check`
+both pass at 0 errors and the failure lands at `mxbuild --target=deploy`, as
+*"An exception occurred while exporting layout '<some layout>'"* — naming a
+document that is not the cause. Measured on 11.14.0: mxbuild resolves the code
+through a LINQ `.First(...)` in `GlyphFont.GetClass`, which throws on an absent
+one. The rule checks the 247 codes the shipped font actually defines. Prefer an
+icon collection reference, which `check --references` resolves before anything is
+written.
 
 The bare form is the icon-collection icon, so every existing script keeps its
 meaning. The keyword forms exist because writing a bare name for an image icon
