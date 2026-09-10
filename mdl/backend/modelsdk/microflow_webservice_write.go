@@ -30,12 +30,40 @@ import (
 // dependency that keeps the legacy engine alive.
 //
 // The target shape is byte-parity with the legacy serializer
-// (sdk/mpr.serializeWebServiceCallAction), not an independent reading of the
-// metamodel. There is no Studio Pro-authored SOAP document in this repo to pin
-// against, so legacy's output is the only reference that exists — and it is what
-// users' projects already contain. TestWebServiceCallAction_MatchesLegacyBSON
-// holds the two engines together; a discrepancy is a test failure, not a silent
-// divergence.
+// (sdk/mpr.serializeWebServiceCallAction), so that fixing the silent drop
+// changes nothing else. TestWebServiceCallAction_MatchesLegacyDocument holds the
+// two engines together; a discrepancy is a test failure, not a silent divergence.
+//
+// PARITY WITH LEGACY IS NOT FIDELITY TO STUDIO PRO, and the difference is now
+// measured rather than assumed. This file first claimed no Studio Pro-authored
+// SOAP document existed to pin against; one does — ako/TestApp carries three
+// (Clients.GetOrders / GetCustomerOrders / SaveOrder, Mendix 11.14.0), and
+// against them legacy is wrong in five places that this file faithfully
+// reproduces:
+//
+//   - ServiceName is the WSDL SERVICE name ("OrdersWS"), not the local part of
+//     the imported service's qualified name — Studio Pro writes ServiceName
+//     "OrdersWS" beside ImportedService "Clients.OrderSoapClient".
+//   - ImportMappingCall.ContentType is "Xml" for a SOAP import mapping, not the
+//     hardcoded "Json".
+//   - Range.SingleObject follows the operation's cardinality; a list result
+//     writes false, not the hardcoded true.
+//   - VariableType is the result's REAL type (DataTypes$ObjectType with an
+//     Entity, DataTypes$BooleanType, …), not DataTypes$VoidType.
+//   - A SEND MAPPING is Microflows$MappingRequestHandling {ContentType,
+//     MappingId, MappingVariableName} — a type this engine ALREADY writes for
+//     REST. It is not the "Mendix$AdvancedRequestHandling" the legacy comment
+//     guessed at, which occurs in none of the three documents.
+//
+// Operation arguments are the sixth: Studio Pro carries them as
+// Microflows$WebServiceOperationSimpleParameterMapping entries inside
+// RequestBodyHandling.ParameterMappings, keyed by an escaped ParameterPath
+// ("http%3A//www.example.com/:GetOrder|OrderId"). Both engines write that list
+// empty, so a call's arguments do not reach the model.
+//
+// None of that is fixed here: this change is scoped to the silent drop, and
+// reproducing what ships is what makes it safe to land. Closing the gaps is
+// follow-up work against those reference documents.
 //
 // Two shapes are deliberately NOT re-derived here:
 //
@@ -49,12 +77,10 @@ import (
 //     registered as 2 in microflow_write.go and as 3 in odata_write.go, and
 //     which one wins is decided by file order.)
 //   - RequestBodyHandling is always SimpleRequestHandling, even when the
-//     statement carries a SEND MAPPING. Legacy does the same and says why: the
-//     advanced form needs a Studio Pro-generated example to establish its type
-//     storage name. Writing a guessed $Type is the failure mode that makes a
-//     project impossible to OPEN rather than merely invalid, so the send mapping
-//     stays unwritten here exactly as it does on legacy. `call web service raw`
-//     is the escape hatch for operations that need it.
+//     statement carries a SEND MAPPING — matching legacy, and WRONG: the real
+//     type is Microflows$MappingRequestHandling (see above). Until that is
+//     implemented the send mapping is silently dropped on both engines, and
+//     `call web service raw` is the only way to author one.
 //
 // Every null the document carries is written IN KEY POSITION rather than through
 // NullFields, for the same reason and with the same consequence — see addNull.
