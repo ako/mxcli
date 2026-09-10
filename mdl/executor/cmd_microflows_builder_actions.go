@@ -31,9 +31,12 @@ func (fb *flowBuilder) addCreateVariableAction(s *ast.DeclareStmt) model.ID {
 	typeName := declType.Kind.String()
 	fb.declaredVars[s.Variable] = typeName
 
+	activityX := fb.posX
+
 	action := &microflows.CreateVariableAction{
-		BaseElement:       model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType: fb.ehType(nil),
+		BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+		// fb.ehType, not explicitErrorHandling — see ehType's doc comment.
+		ErrorHandlingType: fb.ehType(s.ErrorHandling),
 		VariableName:      s.Variable,
 		DataType:          convertASTToMicroflowDataType(declType, nil),
 		InitialValue:      fb.exprToString(s.InitialValue),
@@ -47,12 +50,16 @@ func (fb *flowBuilder) addCreateVariableAction(s *ast.DeclareStmt) model.ID {
 				Size:        model.Size{Width: ActivityWidth, Height: ActivityHeight},
 			},
 			AutoGenerateCaption: true,
+			ErrorHandlingType:   fb.ehType(s.ErrorHandling),
 		},
 		Action: action,
 	}
 
 	fb.objects = append(fb.objects, activity)
 	fb.posX += fb.spacing
+
+	fb.finishCustomErrorHandler(activity.ID, activityX, s.ErrorHandling, s.Variable)
+
 	return activity.ID
 }
 
@@ -65,9 +72,12 @@ func (fb *flowBuilder) addChangeVariableAction(s *ast.MfSetStmt) model.ID {
 			errorExampleDeclareVariable(s.Target))
 	}
 
+	activityX := fb.posX
+
 	action := &microflows.ChangeVariableAction{
-		BaseElement:       model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType: fb.ehType(nil),
+		BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+		// fb.ehType, not explicitErrorHandling — see ehType's doc comment.
+		ErrorHandlingType: fb.ehType(s.ErrorHandling),
 		VariableName:      s.Target,
 		Value:             fb.exprToString(s.Value),
 	}
@@ -80,12 +90,16 @@ func (fb *flowBuilder) addChangeVariableAction(s *ast.MfSetStmt) model.ID {
 				Size:        model.Size{Width: ActivityWidth, Height: ActivityHeight},
 			},
 			AutoGenerateCaption: true,
+			ErrorHandlingType:   fb.ehType(s.ErrorHandling),
 		},
 		Action: action,
 	}
 
 	fb.objects = append(fb.objects, activity)
 	fb.posX += fb.spacing
+
+	fb.finishCustomErrorHandler(activity.ID, activityX, s.ErrorHandling, s.Target)
+
 	return activity.ID
 }
 
@@ -316,9 +330,12 @@ func (fb *flowBuilder) addChangeObjectAction(s *ast.ChangeObjectStmt) model.ID {
 	// exec of such actions stays valid without requiring authored MDL to say
 	// `refresh` explicitly; when the author wrote `refresh`, we keep the
 	// same flag for non-empty changes too.
+	activityX := fb.posX
+
 	action := &microflows.ChangeObjectAction{
-		BaseElement:       model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType: fb.ehType(nil),
+		BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+		// fb.ehType, not explicitErrorHandling — see ehType's doc comment.
+		ErrorHandlingType: fb.ehType(s.ErrorHandling),
 		ChangeVariable:    s.Variable,
 		Commit:            commitTypeOf(s.Commit),
 		RefreshInClient:   s.RefreshInClient || len(s.Changes) == 0,
@@ -349,12 +366,16 @@ func (fb *flowBuilder) addChangeObjectAction(s *ast.ChangeObjectStmt) model.ID {
 				Size:        model.Size{Width: ActivityWidth, Height: ActivityHeight},
 			},
 			AutoGenerateCaption: true,
+			ErrorHandlingType:   fb.ehType(s.ErrorHandling),
 		},
 		Action: action,
 	}
 
 	fb.objects = append(fb.objects, activity)
 	fb.posX += fb.spacing
+
+	fb.finishCustomErrorHandler(activity.ID, activityX, s.ErrorHandling, s.Variable)
+
 	return activity.ID
 }
 

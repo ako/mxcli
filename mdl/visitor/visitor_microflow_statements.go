@@ -107,8 +107,12 @@ func buildMicroflowStatement(ctx parser.IMicroflowStatementContext) ast.Microflo
 		stmt = buildRemoveFromListStatement(removeFrom)
 	} else if showPage := mfCtx.ShowPageStatement(); showPage != nil {
 		stmt = buildShowPageStatement(showPage)
-	} else if mfCtx.ClosePageStatement() != nil {
-		stmt = &ast.ClosePageStmt{NumberOfPages: 1}
+	} else if closePage := mfCtx.ClosePageStatement(); closePage != nil {
+		close := &ast.ClosePageStmt{NumberOfPages: 1}
+		if errClause := closePage.OnErrorClause(); errClause != nil {
+			close.ErrorHandling = buildOnErrorClause(errClause)
+		}
+		stmt = close
 	} else if mfCtx.ShowHomePageStatement() != nil {
 		stmt = &ast.ShowHomePageStmt{}
 	} else if showMsg := mfCtx.ShowMessageStatement(); showMsg != nil {
@@ -668,6 +672,11 @@ func buildDeclareStatement(ctx parser.IDeclareStatementContext) *ast.DeclareStmt
 		stmt.InitialValue = appendStatementExpressionTrailingWhitespace(expr, stmt.InitialValue)
 	}
 
+	// Check for ON ERROR clause
+	if errClause := declCtx.OnErrorClause(); errClause != nil {
+		stmt.ErrorHandling = buildOnErrorClause(errClause)
+	}
+
 	return stmt
 }
 
@@ -725,7 +734,34 @@ func buildCastObjectStatement(ctx parser.ICastObjectStatementContext) *ast.CastO
 // buildSetStatement converts SET statement context to MfSetStmt or specialized statement types.
 // When the expression is a list operation (HEAD, TAIL, etc.) or aggregate (COUNT, SUM, etc.),
 // this returns the specialized statement type instead of MfSetStmt.
+//
+// The ON ERROR clause is attached here rather than at each of the dozen return
+// points below. Only the plain MfSetStmt form can honour it — Mendix gives
+// ChangeVariableAction an ErrorHandlingType but gives ListOperationsAction and
+// AggregateAction none — so the specialized nodes carry it only to be refused by
+// MDL077, never to be executed.
 func buildSetStatement(ctx parser.ISetStatementContext) ast.MicroflowStatement {
+	stmt := buildSetStatementNode(ctx)
+	if stmt == nil || ctx == nil {
+		return stmt
+	}
+	errClause := ctx.(*parser.SetStatementContext).OnErrorClause()
+	if errClause == nil {
+		return stmt
+	}
+	eh := buildOnErrorClause(errClause)
+	switch s := stmt.(type) {
+	case *ast.MfSetStmt:
+		s.ErrorHandling = eh
+	case *ast.ListOperationStmt:
+		s.ErrorHandling = eh
+	case *ast.AggregateListStmt:
+		s.ErrorHandling = eh
+	}
+	return stmt
+}
+
+func buildSetStatementNode(ctx parser.ISetStatementContext) ast.MicroflowStatement {
 	if ctx == nil {
 		return nil
 	}
@@ -1097,6 +1133,11 @@ func buildChangeObjectStatement(ctx parser.IChangeObjectStatementContext) *ast.C
 	}
 	stmt.Commit = buildCommitClause(changeCtx.CommitClause())
 	stmt.RefreshInClient = changeCtx.REFRESH() != nil
+
+	// Check for ON ERROR clause
+	if errClause := changeCtx.OnErrorClause(); errClause != nil {
+		stmt.ErrorHandling = buildOnErrorClause(errClause)
+	}
 
 	return stmt
 }

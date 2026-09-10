@@ -249,7 +249,7 @@ microflowStatement
     ;
 
 declareStatement
-    : DECLARE VARIABLE dataType (EQUALS expression)?
+    : DECLARE VARIABLE dataType (EQUALS expression)? onErrorClause?
     ;
 
 caseStatement
@@ -304,7 +304,7 @@ castObjectStatement
 // rule unguessable — and the parse error named the token, not the missing
 // keyword (mxcli-formula1 findings #13).
 setStatement
-    : SET? (VARIABLE | attributePath) EQUALS expression
+    : SET? (VARIABLE | attributePath) EQUALS expression onErrorClause?
     ;
 
 // $NewProduct = CREATE MfTest.Product (Name = $Name, Code = $Code);
@@ -317,7 +317,7 @@ createObjectStatement
 // CHANGE $Product (Name = $NewName, ModifiedDate = [%CurrentDateTime%]);
 // CHANGE $Product (Name = $NewName) COMMIT WITHOUT EVENTS REFRESH;
 changeObjectStatement
-    : CHANGE VARIABLE (LPAREN memberAssignmentList? RPAREN)? commitClause? REFRESH?
+    : CHANGE VARIABLE (LPAREN memberAssignmentList? RPAREN)? commitClause? REFRESH? onErrorClause?
     ;
 
 // The Commit flag on a create/change activity: Mendix's Microflows$Commit enum.
@@ -421,7 +421,7 @@ raiseErrorStatement
 
 // LOG INFO NODE 'TEST' 'Message'; or LOG INFO 'Message'; or LOG WARNING 'Message' WITH ({1} = $var);
 logStatement
-    : LOG logLevel? (NODE expression)? expression logTemplateParams?
+    : LOG logLevel? (NODE expression)? expression logTemplateParams? onErrorClause?
     ;
 
 logLevel
@@ -587,7 +587,7 @@ callArgument
     ;
 
 showPageStatement
-    : SHOW PAGE qualifiedName (LPAREN showPageArgList? RPAREN)? (FOR VARIABLE)? (WITH memberAssignmentList)?
+    : SHOW PAGE qualifiedName (LPAREN showPageArgList? RPAREN)? (FOR VARIABLE)? (WITH memberAssignmentList)? onErrorClause?
     ;
 
 showPageArgList
@@ -600,7 +600,7 @@ showPageArg
     ;
 
 closePageStatement
-    : CLOSE PAGE
+    : CLOSE PAGE onErrorClause?
     ;
 
 showHomePageStatement
@@ -609,7 +609,7 @@ showHomePageStatement
 
 // SHOW MESSAGE 'Hello {1}' TYPE Information OBJECTS [$Name];
 showMessageStatement
-    : SHOW MESSAGE expression (TYPE identifierOrKeyword)? (OBJECTS LBRACKET expressionList RBRACKET)?
+    : SHOW MESSAGE expression (TYPE identifierOrKeyword)? (OBJECTS LBRACKET expressionList RBRACKET)? onErrorClause?
     ;
 
 // SYNCHRONIZE ALL;
@@ -635,7 +635,7 @@ throwStatement
 
 // VALIDATION FEEDBACK $Product/Code MESSAGE 'Product code cannot be empty';
 validationFeedbackStatement
-    : VALIDATION FEEDBACK (attributePath | VARIABLE) MESSAGE expression (OBJECTS LBRACKET expressionList RBRACKET)?
+    : VALIDATION FEEDBACK (attributePath | VARIABLE) MESSAGE expression (OBJECTS LBRACKET expressionList RBRACKET)? onErrorClause?
     ;
 
 // =============================================================================
