@@ -108,7 +108,7 @@ jobs:
       # still shipped and still selectable (--engine legacy), so it is not
       # untested: the nightly runs the full matrix, across every Mendix version.
       # Drop this env to bring legacy back to every push.
-      - name: Integration tests
+      - name: "Integration tests (engines: modelsdk)"
         run: make test-integration
         env:
           MXCLI_TEST_ENGINES: modelsdk

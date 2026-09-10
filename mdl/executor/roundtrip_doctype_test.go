@@ -57,6 +57,13 @@ var allGateEngines = []gateEngine{
 // minutes, not coverage — the failure mode is biased the right way. For the
 // same reason a narrowed matrix is announced in TestMain rather than applied
 // quietly: a run that covered less than it looks like it did should say so.
+//
+// One limit on that announcement, measured rather than assumed: `go test`
+// without -v DISCARDS a passing package's output, so TestMain's notice does not
+// reach a green CI log — only a -v run or a FAILING package shows it. The fatal
+// path is unaffected (an unknown name exits non-zero, and a failing package's
+// output is shown), but the visibility half is carried by the CI step NAME,
+// which states the engine set outright.
 const gateEnginesEnv = "MXCLI_TEST_ENGINES"
 
 // gateEngines is the matrix every gate test loops over.

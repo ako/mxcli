@@ -50,10 +50,12 @@ var sharedSourceMPR string
 // TestMain creates or locates the source project once, then runs all tests.
 // This avoids running `mx create-project` per test (~29s each).
 func TestMain(m *testing.M) {
-	// 0. Settle the engine matrix before anything runs. A narrowed matrix is
-	// announced rather than applied quietly, so a log never implies coverage the
-	// run did not have; an unrecognised name is fatal, because the alternative
-	// is a gate that selects no engine, runs nothing, and reports success.
+	// 0. Settle the engine matrix before anything runs. An unrecognised name is
+	// fatal, because the alternative is a gate that selects no engine, runs
+	// nothing, and reports success — and a failing package's output IS shown, so
+	// this message lands. The narrowing notice below only reaches a -v run, since
+	// `go test` discards a passing package's output; the CI step name carries it
+	// for everyone else.
 	if len(unknownGateEngines) > 0 {
 		fmt.Fprintf(os.Stderr, "FAIL: %s names unknown engine(s): %s (known: %s)\n",
 			gateEnginesEnv, strings.Join(unknownGateEngines, ", "), gateEngineNames(allGateEngines))

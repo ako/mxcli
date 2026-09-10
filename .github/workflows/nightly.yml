@@ -48,7 +48,7 @@ jobs:
       # default, so this is belt and braces — but it is the line that makes the
       # nightly the place legacy is verified, and it should survive someone
       # changing the default.
-      - name: Integration tests (Mendix ${{ matrix.mendix-version }})
+      - name: "Integration tests (Mendix ${{ matrix.mendix-version }}, engines: all)"
         run: make test-integration
         env:
           MXCLI_TEST_ENGINES: all
