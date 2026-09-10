@@ -612,6 +612,42 @@ func buildAssociationQualifiedNames(ctx *ExecContext) map[string]bool {
 	return result
 }
 
+// buildModuleRoleQualifiedNames returns the module roles a plain
+// CREATE MODULE ROLE would collide with, as Module.Role.
+//
+// Roles mxcli auto-provisioned are deliberately EXCLUDED. `execCreateModuleRole`
+// treats one of those as a hit rather than a conflict — it adopts the caller's
+// casing, rewrites the references, and returns nil — so listing it here would
+// make `check` refuse a script that runs fine, and refuse it over a role the
+// user never asked mxcli to create (`defaultDocumentAccessRoles`). A check that
+// reports a statement exec accepts is worse than the under-report it replaces.
+//
+// Known limit: exec matches role names case-insensitively (Mendix does, CE0123),
+// while this set is keyed exactly, like every other doc type's. So
+// `create module role M.admin` against a stored `M.Admin` is still reported only
+// by exec. That is an under-report of a rare spelling, not a false positive, and
+// closing it would mean case-folding the shared name registry for one type.
+func buildModuleRoleQualifiedNames(ctx *ExecContext) map[string]bool {
+	result := make(map[string]bool)
+	modules, err := getModulesFromCache(ctx)
+	if err != nil {
+		return result
+	}
+	for _, m := range modules {
+		ms, err := ctx.Backend.GetModuleSecurity(m.ID)
+		if err != nil || ms == nil {
+			continue
+		}
+		for _, mr := range ms.ModuleRoles {
+			if mr == nil || mr.Description == autoDocumentRoleDescription {
+				continue
+			}
+			result[m.Name+"."+mr.Name] = true
+		}
+	}
+	return result
+}
+
 // buildRuleQualifiedNames returns a set of all rule qualified names in the project.
 func buildRuleQualifiedNames(ctx *ExecContext) map[string]bool {
 	result := make(map[string]bool)
