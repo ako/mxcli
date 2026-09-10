@@ -12,53 +12,77 @@ import (
 // webclient_legacy_paths.go recognises one mxbuild failure that only ever
 // appears under --watch, and only on Mendix 11.14+.
 //
-// 11.14 moved the browser client to a pre-bundled shape: the serve Deploy
-// target writes web/dist/ and nothing else. Measured on a blank 11.14.0 app,
-// clean deployment, immediately after the cold build:
+// On 11.14 the FIRST build in an `mxbuild --serve` process succeeds and every
+// SUBSEQUENT build in that process fails, because the first one does not leave
+// the deployment in a state its own incremental build can continue from. Two
+// artifacts are missing, and which one the build dies on depends on how far it
+// gets before it needs them:
 //
-//	web/dist      PRESENT
-//	web/pages     ABSENT
-//	web/layouts   ABSENT
-//	web/widgets   ABSENT
+//	the bundler's config file   web/rollup.config.mjs or web/rspack.config.mjs
+//	the per-document client     web/pages/, web/layouts/
 //
-// Every *subsequent* Deploy build against the same serve process still writes
-// the legacy per-document client — one .js per page and per layout — into
-// directories the cold build never created, and fails on all of them at once:
+// Measured against mxbuild 11.14.0 driven directly over its HTTP API — no
+// mxcli in the picture — on a blank app, POSTing the SAME /build request twice
+// with the model untouched between them:
 //
-//	Could not find a part of the path '…/deployment/web/pages/MyFirstModule.Home_Web.js'
-//	Could not find a part of the path '…/deployment/web/layouts/Atlas_Core.Atlas_TopBar.js'
+//	build 1   Success
+//	build 2   Failure — ERR_MODULE_NOT_FOUND for web/rollup.config.mjs,
+//	                    imported from mxbuild's own tools/node/rollup-runner.mjs
 //
-// So on 11.14 the first build succeeds and every rebuild fails, which is only
-// reachable through --watch because nothing else asks for a second build.
+// It is not the app's choice of bundler. With App Settings > Runtime > App
+// bundler flipped to Rspack the shape is identical, naming the other file:
+// "Failed to load Rspack configuration file … web/rspack.config.mjs". So
+// switching bundlers is not a workaround, and neither is anything mxcli can do
+// from outside the process.
 //
-// mxcli cannot fix this from the outside. Creating the directories is not a
-// workaround — measured, it advances the same build to "Deployment failed
-// during export of pluggable widgets", because the legacy export path wants
-// widget packages the 11.14 client no longer ships in that form. The build is
-// on the legacy client path end to end.
+// The controls that place this in mxbuild rather than here: a one-shot
+// `mxbuild --target=deploy` run TWICE into the same deployment directory
+// succeeds both times (so the 11.14 deployment shape is not the trigger — a
+// fresh process is happy with the directory a serve process chokes on), and
+// mxcli's /build request carries exactly the four fields mxbuild advertises in
+// its own error response.
 //
 // What mxcli can do is not let the failure read as the user's model being
-// broken. The raw message names four absolute paths inside deployment/ and
-// nothing about why they are missing, so the natural reading is a corrupt
-// deployment — and `rm -rf deployment/` makes it worse by costing a cold build
-// and changing nothing.
+// broken. The message names absolute paths inside deployment/ and nothing
+// about why they are missing, so the natural response is `rm -rf deployment/`
+// — which costs a cold build and changes nothing, because the next second
+// build fails the same way.
 
-// legacyClientDirs are the client output directories a pre-11.14 serve Deploy
-// build creates and 11.14+ does not.
+// legacyClientDirs are the per-document client output directories a pre-11.14
+// serve Deploy build creates and 11.14+ does not.
 var legacyClientDirs = []string{"pages", "layouts"}
 
-// legacyClientBuildHint explains an incremental build that failed because
-// mxbuild wrote the legacy per-document client into directories this Mendix
-// version's cold build never created. It returns "" for every other failure.
+// bundlerConfigs are the bundler config files 11.14's first serve build does
+// not leave behind. One per bundler, because the app can be set to either and
+// both fail the same way.
+var bundlerConfigs = []string{"rollup.config.mjs", "rspack.config.mjs"}
+
+// legacyClientBuildHint explains an incremental build that failed on something
+// this Mendix version's first build did not leave behind. It returns "" for
+// every other failure.
 //
-// The check is on the failure's own shape rather than on the Mendix version:
-// the message must name a missing path under one of those directories AND that
-// directory must actually be absent from the deployment. A build that fails for
-// any other reason, or on a version whose cold build does create them, gets the
-// ordinary error and no speculation.
-func legacyClientBuildHint(deployDir, message string) string {
+// message is the serve response's message; raw is the full body, which is
+// where the bundler-config failure puts its detail (the message there is only
+// "Compilation of the app bundle failed"). The check is on the failure's own
+// shape rather than on the Mendix version, so a future mxbuild that fixes this
+// goes quiet on its own and no unrelated build failure is explained away.
+func legacyClientBuildHint(deployDir, message, raw string) string {
+	if missing := missingClientDirs(deployDir, message); len(missing) > 0 {
+		return hintText("this build wants " + strings.Join(missing, " and ") +
+			", which this Mendix version's first build does not create")
+	}
+	if name := missingBundlerConfig(deployDir, message+raw); name != "" {
+		return hintText("mxbuild's own bundler cannot find web/" + name +
+			", which its own first build does not leave behind")
+	}
+	return ""
+}
+
+// missingClientDirs returns the per-document client directories the failure
+// names and the deployment genuinely lacks.
+func missingClientDirs(deployDir, message string) []string {
 	if !strings.Contains(message, "Could not find a part of the path") {
-		return ""
+		return nil
 	}
 	var named []string
 	for _, dir := range legacyClientDirs {
@@ -69,17 +93,35 @@ func legacyClientBuildHint(deployDir, message string) string {
 			named = append(named, "web/"+dir+"/")
 		}
 	}
-	if len(named) == 0 {
+	return named
+}
+
+// missingBundlerConfig returns the bundler config file the failure names and
+// the deployment genuinely lacks, or "".
+func missingBundlerConfig(deployDir, body string) string {
+	if !strings.Contains(body, "ERR_MODULE_NOT_FOUND") {
 		return ""
 	}
+	for _, name := range bundlerConfigs {
+		if !strings.Contains(body, name) {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(deployDir, "web", name)); os.IsNotExist(err) {
+			return name
+		}
+	}
+	return ""
+}
+
+func hintText(what string) string {
 	return fmt.Sprintf(
-		"  This is not a problem with your model, and deployment/ is not corrupt.\n"+
-			"  This Mendix version's build writes the browser client pre-bundled into web/dist/\n"+
-			"  and never creates %s, but the incremental build asks for the older\n"+
-			"  one-file-per-page client and fails on every one of them.\n"+
-			"  Creating those directories does not help — the same build then fails exporting\n"+
-			"  pluggable widgets, because the whole path is the older client.\n"+
+		"  This is not a problem with your model, and deployment/ is not corrupt:\n"+
+			"  %s.\n"+
+			"  On Mendix 11.14 the first build in a serve process succeeds and every later\n"+
+			"  one fails this way — measured with the model untouched between two identical\n"+
+			"  builds, and with either app bundler, so switching bundlers does not help.\n"+
+			"  Deleting deployment/ does not either: the next second build fails the same way.\n"+
 			"  Until mxbuild closes this, drop --watch and restart per change:\n"+
 			"    mxcli run --local --screenshot\n",
-		strings.Join(named, " or "))
+		what)
 }

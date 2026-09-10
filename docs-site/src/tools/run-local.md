@@ -388,12 +388,30 @@ paths work; the bundle is mxbuild's rather than mxcli's.
 Could not find a part of the path '…/deployment/web/pages/MyModule.Home_Web.js'
 ```
 
-11.14's cold build writes the pre-bundled client into `web/dist/` and creates no
-`web/pages/` or `web/layouts/`, but each incremental build still writes the older
-one-file-per-page client into them. Creating those directories is **not** a
-workaround — the same build then fails exporting pluggable widgets, because the
-whole incremental path is the older client. `run --local` prints an explanation
-when it sees this, so the failure does not read as a corrupt `deployment/`.
+or, when the change did not touch any page:
+
+```
+Compilation of the app bundle failed.
+Cannot find module '…/deployment/web/rollup.config.mjs'
+  imported from …/modeler/tools/node/rollup-runner.mjs
+```
+
+The first build in an `mxbuild --serve` process does not leave the deployment in a
+state its own incremental build can continue from — neither the bundler's config
+file nor `web/pages/`/`web/layouts/` survive it — so the first build succeeds and
+every later one fails. Measured against mxbuild 11.14.0 over its own HTTP API with
+no mxcli involved: the same `/build` request POSTed twice, model untouched between
+them, goes Success then Failure.
+
+Neither obvious remedy works. **Switching the app bundler does not help** — with
+*App > Settings > Runtime > App bundler* set to Rspack the failure is identical and
+names `rspack.config.mjs`. **Deleting `deployment/` does not help** either; the next
+second build fails the same way. `run --local` prints an explanation when it sees
+this, so the failure does not read as a corrupt `deployment/`.
+
+For contrast, a one-shot `mxbuild --target=deploy` run twice into the same
+deployment directory succeeds both times — it is the serve process, not the 11.14
+deployment shape.
 
 Until mxbuild closes this, use a restart per change:
 

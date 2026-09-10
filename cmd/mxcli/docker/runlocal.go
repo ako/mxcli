@@ -1269,10 +1269,10 @@ func watchAndApply(opts LocalRunOptions, serve *ServeServer, rt *LocalRuntime, w
 					fmt.Fprintf(opts.Stderr, "    %s\n", raw)
 				}
 				// One failure shape is not the user's model: on Mendix 11.14+ the
-				// incremental build writes the pre-11.14 per-page client into
-				// directories the cold build never made, so every rebuild fails on
-				// paths inside deployment/ and reads as a corrupt deployment.
-				fmt.Fprint(opts.Stderr, legacyClientBuildHint(opts.DeployDir, build.Message))
+				// first build in a serve process does not leave the deployment in a
+				// state its own incremental build can continue from, so every rebuild
+				// fails on paths inside deployment/ and reads as a corrupt deployment.
+				fmt.Fprint(opts.Stderr, legacyClientBuildHint(opts.DeployDir, build.Message, string(build.Raw)))
 				continue
 			}
 			// If the serve build touched web/ source, wait (briefly) for the
