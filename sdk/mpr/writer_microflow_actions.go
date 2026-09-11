@@ -776,10 +776,18 @@ func serializeWebServiceCallAction(a *microflows.WebServiceCallAction) bson.D {
 		}
 	}
 
-	// ServiceName: use the local part of the qualified name (after the last dot).
-	serviceName := string(a.ServiceID)
-	if idx := strings.LastIndex(serviceName, "."); idx >= 0 {
-		serviceName = serviceName[idx+1:]
+	// ServiceName is the WSDL <wsdl:service name=…>, which Mendix resolves the
+	// operation within — NOT the local part of the qualified document name. The
+	// executor reads the real one off the imported service document. Deriving it
+	// (the fallback here, and what this writer always did) is right only when the
+	// document happens to be named after the service; otherwise the call fails
+	// with CE0386 "Operation … does not exist in consumed web service …".
+	serviceName := a.ServiceName
+	if serviceName == "" {
+		serviceName = string(a.ServiceID)
+		if idx := strings.LastIndex(serviceName, "."); idx >= 0 {
+			serviceName = serviceName[idx+1:]
+		}
 	}
 
 	doc := bson.D{
@@ -817,7 +825,12 @@ func serializeWebServiceCallAction(a *microflows.WebServiceCallAction) bson.D {
 			{Key: "$ID", Value: idToBsonBinary(GenerateID())},
 			{Key: "$Type", Value: "Microflows$ImportMappingCall"},
 			{Key: "Commit", Value: "YesWithoutEvents"},
-			{Key: "ContentType", Value: "Json"},
+			// Xml, not Json: a SOAP response IS XML. Studio Pro writes "Xml"
+			// here in both reference calls that carry an import mapping
+			// (ako/TestApp, Clients.GetOrders and GetCustomerOrders, 11.14.0).
+			// This is the receive side only — the REST and import-from-mapping
+			// ImportMappingCalls elsewhere in this file are unrelated.
+			{Key: "ContentType", Value: "Xml"},
 			{Key: "ForceSingleOccurrence", Value: false},
 			{Key: "ObjectHandlingBackup", Value: "Create"},
 			{Key: "ParameterVariableName", Value: ""},
@@ -831,12 +844,24 @@ func serializeWebServiceCallAction(a *microflows.WebServiceCallAction) bson.D {
 	} else {
 		resultHandling = append(resultHandling, bson.E{Key: "ImportMappingCall", Value: nil})
 	}
+	// VariableType is the type the call RETURNS — the entity the receive mapping
+	// produces. VoidType says it returns nothing, which contradicts the mapping
+	// (CE0243) and makes assigning the result an error too (CE0366). It stays the
+	// fallback for a mapping mxcli could not resolve.
+	variableType := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(GenerateID())},
+		{Key: "$Type", Value: "DataTypes$VoidType"},
+	}
+	if a.ResultEntity != "" {
+		variableType = bson.D{
+			{Key: "$ID", Value: idToBsonBinary(GenerateID())},
+			{Key: "$Type", Value: "DataTypes$ObjectType"},
+			{Key: "Entity", Value: a.ResultEntity},
+		}
+	}
 	resultHandling = append(resultHandling,
 		bson.E{Key: "ResultVariableName", Value: a.OutputVariable},
-		bson.E{Key: "VariableType", Value: bson.D{
-			{Key: "$ID", Value: idToBsonBinary(GenerateID())},
-			{Key: "$Type", Value: "DataTypes$VoidType"},
-		}},
+		bson.E{Key: "VariableType", Value: variableType},
 	)
 	doc = append(doc, bson.E{Key: "NewResultHandling", Value: resultHandling})
 
