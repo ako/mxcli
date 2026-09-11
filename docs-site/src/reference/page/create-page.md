@@ -112,7 +112,9 @@ The `DataSource` property determines how a data widget obtains its data:
 
 ### Action Types
 
-The `Action` property on buttons determines what happens when clicked:
+The `Action` property determines what happens when the widget is clicked. It is
+not a button-only property: a `CONTAINER` is clickable too and takes the same
+values, including the argument list.
 
 | Action | Syntax | Description |
 |--------|--------|-------------|
@@ -123,6 +125,26 @@ The `Action` property on buttons determines what happens when clicked:
 | Page | `Action: PAGE Module.PageName` | Opens a page |
 | Close | `Action: CLOSE_PAGE` | Closes the current page |
 | Delete | `Action: DELETE` | Deletes the context object |
+
+A microflow or nanoflow action is a **call**: every parameter the flow declares
+needs an argument, or Mendix rejects the page with **CE1571**. An enclosing data
+container of the parameter's type supplies it without one — but a data grid's
+**control bar** does not, because it is not row-scoped. Pass the grid's selection
+there, addressed by the widget's own name:
+
+```sql
+DATAGRID dgOrders (DataSource: DATABASE FROM Sales.Order, Selection: Single) {
+  COLUMN colNr (Attribute: Number, Caption: 'Order #')
+  CONTROLBAR cb {
+    CONTAINER cShip (Class: 'command',
+      Action: NANOFLOW Sales.ACT_Ship($Order = $dgOrders)) {
+      ACTIONBUTTON btnShip (Caption: 'Ship')
+    }
+  }
+}
+```
+
+`mxcli check -p <app.mpr>` reports a missing argument before mxbuild does.
 
 ### ButtonStyle Values
 

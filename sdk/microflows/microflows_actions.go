@@ -781,12 +781,23 @@ type WebServiceCallAction struct {
 	ErrorHandlingType ErrorHandlingType `json:"errorHandlingType,omitempty"`
 	RawBSON           []byte            `json:"-"`
 	ServiceID         model.ID          `json:"serviceId,omitempty"`
-	OperationName     string            `json:"operationName,omitempty"`
-	SendMappingID     model.ID          `json:"sendMappingId,omitempty"`
-	ReceiveMappingID  model.ID          `json:"receiveMappingId,omitempty"`
-	OutputVariable    string            `json:"outputVariable,omitempty"`
-	UseReturnVariable bool              `json:"useReturnVariable"`
-	TimeoutExpression string            `json:"timeoutExpression,omitempty"`
+	// ServiceName is the WSDL <wsdl:service name=…>, which is NOT the local
+	// part of ServiceID's qualified name — Mendix stores both and resolves the
+	// operation within this one. Resolved from the imported service document by
+	// the executor (see resolveWebServiceName); empty means it could not be
+	// established, and the writers fall back to deriving it from ServiceID.
+	ServiceName       string   `json:"serviceName,omitempty"`
+	OperationName     string   `json:"operationName,omitempty"`
+	SendMappingID     model.ID `json:"sendMappingId,omitempty"`
+	ReceiveMappingID  model.ID `json:"receiveMappingId,omitempty"`
+	OutputVariable    string   `json:"outputVariable,omitempty"`
+	UseReturnVariable bool     `json:"useReturnVariable"`
+	TimeoutExpression string   `json:"timeoutExpression,omitempty"`
+	// ResultEntity is the qualified entity the RECEIVE mapping produces, which
+	// Mendix stores as the call's result VariableType. Resolved from the mapping
+	// document by the executor; empty means it could not be established and the
+	// writers keep DataTypes$VoidType.
+	ResultEntity string `json:"resultEntity,omitempty"`
 }
 
 func (WebServiceCallAction) isMicroflowAction() {}

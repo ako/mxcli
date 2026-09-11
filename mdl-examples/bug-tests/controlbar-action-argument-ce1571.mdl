@@ -1,0 +1,95 @@
+-- mendixlabs/mxcli#1082 — a CONTAINER action calling a flow with a parameter.
+--
+-- POSITIVE test (plain .mdl): this script must PASS `mxcli check`. The rule it
+-- guards needs a project (it compares a flow's stored signature against the
+-- arguments), so the negative case cannot be a .fail.mdl — `make check-mdl`
+-- runs check with no project and would report a working rule as regressed
+-- (#891, #892). The rejection is covered by unit tests in
+-- mdl/executor/validate_flow_args_action_test.go and by the doctype gate.
+--
+-- REPORTED SYMPTOM
+--
+--   A container inside a DataGrid 2 control bar, with
+--
+--     Action: nanoflow CustomModule.ACT_UnLink
+--
+--   where the nanoflow declares a required entity parameter, built to
+--
+--     [error] [CE1571] "No argument has been selected for parameter
+--     'LogisticWhitelist' and no default is available." at Container
+--     'containerUnlinkMat'
+--
+--   …while `mxcli check --references` printed "Check passed!".
+--
+-- WHAT THE REPORT GOT WRONG, AND WHAT WAS ACTUALLY BROKEN
+--
+--   The report concluded that MDL had no syntax for passing an argument through
+--   a container action ("It accepts only Action: nanoflow Module.NF"). It has:
+--   `actionExprV3` carries `NANOFLOW qualifiedName microflowArgsV3?`, the
+--   visitor reads the args, and buildContainerV3 hands the action to the same
+--   buildClientActionV3 an actionbutton uses. Measured on a Mendix 11.12.0 app,
+--   three pages in one script, one `mx check`:
+--
+--     container, Action: nanoflow M.NF                       → CE1571
+--     container, Action: nanoflow M.NF ($P = $dgMaterials)   → 0 errors
+--     actionbutton, same binding                             → 0 errors
+--
+--   What WAS broken is that mxcli never said so. The CE1571 argument check
+--   walked a widget's data source only, so the identical fault on an action
+--   passed check and failed the build. It now covers both.
+--
+--   A control bar is also not row-scoped, which is why the argument is required
+--   here and not on the column button below: measured, the same container is
+--   CE1571 in the control bar and clean in a column.
+--
+-- VERIFY IN STUDIO PRO
+--
+--   exec this against an app, open the page, and check the container's
+--   "On click" — the nanoflow's parameter is bound to the grid's selection.
+
+create module BugTest1082;
+
+create persistent entity BugTest1082.LogisticWhitelist (
+  Name: String(200),
+  IsLinked: Boolean
+);
+
+create nanoflow BugTest1082.ACT_UnLink
+    ($LogisticWhitelist : BugTest1082.LogisticWhitelist)
+    folder 'Actions'
+begin
+    change $LogisticWhitelist (IsLinked = false) refresh;
+end;
+
+create or replace page BugTest1082.MaterialsOverview
+(
+  title: 'Material definitions',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'bugtest1082_materials'
+)
+{
+  datagrid dgMaterials (
+    datasource: database from BugTest1082.LogisticWhitelist,
+    selection: single
+  ) {
+    column colName (attribute: Name, caption: 'Name')
+
+    -- Row-scoped: the grid's row supplies the parameter, no argument needed.
+    column colRow (caption: 'Row') {
+      container cRowUnlink (action: nanoflow BugTest1082.ACT_UnLink, class: 'command') {
+        actionbutton btnRowUnlink (caption: 'Unlink')
+      }
+    }
+
+    controlbar controlBar1 {
+      -- The reported shape, written correctly. Remove the argument list and
+      -- `mxcli check -p <app>` reports CE1571 before mxbuild ever runs.
+      container containerUnlinkMat (
+        class: 'command',
+        action: nanoflow BugTest1082.ACT_UnLink ($LogisticWhitelist = $dgMaterials)
+      ) {
+        actionbutton btnUnlink (caption: 'Unlink', icon: 'Atlas_Core.Atlas_Filled.trash-can')
+      }
+    }
+  }
+}

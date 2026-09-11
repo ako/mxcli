@@ -77,7 +77,7 @@ func TestDataSourceArg_MatchingEnclosingContextSuppliesTheArgument(t *testing.T)
 			dsWidget("dgMatrix", "DS.DS_Rows"),
 		),
 	}
-	if errs := validateDataSourceArgumentsIn(nil, page, f147Sigs(), sameName); len(errs) != 0 {
+	if errs := validateFlowArgumentsIn(nil, page, f147Sigs(), sameName); len(errs) != 0 {
 		t.Errorf("mxbuild accepts this page; the check must not reject it:\n  %s",
 			strings.Join(errs, "\n  "))
 	}
@@ -92,7 +92,7 @@ func TestDataSourceArg_MatchingContextTwoLevelsUp(t *testing.T) {
 			),
 		),
 	}
-	if errs := validateDataSourceArgumentsIn(nil, page, f147Sigs(), sameName); len(errs) != 0 {
+	if errs := validateFlowArgumentsIn(nil, page, f147Sigs(), sameName); len(errs) != 0 {
 		t.Errorf("a matching context two levels up still supplies the argument:\n  %s",
 			strings.Join(errs, "\n  "))
 	}
@@ -101,7 +101,7 @@ func TestDataSourceArg_MatchingContextTwoLevelsUp(t *testing.T) {
 // CONTROL 1 (dgLoose): no enclosing data context at all — still CE1571.
 func TestDataSourceArg_NoContextIsStillReported(t *testing.T) {
 	page := []*ast.WidgetV3{dsWidget("dgLoose", "DS.DS_Rows")}
-	errs := validateDataSourceArgumentsIn(nil, page, f147Sigs(), sameName)
+	errs := validateFlowArgumentsIn(nil, page, f147Sigs(), sameName)
 	if len(errs) != 1 {
 		t.Fatalf("got %d errors, want 1: %v", len(errs), errs)
 	}
@@ -118,7 +118,7 @@ func TestDataSourceArg_MismatchedContextIsStillReported(t *testing.T) {
 		),
 	}
 	params := []ast.PageParameter{{Name: "Row", EntityType: ast.QualifiedName{Module: "DS147", Name: "Row"}}}
-	errs := validateDataSourceArgumentsIn(params, page, f147Sigs(), sameName)
+	errs := validateFlowArgumentsIn(params, page, f147Sigs(), sameName)
 	if len(errs) != 1 {
 		t.Fatalf("got %d errors, want 1: %v", len(errs), errs)
 	}
@@ -140,7 +140,7 @@ func TestDataSourceArg_PageParameterAloneDoesNotSupplyIt(t *testing.T) {
 	params := []ast.PageParameter{
 		{Name: "Ctx", EntityType: ast.QualifiedName{Module: "DS147", Name: "ReportContext"}},
 	}
-	errs := validateDataSourceArgumentsIn(params, page, f147Sigs(), sameName)
+	errs := validateFlowArgumentsIn(params, page, f147Sigs(), sameName)
 	if len(errs) != 1 {
 		t.Fatalf("a page parameter of the right type is NOT a data context (measured: CE1571); got %d errors: %v",
 			len(errs), errs)
@@ -158,7 +158,7 @@ func TestDataSourceArg_UnresolvableContextSuppresses(t *testing.T) {
 	} {
 		t.Run(ds.Type+" "+ds.Reference, func(t *testing.T) {
 			page := []*ast.WidgetV3{dvWidget("dv", ds, dsWidget("dgUnknown", "DS.DS_Rows"))}
-			if errs := validateDataSourceArgumentsIn(nil, page, f147Sigs(), sameName); len(errs) != 0 {
+			if errs := validateFlowArgumentsIn(nil, page, f147Sigs(), sameName); len(errs) != 0 {
 				t.Errorf("an unresolvable context must not be reported as a mismatch: %v", errs)
 			}
 		})
@@ -178,7 +178,7 @@ func TestDataSourceArg_PrimitiveParameterIsAlwaysReported(t *testing.T) {
 			dsWidget("dgSearch", "DS.DS_Search"),
 		),
 	}
-	if errs := validateDataSourceArgumentsIn(nil, page, sigs, sameName); len(errs) != 1 {
+	if errs := validateFlowArgumentsIn(nil, page, sigs, sameName); len(errs) != 1 {
 		t.Fatalf("a String parameter is never filled in from a data context; got %d errors: %v",
 			len(errs), errs)
 	}
@@ -192,7 +192,7 @@ func TestDataSourceArg_UnknownArgumentIsReportedInsideAContext(t *testing.T) {
 			dsWidget("dgTypo", "DS.DS_Rows", "Contxet"),
 		),
 	}
-	errs := validateDataSourceArgumentsIn(nil, page, f147Sigs(), sameName)
+	errs := validateFlowArgumentsIn(nil, page, f147Sigs(), sameName)
 	if len(errs) != 1 || !strings.Contains(errs[0], "'Contxet'") {
 		t.Fatalf("the unknown-argument half must survive; got %v", errs)
 	}
@@ -207,7 +207,7 @@ func TestDataSourceArg_ExplicitArgumentInsideAContextIsClean(t *testing.T) {
 			dsWidget("dgOK", "DS.DS_Rows", "Context"),
 		),
 	}
-	if errs := validateDataSourceArgumentsIn(nil, page, f147Sigs(), sameName); len(errs) != 0 {
+	if errs := validateFlowArgumentsIn(nil, page, f147Sigs(), sameName); len(errs) != 0 {
 		t.Errorf("explicit arguments reported: %v", errs)
 	}
 }
@@ -223,7 +223,7 @@ func TestDataSourceArg_AWidgetDoesNotSupplyItsOwnArgument(t *testing.T) {
 		},
 	}
 	page := []*ast.WidgetV3{dsWidget("dgSelf", "DS.DS_Self")}
-	if errs := validateDataSourceArgumentsIn(nil, page, sigs, sameName); len(errs) != 1 {
+	if errs := validateFlowArgumentsIn(nil, page, sigs, sameName); len(errs) != 1 {
 		t.Fatalf("a widget must not supply its own argument; got %d errors: %v", len(errs), errs)
 	}
 }
@@ -231,7 +231,7 @@ func TestDataSourceArg_AWidgetDoesNotSupplyItsOwnArgument(t *testing.T) {
 // The message must no longer assert what measurement falsified.
 func TestDataSourceArg_MessageDoesNotClaimMendixNeverFillsItIn(t *testing.T) {
 	page := []*ast.WidgetV3{dsWidget("dgLoose", "DS.DS_Rows")}
-	errs := validateDataSourceArgumentsIn(nil, page, f147Sigs(), sameName)
+	errs := validateFlowArgumentsIn(nil, page, f147Sigs(), sameName)
 	if len(errs) != 1 {
 		t.Fatalf("got %v", errs)
 	}
@@ -255,7 +255,7 @@ func TestDataSourceArg_DatabaseContextResolves(t *testing.T) {
 			dsWidget("dgLines", "DS.DS_Lines"),
 		),
 	}
-	if errs := validateDataSourceArgumentsIn(nil, page, sigs, sameName); len(errs) != 0 {
+	if errs := validateFlowArgumentsIn(nil, page, sigs, sameName); len(errs) != 0 {
 		t.Errorf("a database data source of the parameter's entity supplies it: %v", errs)
 	}
 }
@@ -275,11 +275,11 @@ func TestDataSourceArg_CompatibilityIsDelegated(t *testing.T) {
 		return sameName(ctxQN, paramQN) ||
 			(strings.EqualFold(ctxQN, "HR.Employee") && strings.EqualFold(paramQN, "HR.Person"))
 	}
-	if errs := validateDataSourceArgumentsIn(nil, page, sigs, compat); len(errs) != 0 {
+	if errs := validateFlowArgumentsIn(nil, page, sigs, compat); len(errs) != 0 {
 		t.Errorf("a specialization in context satisfies a generalization parameter: %v", errs)
 	}
 	// Control: without the generalization it is a mismatch.
-	if errs := validateDataSourceArgumentsIn(nil, page, sigs, sameName); len(errs) != 1 {
+	if errs := validateFlowArgumentsIn(nil, page, sigs, sameName); len(errs) != 1 {
 		t.Errorf("the control did not report the mismatch: %v", errs)
 	}
 }

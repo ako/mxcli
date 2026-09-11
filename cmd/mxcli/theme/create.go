@@ -67,7 +67,7 @@ func Create(projectDir, name string, opts CreateOptions) (*CreateResult, error) 
 		res.Tokens = tokens
 	}
 
-	rewrite := newRewriter(baseTheme, name, opts.Title)
+	rewrite := newRewriter(baseTheme, name, opts.Title, tokens)
 
 	// Tokens are validated against the base before anything is written. A
 	// design that names --mxt-brand-color instead of --mxt-brand would
@@ -80,6 +80,17 @@ func Create(projectDir, name string, opts CreateOptions) (*CreateResult, error) 
 	}
 
 	root := src.filesRoot()
+
+	// Decide about fonts BEFORE walking, not while walking. The decision is
+	// made by reading the theme partial and the files it affects are elsewhere
+	// in the tree, so doing it inline would depend on WalkDir's lexical order
+	// putting `_mxcli-<name>.scss` before `mxcli-fonts/` — true today only
+	// because of the leading underscore, and silently wrong the moment a
+	// partial is renamed.
+	if err := rewrite.planFonts(src, root, tokens); err != nil {
+		return nil, err
+	}
+
 	walkErr := fs.WalkDir(src.fsys, root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
@@ -102,7 +113,16 @@ func Create(projectDir, name string, opts CreateOptions) (*CreateResult, error) 
 					return err
 				}
 			}
+			if len(rewrite.droppedFonts) > 0 {
+				text = dropFontFaces(text, rewrite.droppedFonts)
+			}
 			out = []byte(text)
+		}
+
+		// A vendored font file nothing loads any more is dead weight shipped
+		// with a SIL OFL licence for fonts the theme does not use.
+		if rewrite.dropsFontFile(rel) {
+			return nil
 		}
 
 		target := filepath.Join(dest, "files", filepath.FromSlash(rewrite.path(rel)))
@@ -222,13 +242,29 @@ type CreateResult struct {
 type rewriter struct {
 	baseName, baseTitle string
 	newName, newTitle   string
+	// tokens is the seeded palette, when one was given. The manifest derives
+	// the colorway and summary from it rather than inheriting the base's,
+	// which describe a palette that is no longer there.
+	tokens *Tokens
+	// droppedFonts are the vendored families the seeded fonts no longer name.
+	// Collected while rewriting the partial and consumed when filtering files,
+	// so the files and the @font-face rules that load them are dropped
+	// together — either alone leaves a theme that 404s or ships dead weight.
+	droppedFonts []string
+	// keptAnyFont records whether any @font-face survived, which decides
+	// whether the mxcli-fonts/ directory and its licence are still shipped.
+	keptAnyFont bool
 }
 
-func newRewriter(base *Theme, newName, newTitle string) *rewriter {
+func newRewriter(base *Theme, newName, newTitle string, tokens *Tokens) *rewriter {
 	if newTitle == "" {
 		newTitle = defaultTitle(newName)
 	}
-	return &rewriter{baseName: base.Name, baseTitle: base.Title, newName: newName, newTitle: newTitle}
+	return &rewriter{
+		baseName: base.Name, baseTitle: base.Title,
+		newName: newName, newTitle: newTitle,
+		tokens: tokens, keptAnyFont: true,
+	}
 }
 
 // defaultTitle turns "acme-dark" into "Acme Dark".
@@ -282,6 +318,14 @@ func (r *rewriter) manifest(base *Theme, opts CreateOptions) ([]byte, error) {
 	t.Title = r.newTitle
 	t.Local = false
 	t.Version = "1"
+	// A seeded palette makes the base's summary and swatches statements about
+	// the wrong theme: `mxcli theme list` showed a brand theme as "Cool slate,
+	// one teal signal colour" with Signal's six swatches. Derive what can be
+	// derived; --summary still wins.
+	if r.tokens != nil {
+		t.Colorway = deriveColorway(base, r.tokens)
+		t.Summary = seededSummary(r.tokens)
+	}
 	if opts.Summary != "" {
 		t.Summary = opts.Summary
 	}
@@ -291,6 +335,17 @@ func (r *rewriter) manifest(base *Theme, opts CreateOptions) ([]byte, error) {
 		base.Title, r.newName, r.newName)
 
 	t.Files = append([]FileSpec(nil), base.Files...)
+	if !r.keptAnyFont {
+		// The manifest is what `theme show` reads, so an entry for a directory
+		// the scaffold no longer writes describes files that are not there.
+		kept := t.Files[:0]
+		for _, f := range t.Files {
+			if !isVendoredFontPath(f.Path) {
+				kept = append(kept, f)
+			}
+		}
+		t.Files = kept
+	}
 	for i := range t.Files {
 		t.Files[i].Path = r.path(t.Files[i].Path)
 		// The purpose prose names the licence file, so it has to follow the

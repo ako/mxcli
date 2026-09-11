@@ -171,6 +171,24 @@ Consecutive `set`s may chain in one statement:
 See `mdl-examples/doctype-tests/24-workflow-examples.mdl` for the full ALTER
 surface (insert path, drop path, insert condition, boundary events).
 
+**The INSERT op has to match the activity kind.** An activity's outcome list is
+typed, and each op writes exactly one outcome type into it:
+
+| Op | Writes | Only on |
+|----|--------|---------|
+| `insert outcome '<name>' on X { }` | `UserTaskOutcome` | a user task |
+| `insert condition '<Module.Enum.Value>' on X { }` | `…ConditionOutcome` | a decision, a call microflow |
+| `insert path on X { }` | `ParallelSplitOutcome` | a parallel split |
+| `insert boundary event on X timer '<expr>' { }` | a boundary event | user task, call microflow, call workflow, wait for notification |
+
+Aim one at the wrong kind and the outcome lands in a list that cannot hold it,
+which is **not** a build error: the project stops **loading**, so Studio Pro will
+not open it and `mx check` dies before it validates anything (ako/mxcli#415).
+mxcli refuses all of these now — at `check --references` and at `exec`, which
+call the same function — and the refusal names the op that fits the target. The
+`drop` ops are unaffected: removing a branch cannot write a wrong type, and it
+leaves an ordinary build error (`CE6686`) rather than an unloadable project.
+
 ## DESCRIBE round-trip
 
 `DESCRIBE WORKFLOW Module.Name` emits **executable, re-runnable** MDL — user

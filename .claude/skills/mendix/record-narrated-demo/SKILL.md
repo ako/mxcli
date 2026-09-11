@@ -107,6 +107,38 @@ DataGrid2 screens were unreadable: eight columns compressed to eight single
 characters, headers degraded to bare sort arrows. The app *functioned* on a phone
 and was not *usable* on one, and only the mobile recording showed the difference.
 
+**A narrow viewport is not a mobile profile.** Mendix picks its navigation
+profile from the **user agent**, not from the window size, so a take that only
+shrinks `viewport` films the *desktop* app in a narrow window — the phone profile
+is never routed to, and the pass cannot show the thing it exists to find while
+looking entirely plausible. Pass the device through `contextOptions`:
+
+```js
+const take = await openTake(browser, {
+  size: { width: 430, height: 932 },
+  contextOptions: {
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) ' +
+               'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+    isMobile: true,
+    hasTouch: true,
+    deviceScaleFactor: 3,
+  },
+});
+```
+
+`viewport` and `recordVideo` are set by `openTake` itself and win over anything
+in `contextOptions`, because both are load-bearing for the cut — a device preset
+carrying its own `viewport` would silently letterbox every take.
+
+Also worth knowing before you read a mobile take as a layout bug: **a Mendix page
+carries its own layout, and the layout names the navigation profile.** The Phone
+profile controls the home page and the menu; it does not re-skin the pages a user
+reaches afterwards. A phone user routed to a page built on a desktop layout gets
+the desktop frame whatever profile routed them there — measured at 430×932, a
+232 px rail on a 430 px screen with the row's action laid out 42 px past the
+right edge. That is a real defect and the take is right to fail on it, but the
+fix is per-page layouts, not a theme tweak.
+
 ### `recordVideo` needs a Node script, not `playwright-cli`
 
 `mxcli verify`'s browser checks run bash scripts against a persistent

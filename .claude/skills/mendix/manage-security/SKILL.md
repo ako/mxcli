@@ -304,6 +304,18 @@ Three things worth knowing, each of which was a defect until
 A run that skipped something says so. `All entity access rules are up to date`
 means every module was looked at.
 
+The commonest source of a stale rule is a module that arrived from outside
+Studio Pro. `mxcli marketplace install` and `mxcli marketplace update` copy the
+incoming units in verbatim, so a package whose rules do not cover their entities'
+members used to land CE0066 in the project with nothing said about it
+([mendixlabs/mxcli#1085](https://github.com/mendixlabs/mxcli/issues/1085)); both
+now run this reconcile for the module they copy in and report the count. Run it
+by hand for a module installed some other way, or by an older mxcli:
+
+```bash
+mxcli -p app.mpr -c "update security UserCommons"
+```
+
 A member name that matches nothing is now an error rather than a silent skip:
 
 ```

@@ -158,6 +158,15 @@ where [not(Module.Order_Customer/Module.Customer)]
 
 **Rule**: Always use the fully qualified association name (`Module.AssociationName`).
 
+> **A bare association name is now caught before the build (MDL-XPATH01).**
+> `[Order_Customer = $currentUser]` used to pass `mxcli check --references`, get
+> written by `exec`, and only fail at the build with *"Error(s) in XPath
+> constraint"* (**CE0161**) — which is the expensive shape, because `exec` cannot
+> roll back and stops with the model half-updated. `check` now names the
+> association and the qualified spelling to use instead. It fires only when the
+> bare name is not an attribute of the constrained entity **and** is a known
+> association, so attributes stay bare and XPath functions are never touched.
+
 > **`= empty` does not work on associations (CE0161 / MDL047).** `= empty` tests
 > *attribute* nullability only. To test whether an object *has no* associated
 > object, use negated existence: `[not(Module.Order_Customer/Module.Customer)]` —

@@ -238,6 +238,29 @@ func reportSavedEdits(out io.Writer, dir string, written, unsaved []string) {
 	}
 }
 
+// reportSecurityReconcile says what the transplant's access rules needed.
+//
+// Both halves are worth printing. A count means the package shipped rules that
+// did not cover every member of their entities — the model Mendix rejects with
+// CE0066 — and that mxcli has just repaired it, which is a change to the module
+// the operator will see in `diff-local` and should not have to explain to
+// themselves. A failure means CE0066 is still there, so it names the one command
+// that clears it rather than leaving the error to be discovered by `mx check`
+// (mendixlabs/mxcli#1085).
+func reportSecurityReconcile(out io.Writer, r *marketplace.UpdateResult) {
+	if r.SecurityErr != nil {
+		fmt.Fprintf(out, "\n  Entity access rules could not be reconciled: %v\n", r.SecurityErr)
+		fmt.Fprintln(out, "  Mendix reports this as CE0066 \"Entity access is out of date\". Repair it with:")
+		fmt.Fprintf(out, "      mxcli -p <project.mpr> -c \"update security %s\"\n", r.Module)
+		return
+	}
+	if r.RulesReconciled > 0 {
+		fmt.Fprintf(out, "  %d entity access rule(s) reconciled — the package's rules did not cover every\n",
+			r.RulesReconciled)
+		fmt.Fprintln(out, "  member of their entities, which Mendix reports as CE0066.")
+	}
+}
+
 func reportUpdate(out io.Writer, r *marketplace.UpdateResult) {
 	fmt.Fprintf(out, "\n%s updated %s → %s\n", r.Module, r.FromVersion, r.ToVersion)
 	fmt.Fprintf(out, "  %d units copied, %d element identities preserved, %d role grant(s) restored.\n",
@@ -261,6 +284,7 @@ func reportUpdate(out io.Writer, r *marketplace.UpdateResult) {
 			fmt.Fprintf(out, "    %s\n", g)
 		}
 	}
+	reportSecurityReconcile(out, r)
 	// A newer module's pages reference widget definitions the project has not
 	// resynced, so `mx check` reports CE0463 until it is told to. Measured on
 	// Administration 4.3.2 → 4.5.0: 11 CE0463 errors, and 0 after the resync.
