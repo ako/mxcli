@@ -148,11 +148,12 @@ func (fb *flowBuilder) buildFlowGraph(stmts []ast.MicroflowStatement, returns *a
 		// Free annotations are standalone Annotation objects. Flush them before
 		// creating the activity so they do not get attached to it; buildFlowGraph
 		// has a final leftover flush for annotations with no following activity.
-		for _, text := range fb.pendingAnnotations.FreeAnnotations {
-			fb.attachFreeAnnotation(text)
+		for _, note := range fb.pendingAnnotations.FreeNotes {
+			fb.attachFreeAnnotation(note)
 		}
-		if fb.pendingAnnotations.AnnotationText != "" {
-			fb.attachFreeAnnotation(fb.pendingAnnotations.AnnotationText)
+		// An attached note with no activity left to attach to is a free one.
+		for _, note := range fb.pendingAnnotations.Notes {
+			fb.attachFreeAnnotation(note)
 		}
 		fb.pendingAnnotations = nil
 	}
@@ -538,10 +539,10 @@ func (fb *flowBuilder) addStatement(stmt ast.MicroflowStatement) model.ID {
 		fb.posY = fb.pendingAnnotations.Position.Y
 	}
 	if fb.pendingAnnotations != nil {
-		for _, text := range fb.pendingAnnotations.FreeAnnotations {
-			fb.attachFreeAnnotation(text)
+		for _, note := range fb.pendingAnnotations.FreeNotes {
+			fb.attachFreeAnnotation(note)
 		}
-		fb.pendingAnnotations.FreeAnnotations = nil
+		fb.pendingAnnotations.FreeNotes = nil
 	}
 
 	switch s := stmt.(type) {

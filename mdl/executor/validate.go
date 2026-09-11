@@ -587,9 +587,10 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 			return mdlerrors.NewValidationf("page '%s' has context errors:\n  - %s",
 				s.Name.String(), strings.Join(ctxErrors, "\n  - "))
 		}
-		// CE1571: a microflow data source must be given an argument per parameter.
-		if argErrors := validateDataSourceArguments(ctx, s.Parameters, s.Widgets, sc); len(argErrors) > 0 {
-			return mdlerrors.NewValidationf("page '%s' has data source errors:\n  - %s",
+		// CE1571: a microflow call must be given an argument per parameter —
+		// as a data source and as an action alike (mendixlabs/mxcli#1082).
+		if argErrors := validateFlowArguments(ctx, s.Parameters, s.Widgets, sc); len(argErrors) > 0 {
+			return mdlerrors.NewValidationf("page '%s' has argument errors:\n  - %s",
 				s.Name.String(), strings.Join(argErrors, "\n  - "))
 		}
 	case *ast.CreateSnippetStmtV3:
@@ -603,10 +604,10 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 			return mdlerrors.NewValidationf("snippet '%s' has reference errors:\n  - %s",
 				s.Name.String(), strings.Join(refErrors, "\n  - "))
 		}
-		// A snippet takes the same data sources a page does, and CE1571 does not
-		// care which document the widget lives in.
-		if argErrors := validateDataSourceArguments(ctx, s.Parameters, s.Widgets, sc); len(argErrors) > 0 {
-			return mdlerrors.NewValidationf("snippet '%s' has data source errors:\n  - %s",
+		// A snippet takes the same data sources and actions a page does, and
+		// CE1571 does not care which document the widget lives in.
+		if argErrors := validateFlowArguments(ctx, s.Parameters, s.Widgets, sc); len(argErrors) > 0 {
+			return mdlerrors.NewValidationf("snippet '%s' has argument errors:\n  - %s",
 				s.Name.String(), strings.Join(argErrors, "\n  - "))
 		}
 		// Validate snippet context tree (parameter/selection/attribute bindings)

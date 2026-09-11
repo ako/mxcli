@@ -303,7 +303,9 @@ func init() {
 			"@anchor(from: right, to: left)        -- which SIDE each end of the outgoing flow attaches to\n" +
 			"@curve(from: (40, -90), to: (-40, 90))  -- the flow's bezier control vectors\n" +
 			"@merge(x, y)                          -- the implicit merge that closes a split\n" +
-			"@caption 'text'\n@color Green\n@annotation 'a note'\n@excluded\n\n" +
+			"@caption 'text'\n@color Green\n@annotation 'a note'\n@excluded\n" +
+			"@annotation(id: n1, text: 'a note', position: (x, y), size: (w, h))\n" +
+			"@annotation(id: n1)                   -- attaches THAT note to another activity\n\n" +
 			"An unrecognised @name is an error (MDL059): it would parse and do nothing,\n" +
 			"so a typo of @position would silently discard the layout.\n\n" +
 			"Mendix stores no waypoints — a flow's shape is two control vectors, each a\n" +
@@ -322,7 +324,17 @@ func init() {
 			"parameters form a row along the top of the canvas at 200;53, 300;53, … ;\n" +
 			"the same derived/authored rule as @start then applies, so a parameter on\n" +
 			"that row is re-derived and one anywhere else survives a rewrite and is\n" +
-			"emitted by DESCRIBE.",
+			"emitted by DESCRIBE.\n\n" +
+			"A NOTE is a node with edges, not a property of the activity it documents:\n" +
+			"one note can be wired to several activities and several notes to one. So\n" +
+			"@annotation is repeatable, and `id:` names a note so a later\n" +
+			"@annotation(id: …) attaches the same one instead of creating a copy. The id\n" +
+			"is scoped to the flow being authored and is not stored in the model —\n" +
+			"DESCRIBE re-derives labels, and emits one only for a note that really is\n" +
+			"shared. Two notes with identical text and no id stay two notes.\n\n" +
+			"position:/size: are the note's own geometry, omitted whenever they match\n" +
+			"what a rewrite re-derives (100px above the activity, stacked 60px per extra\n" +
+			"note, 200x50), so an ordinary note keeps the short form. (#1077)",
 		Example: "create microflow MyModule.ACT_Flow (\n  @position(145, 0)\n  $In: String\n)\nreturns String as $Out\nbegin\n" +
 			"  @start(145, 100)\n  @position(200, 100)\n  @anchor(from: bottom, to: top)\n" +
 			"  @curve(from: (40, -90), to: (-40, 90))\n  declare $Tmp String = $In;\n" +

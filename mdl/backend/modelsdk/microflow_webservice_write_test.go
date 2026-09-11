@@ -62,11 +62,27 @@ func TestWebServiceCallAction_IsWritten(t *testing.T) {
 // TestWebServiceCallAction_MatchesLegacyDocument pins the whole document against
 // the shape the legacy serializer writes.
 //
-// Legacy is the reference on purpose: there is no Studio Pro-authored SOAP
-// document in this repo, and legacy's output is both the documented fallback and
-// what users' projects already contain. The values below were read off a real
-// legacy-written project (`mxcli bson dump`, Mendix 11.13.0), not off the
-// serializer's source.
+// Legacy is the reference for this test on purpose — the change it guards is
+// "stop dropping the action", so reproducing what ships is what makes it safe.
+// The values below were read off a real legacy-written project (`mxcli bson
+// dump`, Mendix 11.13.0), not off the serializer's source.
+//
+// It is NOT a fidelity test, and the difference matters for reading the
+// expectations below. Studio Pro-authored SOAP documents exist (ako/TestApp,
+// 11.14.0); measured against them, four of legacy's six divergences have since
+// been fixed in BOTH engines, so most of this test now agrees with Studio Pro
+// too. The exceptions are deliberate:
+//
+//   - ServiceName "OrderService" here is the FALLBACK, exercised because this
+//     action carries no resolved ServiceName. The resolved path has its own
+//     test (TestWebServiceCallAction_ServiceNameIsTheWsdlService).
+//   - Range.SingleObject and the send-mapping request handling are the two
+//     divergences still open; the header comment in
+//     microflow_webservice_write.go says what each one costs and why it has not
+//     been changed on a guess.
+//
+// When those are fixed these expectations change with them, which is the point
+// of recording which reference each one came from.
 func TestWebServiceCallAction_MatchesLegacyDocument(t *testing.T) {
 	doc := encodeMicroflowAction(t, fullWebServiceCall())
 
@@ -149,12 +165,72 @@ func TestWebServiceCallAction_ResultHandlingBindsTheReceiveMapping(t *testing.T)
 	if got := docGet(imc, "ReturnValueMapping"); got != "SampleSOAP.OrderResponse" {
 		t.Errorf("ReturnValueMapping = %#v, want the qualified mapping name", got)
 	}
+	// Xml, not Json. A SOAP response is XML, and Studio Pro writes "Xml" in both
+	// reference calls carrying an import mapping (ako/TestApp, 11.14.0). Legacy
+	// hardcoded "Json"; both engines now write Xml.
+	if got := docGet(imc, "ContentType"); got != "Xml" {
+		t.Errorf("ContentType = %#v, want Xml", got)
+	}
 	rng, ok := docGet(imc, "Range").(bsonv1.D)
 	if !ok {
 		t.Fatalf("Range = %#v, want a document", docGet(imc, "Range"))
 	}
 	if got := docGet(rng, "$Type"); got != "Microflows$ConstantRange" {
 		t.Errorf("Range.$Type = %#v", got)
+	}
+}
+
+// TestWebServiceCallAction_ServiceNameIsTheWsdlService — ServiceName is the
+// WSDL <wsdl:service name=…>, resolved by the executor off the imported service
+// document, NOT the local part of the qualified document name. Writing the
+// derived name made Mendix look for the operation in a service that does not
+// exist: CE0386, measured on 11.14.0 against ako/TestApp.
+func TestWebServiceCallAction_ServiceNameIsTheWsdlService(t *testing.T) {
+	a := fullWebServiceCall()
+	a.ServiceName = "OrdersWS"
+
+	if got := docGet(encodeMicroflowAction(t, a), "ServiceName"); got != "OrdersWS" {
+		t.Errorf("ServiceName = %#v, want the resolved WSDL service name", got)
+	}
+
+	// Control: unresolved, the writer falls back to the derivation that ships
+	// today rather than writing nothing. A call against a service mxcli cannot
+	// resolve is then no worse off than before.
+	a.ServiceName = ""
+	if got := docGet(encodeMicroflowAction(t, a), "ServiceName"); got != "OrderService" {
+		t.Errorf("fallback ServiceName = %#v, want the derived OrderService", got)
+	}
+}
+
+// TestWebServiceCallAction_VariableTypeIsTheMappingsEntity — the result's type
+// is the entity the receive mapping produces. VoidType says the call returns
+// nothing: CE0243 and CE0366, measured on 11.14.0 against ako/TestApp.
+func TestWebServiceCallAction_VariableTypeIsTheMappingsEntity(t *testing.T) {
+	a := fullWebServiceCall()
+	a.ResultEntity = "Clients.Order"
+
+	rh, ok := docGet(encodeMicroflowAction(t, a), "NewResultHandling").(bsonv1.D)
+	if !ok {
+		t.Fatal("NewResultHandling missing")
+	}
+	vt, ok := docGet(rh, "VariableType").(bsonv1.D)
+	if !ok {
+		t.Fatalf("VariableType = %#v, want a document", docGet(rh, "VariableType"))
+	}
+	if got := docGet(vt, "$Type"); got != "DataTypes$ObjectType" {
+		t.Errorf("VariableType.$Type = %#v, want DataTypes$ObjectType", got)
+	}
+	if got := docGet(vt, "Entity"); got != "Clients.Order" {
+		t.Errorf("VariableType.Entity = %#v, want Clients.Order", got)
+	}
+
+	// Control: unresolved, it stays VoidType — wrong, but what ships, so an
+	// unresolvable mapping is no worse off than before.
+	a.ResultEntity = ""
+	rh2, _ := docGet(encodeMicroflowAction(t, a), "NewResultHandling").(bsonv1.D)
+	vt2, _ := docGet(rh2, "VariableType").(bsonv1.D)
+	if got := docGet(vt2, "$Type"); got != "DataTypes$VoidType" {
+		t.Errorf("fallback VariableType.$Type = %#v, want DataTypes$VoidType", got)
 	}
 }
 

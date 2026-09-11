@@ -83,7 +83,9 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 			violations = append(violations, ValidateWorkflow(wfStmt)...)
 		}
 		// ALTER WORKFLOW … INSERT BRANCH writes the same outcome value, so it
-		// carries the same load-time trap (MDL-WF03).
+		// carries the same load-time trap (MDL-WF03); an ALTER that inserts or
+		// replaces an activity reaches the same build errors as a CREATE body, so
+		// MDL-WF06 is checked over what it introduces.
 		if awfStmt, ok := stmt.(*ast.AlterWorkflowStmt); ok {
 			violations = append(violations, ValidateAlterWorkflow(awfStmt)...)
 		}

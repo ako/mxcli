@@ -280,13 +280,18 @@ type FlowAnchors struct {
 // ActivityAnnotations holds metadata annotations for microflow activities.
 // These are emitted as @position, @caption, @color, @annotation, @excluded, @anchor lines in MDL.
 type ActivityAnnotations struct {
-	Position        *Position    // @position(x, y)
-	Caption         string       // @caption 'text'
-	Color           string       // @color Green
-	AnnotationText  string       // @annotation 'text'
-	FreeAnnotations []string     // Multiple free-floating @annotation lines in source order
-	Excluded        bool         // @excluded
-	Anchor          *FlowAnchors // @anchor(from: X, to: Y) — anchors of the flow leaving this statement
+	Position *Position // @position(x, y)
+	Caption  string    // @caption 'text'
+	Color    string    // @color Green
+	// Notes are the @annotation lines attached to this statement, in source
+	// order. A SLICE, not one string: see MicroflowAnnotation.
+	Notes []MicroflowAnnotation
+
+	// FreeNotes are @annotation lines that stand on their own — a note on the
+	// canvas wired to nothing.
+	FreeNotes []MicroflowAnnotation
+	Excluded  bool         // @excluded
+	Anchor    *FlowAnchors // @anchor(from: X, to: Y) — anchors of the flow leaving this statement
 
 	// Split-specific anchors for IF statements. When the statement is not an
 	// IF these remain nil. The grammar accepts them on IfStmt only:
@@ -340,6 +345,12 @@ type ActivityAnnotations struct {
 	// than silently straightening the edge.
 	InvalidCurves []string
 
+	// InvalidNotes holds the raw text of any `@annotation(...)` parameter
+	// the visitor could not use — an unknown key, or a malformed `position:`/`size:`
+	// pair — so validation can refuse it. Dropping it would lose the note
+	// itself, not just the parameter.
+	InvalidNotes []string
+
 	// UnknownNames holds annotation names the visitor did not recognise, in
 	// source order, so validation can refuse them.
 	//
@@ -350,6 +361,44 @@ type ActivityAnnotations struct {
 	// for. Layout is the whole point of these annotations, so a name that does
 	// nothing has to say so. (upstream #884)
 	UnknownNames []string
+}
+
+// MicroflowAnnotation is one `@annotation` line — the yellow note Studio Pro
+// draws beside an activity.
+//
+// In Mendix's model a note is a NODE with edges (`Microflows$Annotation` joined
+// to activities by `Microflows$AnnotationFlow`), not a property of the activity
+// it documents: one note can be wired to several activities, and several notes
+// to one activity. MDL modelled it as a single string per activity, which lost
+// both directions — a shared note came back copied once per target, and a
+// second note on one activity overwrote the first, silently
+// (mendixlabs/mxcli#1077). Hence a slice, and hence Label.
+type MicroflowAnnotation struct {
+	// Label is the `id:` in `@annotation(id: n1, text: '…')`. It exists only so
+	// a later `@annotation(id: n1)` can attach the SAME note to another
+	// activity instead of creating a second one. It is scoped to the flow being
+	// authored and is NOT stored in the model — the describer re-derives labels
+	// from scratch, so they are stable across a round trip by construction
+	// rather than by being remembered.
+	Label string
+
+	// Text is the note's caption. Empty on a pure reference
+	// (`@annotation(id: n1)`), which attaches a note already declared above.
+	Text string
+
+	// Position and Size are the note's own canvas geometry, which Mendix stores per
+	// annotation and MDL had no way to spell. Nil means "let the writer place
+	// it" — see defaultAnnotationGeometry in mdl/executor, which the builder and
+	// the describer both consult so a round trip need not spell out a position
+	// that can be re-derived.
+	Position *Position
+	Size     *BoxSize
+}
+
+// BoxSize is a width/height pair in canvas pixels.
+type BoxSize struct {
+	Width  int
+	Height int
 }
 
 // FlowCurve is the pair of bezier control vectors on a sequence flow. Either end

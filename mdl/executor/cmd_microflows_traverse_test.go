@@ -1003,10 +1003,8 @@ func TestTraverseFlow_LoopBodyUsesNestedAnnotationFlows(t *testing.T) {
 			},
 		},
 	}
-	annotationsByTarget := mergeAnnotationsByTarget(
-		buildAnnotationsByTarget(&microflows.MicroflowObjectCollection{}),
-		buildAnnotationsByTarget(loopObjects),
-	)
+	annotationsByTarget := buildAnnotationsByTarget(&microflows.MicroflowObjectCollection{}).
+		withOverlay(buildAnnotationsByTarget(loopObjects))
 
 	var lines []string
 	e.traverseFlow(
@@ -1025,7 +1023,10 @@ func TestTraverseFlow_LoopBodyUsesNestedAnnotationFlows(t *testing.T) {
 	)
 
 	out := strings.Join(lines, "\n")
-	if !strings.Contains(out, "@annotation 'nested split note'") {
+	// The long form because this note sits at (1000, 100) while the split it
+	// documents is at (100, 100) — nowhere near where the writer would place an
+	// unpositioned note, so its position is spelled out rather than lost (#1077).
+	if !strings.Contains(out, "@annotation(text: 'nested split note', position: (1000, 100))") {
 		t.Fatalf("expected nested loop annotation in output:\n%s", out)
 	}
 }
@@ -1055,7 +1056,7 @@ func TestCollectErrorHandlerStatements_Simple(t *testing.T) {
 		mkID("err_log"): {mkFlow("err_log", "err_end")},
 	}
 
-	stmts := e.collectErrorHandlerStatements(mkID("err_log"), activityMap, flowsByOrigin, nil, nil)
+	stmts := e.collectErrorHandlerStatements(mkID("err_log"), activityMap, flowsByOrigin, nil, nil, nil)
 	if len(stmts) != 2 {
 		t.Fatalf("expected 2 statements, got %d: %v", len(stmts), stmts)
 	}
@@ -1084,7 +1085,7 @@ func TestCollectErrorHandlerStatements_StopsAtMerge(t *testing.T) {
 		mkID("merge"):   {mkFlow("merge", "after")},
 	}
 
-	stmts := e.collectErrorHandlerStatements(mkID("err_log"), activityMap, flowsByOrigin, nil, nil)
+	stmts := e.collectErrorHandlerStatements(mkID("err_log"), activityMap, flowsByOrigin, nil, nil, nil)
 	// Should stop at merge, not include "after"
 	if len(stmts) != 1 {
 		t.Fatalf("expected 1 statement (stop at merge), got %d: %v", len(stmts), stmts)
@@ -1117,7 +1118,7 @@ func TestCollectErrorHandlerStatements_StructuredIfEmitsEndIf(t *testing.T) {
 		mkID("merge"): {mkFlow("merge", "after")},
 	}
 
-	stmts := e.collectErrorHandlerStatements(mkID("split"), activityMap, flowsByOrigin, nil, nil)
+	stmts := e.collectErrorHandlerStatements(mkID("split"), activityMap, flowsByOrigin, nil, nil, nil)
 	got := strings.Join(stmts, "\n")
 
 	assertContains(t, got, "if $latestHttpResponse != empty then")
@@ -1131,7 +1132,7 @@ func TestCollectErrorHandlerStatements_StructuredIfEmitsEndIf(t *testing.T) {
 
 func TestCollectErrorHandlerStatements_EmptyID(t *testing.T) {
 	e := newTestExecutor()
-	stmts := e.collectErrorHandlerStatements("", nil, nil, nil, nil)
+	stmts := e.collectErrorHandlerStatements("", nil, nil, nil, nil, nil)
 	if len(stmts) != 0 {
 		t.Errorf("expected 0 statements for empty ID, got %d", len(stmts))
 	}
