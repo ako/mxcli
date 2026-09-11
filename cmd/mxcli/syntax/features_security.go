@@ -66,6 +66,35 @@ func init() {
 	})
 
 	Register(SyntaxFeature{
+		Path:    "security.update-security",
+		Summary: "Repair entity access rules that no longer match their domain model (CE0066)",
+		Keywords: []string{
+			"update security", "CE0066", "entity access out of date",
+			"reconcile", "member access", "update security button",
+		},
+		Syntax: "UPDATE SECURITY;\n" +
+			"UPDATE SECURITY <module>;\n" +
+			"UPDATE SECURITY IN <module>;\n\n" +
+			"This is the headless equivalent of Studio Pro's 'Update security'\n" +
+			"button in the domain model editor. It adds the member entries an\n" +
+			"access rule is missing, removes entries for members that no longer\n" +
+			"exist, and reports how many rules it changed.\n\n" +
+			"You rarely need it for models mxcli writes — every write path\n" +
+			"reconciles as it writes. It is for a model that arrived from\n" +
+			"somewhere else: a module imported or updated outside Studio Pro,\n" +
+			"whose rules do not cover every member of their entities. Mendix\n" +
+			"rejects that with CE0066 'Entity access is out of date'.\n\n" +
+			"A project whose rules are already complete is not written to; the\n" +
+			"command says 'All entity access rules are up to date'. System is\n" +
+			"skipped — its access rules are the platform's.",
+		Example: "-- After a headless module install or update:\n" +
+			"UPDATE SECURITY UserCommons;\n\n" +
+			"-- Every module in the project:\n" +
+			"UPDATE SECURITY;",
+		SeeAlso: []string{"security.entity-access", "security.module-role"},
+	})
+
+	Register(SyntaxFeature{
 		Path:    "security.microflow-access",
 		Summary: "Grant or revoke execution rights on microflows",
 		Keywords: []string{

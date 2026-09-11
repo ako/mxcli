@@ -258,6 +258,7 @@
   - [GRANT](reference/security/grant.md)
   - [REVOKE](reference/security/revoke.md)
   - [CREATE DEMO USER](reference/security/create-demo-user.md)
+  - [UPDATE SECURITY](reference/security/update-security.md)
 - [Navigation Statements](reference/navigation/README.md)
   - [ALTER NAVIGATION](reference/navigation/alter-navigation.md)
   - [SHOW NAVIGATION](reference/navigation/show-navigation.md)

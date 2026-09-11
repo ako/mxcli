@@ -113,7 +113,12 @@ type UpdateResult struct {
 	IdentitiesLost []string
 	GrantsRestored int
 	GrantsDropped  []string
-	FilesInstalled []string
+	// RulesReconciled counts the entity access rules the update had to bring
+	// back into sync with the domain model after copying the module in, and
+	// SecurityErr records why that could not be done when it failed.
+	RulesReconciled int
+	SecurityErr     error
+	FilesInstalled  []string
 	// FilesSkipped records bundled files that were deliberately not installed:
 	// a widget older than the copy the project already has, or the unpacked twin
 	// of a widget the package also ships as a .mpk. Reported rather than silent —
@@ -180,17 +185,25 @@ func PerformUpdate(mprPath, referenceMpr, targetMpk, moduleName, fromVersion, to
 		return nil, fmt.Errorf("install the new version's bundled files: %w", err)
 	}
 
+	// The module is in place; its access rules are whatever the package shipped.
+	// A failure here is reported rather than returned: the update has already
+	// replaced the module, so aborting now would leave the project mid-update
+	// over a repair the operator can run themselves.
+	reconciled, secErr := ReconcileModuleSecurity(mprPath, moduleName, newBackend)
+
 	return &UpdateResult{
-		Module:         moduleName,
-		FromVersion:    fromVersion,
-		ToVersion:      toVersion,
-		UnitsCopied:    copied,
-		IdentitiesKept: applied,
-		IdentitiesLost: missing,
-		GrantsRestored: restored,
-		GrantsDropped:  dropped,
-		FilesInstalled: files,
-		FilesSkipped:   skippedFiles,
+		Module:          moduleName,
+		FromVersion:     fromVersion,
+		ToVersion:       toVersion,
+		UnitsCopied:     copied,
+		IdentitiesKept:  applied,
+		IdentitiesLost:  missing,
+		GrantsRestored:  restored,
+		GrantsDropped:   dropped,
+		RulesReconciled: reconciled,
+		SecurityErr:     secErr,
+		FilesInstalled:  files,
+		FilesSkipped:    skippedFiles,
 	}, nil
 }
 
@@ -419,11 +432,16 @@ func PerformInstall(mprPath, referenceMpr, packageMpk, moduleName, version, vers
 	if err != nil {
 		return nil, fmt.Errorf("install the package's bundled files: %w", err)
 	}
+	// Same transplant, same gap: the package's access rules arrive verbatim and
+	// nothing has checked them against the entities they govern.
+	reconciled, secErr := ReconcileModuleSecurity(mprPath, moduleName, newBackend)
 	return &UpdateResult{
-		Module:         moduleName,
-		ToVersion:      version,
-		UnitsCopied:    copied,
-		FilesInstalled: files,
-		FilesSkipped:   skippedFiles,
+		Module:          moduleName,
+		ToVersion:       version,
+		UnitsCopied:     copied,
+		RulesReconciled: reconciled,
+		SecurityErr:     secErr,
+		FilesInstalled:  files,
+		FilesSkipped:    skippedFiles,
 	}, nil
 }

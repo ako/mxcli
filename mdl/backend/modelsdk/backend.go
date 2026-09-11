@@ -117,6 +117,25 @@ func (b *Backend) IsConnected() bool { return b.reader != nil }
 
 func (b *Backend) Path() string { return b.path }
 
+// ContentsDir is the mprcontents/ directory of an MPR v2 project, empty for v1.
+func (b *Backend) ContentsDir() string {
+	if b.reader == nil {
+		return ""
+	}
+	return b.reader.ContentsDir()
+}
+
+// InvalidateCache drops the reader's unit cache. Nothing routes through the
+// backend interface to reach it today, but the generated stub for a method with
+// no results at all is a panic, so leaving it unimplemented parks a crash in the
+// default engine against the day something does.
+func (b *Backend) InvalidateCache() {
+	if b.reader == nil {
+		return
+	}
+	b.reader.InvalidateCache()
+}
+
 func (b *Backend) Version() types.MPRVersion {
 	if b.reader == nil {
 		return 0
