@@ -1,0 +1,43 @@
+-- ============================================================================
+-- ako/ChipCoV1 FINDINGS.md — the qualified form, which must PASS
+-- ============================================================================
+--
+-- The positive control for MDL-XPATH01. The rule rejects an association named
+-- BARE in an XPath constraint; this file is the same model with it qualified,
+-- and must PASS. Without a control like this the rule could degrade to "reject
+-- every XPath constraint" and its negative tests would still look green.
+--
+-- The NEGATIVE case is a Go test, not a .fail.mdl, because MDL-XPATH01 needs a
+-- project: it fires only when it can tell an attribute from an association, and
+-- `make check-mdl` runs `mxcli check` with no project. A .fail.mdl here would
+-- pass silently and assert nothing. See mdl/executor/validate_xpath_association_test.go.
+--
+-- Verified on Mendix 11.14.0: this form builds at BUILD SUCCEEDED where the
+-- unqualified one fails with "Error(s) in XPath constraint".
+-- ============================================================================
+
+CREATE MODULE BugXPathAssocOK;
+
+CREATE OR MODIFY PERSISTENT ENTITY BugXPathAssocOK.Ticket ( Title: String(100) );
+
+CREATE OR MODIFY PERSISTENT ENTITY BugXPathAssocOK.Equipment ( Code: String(50) );
+
+CREATE OR MODIFY ASSOCIATION BugXPathAssocOK.Ticket_Equipment
+  FROM BugXPathAssocOK.Ticket TO BugXPathAssocOK.Equipment TYPE Reference;
+
+CREATE OR MODIFY MICROFLOW BugXPathAssocOK.ACT_ForEquipment ($Eq: BugXPathAssocOK.Equipment)
+RETURNS list of BugXPathAssocOK.Ticket
+BEGIN
+  retrieve $Tickets from BugXPathAssocOK.Ticket
+    where [BugXPathAssocOK.Ticket_Equipment = $Eq];
+  return $Tickets;
+END;
+
+-- An attribute stays bare — the rule must not "qualify" one.
+CREATE OR MODIFY MICROFLOW BugXPathAssocOK.ACT_ByTitle ()
+RETURNS list of BugXPathAssocOK.Ticket
+BEGIN
+  retrieve $Tickets from BugXPathAssocOK.Ticket
+    where [Title = 'urgent'];
+  return $Tickets;
+END;
