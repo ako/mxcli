@@ -67,13 +67,22 @@ func TestWebServiceCallAction_IsWritten(t *testing.T) {
 // The values below were read off a real legacy-written project (`mxcli bson
 // dump`, Mendix 11.13.0), not off the serializer's source.
 //
-// It is NOT a fidelity test. Studio Pro-authored SOAP documents exist
-// (ako/TestApp, 11.14.0) and legacy diverges from them in five places this test
-// therefore also pins as-is — ServiceName, ImportMappingCall.ContentType,
-// Range.SingleObject, VariableType, and the send-mapping request handling. The
-// header comment in microflow_webservice_write.go lists them. When those are
-// fixed, these expectations change with them, and that is the point of writing
-// down which reference each one came from.
+// It is NOT a fidelity test, and the difference matters for reading the
+// expectations below. Studio Pro-authored SOAP documents exist (ako/TestApp,
+// 11.14.0); measured against them, four of legacy's six divergences have since
+// been fixed in BOTH engines, so most of this test now agrees with Studio Pro
+// too. The exceptions are deliberate:
+//
+//   - ServiceName "OrderService" here is the FALLBACK, exercised because this
+//     action carries no resolved ServiceName. The resolved path has its own
+//     test (TestWebServiceCallAction_ServiceNameIsTheWsdlService).
+//   - Range.SingleObject and the send-mapping request handling are the two
+//     divergences still open; the header comment in
+//     microflow_webservice_write.go says what each one costs and why it has not
+//     been changed on a guess.
+//
+// When those are fixed these expectations change with them, which is the point
+// of recording which reference each one came from.
 func TestWebServiceCallAction_MatchesLegacyDocument(t *testing.T) {
 	doc := encodeMicroflowAction(t, fullWebServiceCall())
 
