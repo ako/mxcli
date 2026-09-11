@@ -176,6 +176,19 @@ mxcli diff-local -p app.mpr
 
 A headless install or update leaves two repairs for Mendix's own tools: **CE0463** (the project's stored widget instances are older than the widget packages beside them) and **CE6087** (a module references design properties an older Atlas spelled differently). Both are expected, not faults in the install. See [`mxcli fix`](#repairing-the-model-mxcli-fix) below.
 
+A third repair is **not** left to you: **CE0066** ("Entity access is out of date"). A transplant copies the incoming module's units in verbatim, so a package whose access rules do not cover every member of their entities would land that error in your project with nothing said about it (mendixlabs/mxcli#1085). Install and update now reconcile the module's rules for themselves and report the count:
+
+```
+  3 entity access rule(s) reconciled — the package's rules did not cover every
+  member of their entities, which Mendix reports as CE0066.
+```
+
+Nothing is written when the rules already match, so a well-formed package comes through untouched. When the line does appear, the module's domain model differs from the package — the same change Studio Pro's **Update security** button makes — and `mxcli marketplace diff` will read it as a local edit. To run the repair by hand, or on a project updated by an older mxcli, use [`UPDATE SECURITY`](../reference/security/update-security.md):
+
+```bash
+mxcli -p app.mpr -c "update security UserCommons"
+```
+
 Measured: Administration 4.3.2 → 4.5.0 and DataWidgets 3.5.0 → 3.11.3 both reach **0 errors** afterwards.
 
 ## Bundled widgets and install order

@@ -217,6 +217,20 @@ an mxcli defect**:
   design properties an older Atlas spelled differently. Project-level: the location in the
   check output is empty, so the message alone does not say which module caused it.
 
+A third, **CE0066** "Entity access is out of date", is *not* left to you. The install and
+the update copy the incoming module's units in verbatim, so a package whose access rules do
+not cover every member of their entities used to land that error with nothing said about it
+([mendixlabs/mxcli#1085](https://github.com/mendixlabs/mxcli/issues/1085)). Both now
+reconcile the module's rules for themselves and report the count; nothing is written when
+the rules already match. When the line does appear, the module's domain model now differs
+from the package, so `marketplace diff` reads it as a local edit — the same consequence
+Studio Pro's **Update security** button has. Repair it by hand, on a project updated by an
+older mxcli, with:
+
+```bash
+mxcli -p app.mpr -c "update security UserCommons"
+```
+
 Measured end to end on a vanilla 11.12.1 app carrying the agent-editor stack: `mx check`
 reported **203 errors** (202 × CE0463 + 1 × CE6087) and **0** after the two commands, with
 the project still MPR v2 — 1,868 `.mxunit` files, a 249,856-byte index, before and after.

@@ -1,0 +1,77 @@
+-- ============================================================================
+-- CE0066 left behind by `mxcli marketplace update`  (mendixlabs/mxcli#1085)
+-- ============================================================================
+--
+-- Symptom, reported against 0.21.0 on a Mendix 11.12.4 project:
+--
+--   $ mxcli marketplace update 223053 --to 2.2.0 --no-baseline -p App.mpr
+--   UserCommons updated 2.1.3 → 2.2.0
+--     81 units copied, 45 element identities preserved, 6 role grant(s) restored.
+--   $ mx check -p App.mpr
+--   [error] [CE0066] "Entity access is out of date. Please update security by
+--           clicking the 'Update security' button in the domain model editor."
+--           at Domain model of module 'UserCommons'
+--
+--   The update exits 0 and says nothing about it. Its "Next, repair what a
+--   headless update leaves behind" block named CE0463 and CE6087 only, so the
+--   error reads as needing Studio Pro — which is how it was reported: "no
+--   headless fix available".
+--
+-- Root cause:
+--   A transplant is the one write path in mxcli that does not reconcile as it
+--   writes. TransplantModule copies the incoming module's units in VERBATIM,
+--   and RestoreRoleGrants runs its statements one at a time rather than as a
+--   program, so the executor's finalize step — the one that calls
+--   ReconcileMemberAccesses — never runs. An access rule that does not cover
+--   every member of its entity therefore arrives exactly as the package
+--   shipped it, and Mendix rejects that model with CE0066.
+--
+--   Measured on the vendored 11.6.6 app (Administration 4.3.2, mxbuild
+--   11.14.0), removing ONE member entry from the incoming version's rules:
+--
+--     | update transplants                  | mx check                        |
+--     |-------------------------------------|---------------------------------|
+--     | the module UNCHANGED       (control)| 0 errors                        |
+--     | rules missing one member            | CE0066 at the domain model      |
+--     | the same, with this fix             | 0 errors                        |
+--
+--   The control is what localises it: the machinery does not CREATE the stale
+--   rule, it transmits one. So the fix is to reconcile the module after it is
+--   in place — PerformUpdate and PerformInstall both do now — and to report
+--   the count, because repairing a marketplace module's rules is a change the
+--   operator will see in `diff-local`.
+--
+-- WHAT THIS EXAMPLE DOES NOT SHOW, and why.
+--   It cannot reproduce the bug. Producing a stale access rule requires a
+--   module arriving from outside mxcli; every MDL write path reconciles as it
+--   writes, so no script can leave one behind. Reproduction lives in
+--   cmd/mxcli/marketplace/security_test.go, which edits the stored BSON
+--   directly to build the state a package can be in and a script cannot.
+--
+--   What this script covers is the OTHER half of the contract: the repair is
+--   idempotent. `update security` is what the update now runs for itself, and
+--   on a project whose rules are complete it must change nothing and say so.
+--   A reconcile that rewrites a healthy marketplace module on every install
+--   would be read back by `marketplace diff` as a local edit — and a local
+--   edit is what makes the NEXT update refuse.
+--
+-- Verify (needs no fixture — it exercises the command against any project):
+--
+--   mxcli exec marketplace-1085-security-after-transplant.mdl -p app.mpr
+--   mxcli docker check -p app.mpr        -- unchanged from before the run
+--
+-- Expected output from both statements on a healthy project:
+--
+--   All entity access rules are up to date
+--
+-- Anything else means a module's rules did not cover their entities' members,
+-- which is the CE0066 this fix exists to close.
+
+-- Project-wide: every module's rules against its own domain model.
+update security;
+/
+
+-- Scoped to one module, which is what the update runs for the module it just
+-- replaced.
+update security Administration;
+/

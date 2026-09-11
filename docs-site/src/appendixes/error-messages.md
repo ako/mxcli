@@ -50,9 +50,31 @@ See the debug workflow in `.claude/skills/debug-bson.md` for step-by-step instru
 CE0066: Entity access for 'MyModule.Customer' is out of date.
 ```
 
-**Cause:** Association MemberAccess entries were added to the wrong entity. In Mendix, association access rules must only be on the **FROM** entity (the one stored in `ParentPointer`), not the TO entity.
+**Cause (1): the rules no longer cover the entity's members.** An access rule
+names the members it governs, so an entity that has gained an attribute or an
+association — or lost one — leaves every rule on it out of date. This is the
+usual cause for a model that arrived from somewhere else: a module imported or
+updated outside Studio Pro whose author never pressed **Update security**, a
+hand-edited `.mpr`, a merge.
 
-**Solution:** Ensure `MemberAccess` entries for associations are added only to the entity that owns the foreign key (the FROM side of the association). Remove any association MemberAccess entries from the TO entity.
+**Solution:** run the headless equivalent of that button:
+
+```bash
+mxcli -p app.mpr -c "update security MyModule"
+```
+
+It reports what it changed (`Reconciled 3 access rule(s) in module MyModule`) and
+writes nothing when the rules already match. See
+[UPDATE SECURITY](../reference/security/update-security.md). `mxcli marketplace
+install` and `mxcli marketplace update` run it for the module they copy in.
+
+**Cause (2): association MemberAccess entries on the wrong entity.** In Mendix,
+association access rules must only be on the **FROM** entity (the one stored in
+`ParentPointer`), not the TO entity.
+
+**Solution:** Ensure `MemberAccess` entries for associations are added only to the
+entity that owns the foreign key (the FROM side of the association). Remove any
+association MemberAccess entries from the TO entity.
 
 ### System.ArgumentNullException (ValidationRule)
 
