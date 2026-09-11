@@ -143,8 +143,10 @@ func TestEmitObjectAnnotations_EscapesMultilineText(t *testing.T) {
 		},
 	}
 
-	annotationsByTarget := map[model.ID][]string{
-		mkID("act"): {"Note\nLine\tTabbed"},
+	annotationsByTarget := &annotationEmitter{
+		byTarget: map[model.ID][]describedAnnotation{
+			mkID("act"): {{Caption: "Note\nLine\tTabbed", Position: mustDefaultAnnotationPos(model.Point{X: 100, Y: 200}, 0)}},
+		},
 	}
 
 	var lines []string
@@ -210,7 +212,11 @@ func TestPrependFreeAnnotationLines_ModelAnnotationsStayFree(t *testing.T) {
 	got := strings.Join(gotLines, "\n")
 
 	want := strings.Join([]string{
-		"@annotation 'free synthetic note'",
+		// A free note is wired to no activity, so there is no activity position
+		// for the writer to derive its place from — its own position is always
+		// emitted. This fixture sets none, hence (0, 0); a real canvas note
+		// carries the coordinates Studio Pro gave it (#1077).
+		"@annotation(text: 'free synthetic note', position: (0, 0))",
 		"@position(100, 200)",
 		"@annotation 'attached synthetic note'",
 		"log info 'Synthetic' 'message';",
@@ -541,4 +547,12 @@ func TestFormatErrorHandlingSuffix_RollbackIsNotEmitted(t *testing.T) {
 			t.Errorf("formatErrorHandlingSuffix(%q) = %q, want %q", errType, got, want)
 		}
 	}
+}
+
+// mustDefaultAnnotationPos is the position the writer would give an unplaced
+// note, so this test exercises the SHORT emit form rather than accidentally
+// asserting escaping on the parameterised one.
+func mustDefaultAnnotationPos(activity model.Point, index int) model.Point {
+	pos, _ := defaultAnnotationGeometry(activity, index)
+	return pos
 }

@@ -41,7 +41,7 @@ func TestValidateMicroflow_CaptionOnLoopWarns(t *testing.T) {
 
 // @annotation (the supported way to label a loop) must NOT warn.
 func TestValidateMicroflow_AnnotationOnLoopNoWarn(t *testing.T) {
-	if loopHasMDL042(mfWithLoopAnnotations(&ast.ActivityAnnotations{AnnotationText: "Process things"})) {
+	if loopHasMDL042(mfWithLoopAnnotations(&ast.ActivityAnnotations{Notes: []ast.MicroflowAnnotation{{Text: "Process things"}}})) {
 		t.Error("MDL042 must not fire for @annotation on a loop")
 	}
 }

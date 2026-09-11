@@ -146,8 +146,8 @@ func TestIfAnnotationStaysWithCorrectSplit(t *testing.T) {
 			&ast.ReturnStmt{Value: &ast.LiteralExpr{Value: false, Kind: ast.LiteralBoolean}},
 		},
 		Annotations: &ast.ActivityAnnotations{
-			Caption:        "Right format?",
-			AnnotationText: "Inner IF note",
+			Caption: "Right format?",
+			Notes:   []ast.MicroflowAnnotation{{Text: "Inner IF note"}},
 		},
 	}
 	outerIf := &ast.IfStmt{
@@ -161,8 +161,8 @@ func TestIfAnnotationStaysWithCorrectSplit(t *testing.T) {
 			&ast.ReturnStmt{Value: &ast.LiteralExpr{Value: false, Kind: ast.LiteralBoolean}},
 		},
 		Annotations: &ast.ActivityAnnotations{
-			Caption:        "String not empty?",
-			AnnotationText: "Outer IF note",
+			Caption: "String not empty?",
+			Notes:   []ast.MicroflowAnnotation{{Text: "Outer IF note"}},
 		},
 	}
 
@@ -228,7 +228,7 @@ func TestLoopBodyIfAnnotationPromotedToParentFlows(t *testing.T) {
 			&ast.LogStmt{Level: ast.LogInfo, Message: &ast.LiteralExpr{Kind: ast.LiteralString, Value: "active"}},
 		},
 		Annotations: &ast.ActivityAnnotations{
-			AnnotationText: "Nested decision note",
+			Notes: []ast.MicroflowAnnotation{{Text: "Nested decision note"}},
 		},
 	}
 	loop := &ast.LoopStmt{
@@ -263,7 +263,7 @@ func TestLoopBodyIfAnnotationPromotedToParentFlows(t *testing.T) {
 	}
 
 	annotations := buildAnnotationsByTarget(oc)
-	if got := annotations[splitID]; len(got) != 1 || got[0] != "Nested decision note" {
+	if got := annotations.byTarget[splitID]; len(got) != 1 || got[0].Caption != "Nested decision note" {
 		t.Fatalf("annotations for nested split = %#v, want Nested decision note", got)
 	}
 }
@@ -365,8 +365,8 @@ func TestFreeAnnotationBeforePositionStaysUnattached(t *testing.T) {
 			Level:   ast.LogInfo,
 			Message: &ast.LiteralExpr{Kind: ast.LiteralString, Value: "message"},
 			Annotations: &ast.ActivityAnnotations{
-				FreeAnnotations: []string{"free synthetic note"},
-				Position:        &ast.Position{X: 120, Y: 240},
+				FreeNotes: []ast.MicroflowAnnotation{{Text: "free synthetic note"}},
+				Position:  &ast.Position{X: 120, Y: 240},
 			},
 		},
 	}
@@ -375,14 +375,14 @@ func TestFreeAnnotationBeforePositionStaysUnattached(t *testing.T) {
 	oc := fb.buildFlowGraph(body, nil)
 
 	freeAnnotations := collectFreeAnnotations(oc)
-	if len(freeAnnotations) != 1 || freeAnnotations[0] != "free synthetic note" {
+	if len(freeAnnotations) != 1 || freeAnnotations[0].Caption != "free synthetic note" {
 		t.Fatalf("free annotations = %#v, want one free note", freeAnnotations)
 	}
 
 	attached := buildAnnotationsByTarget(oc)
-	for activityID, captions := range attached {
-		for _, caption := range captions {
-			if caption == "free synthetic note" {
+	for activityID, notes := range attached.byTarget {
+		for _, n := range notes {
+			if n.Caption == "free synthetic note" {
 				t.Fatalf("free note was attached to activity %s", activityID)
 			}
 		}
@@ -395,8 +395,8 @@ func TestMultipleFreeAnnotationsBeforePositionStayUnattached(t *testing.T) {
 			Level:   ast.LogInfo,
 			Message: &ast.LiteralExpr{Kind: ast.LiteralString, Value: "message"},
 			Annotations: &ast.ActivityAnnotations{
-				FreeAnnotations: []string{"first free note", "second free note"},
-				Position:        &ast.Position{X: 120, Y: 240},
+				FreeNotes: []ast.MicroflowAnnotation{{Text: "first free note"}, {Text: "second free note"}},
+				Position:  &ast.Position{X: 120, Y: 240},
 			},
 		},
 	}
@@ -410,8 +410,8 @@ func TestMultipleFreeAnnotationsBeforePositionStayUnattached(t *testing.T) {
 		t.Fatalf("free annotations = %#v, want %#v", freeAnnotations, want)
 	}
 	for i, wantText := range want {
-		if freeAnnotations[i] != wantText {
-			t.Fatalf("free annotation %d = %q, want %q", i, freeAnnotations[i], wantText)
+		if freeAnnotations[i].Caption != wantText {
+			t.Fatalf("free annotation %d = %q, want %q", i, freeAnnotations[i].Caption, wantText)
 		}
 	}
 }
@@ -457,7 +457,7 @@ func TestIfBranchActionAnnotationStaysWithAction(t *testing.T) {
 				Level:   ast.LogInfo,
 				Message: &ast.LiteralExpr{Kind: ast.LiteralString, Value: "branch"},
 				Annotations: &ast.ActivityAnnotations{
-					AnnotationText: "Branch note",
+					Notes: []ast.MicroflowAnnotation{{Text: "Branch note"}},
 				},
 			},
 		},
@@ -482,7 +482,7 @@ func TestIfBranchActionAnnotationStaysWithAction(t *testing.T) {
 	}
 
 	attached := buildAnnotationsByTarget(oc)
-	if got := attached[logID]; len(got) != 1 || got[0] != "Branch note" {
+	if got := attached.byTarget[logID]; len(got) != 1 || got[0].Caption != "Branch note" {
 		t.Fatalf("branch log annotations = %#v, want [Branch note]", got)
 	}
 }

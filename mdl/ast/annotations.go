@@ -34,3 +34,60 @@ func StatementAnnotations(s MicroflowStatement) *ActivityAnnotations {
 	ann, _ := f.Interface().(*ActivityAnnotations)
 	return ann
 }
+
+// StatementBodies returns every nested statement list a microflow statement
+// contains — an IF's two branches, a CASE's arms, a loop body, an ON ERROR
+// handler's body — so a check that has to span the whole flow can recurse
+// without a type switch that goes stale.
+//
+// Reflective for the same reason as StatementAnnotations: a hand-written switch
+// silently skips the statement type added after it was written, and the callers
+// here are looking for something that would otherwise be missed entirely.
+// TestStatementBodiesReachesEveryNestedBody pins the coverage.
+func StatementBodies(s MicroflowStatement) [][]MicroflowStatement {
+	if s == nil {
+		return nil
+	}
+	v := reflect.ValueOf(s)
+	for v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return nil
+		}
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return nil
+	}
+
+	var out [][]MicroflowStatement
+	stmtSlice := reflect.TypeOf([]MicroflowStatement(nil))
+	for i := 0; i < v.NumField(); i++ {
+		f := v.Field(i)
+		switch {
+		case f.Type() == stmtSlice:
+			if f.Len() > 0 {
+				out = append(out, f.Interface().([]MicroflowStatement))
+			}
+		case f.Kind() == reflect.Ptr && f.Type() == reflect.TypeOf((*ErrorHandlingClause)(nil)):
+			if !f.IsNil() {
+				if body := f.Interface().(*ErrorHandlingClause).Body; len(body) > 0 {
+					out = append(out, body)
+				}
+			}
+		case f.Kind() == reflect.Slice:
+			// Case arms: []EnumSplitCase, []InheritanceSplitCase — each element
+			// is a struct with its own Body.
+			for j := 0; j < f.Len(); j++ {
+				el := f.Index(j)
+				if el.Kind() != reflect.Struct {
+					break
+				}
+				body := el.FieldByName("Body")
+				if body.IsValid() && body.Type() == stmtSlice && body.Len() > 0 {
+					out = append(out, body.Interface().([]MicroflowStatement))
+				}
+			}
+		}
+	}
+	return out
+}
