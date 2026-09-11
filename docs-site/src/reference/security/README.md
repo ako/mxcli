@@ -13,6 +13,7 @@ Mendix security operates at two levels. **Module roles** define permissions with
 | [GRANT](grant.md) | Grant entity, microflow, page, or nanoflow access to roles |
 | [REVOKE](revoke.md) | Remove previously granted access |
 | [CREATE DEMO USER](create-demo-user.md) | Create a demo user for development and testing |
+| [UPDATE SECURITY](update-security.md) | Re-sync entity access rules with the domain model (CE0066) |
 
 ## Related Statements
 
