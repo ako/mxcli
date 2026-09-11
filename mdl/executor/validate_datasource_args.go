@@ -40,6 +40,45 @@
 // Where a context's entity type cannot be resolved (an association or selection
 // source), nothing is reported: guessing wrong in that direction is what
 // rejected the working page in the first place.
+//
+// # The same CE, the other property (mendixlabs/mxcli#1082)
+//
+// CE1571 is not a data-source error. It is raised for any call whose parameters
+// are not all supplied, and a widget's ACTION is such a call — so the rule now
+// covers `Action:` / `OnClick:` / `OnChange:` and a pluggable widget's named
+// action slots as well. Before this it walked GetDataSource() alone, and the
+// identical fault on an action passed `mxcli check --references` clean and then
+// failed the build. Measured on mxbuild 11.12.0, one project, one `mx check`:
+//
+//	CONTAINER action, no argument, no enclosing data context   → CE1571
+//	the same page put through `mxcli check`                    → "Check passed!"
+//
+// The action obeys the same context rule as the data source, measured the same
+// way — six containers carrying the identical fault, one `mx check`:
+//
+//	nested in a dataview of the parameter's type            → no error
+//	nested in a dataview of a DIFFERENT type                → CE1571
+//	page parameter of the exact type, no dataview           → CE1571
+//	inside a data grid COLUMN (row-scoped)                  → no error
+//	no enclosing data context at all                        → CE1571
+//	inside a data grid CONTROL BAR                          → CE1571
+//
+// # A control bar is not row-scoped
+//
+// The last row is the reported shape, and it is the one the context walk got
+// wrong: a control bar is a child of the data widget, so it used to inherit the
+// row context and the check stayed silent. It applies to data sources too —
+// same project, same run:
+//
+//	dataview whose microflow source needs an argument,
+//	  placed in the grid's CONTROL BAR                      → CE1571
+//	the same dataview placed in a COLUMN                    → no error
+//
+// So the fix belongs in the walk rather than in either rule, and it drops only
+// the data widget's OWN object: an outer context still reaches the control bar
+// (dataview > datagrid > controlbar > action, no argument → no error), which is
+// why the control bar is walked with the context its parent was walked with
+// rather than with an empty one.
 package executor
 
 import (
@@ -140,8 +179,9 @@ func (c dataContext) describe() string {
 	}
 }
 
-// validateDataSourceArguments reports microflow/nanoflow data sources whose
-// argument list does not match the flow's parameters.
+// validateFlowArguments reports microflow/nanoflow calls on a widget — its data
+// source and its action slots alike — whose argument list does not match the
+// flow's parameters.
 //
 // Two distinct faults, both provable:
 //
@@ -153,7 +193,7 @@ func (c dataContext) describe() string {
 // validateWidgetReferences' job, and reporting it twice would be noise. A flow
 // created earlier in the SAME script is likewise skipped rather than guessed at,
 // since its signature is not in the project yet.
-func validateDataSourceArguments(ctx *ExecContext, params []ast.PageParameter, widgets []*ast.WidgetV3, sc *scriptContext) []string {
+func validateFlowArguments(ctx *ExecContext, params []ast.PageParameter, widgets []*ast.WidgetV3, sc *scriptContext) []string {
 	if !ctx.Connected() || len(widgets) == 0 {
 		return nil
 	}
@@ -170,13 +210,13 @@ func validateDataSourceArguments(ctx *ExecContext, params []ast.PageParameter, w
 	if len(sigs) == 0 {
 		return nil
 	}
-	return validateDataSourceArgumentsIn(params, widgets, sigs, entityCompatibility(ctx))
+	return validateFlowArgumentsIn(params, widgets, sigs, entityCompatibility(ctx))
 }
 
-// validateDataSourceArgumentsIn is the whole rule with its two project-dependent
+// validateFlowArgumentsIn is the whole rule with its two project-dependent
 // inputs — the flow signatures and the entity-compatibility test — handed in, so
 // it can be measured against the shapes `mx check` was run on.
-func validateDataSourceArgumentsIn(
+func validateFlowArgumentsIn(
 	pageParams []ast.PageParameter,
 	widgets []*ast.WidgetV3,
 	sigs map[string]*flowSignature,
@@ -190,23 +230,47 @@ func validateDataSourceArgumentsIn(
 	}
 
 	var errs []string
-	var walk func(ws []*ast.WidgetV3, enclosing dataContext)
-	walk = func(ws []*ast.WidgetV3, enclosing dataContext) {
-		for _, w := range ws {
-			if w == nil {
+	var walk func(w *ast.WidgetV3, enclosing dataContext, controlBarOf string)
+	walk = func(w *ast.WidgetV3, enclosing dataContext, controlBarOf string) {
+		if w == nil {
+			return
+		}
+		ds := w.GetDataSource()
+		if ds != nil {
+			// The context checked is what ENCLOSES the widget: a data source
+			// cannot supply its own parameter.
+			errs = append(errs, dataSourceArgErrors(w.Name, ds, sigs, enclosing, compatible)...)
+		}
+		errs = append(errs, actionArgErrors(w, sigs, enclosing, compatible, controlBarOf)...)
+
+		inner := childContext(enclosing, ds, sigs, paramEntities)
+		// A widget that establishes its own data context ends the control bar's
+		// reach: inside a dataview placed in a control bar, $currentObject is
+		// that dataview's object like anywhere else.
+		childControlBarOf := controlBarOf
+		if ds != nil {
+			childControlBarOf = ""
+		}
+		for _, c := range w.Children {
+			if isControlBar(c) {
+				// Not row-scoped: the data widget's own object is out of scope
+				// here, everything above it is not. Measured — see the header.
+				walk(c, enclosing, w.Name)
 				continue
 			}
-			ds := w.GetDataSource()
-			if ds != nil {
-				// The context checked is what ENCLOSES the widget: a data source
-				// cannot supply its own parameter.
-				errs = append(errs, dataSourceArgErrors(w.Name, ds, sigs, enclosing, compatible)...)
-			}
-			walk(w.Children, childContext(enclosing, ds, sigs, paramEntities))
+			walk(c, inner, childControlBarOf)
 		}
 	}
-	walk(widgets, dataContext{})
+	for _, w := range widgets {
+		walk(w, dataContext{}, "")
+	}
 	return errs
+}
+
+// isControlBar reports whether the widget is a data widget's control bar, the
+// one child that does not inherit its parent's row context.
+func isControlBar(w *ast.WidgetV3) bool {
+	return w != nil && strings.EqualFold(w.Type, "controlbar")
 }
 
 // childContext extends the enclosing context with what this widget's data source
@@ -258,34 +322,7 @@ func dataSourceArgErrors(
 		return nil // resolution is validateWidgetReferences' job
 	}
 
-	given := make(map[string]bool, len(ds.Args))
-	for _, a := range ds.Args {
-		given[strings.ToLower(a.Name)] = true
-	}
-	wanted := make(map[string]bool, len(sig.Params))
-	for _, p := range sig.Params {
-		wanted[strings.ToLower(p.Name)] = true
-	}
-
-	var missing []string
-	var missingEntity string
-	for _, p := range sig.Params {
-		if given[strings.ToLower(p.Name)] || enclosing.supplies(p, compatible) {
-			continue
-		}
-		missing = append(missing, p.Name)
-		if missingEntity == "" {
-			missingEntity = p.Entity
-		}
-	}
-	var unknown []string
-	for _, a := range ds.Args {
-		if !wanted[strings.ToLower(a.Name)] {
-			unknown = append(unknown, a.Name)
-		}
-	}
-	sort.Strings(missing)
-	sort.Strings(unknown)
+	missing, unknown, missingEntity := argDiff(ds.Args, sig, enclosing, compatible)
 
 	var out []string
 	if len(missing) > 0 {
@@ -308,6 +345,153 @@ func dataSourceArgErrors(
 			quoteJoin(unknown), quoteJoin(sig.paramNames())))
 	}
 	return out
+}
+
+// argDiff compares a call's arguments against a flow's parameters, treating the
+// enclosing data context as supplying what it supplies.
+//
+// Shared by the data source and the action, because CE1571 does not distinguish
+// them: both are a call whose parameters must all be filled. Returns the
+// parameters nothing fills, the arguments naming no parameter, and the entity of
+// the first missing parameter (what the context hint is written against).
+func argDiff(
+	args []ast.FlowArgV3,
+	sig *flowSignature,
+	enclosing dataContext,
+	compatible func(contextQN, paramQN string) bool,
+) (missing []string, unknown []string, missingEntity string) {
+	given := make(map[string]bool, len(args))
+	for _, a := range args {
+		given[strings.ToLower(a.Name)] = true
+	}
+	wanted := make(map[string]bool, len(sig.Params))
+	for _, p := range sig.Params {
+		wanted[strings.ToLower(p.Name)] = true
+	}
+
+	for _, p := range sig.Params {
+		if given[strings.ToLower(p.Name)] || enclosing.supplies(p, compatible) {
+			continue
+		}
+		missing = append(missing, p.Name)
+		if missingEntity == "" {
+			missingEntity = p.Entity
+		}
+	}
+	for _, a := range args {
+		if !wanted[strings.ToLower(a.Name)] {
+			unknown = append(unknown, a.Name)
+		}
+	}
+	sort.Strings(missing)
+	sort.Strings(unknown)
+	return missing, unknown, missingEntity
+}
+
+// widgetActions returns the widget's microflow and nanoflow actions, each with
+// the property key it was written under.
+//
+// Every action slot goes through one Properties sweep rather than a list of
+// known keys: `Action:`/`OnClick:` land on "Action", `OnChange:` on "OnChange",
+// and a pluggable widget's named slot on its own key (`createFileAction:`), all
+// as *ast.ActionV3. A list of keys would have covered the reported one and
+// quietly missed the rest — the same shape as the bug being fixed.
+//
+// Keys are sorted so a widget with two faulty slots reports them in a stable
+// order. A chained THEN action is followed: `create_object E then show_page P`
+// carries a second call, and only the flow ones are kept here.
+func widgetActions(w *ast.WidgetV3) []namedAction {
+	if w == nil || len(w.Properties) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(w.Properties))
+	for k := range w.Properties {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var out []namedAction
+	for _, k := range keys {
+		a, ok := w.Properties[k].(*ast.ActionV3)
+		if !ok {
+			continue
+		}
+		for ; a != nil; a = a.ThenAction {
+			if a.Type == "microflow" || a.Type == "nanoflow" {
+				out = append(out, namedAction{Property: k, Action: a})
+			}
+		}
+	}
+	return out
+}
+
+// namedAction is one action slot: the property it was written under, and the
+// call in it.
+type namedAction struct {
+	Property string
+	Action   *ast.ActionV3
+}
+
+// actionArgErrors reports a widget's action slots whose arguments do not match
+// the flow's parameters — CE1571 and the silent-typo argument, the same two
+// faults dataSourceArgErrors reports for a data source.
+//
+// controlBarOf names the data widget whose control bar this widget sits in, and
+// is "" everywhere else. It only changes the advice: the remedy there is the
+// grid's selection, which is the one thing a control-bar author needs told and
+// the thing the reported issue went looking for in the grammar.
+func actionArgErrors(
+	w *ast.WidgetV3,
+	sigs map[string]*flowSignature,
+	enclosing dataContext,
+	compatible func(contextQN, paramQN string) bool,
+	controlBarOf string,
+) []string {
+	var out []string
+	for _, na := range widgetActions(w) {
+		sig, known := sigs[strings.ToLower(na.Action.Target)]
+		if !known || sig == nil {
+			continue // resolution is validateWidgetReferences' job
+		}
+		missing, unknown, missingEntity := argDiff(na.Action.Args, sig, enclosing, compatible)
+
+		if len(missing) > 0 {
+			msg := fmt.Sprintf(
+				"widget '%s': %s action %s (%s:) has no argument for %s %s — Mendix rejects this with CE1571. "+
+					"Write it as `%s: %s %s(%s: $Value)`",
+				w.Name, na.Action.Type, na.Action.Target, na.Property,
+				plural(len(missing), "parameter", "parameters"),
+				quoteJoin(missing),
+				na.Property, na.Action.Type, na.Action.Target, missing[0])
+			if hint := controlBarHint(controlBarOf); hint != "" {
+				msg += hint
+			} else if hint := contextHint(enclosing, missingEntity); hint != "" {
+				msg += hint
+			}
+			out = append(out, msg)
+		}
+		if len(unknown) > 0 {
+			out = append(out, fmt.Sprintf(
+				"widget '%s': %s action %s (%s:) has no %s %s (it declares %s)",
+				w.Name, na.Action.Type, na.Action.Target, na.Property,
+				plural(len(unknown), "parameter", "parameters"),
+				quoteJoin(unknown), quoteJoin(sig.paramNames())))
+		}
+	}
+	return out
+}
+
+// controlBarHint is the advice for an action in a control bar, which replaces
+// the ordinary "nest it in a data container" hint: a control bar is not
+// row-scoped, so nesting is not the remedy — the grid's selection is.
+func controlBarHint(controlBarOf string) string {
+	if controlBarOf == "" {
+		return ""
+	}
+	return fmt.Sprintf(
+		". A control bar is not row-scoped, so no enclosing row fills it in: pass the selection of `%s` "+
+			"(`$%s`, once the widget has `Selection:` set), or move the widget into a column, which is row-scoped",
+		controlBarOf, controlBarOf)
 }
 
 // contextHint says why the enclosing context did not fill the parameter in.
