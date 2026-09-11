@@ -949,6 +949,75 @@ create page PgTest.P013d_Container_Clickable
   }
 }
 
+/**
+ * A clickable container in a DATA GRID CONTROL BAR, calling a nanoflow that
+ * takes a parameter (mendixlabs/mxcli#1082).
+ *
+ * Three things meet here that nothing else in this gate exercised together, and
+ * the gap let a real defect through:
+ *
+ *  1. A container's action can take an ARGUMENT LIST, exactly like a button's.
+ *     The issue was filed on the belief that it could not — `Action: nanoflow
+ *     Module.NF` was assumed to be the only accepted form — so the page below is
+ *     the counter-example, and `mx check` reporting 0 errors on it is the claim.
+ *
+ *  2. A control bar is NOT row-scoped. Measured on mxbuild 11.12.0 with six
+ *     containers carrying one identical fault: inside a COLUMN the grid's row
+ *     supplies the argument (no error), inside the CONTROL BAR it does not
+ *     (CE1571). So the argument here is not decoration — drop the `($Product =
+ *     $ProductGrid)` and `mx check` goes red.
+ *
+ *  3. The grid's SELECTION is what fills it. `$ProductGrid` is the selection of
+ *     the widget named `ProductGrid`, which is why `selection: single` below is
+ *     load-bearing rather than cosmetic.
+ *
+ * The column button beside it is the control for (2): same nanoflow, same
+ * missing-argument shape, and it needs no argument because a column is
+ * row-scoped.
+ */
+create nanoflow PgTest.ACT_ToggleProductActive
+    ($Product : PgTest.Product)
+    folder 'Actions'
+begin
+    change $Product (IsActive = false) refresh;
+end;
+
+create page PgTest.P013e_ControlBar_Container_Action
+(
+  title: 'Control-bar container action',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'p013e_controlbar_container_action',
+  folder: 'Container'
+)
+{
+  datagrid ProductGrid (
+    datasource: database from PgTest.Product,
+    selection: single
+  ) {
+    column colName (attribute: Name, caption: 'Product Name')
+
+    -- ROW-SCOPED: the grid's row supplies the nanoflow's parameter, so this
+    -- one needs no argument. The control for the control-bar case below.
+    column colRowAction (caption: 'Row action') {
+      container cRowToggle (action: nanoflow PgTest.ACT_ToggleProductActive, class: 'command') {
+        actionbutton btnRowToggle (caption: 'Deactivate')
+      }
+    }
+
+    controlbar controlBar1 {
+      -- NOT row-scoped: the argument is required, and it is the grid's
+      -- selection. Both spellings of an argument list are accepted; this is
+      -- the `$Param = value` one, matching how a microflow call is written.
+      container cToggleSelected (
+        class: 'command',
+        action: nanoflow PgTest.ACT_ToggleProductActive ($Product = $ProductGrid)
+      ) {
+        actionbutton btnToggleSelected (caption: 'Deactivate selected')
+      }
+    }
+  }
+}
+
 -- MARK: DataView
 
 -- ============================================================================
