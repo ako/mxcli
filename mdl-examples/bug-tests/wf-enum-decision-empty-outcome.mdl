@@ -1,0 +1,70 @@
+-- POSITIVE CONTROL for wf-enum-decision-empty-outcome.fail.mdl.
+--
+-- The same two workflows WITH the empty outcome. `make check-mdl` requires this
+-- one to PASS, so MDL-WF06 cannot be satisfied by refusing every enumeration
+-- decision — the rule has to distinguish the two files.
+--
+-- Verified on mxbuild 11.10.0: exec'd into a blank 11.10.0 app, `mx check`
+-- reports 0 errors; dropping the `'' -> { }` branches (the .fail.mdl next to
+-- this one) reports CE6686 for each activity.
+
+create module WFEmptyOK;
+
+create enumeration WFEmptyOK.Kind ( Standard, Priority );
+
+create persistent entity WFEmptyOK.Order (
+  Kind : enumeration(WFEmptyOK.Kind) not null error 'required'
+);
+
+create microflow WFEmptyOK.ACT_Kind ($Order: WFEmptyOK.Order)
+returns enumeration(WFEmptyOK.Kind) as $Result
+begin
+  declare $Result enumeration(WFEmptyOK.Kind) = WFEmptyOK.Kind.Standard;
+  return $Result;
+end;
+/
+
+create workflow WFEmptyOK.EnumDecision
+  parameter $WorkflowContext: WFEmptyOK.Order
+begin
+  decision decision1 '$WorkflowContext/Kind'
+    outcomes
+      'WFEmptyOK.Kind.Standard' -> { }
+      'WFEmptyOK.Kind.Priority' -> { }
+      '' -> { }
+  ;
+end workflow;
+/
+
+create workflow WFEmptyOK.EnumCallMicroflow
+  parameter $WorkflowContext: WFEmptyOK.Order
+begin
+  call microflow WFEmptyOK.ACT_Kind as callMicroflow1
+    outcomes
+      'WFEmptyOK.Kind.Standard' -> { }
+      'WFEmptyOK.Kind.Priority' -> { }
+      '' -> { }
+  ;
+end workflow;
+/
+
+-- A boolean decision takes no empty outcome (0 errors on mxbuild as written).
+create workflow WFEmptyOK.BooleanDecision
+  parameter $WorkflowContext: WFEmptyOK.Order
+begin
+  decision decision1 '$WorkflowContext/Kind = WFEmptyOK.Kind.Priority'
+    outcomes
+      true  -> { }
+      false -> { }
+  ;
+end workflow;
+/
+
+-- The ALTER control: the same insert carrying the empty outcome.
+alter workflow WFEmptyOK.EnumDecision insert after decision1
+  decision decision9 '$WorkflowContext/Kind'
+    outcomes
+      'WFEmptyOK.Kind.Standard' -> { }
+      'WFEmptyOK.Kind.Priority' -> { }
+      '' -> { }
+  ;

@@ -677,6 +677,23 @@ project unopenable in Studio Pro and mxbuild.
 **Parameter values in `with (...)` are quoted strings**, not bare variables:
 `call microflow Mod.MF with (Request = '$WorkflowContext')`.
 
+**An enumeration decision also needs an empty outcome.** Mendix generates one
+outcome per enumeration value **plus one for the empty value**, and MxBuild
+compares the stored set against that: anything else is CE6686 ("Regenerate the
+outcomes"). Write it as `'' -> { }` alongside the named values — `check` reports
+a missing one as `MDL-WF06`. It applies to `call microflow` outcomes branching on
+an enumeration return as well, and a required (`not null`) attribute does **not**
+exempt it. Boolean decisions (`true`/`false`) do not take one.
+
+```sql
+  decision '$WorkflowContext/Kind'
+    outcomes
+      'Module.Kind.Standard' -> { }
+      'Module.Kind.Priority' -> { }
+      '' -> { }
+  ;
+```
+
 **Example:**
 ```sql
 create workflow Module.ApprovalFlow

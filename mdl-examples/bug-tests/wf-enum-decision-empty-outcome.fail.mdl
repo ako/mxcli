@@ -1,0 +1,74 @@
+-- NEGATIVE TEST (.fail.mdl) — EXPECTED to fail `mxcli check`.
+-- `make check-mdl` inverts the exit code: an unexpected pass is a regression of
+-- the MDL-WF06 rule. The positive control is
+-- wf-enum-decision-empty-outcome.mdl — the same two workflows WITH `'' -> { }`,
+-- which must keep passing.
+--
+-- Symptom: a decision branching on an enumeration passed `mxcli check` and
+-- `mxcli exec`, then MxBuild rejected the project with CE6686 "The current
+-- outcomes of the decision activity do not match the configured expression.
+-- Regenerate the outcomes." ALTER WORKFLOW reaches it too: inserting such a
+-- decision into a project sitting at 0 errors takes `mx check` to 1.
+--
+-- Cause: Mendix generates a decision's outcomes as one per enumeration value
+-- PLUS one with an EMPTY value, and MxBuild compares the stored set against
+-- that generated set. Studio Pro's own documents carry the extra
+-- Workflows$EnumerationValueConditionOutcome with Value ''.
+--
+-- Measured on mxbuild 11.10.0 in a blank 11.10.0 app: each activity below is 1
+-- error, and adding `'' -> { }` takes the same project to 0. A required
+-- (`not null`) attribute does NOT exempt it — still CE6686 — which is why the
+-- rule is an error rather than a warning. Boolean (true/false) decisions need
+-- no empty outcome.
+
+create module WFEmpty;
+
+create enumeration WFEmpty.Kind ( Standard, Priority );
+
+create persistent entity WFEmpty.Order (
+  Kind : enumeration(WFEmpty.Kind) not null error 'required'
+);
+
+create microflow WFEmpty.ACT_Kind ($Order: WFEmpty.Order)
+returns enumeration(WFEmpty.Kind) as $Result
+begin
+  declare $Result enumeration(WFEmpty.Kind) = WFEmpty.Kind.Standard;
+  return $Result;
+end;
+/
+
+-- The attribute is required, and the empty outcome is still mandatory.
+create workflow WFEmpty.EnumDecision
+  parameter $WorkflowContext: WFEmpty.Order
+begin
+  decision decision1 '$WorkflowContext/Kind'
+    outcomes
+      'WFEmpty.Kind.Standard' -> { }
+      'WFEmpty.Kind.Priority' -> { }
+  ;
+end workflow;
+/
+
+-- The same rule for a call microflow branching on an enumeration return:
+-- CE6686 "The current outcomes of the call microflow activity do not match the
+-- configured microflow."
+create workflow WFEmpty.EnumCallMicroflow
+  parameter $WorkflowContext: WFEmpty.Order
+begin
+  call microflow WFEmpty.ACT_Kind as callMicroflow1
+    outcomes
+      'WFEmpty.Kind.Standard' -> { }
+      'WFEmpty.Kind.Priority' -> { }
+  ;
+end workflow;
+/
+
+-- ALTER introduces activities the same way a CREATE body does, and reaches the
+-- same build error. Measured: this insert against a project at 0 errors gives
+-- `mx check` 1 error, CE6686.
+alter workflow WFEmpty.EnumDecision insert after decision1
+  decision decision9 '$WorkflowContext/Kind'
+    outcomes
+      'WFEmpty.Kind.Standard' -> { }
+      'WFEmpty.Kind.Priority' -> { }
+  ;

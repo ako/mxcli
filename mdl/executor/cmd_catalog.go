@@ -220,6 +220,52 @@ func execDescribeCatalogTable(ctx *ExecContext, stmt *ast.DescribeCatalogTableSt
 	return writeResult(ctx, tr)
 }
 
+// Catalog build modes nest: source ⊃ full ⊃ fast. A source catalog answers
+// everything a full one does and adds the MDL source index; a full one answers
+// everything a fast one does and adds activities, widgets, refs, permissions,
+// strings and xpath. catalogModeRank orders them so the two questions that
+// matter — "does this cache satisfy what I need?" and "would writing this cache
+// lose something?" — are both comparisons rather than case analysis.
+//
+// An unknown mode ranks 0, below every real one, so it never masquerades as
+// something richer than it is.
+func catalogModeRank(mode string) int {
+	switch mode {
+	case "fast":
+		return 1
+	case "full":
+		return 2
+	case "source":
+		return 3
+	}
+	return 0
+}
+
+// cachedCatalogMode reports the build mode recorded in the on-disk cache, or ""
+// when there is no readable cache. Deliberately indifferent to whether that
+// cache is still *valid*: a stale source-mode cache is stale data but a live
+// statement of the level this project is set up for, and that is what callers
+// here are asking about.
+func cachedCatalogMode(ctx *ExecContext) string {
+	cachePath := getCachePath(ctx)
+	if cachePath == "" {
+		return ""
+	}
+	if _, err := os.Stat(cachePath); err != nil {
+		return ""
+	}
+	cat, err := catalog.NewFromFile(cachePath)
+	if err != nil {
+		return ""
+	}
+	defer cat.Close()
+	info, err := cat.GetCacheInfo()
+	if err != nil {
+		return ""
+	}
+	return info.BuildMode
+}
+
 // ensureCatalog ensures a catalog is available, using cache if possible.
 func ensureCatalog(ctx *ExecContext, full bool) error {
 	requiredMode := "fast"
@@ -241,8 +287,24 @@ func ensureCatalog(ctx *ExecContext, full bool) error {
 		return mdlerrors.NewNotConnected()
 	}
 
+	// A rebuild that is going to pay the full-mode cost anyway rebuilds at the
+	// level the project is set up for, so the cache comes back current instead
+	// of being refused by buildCatalog's never-narrow guard on every call.
+	// Without this, `search` / `show references` on a source-mode project would
+	// rebuild full, decline to save, and do it again next time.
+	//
+	// A *fast* consumer is deliberately not upgraded. It is the hot path — the
+	// tier `mxcli check -p`, `show structure` and `describe` reach on every
+	// invocation, and the cache goes stale on every project save — so making it
+	// pay for a source reindex would trade one papercut for a worse one. It
+	// builds narrow in memory and the guard keeps its result off disk.
+	isSource := false
+	if full && cachedCatalogMode(ctx) == "source" {
+		isSource = true
+	}
+
 	// Build fresh catalog
-	return buildCatalog(ctx, full, false, false, 0)
+	return buildCatalog(ctx, full, isSource, false, 0)
 }
 
 // getCachePath returns the path to the catalog cache file for the current project.
@@ -298,9 +360,8 @@ func isCacheValid(ctx *ExecContext, cachePath string, requiredMode string) (bool
 	}
 
 	// Check build mode hierarchy: source > full > fast
-	modeRank := map[string]int{"fast": 1, "full": 2, "source": 3}
-	cachedRank := modeRank[info.BuildMode]
-	requiredRank := modeRank[requiredMode]
+	cachedRank := catalogModeRank(info.BuildMode)
+	requiredRank := catalogModeRank(requiredMode)
 	if requiredRank > cachedRank {
 		return false, fmt.Sprintf("%s mode requested but cache is %s mode", requiredMode, info.BuildMode)
 	}
@@ -416,9 +477,28 @@ func buildCatalog(ctx *ExecContext, full, isSource, communities bool, resolution
 		fmt.Fprintf(ctx.Output, "✓ Catalog ready (%.1fs)\n", elapsed.Seconds())
 	}
 
-	// Save to cache file
+	// Save to cache file — unless doing so would narrow it.
+	//
+	// The cache records the mode it was built in, and a build that needs less
+	// than the cache holds must not become the new cache. mendixlabs/mxcli#1081:
+	// once the project file changed, a `mxcli check -p` rebuilt fast (all it
+	// needs is attribute types and enum cases) and saved over a source-mode
+	// cache, taking source, refs, permissions, strings and xpath_expressions
+	// with it. The commands that read those tables then answered "requires
+	// refresh catalog full source" instead of answering.
+	//
+	// This is the choke point on purpose. `refresh catalog communities` was
+	// given a local fix for the identical hazard — its comment below still
+	// describes it — and every other caller kept the bug, which is exactly the
+	// shape of failure a guard at one call site produces.
 	cachePath := getCachePath(ctx)
 	if cachePath != "" {
+		if existing := cachedCatalogMode(ctx); catalogModeRank(existing) > catalogModeRank(buildMode) {
+			if !ctx.Quiet {
+				fmt.Fprintf(ctx.Output, "Keeping the existing %s-mode catalog cache (this build was %s mode)\n", existing, buildMode)
+			}
+			return nil
+		}
 		cacheDir := filepath.Dir(cachePath)
 		if err := os.MkdirAll(cacheDir, 0755); err == nil {
 			// Remove existing cache file first
@@ -507,6 +587,25 @@ func execRefreshCatalogStmt(ctx *ExecContext, stmt *ast.RefreshCatalogStmt) erro
 		return nil
 	}
 
+	// REFRESH CATALOG means "bring what this project has up to date", not
+	// "change its level". There is no syntax for lowering the level, so reading
+	// a bare REFRESH CATALOG as a request to drop the source index would make
+	// the loss both silent and unaskable-for. Refresh at least what is cached.
+	full, source := stmt.Full, stmt.Source
+	switch cachedCatalogMode(ctx) {
+	case "source":
+		full, source = true, true
+	case "full":
+		full = true
+	}
+	if (full != stmt.Full || source != stmt.Source) && !ctx.Quiet {
+		mode := "full"
+		if source {
+			mode = "source"
+		}
+		fmt.Fprintf(ctx.Output, "Refreshing at %s mode to match the existing cache\n", mode)
+	}
+
 	// Close existing catalog if any
 	if ctx.Catalog != nil {
 		ctx.Catalog.Close()
@@ -522,7 +621,7 @@ func execRefreshCatalogStmt(ctx *ExecContext, stmt *ast.RefreshCatalogStmt) erro
 		bgCtx.Output = sw                // background goroutine writes through sw
 		syncCatalog := ctx.SyncCatalog   // capture callback before returning
 		go func() {
-			if err := buildCatalog(&bgCtx, stmt.Full, stmt.Source, stmt.Communities, stmt.Resolution); err != nil {
+			if err := buildCatalog(&bgCtx, full, source, stmt.Communities, stmt.Resolution); err != nil {
 				fmt.Fprintf(bgCtx.Output, "Background catalog build failed: %v\n", err)
 				return
 			}
@@ -561,7 +660,7 @@ func execRefreshCatalogStmt(ctx *ExecContext, stmt *ast.RefreshCatalogStmt) erro
 	}
 
 	// Rebuild the catalog
-	return buildCatalog(ctx, stmt.Full, stmt.Source, stmt.Communities, stmt.Resolution)
+	return buildCatalog(ctx, full, source, stmt.Communities, stmt.Resolution)
 }
 
 // execRefreshCatalog handles REFRESH CATALOG [FULL] command (legacy signature).
