@@ -122,6 +122,25 @@
   --btn-default-color: var(--mxt-ink);
   --btn-default-icon-color: var(--mxt-ink-muted);
   --btn-link-bg-hover: var(--mxt-surface-hover);
+  // The primary button is the BRAND colour, not a derivative of it. Atlas
+  // derives --btn-primary-bg from --brand-primary-600, which is
+  // color-mix(in srgb, <brand>, <contrast> 20%) — so a brand theme's own colour
+  // never reaches its main button. Measured: a brand blue #10069F rendered rgb(21,13,140)
+  // (ako/ChipCoV1), and Signal's #0f6e6b is likewise shifted.
+  //
+  // That also settles a mismatch in this file. --btn-primary-color below is
+  // pinned to --mxt-brand-ink, an ink each theme picks to sit on --mxt-brand —
+  // console pairs near-black #04211d with bright teal #2dd4bf — so the pairing
+  // the theme designed for was never the pairing that rendered. The comment
+  // above already calls this "a brand-filled button"; now it is one.
+  //
+  // Hover and active keep Atlas's relationship to the base rather than being
+  // pinned flat, so a theme that sets --mxt-brand-hover gets a real hover and
+  // one that does not still gets Atlas's.
+  --btn-primary-bg: var(--mxt-brand);
+  --btn-primary-bg-hover: var(--mxt-brand-hover, var(--brand-primary-600));
+  --btn-primary-bg-active: var(--mxt-brand-hover, var(--brand-primary-700));
+  --btn-primary-border-color: var(--mxt-brand);
   --btn-primary-color: var(--mxt-brand-ink);
   --btn-success-color: var(--mxt-brand-ink);
   --btn-warning-color: var(--mxt-brand-ink);

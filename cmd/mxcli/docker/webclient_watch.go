@@ -118,6 +118,9 @@ func (wc *WebClientWatcher) snapshot() (gen int, building, exited bool, lastErr 
 // Generation returns the number of successful bundles so far. Capture it before
 // triggering a source change, then pass it to WaitForBundle.
 func (wc *WebClientWatcher) Generation() int {
+	if wc == nil {
+		return 0
+	}
 	wc.mu.Lock()
 	defer wc.mu.Unlock()
 	return wc.gen
@@ -125,10 +128,40 @@ func (wc *WebClientWatcher) Generation() int {
 
 // StartWebClientWatch launches the incremental bundler and blocks until the first
 // bundle completes (so web/dist exists before the app boots).
+//
+// It returns (nil, nil) on Mendix 11.14+, where mxbuild's own serve build writes
+// web/dist and emits no rollup config — there is no bundler to run. Every method
+// on the returned watcher is nil-safe, so callers need no branch for it.
 func StartWebClientWatch(opts WebClientOptions) (*WebClientWatcher, error) {
+	w := opts.Stdout
+	if w == nil {
+		w = io.Discard
+	}
 	webDir := filepath.Join(opts.DeployDir, "web")
 	if fi, err := os.Stat(filepath.Join(webDir, "rollup.config.mjs")); err != nil || fi.IsDir() {
-		return nil, fmt.Errorf("no rollup.config.mjs in %s (run a serve Deploy build first)", webDir)
+		// The Mendix 11.14 shape, and the second copy of the gate that made
+		// mxcli unable to start any 11.14 app (ako/mxcli-ledger #146). That fix
+		// landed on BuildWebClient only, so `run --local` started working and
+		// `run --local --watch` kept failing on the absence of a file whose
+		// purpose 11.14 had served:
+		//
+		//   11.13.0   rollup.config.mjs PRESENT   dist/index.js ABSENT
+		//   11.14.0   rollup.config.mjs ABSENT    dist/index.js PRESENT
+		//
+		// When mxbuild bundles the client itself there is no incremental
+		// bundler to keep hot and nothing for it to do. A nil watcher says
+		// exactly that, and the loop treats it as "the serve build produces
+		// web/dist" — with ensureClientServed still guarding the result.
+		if WebClientBundled(opts.DeployDir) {
+			fmt.Fprintln(w, "  Web client bundled by mxbuild; no incremental bundler needed")
+			return nil, nil
+		}
+		return nil, fmt.Errorf("no rollup.config.mjs and no bundle at %s\n"+
+			"  Mendix 11.13 and earlier emit a rollup config for mxcli to run; 11.14+ writes\n"+
+			"  the bundle itself. Neither is present, so the build did not produce a client:\n"+
+			"  run a serve Deploy build first (or delete deployment/ if it was built by an\n"+
+			"  older Mendix version).",
+			webClientBundlePath(opts.DeployDir))
 	}
 	nodeBin, runner, err := resolveNodeTooling(opts.MxBuildPath)
 	if err != nil {
@@ -234,6 +267,9 @@ func (wc *WebClientWatcher) waitForFirstBuild(timeout time.Duration) error {
 // Reliable because file-change detection is fast (CHOKIDAR_USEPOLLING ~1s), so a
 // rebuild that is going to happen starts well within a few-second settle window.
 func (wc *WebClientWatcher) WaitForRebuild(sinceGen int, settle, buildTimeout time.Duration) (bool, error) {
+	if wc == nil {
+		return false, nil // mxbuild bundles the client itself; nothing to wait for
+	}
 	settleDeadline := time.Now().Add(settle)
 	sawBuild := false
 	for {
@@ -270,11 +306,16 @@ func (wc *WebClientWatcher) WaitForRebuild(sinceGen int, settle, buildTimeout ti
 }
 
 // Log returns the captured watcher output.
-func (wc *WebClientWatcher) Log() string { return wc.log.String() }
+func (wc *WebClientWatcher) Log() string {
+	if wc == nil {
+		return ""
+	}
+	return wc.log.String()
+}
 
 // Stop terminates the watcher process.
 func (wc *WebClientWatcher) Stop() error {
-	if wc.cmd == nil || wc.cmd.Process == nil {
+	if wc == nil || wc.cmd == nil || wc.cmd.Process == nil {
 		return nil
 	}
 	_ = signalProcessGroup(wc.cmd.Process, syscall.SIGTERM)

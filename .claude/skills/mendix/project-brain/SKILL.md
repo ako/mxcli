@@ -131,6 +131,23 @@ more decisions:
 So anchor a requirement at what you are *going to* build. `@Sales.ACT_Order_Approve`
 before that microflow exists is correct, not a mistake.
 
+**Never anchor a requirement at a bare module.** `@Sales` resolves the instant
+the module exists — long before any of the work inside it — so the requirement
+reports **built** with nothing done. `mxcli brain capture --requirement` refuses
+it and names the alternative, because the failure is silent and flattering:
+the plan shows progress that has not happened and nothing else disagrees.
+Anchor at a document the slice actually creates. (Measured on a real project:
+two requirements anchored at a module both read as built after slice 01.)
+
+A module **role** is a fine anchor and resolves like any document — a security
+requirement anchored at the roles it creates is measured correctly. Anchoring at
+the documents whose access rules the roles govern works too, and says something
+slightly different; either is legitimate.
+
+A **theme** has no model element to anchor at (it is files under `theme/`, which
+is the point of `mxcli theme`). Anchor the branding requirement at the branded
+**layout** the slice adds — the model-side half of the same work.
+
 ### Progress is derived, never written
 
 ```bash

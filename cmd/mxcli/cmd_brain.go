@@ -660,11 +660,41 @@ func (r *catalogResolver) Resolve(a brain.Anchor) (brain.Resolution, error) {
 	if a.Element == "" {
 		return brain.Resolution{State: brain.NotFound}, nil // a module is always indexed
 	}
-	unit, err := r.be.FindDocumentUnit(a.Module, a.Element)
-	if err != nil || unit == nil {
-		return brain.Resolution{State: brain.NotFound}, nil
+	if unit, err := r.be.FindDocumentUnit(a.Module, a.Element); err == nil && unit != nil {
+		return brain.Resolution{State: brain.NotIndexable, Module: a.Module, Kind: unit.Kind}, nil
 	}
-	return brain.Resolution{State: brain.NotIndexable, Module: a.Module, Kind: unit.Kind}, nil
+	// A module ROLE is neither in the objects view nor a document, so both
+	// lookups above miss it and the anchor reads as NotFound — a failure state.
+	// For a requirement, whose anchors point forward, that means "not built
+	// yet" FOREVER: the roles exist, the work is done, and `brain plan` still
+	// reports it planned (ako/ChipCoV1). Roles are a natural thing to anchor a
+	// security requirement at, so the resolver has to be able to see them.
+	if ok, err := r.moduleRoleExists(a.Module, a.Element); err == nil && ok {
+		return brain.Resolution{State: brain.Resolved, Module: a.Module, Kind: "module role"}, nil
+	}
+	return brain.Resolution{State: brain.NotFound}, nil
+}
+
+// moduleRoleExists reports whether the module declares a role of that name.
+//
+// The comparison is case-insensitive because Mendix treats role names that way
+// and an anchor is written by hand; a case-only mismatch reporting "not found"
+// would be the same false staleness this whole file exists to avoid.
+func (r *catalogResolver) moduleRoleExists(moduleName, roleName string) (bool, error) {
+	mod, err := r.be.GetModuleByName(moduleName)
+	if err != nil || mod == nil {
+		return false, nil // an unknown module is NotFound, not an error
+	}
+	sec, err := r.be.GetModuleSecurity(mod.ID)
+	if err != nil || sec == nil {
+		return false, err
+	}
+	for _, role := range sec.ModuleRoles {
+		if role != nil && strings.EqualFold(role.Name, roleName) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (r *catalogResolver) query(sql string) ([][]any, error) {

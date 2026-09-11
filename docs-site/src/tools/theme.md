@@ -201,6 +201,22 @@ seeds one by declaring them. That is the whole contract — anywhere in a `.css`
 @media (prefers-color-scheme: dark) { :root { --mxt-ground: #16161a; } }
 ```
 
+Seeding also updates what the new theme **says about itself**, because a value
+inherited from the base describes a palette that is no longer there:
+
+- the **colorway** `theme list` shows is derived from the seeded
+  brand/info/success/warning/danger/ink-muted, falling back to the base's for
+  any the design did not declare (a partial seed is normal);
+- the **summary** names the design file it came from, rather than keeping the
+  base's description of its own colours. Pass `--summary` for a real one.
+
+And if the seeded fonts no longer name a family the base theme vendors, that
+family's `@font-face` rules **and its `.woff2` files** are dropped together —
+per family, so a theme that changes its body font and keeps IBM Plex Mono for
+code ships only the mono weights. A design that says nothing about fonts keeps
+them all, which is the right default: dropping a font nobody asked to change
+would break the scaffold's own rendering.
+
 Declarations inside a dark block (`prefers-color-scheme: dark`, `.theme-dark`,
 `[data-theme="dark"]`) seed the dark palette; everything else seeds the light
 one. Tokens the design does not name keep the base theme's value, so a

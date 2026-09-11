@@ -375,6 +375,59 @@ not just headless checks.
   re-bundles **only when the edit touched client source**: a microflow/entity edit
   skips the bundle and just hot-reloads.
 
+**Mendix 11.14+ bundles the client itself**, so there is no rollup step to run and
+no bundler to keep hot — `run --local` prints a line saying so and skips it. Both
+paths work; the bundle is mxbuild's rather than mxcli's.
+
+### `--watch` on Mendix 11.14
+
+**`--watch` is not usable on 11.14 yet.** It starts and the app boots, but every
+*rebuild* fails inside mxbuild:
+
+```
+Could not find a part of the path '…/deployment/web/pages/MyModule.Home_Web.js'
+```
+
+or, when the change did not touch any page:
+
+```
+Compilation of the app bundle failed.
+Cannot find module '…/deployment/web/rollup.config.mjs'
+  imported from …/modeler/tools/node/rollup-runner.mjs
+```
+
+The first build in an `mxbuild --serve` process does not leave the deployment in a
+state its own incremental build can continue from — neither the bundler's config
+file nor `web/pages/`/`web/layouts/` survive it — so the first build succeeds and
+every later one fails. Measured against mxbuild 11.14.0 over its own HTTP API with
+no mxcli involved: the same `/build` request POSTed twice, model untouched between
+them, goes Success then Failure.
+
+No remedy from outside the process works, and three were measured:
+
+| Attempt | Result |
+|---|---|
+| Switch *App > Settings > Runtime > App bundler* to Rspack | Identical failure, naming `rspack.config.mjs` |
+| Delete `deployment/` and start over | Next second build fails the same way |
+| Restore the config (it exists for ~1.5s mid-build) | Rebuilds fine **while the model is unchanged**; fails as soon as a page changes |
+
+That last one is the interesting near-miss: the config carries nothing
+model-specific, so it can be captured and put back — but doing so only rescues the
+case a warm loop never needs. There are two regressions here, and the second one
+(the per-document client export) has no external fix. `run --local` prints an
+explanation when it sees either, so the failure does not read as a corrupt
+`deployment/`.
+
+For contrast, a one-shot `mxbuild --target=deploy` run twice into the same
+deployment directory succeeds both times — it is the serve process, not the 11.14
+deployment shape.
+
+Until mxbuild closes this, use a restart per change:
+
+```bash
+mxcli run --local --screenshot -p app.mpr
+```
+
 ## Pixel-perfect page loop
 
 Pass `--screenshot` and each applied change is captured to a PNG (default
