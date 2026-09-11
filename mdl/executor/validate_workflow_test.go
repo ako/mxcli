@@ -269,6 +269,163 @@ end workflow;`
 	}
 }
 
+// MDL-WF06 — an enumeration decision whose outcomes omit the empty value.
+//
+// Measured on mxbuild 11.10.0: the decision below is 1 error, CE6686 ("The
+// current outcomes of the decision activity do not match the configured
+// expression. Regenerate the outcomes."), and adding `” -> { }` takes the same
+// project to 0. See TestValidateWorkflow_EnumDecisionWithEmptyOutcomeClean for
+// the control.
+func TestValidateWorkflow_EnumDecisionWithoutEmptyOutcome(t *testing.T) {
+	src := wfPreamble + `create workflow WF.W parameter $Ctx: WF.Ctx
+begin
+  decision '$Ctx/Kind'
+    outcomes
+      'WF.Kind.Standard' -> { }
+      'WF.Kind.Priority' -> { }
+  ;
+end workflow;`
+	vs := workflowViolations(t, src)
+	if !hasRule(vs, "MDL-WF06") {
+		t.Fatalf("expected MDL-WF06 for an enum decision with no empty outcome, got %v", vs)
+	}
+	for _, v := range vs {
+		if v[0] == "MDL-WF06" && !strings.Contains(v[1], "CE6686") {
+			t.Errorf("MDL-WF06 should name CE6686, got %q", v[1])
+		}
+	}
+}
+
+// The control: the same decision with the empty outcome is clean. Without this
+// the rule could be "always fires on a decision" and the test above would still
+// pass.
+func TestValidateWorkflow_EnumDecisionWithEmptyOutcomeClean(t *testing.T) {
+	src := wfPreamble + `create workflow WF.W parameter $Ctx: WF.Ctx
+begin
+  decision '$Ctx/Kind'
+    outcomes
+      'WF.Kind.Standard' -> { }
+      'WF.Kind.Priority' -> { }
+      '' -> { }
+  ;
+end workflow;`
+	if vs := workflowViolations(t, src); hasRule(vs, "MDL-WF06") {
+		t.Fatalf("an enum decision carrying the empty outcome must not trigger MDL-WF06, got %v", vs)
+	}
+}
+
+// A boolean decision needs no empty outcome — mxbuild accepts true/false alone
+// (0 errors, measured) — so MDL-WF06 must not fire on one.
+func TestValidateWorkflow_BooleanDecisionNoWF06(t *testing.T) {
+	src := wfPreamble + `create workflow WF.W parameter $Ctx: WF.Ctx
+begin
+  decision '$Ctx/Total > 1000'
+    outcomes
+      true -> { }
+      false -> { }
+  ;
+end workflow;`
+	if vs := workflowViolations(t, src); hasRule(vs, "MDL-WF06") {
+		t.Fatalf("boolean decision must not trigger MDL-WF06, got %v", vs)
+	}
+}
+
+// A call-microflow activity branching on an enumeration return needs the empty
+// outcome for the same reason: measured 1 error, CE6686 ("The current outcomes
+// of the call microflow activity do not match the configured microflow"), and 0
+// with `” -> { }`.
+func TestValidateWorkflow_CallMicroflowEnumOutcomesWithoutEmpty(t *testing.T) {
+	src := wfPreamble + `create microflow WF.ACT ($Ctx: WF.Ctx) begin return; end;
+create workflow WF.W parameter $Ctx: WF.Ctx
+begin
+  call microflow WF.ACT as callMicroflow1
+    outcomes
+      'WF.Kind.Standard' -> { }
+      'WF.Kind.Priority' -> { }
+  ;
+end workflow;`
+	vs := workflowViolations(t, src)
+	if !hasRule(vs, "MDL-WF06") {
+		t.Fatalf("expected MDL-WF06 for enum call-microflow outcomes with no empty outcome, got %v", vs)
+	}
+	for _, v := range vs {
+		if v[0] == "MDL-WF06" && !strings.Contains(v[1], "call microflow") {
+			t.Errorf("MDL-WF06 should name the activity kind, got %q", v[1])
+		}
+	}
+}
+
+// A void call-microflow activity carries a single DEFAULT outcome, which is not
+// an enumeration branch — MDL-WF06 must leave it alone.
+func TestValidateWorkflow_CallMicroflowDefaultOutcomeNoWF06(t *testing.T) {
+	src := wfPreamble + `create microflow WF.ACT ($Ctx: WF.Ctx) begin return; end;
+create workflow WF.W parameter $Ctx: WF.Ctx
+begin
+  call microflow WF.ACT as callMicroflow1;
+end workflow;`
+	if vs := workflowViolations(t, src); hasRule(vs, "MDL-WF06") {
+		t.Fatalf("a call microflow with no explicit outcomes must not trigger MDL-WF06, got %v", vs)
+	}
+}
+
+// alterWorkflowViolations parses MDL and runs ValidateAlterWorkflow on every
+// ALTER WORKFLOW statement.
+func alterWorkflowViolations(t *testing.T, src string) [][2]string {
+	t.Helper()
+	prog, errs := visitor.Build(src)
+	if len(errs) > 0 {
+		t.Fatalf("parse errors: %v", errs)
+	}
+	var out [][2]string
+	for _, stmt := range prog.Statements {
+		if wf, ok := stmt.(*ast.AlterWorkflowStmt); ok {
+			for _, v := range ValidateAlterWorkflow(wf) {
+				out = append(out, [2]string{v.RuleID, v.Message})
+			}
+		}
+	}
+	return out
+}
+
+// MDL-WF06 reaches ALTER as well as CREATE. Measured: inserting this decision
+// into a project that was at 0 errors takes `mx check` to 1, CE6686 — and
+// nothing looked at an ALTER-introduced activity.
+func TestValidateAlterWorkflow_InsertedEnumDecisionWithoutEmptyOutcome(t *testing.T) {
+	src := `alter workflow WF.W insert after decision1
+  decision decision9 '$WorkflowContext/Kind'
+    outcomes
+      'WF.Kind.Standard' -> { }
+      'WF.Kind.Priority' -> { }
+  ;`
+	if vs := alterWorkflowViolations(t, src); !hasRule(vs, "MDL-WF06") {
+		t.Fatalf("expected MDL-WF06 for an ALTER-inserted enum decision, got %v", vs)
+	}
+}
+
+// The control: the same insert carrying the empty outcome is clean.
+func TestValidateAlterWorkflow_InsertedEnumDecisionWithEmptyOutcomeClean(t *testing.T) {
+	src := `alter workflow WF.W insert after decision1
+  decision decision9 '$WorkflowContext/Kind'
+    outcomes
+      'WF.Kind.Standard' -> { }
+      'WF.Kind.Priority' -> { }
+      '' -> { }
+  ;`
+	if vs := alterWorkflowViolations(t, src); hasRule(vs, "MDL-WF06") {
+		t.Fatalf("an ALTER-inserted enum decision with the empty outcome must be clean, got %v", vs)
+	}
+}
+
+// An ALTER that only removes or renames introduces no activity and must stay
+// silent — the rule reads what the statement adds, not the stored workflow.
+func TestValidateAlterWorkflow_NonInsertingOpsNoWF06(t *testing.T) {
+	src := `alter workflow WF.W drop activity decision9;
+alter workflow WF.W set display 'Approval';`
+	if vs := alterWorkflowViolations(t, src); len(vs) > 0 {
+		t.Fatalf("non-inserting ALTER ops must produce no violations, got %v", vs)
+	}
+}
+
 // MDL-WF03 — the three-row control that fixes the rule's threshold.
 // EnumerationValueConditionOutcome.Value is parsed by the Mendix LOADER, so a
 // value it rejects is not a CE number: the project will not open at all

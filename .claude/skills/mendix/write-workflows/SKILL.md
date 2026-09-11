@@ -297,8 +297,14 @@ documented in `system-module`.
   work. `mxcli check` refuses all three of these as `MDL-WF03`, and `exec`
   refuses to run a script it flags.
 - **An enum decision also needs one `'' -> { }` outcome** for "none of the
-  above" — Studio Pro writes it on every enum decision, and without it the build
-  fails `CE6686`.
+  above": Mendix generates one outcome per enumeration value plus the empty one,
+  and MxBuild compares the stored set against that, so anything else is `CE6686`
+  ("Regenerate the outcomes"). `check` reports a missing one as `MDL-WF06`. It
+  applies equally to a `call microflow` activity branching on an enumeration
+  return, and to a decision introduced by `ALTER WORKFLOW … INSERT AFTER` /
+  `REPLACE ACTIVITY`. A **required (`not null`) attribute does not exempt it** —
+  measured, the empty outcome is still required. Boolean (`true`/`false`)
+  decisions do not take one.
 - **A `with (...)` parameter value is a quoted string**, not a bare variable:
   `with (Request = '$WorkflowContext')`. The unquoted spelling used elsewhere in
   MDL is a syntax error here (it used to crash the binary — ako/mxcli#1023).

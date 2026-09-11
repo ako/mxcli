@@ -540,8 +540,10 @@ it is for pages.
 | Start event | `@start(x, y)` | Canvas position of the start, on the **first** statement. Omit it and the start is placed one spacing unit left of the first activity and MOVES with it on a rewrite; a start that is not at that derived spot is treated as hand-placed, survives a rewrite, and is emitted by DESCRIBE (#951) |
 | Caption | `@caption 'text'` | Custom caption (before activity) |
 | Color | `@color Green` | Background color (before activity) |
-| Annotation | `@annotation 'text'` | Visual note attached to next activity |
-| Free annotation | `@annotation 'text'` before `@position(...)` | Free-floating visual note preserved by order |
+| Annotation | `@annotation 'text'` | Visual note attached to next activity. **Repeatable** — an activity can carry several, and each is its own note |
+| Shared annotation | `@annotation(id: n1, text: 'note')` then `@annotation(id: n1)` | ONE note wired to several activities, which is how Mendix stores it. Without the `id:` the two lines are two separate notes, even with identical text. The id is scoped to the flow being authored and is not stored (#1077) |
+| Annotation geometry | `@annotation(text: 'note', position: (x, y), size: (w, h))` | The note's own place and box on the canvas. Both are omitted whenever they match what a rewrite re-derives — 100px above the activity, stacked 60px per extra note, at 200×50 — so an ordinary note stays on the short form |
+| Free annotation | `@annotation 'text'` before `@position(...)` | Free-floating visual note preserved by order. A free note has no activity to be placed relative to, so DESCRIBE always emits its `position:` |
 | IF | `if condition then ... [else ...] end if;` | |
 | Enum split | `case $Var when Value then ... end case;` | Enumeration decision branches. Bare enum values (never quoted or qualified), one branch per value **including `(empty)`** (MDL056), no `else` (MDL008), no `AS` alias |
 | Type split | `split type $Var when Module.Entity then ... when (empty) then ... end split;` | Runtime specialization branches. Same `when ... then` shape as the enum split. Needs a branch per subtype **and** the base entity (CE0090); `when (empty) then` is the **null-object** flow, not a default, and cannot be omitted (CE0089). Legacy `case Module.Entity` / `else` still parse (MDL065 warns) |
@@ -676,6 +678,23 @@ project unopenable in Studio Pro and mxbuild.
 
 **Parameter values in `with (...)` are quoted strings**, not bare variables:
 `call microflow Mod.MF with (Request = '$WorkflowContext')`.
+
+**An enumeration decision also needs an empty outcome.** Mendix generates one
+outcome per enumeration value **plus one for the empty value**, and MxBuild
+compares the stored set against that: anything else is CE6686 ("Regenerate the
+outcomes"). Write it as `'' -> { }` alongside the named values — `check` reports
+a missing one as `MDL-WF06`. It applies to `call microflow` outcomes branching on
+an enumeration return as well, and a required (`not null`) attribute does **not**
+exempt it. Boolean decisions (`true`/`false`) do not take one.
+
+```sql
+  decision '$WorkflowContext/Kind'
+    outcomes
+      'Module.Kind.Standard' -> { }
+      'Module.Kind.Priority' -> { }
+      '' -> { }
+  ;
+```
 
 **Example:**
 ```sql

@@ -269,6 +269,7 @@ Run with `-p` for the fullest coverage.
 | CE1571 | …in a control bar | A control bar is **not** row-scoped, so the grid's row does not fill it: pass the grid's selection (`$dgOrders`, with `Selection:` set) or move the widget into a column. `$currentObject` there is MDL-BUTTON01 |
 | CE1834 | The 'Page' property is required | Workflow user task without a `page` — `check` flags MDL-WF01 |
 | CE1876 | Single outcome must not contain activities | Single-outcome user task with a nested activity flow — `check` flags MDL-WF02 |
+| CE6686 | Outcomes do not match the configured expression/microflow | An enumeration decision or call-microflow activity missing the empty outcome (`'' -> { }`) or an enumeration value — `check` flags the missing empty one as MDL-WF06 |
 | CW0094 | Variable never used | Unused parameter/variable |
 
 ## Quick Validation Checklist

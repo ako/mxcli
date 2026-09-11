@@ -597,6 +597,29 @@ $var/Module.AssociationName/attribute   -- Chained
 commit $Order;                                          -- Annotations apply here
 ```
 
+### Annotations Are Notes, and a Note Can Be Shared
+
+A note is a node with edges in Mendix, not a property of the activity it
+documents. So `@annotation` is **repeatable** — one activity can carry several,
+each its own note — and one note can be attached to several activities:
+
+```mdl
+@annotation(id: n1, text: 'both of these touch the same record')
+commit $Order;
+@annotation(id: n1)                     -- attaches THAT note, does not copy it
+commit $Invoice;
+```
+
+`id:` is scoped to the flow you are writing and is not stored in the model; it
+exists only so a second mention can point at the first. **Without it, two lines
+with identical text are two separate notes** — mxcli never merges on text.
+
+A note's own canvas geometry is `position: (x, y)` and `size: (w, h)`, e.g.
+`@annotation(text: 'note', position: (175, -40), size: (260, 70))`. Omit them
+and the note goes 100px above the activity at 200×50, stacking 60px per extra
+note; DESCRIBE omits them again whenever they match, so an ordinary note keeps
+the short `@annotation 'text'` form.
+
 ### Execute Database Query Pattern
 ```mdl
 -- Static query (3-part name: Module.Connection.Query)
