@@ -507,3 +507,32 @@ end;
 | CE0008 | No action defined | Define action for activity |
 | CW0094 | Variable never used | Remove unused variables or use them |
 | MDL | Variable not declared | Use `declare $var type = value;` before SET |
+
+## Apply entity access
+
+`@applyentityaccess` before a `create microflow` (or `create rule`) sets Studio
+Pro's **"Apply entity access"** checkbox: the flow runs under the **current
+user's** entity access rules instead of with full access.
+
+```mdl
+@applyentityaccess
+create microflow MyModule.ReadOwnOrders ()
+returns list of MyModule.Order
+begin
+  retrieve $Orders from MyModule.Order;
+  return $Orders;
+end;
+```
+
+It is a **security** setting and it only ever narrows, so the rules mirror
+`@excluded`:
+
+- **An absent `@applyentityaccess` never turns it off.** It means "the script does
+  not say", so a `create or modify` that omits it preserves whatever is stored.
+  Before this was carried, every rewrite cleared the flag — *widening* what the
+  microflow could read and write, with `mxcli check`, mxbuild and the model all
+  perfectly happy. Measured across 342 microflows in 4 projects: every microflow
+  storing the flag came back without it, and nothing anywhere reported it.
+- **Turning it off is explicit**: `@applyentityaccess(false)`.
+- **Not available on a nanoflow.** A nanoflow runs in the client and Mendix stores
+  no such property, so the annotation would parse and do nothing.

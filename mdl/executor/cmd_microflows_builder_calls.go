@@ -1125,6 +1125,7 @@ func (fb *flowBuilder) addShowMessageAction(s *ast.ShowMessageStmt) model.ID {
 		Template:           template,
 		Type:               msgType,
 		TemplateParameters: templateParams,
+		Blocking:           s.Blocking,
 	}
 
 	activity := &microflows.ActionActivity{

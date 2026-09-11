@@ -304,10 +304,17 @@ func init() {
 			"@curve(from: (40, -90), to: (-40, 90))  -- the flow's bezier control vectors\n" +
 			"@merge(x, y)                          -- the implicit merge that closes a split\n" +
 			"@caption 'text'\n@color Green\n@annotation 'a note'\n@excluded\n" +
+			"@applyentityaccess | @applyentityaccess(false)  -- DOCUMENT-level, before CREATE MICROFLOW/RULE\n" +
 			"@annotation(id: n1, text: 'a note', position: (x, y), size: (w, h))\n" +
 			"@annotation(id: n1)                   -- attaches THAT note to another activity\n\n" +
 			"An unrecognised @name is an error (MDL059): it would parse and do nothing,\n" +
 			"so a typo of @position would silently discard the layout.\n\n" +
+			"@excluded and @applyentityaccess are DOCUMENT annotations — they go before\n" +
+			"CREATE, not on a statement. @applyentityaccess runs the flow under the\n" +
+			"current user's entity access rules instead of with full access; it is a\n" +
+			"SECURITY setting and only ever narrows, so an ABSENT annotation PRESERVES\n" +
+			"whatever is stored and @applyentityaccess(false) is how a script turns it\n" +
+			"off. A nanoflow has no such property (it runs in the client).\n\n" +
 			"Mendix stores no waypoints — a flow's shape is two control vectors, each a\n" +
 			"pixel offset from its end of the line. (0, 0) at both ends is straight.\n" +
 			"@position on a split belongs to the SPLIT, so its end-if join has its own\n" +

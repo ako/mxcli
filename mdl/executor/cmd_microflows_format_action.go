@@ -789,6 +789,14 @@ func formatAction(
 		if len(a.TemplateParameters) > 0 {
 			result += " objects [" + strings.Join(a.TemplateParameters, ", ") + "]"
 		}
+		// Without this, a describe -> exec round trip turned a BLOCKING message
+		// box into a non-blocking one. The model carried Blocking on both
+		// engines all along; MDL simply had no word for it, which is why the
+		// loss happened in the middle of a path where every other layer was
+		// correct.
+		if a.Blocking {
+			result += " blocking"
+		}
 		return result + ";"
 
 	case *microflows.DownloadFileAction:

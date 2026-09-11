@@ -160,6 +160,8 @@ begin
 end;
 ```
 
+The sibling document annotation is **`@applyentityaccess`** — runs the flow under the current user's entity access rules rather than with full access, with the same absent-preserves rule and an explicit `(false)` to turn it off ([pitfalls](reference/pitfalls.md#apply-entity-access)).
+
 Two rules follow, and both are enforced rather than documented-and-hoped:
 
 - **An absent `@excluded` never un-excludes.** It means "the script does not say",
@@ -666,6 +668,9 @@ $Name = $Other/Name on error { return 'lookup failed'; };
 change $Order (Status = Shipped) on error { log error 'could not ship'; return; };
 log info node 'App' 'starting' on error { return; };
 show message 'saved' on error { return; };
+
+-- BLOCKING halts the client until dismissed; after `objects`, before `on error`.
+show message 'Hello {1}' type Warning objects [$Name] blocking;
 validation feedback $Order/Total message 'must be positive' on error { return; };
 show page Module.Page on error { return; };
 close page on error { return; };

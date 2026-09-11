@@ -1278,6 +1278,12 @@ func buildShowMessageStatement(ctx parser.IShowMessageStatementContext) *ast.Sho
 		}
 	}
 
+	// BLOCKING — Studio Pro's "blocking" checkbox. The model carried this on
+	// both engines already; MDL had no word for it, so DESCRIBE could not emit
+	// it and a describe -> exec round trip turned a blocking message box into a
+	// non-blocking one (16 microflows measured across 4 projects).
+	stmt.Blocking = smCtx.BLOCKING() != nil
+
 	// Check for ON ERROR clause
 	if errClause := smCtx.OnErrorClause(); errClause != nil {
 		stmt.ErrorHandling = buildOnErrorClause(errClause)

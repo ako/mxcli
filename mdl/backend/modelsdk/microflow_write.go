@@ -205,7 +205,9 @@ func microflowToGen(mf *microflows.Microflow, major int) *genMf.Microflow {
 	out.SetExcluded(mf.Excluded)
 	out.SetExportLevel("Hidden")
 	out.SetAllowConcurrentExecution(mf.AllowConcurrentExecution)
-	out.SetApplyEntityAccess(false)
+	// Carried, not hardcoded. This was `false` unconditionally, which silently
+	// turned a microflow's "apply entity access" OFF on every rewrite.
+	out.SetApplyEntityAccess(mf.ApplyEntityAccess)
 	out.SetMarkAsUsed(mf.MarkAsUsed)
 	out.SetConcurrencyErrorMicroflowQualifiedName("")
 	out.SetConcurrencyErrorMessage(genTexts.NewText()) // empty Texts$Text (Items=[3] via default)

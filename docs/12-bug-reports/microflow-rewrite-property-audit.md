@@ -1,5 +1,10 @@
 # Bug Report: what a microflow rewrite loses — a property-by-property audit
 
+> **Status: both findings fixed.** Re-running the audit across the same 342
+> microflows shows `ApplyEntityAccess` and `ShowMessageAction.Blocking` no longer
+> move. See [Fix](#fix) for what changed and how it was verified. The audit body
+> below is left as written so the measurement it describes stays readable.
+
 ## Summary
 
 `describe microflow` → `exec` is the documented copy operation, and it does not
@@ -77,6 +82,66 @@ show message 'The password has been updated.' type Information;
 and the re-parse sets `Blocking: false`. Anything rewriting the microflow from
 **stored BSON** keeps it; only the round trip through MDL text loses it.
 
+## Fix
+
+Both were fixed in one change; they needed different repairs because they had
+different causes.
+
+**`ApplyEntityAccess`** — the property now exists on `microflows.Microflow`, is
+read and written by both engines, and the executor **preserves** a stored value
+on a rewrite that does not mention it. That last part is the load-bearing half:
+`describe` → `exec` never states the setting, so carrying it through the writers
+alone would not have helped.
+
+The documented **copy** operation (describe → rename → exec) has nothing to
+preserve from, so MDL also gained a way to say it. `@applyentityaccess` before
+`create microflow` / `create rule`, with `@applyentityaccess(false)` to clear it
+— the same absent-preserves rule as `@excluded` (#914) and the doc comment
+(#1018), and no grammar change, since `annotationValue` already accepts a
+literal. A nanoflow is deliberately excluded: it runs in the client and Mendix
+stores no such property, so the annotation would parse and do nothing.
+
+Rules had the same gap from the other end — `rule_write.go` plumbed the property
+through while nothing ever set it — and are fixed alongside.
+
+**`ShowMessageAction.Blocking`** — a `blocking` modifier on `show message`, after
+the `objects` clause and before `on error`. The model already carried it on both
+engines, so only the grammar, visitor, builder and describe formatter were
+missing. `BLOCKING` is listed in the `keyword` rule, so `blocking` remains usable
+as an ordinary identifier — pinned by a test.
+
+### Verification
+
+- **The audit itself, re-run**: `ApplyEntityAccess` and `Blocking` are gone from
+  the changed list across all four projects, 342 microflows.
+- **The three cases each work**: a rewrite with no annotation preserves a stored
+  `true`; a copy carrying `@applyentityaccess` creates one with `true`;
+  `@applyentityaccess(false)` creates one with `false`.
+- **Controls**: reverting each of the three code changes in turn makes its test
+  fail with the reported symptom — `ApplyEntityAccess lost on round-trip`,
+  `written ApplyEntityAccess = false, want true`, and a describe emitting
+  `show message 'Saved.' type Information;` without the modifier.
+
+### Still open, and newly measured
+
+Round-tripping **every** microflow in TestApp produces a project that does not
+build: **CE0709** "Sequence flow is not accepted by origin or destination". The
+control is the same operation on the pre-fix binary, which gives the identical
+error — so this is pre-existing flow-graph drift, not a consequence of these
+fixes, and it belongs to the "flow graph changed in 40/42" row rather than to
+either property above. It is a stronger statement of the reviewability problem
+than the 417-line diff, and wants its own investigation.
+
+`ConcurrenyErrorMessage` and `ConcurrencyErrorMicroflow` are still hardcoded.
+Neither is a demonstrated loss (see the benign table), so closing those holes
+needs a reference project that actually sets them.
+
+One gap this change does not close: a **typo'd document annotation** parses and
+does nothing. MDL059 covers statement annotations only, so `@applyentityacces`
+is silent — as `@excluded` already was. Both typos fail safe here (an unset flag
+on a create means off; on a rewrite it means preserve), which is why this is
+noted rather than fixed.
+
 ## Method, and what it is worth
 
 For every microflow in each project: dump the stored BSON, `describe` it, `exec`
@@ -118,6 +183,8 @@ None of these changes behaviour. They do explain why a one-line edit produces a
 worth a separate issue.
 
 ## Suggested fixes, in severity order
+
+*(1 and 2 are done — see [Fix](#fix). Left in place as the reasoning behind what was built.)*
 
 1. **`ApplyEntityAccess`** — add the field to `microflows.Microflow`, read it on
    both engines, and give MDL a way to say it. The rule path is the precedent to

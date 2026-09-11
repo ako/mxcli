@@ -1424,3 +1424,25 @@ func TestFormatAction_WebServiceCallArgumentWithoutAName(t *testing.T) {
 		t.Errorf("emitted a partial argument list: %q", got)
 	}
 }
+
+// TestFormatAction_ShowMessageBlocking — DESCRIBE has to emit `blocking`, or the
+// round trip turns a blocking message box into a non-blocking one.
+//
+// The model carried Blocking on both engines all along; the loss was here, in
+// the one layer that had no word for it.
+func TestFormatAction_ShowMessageBlocking(t *testing.T) {
+	e := newTestExecutor()
+	msg := func(blocking bool) *microflows.ShowMessageAction {
+		return &microflows.ShowMessageAction{
+			Type:     microflows.MessageTypeInformation,
+			Blocking: blocking,
+			Template: &model.Text{Translations: map[string]string{"en_US": "Saved."}},
+		}
+	}
+	if got := e.formatAction(msg(true), nil, nil); got != "show message 'Saved.' type Information blocking;" {
+		t.Errorf("blocking message = %q", got)
+	}
+	if got := e.formatAction(msg(false), nil, nil); got != "show message 'Saved.' type Information;" {
+		t.Errorf("non-blocking message = %q", got)
+	}
+}

@@ -56,6 +56,12 @@ func ParseMicroflowFromRaw(raw map[string]any, unitID, containerID model.ID) *mi
 	if excluded, ok := raw["Excluded"].(bool); ok {
 		mf.Excluded = excluded
 	}
+	// A security setting: without reading it, a rewrite turned "apply entity
+	// access" OFF, widening what the microflow may read and write with nothing
+	// reporting it.
+	if applyEntityAccess, ok := raw["ApplyEntityAccess"].(bool); ok {
+		mf.ApplyEntityAccess = applyEntityAccess
+	}
 
 	// Parse allowed module roles (BY_NAME references)
 	allowedRoles := extractBsonArray(raw["AllowedModuleRoles"])

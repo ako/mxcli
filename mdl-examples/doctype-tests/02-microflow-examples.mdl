@@ -2565,6 +2565,28 @@ end;
 /
 
 /**
+ * M082b: BLOCKING messages, and APPLY ENTITY ACCESS on the microflow itself.
+ *
+ * `blocking` is Studio Pro's checkbox on a message action — the client halts
+ * until the user dismisses it. It goes after the OBJECTS clause and before
+ * ON ERROR, so it combines with both. (Continue error handling is a separate
+ * matter: Mendix rejects it on a message action, MDL076 / CE6035.)
+ *
+ * `@applyentityaccess` makes the microflow run under the CURRENT USER's entity
+ * access rules instead of with full access. It is a security setting and only
+ * ever narrows, so an ABSENT annotation preserves whatever is stored rather
+ * than clearing it; `@applyentityaccess(false)` is how a script turns it off.
+ */
+@applyentityaccess
+create microflow MfTest.M082b_BlockingMessages ($Name : string)
+begin
+  show message 'Saved.' type Information blocking;
+  show message 'Hello {1}' type Warning objects [$Name] blocking;
+  return;
+end;
+/
+
+/**
  * M083: Explicit canvas positions on activities.
  * @position(x, y) controls where the activity appears on the canvas.
  */
