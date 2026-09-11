@@ -121,8 +121,34 @@ func init() {
 			"error", "error handling", "on error", "continue",
 			"rollback", "throw", "exception", "try", "catch",
 		},
-		Syntax:  "COMMIT $Obj ON ERROR CONTINUE;\nCOMMIT $Obj ON ERROR ROLLBACK;\nCOMMIT $Obj ON ERROR { <statements> };\nCOMMIT $Obj ON ERROR WITHOUT ROLLBACK { <statements> };",
-		Example: "COMMIT $Order ON ERROR {\n  LOG ERROR 'Failed to save order';\n  RETURN empty;\n};\n\nCOMMIT $Batch ON ERROR WITHOUT ROLLBACK {\n  LOG WARNING 'Batch save failed, continuing';\n};",
+		Syntax: "COMMIT $Obj ON ERROR CONTINUE;\nCOMMIT $Obj ON ERROR ROLLBACK;\n" +
+			"COMMIT $Obj ON ERROR { <statements> };\nCOMMIT $Obj ON ERROR WITHOUT ROLLBACK { <statements> };\n\n" +
+			"-- The clause goes on the ACTIVITY that may fail. Most statements take it:\n" +
+			"-- DECLARE, SET, CREATE, CHANGE, COMMIT, DELETE, RETRIEVE, every CALL,\n" +
+			"-- LOG, SHOW PAGE, CLOSE PAGE, SHOW MESSAGE, VALIDATION FEEDBACK,\n" +
+			"-- SYNCHRONIZE, DOWNLOAD FILE and the mapping/REST statements.\n" +
+			"--\n" +
+			"-- Two limits, both enforced rather than silently ignored:\n" +
+			"--\n" +
+			"--   ON ERROR CONTINUE is rejected by Mendix (CE6035) on CREATE, CHANGE,\n" +
+			"--   COMMIT, LOG, SHOW PAGE, CLOSE PAGE, SHOW MESSAGE and VALIDATION\n" +
+			"--   FEEDBACK -> MDL076. A custom handler IS accepted on all of them, and\n" +
+			"--   CONTINUE is fine on DECLARE, SET, RETRIEVE, DELETE and CALL MICROFLOW.\n" +
+			"--\n" +
+			"--   The list-operation and aggregate forms of SET ($x = head($l),\n" +
+			"--   $n = count($l)) have no error handling in Mendix at all -> MDL077.\n" +
+			"--\n" +
+			"-- IN A NANOFLOW only DECLARE and SET take a clause at all. CHANGE, LOG,\n" +
+			"-- SHOW PAGE, CLOSE PAGE, SHOW MESSAGE and VALIDATION FEEDBACK are CE6035\n" +
+			"-- there in EVERY form, and are refused: a nanoflow activity aborts the\n" +
+			"-- flow on error by default and has no transaction to roll back.\n" +
+			"--\n" +
+			"-- A handler that does NOT end in RETURN/THROW merges back into the main\n" +
+			"-- flow, so a variable created after the merge is out of scope on the error\n" +
+			"-- path (CE0108). End the handler, or expect that.",
+		Example: "COMMIT $Order ON ERROR {\n  LOG ERROR 'Failed to save order';\n  RETURN empty;\n};\n\n" +
+			"COMMIT $Batch ON ERROR WITHOUT ROLLBACK {\n  LOG WARNING 'Batch save failed, continuing';\n};\n\n" +
+			"DECLARE $Name String = 'default' ON ERROR {\n  RETURN 'could not initialise';\n};",
 		SeeAlso: []string{"microflow.control-flow"},
 	})
 
@@ -277,7 +303,9 @@ func init() {
 			"@anchor(from: right, to: left)        -- which SIDE each end of the outgoing flow attaches to\n" +
 			"@curve(from: (40, -90), to: (-40, 90))  -- the flow's bezier control vectors\n" +
 			"@merge(x, y)                          -- the implicit merge that closes a split\n" +
-			"@caption 'text'\n@color Green\n@annotation 'a note'\n@excluded\n\n" +
+			"@caption 'text'\n@color Green\n@annotation 'a note'\n@excluded\n" +
+			"@annotation(id: n1, text: 'a note', position: (x, y), size: (w, h))\n" +
+			"@annotation(id: n1)                   -- attaches THAT note to another activity\n\n" +
 			"An unrecognised @name is an error (MDL059): it would parse and do nothing,\n" +
 			"so a typo of @position would silently discard the layout.\n\n" +
 			"Mendix stores no waypoints — a flow's shape is two control vectors, each a\n" +
@@ -296,7 +324,17 @@ func init() {
 			"parameters form a row along the top of the canvas at 200;53, 300;53, … ;\n" +
 			"the same derived/authored rule as @start then applies, so a parameter on\n" +
 			"that row is re-derived and one anywhere else survives a rewrite and is\n" +
-			"emitted by DESCRIBE.",
+			"emitted by DESCRIBE.\n\n" +
+			"A NOTE is a node with edges, not a property of the activity it documents:\n" +
+			"one note can be wired to several activities and several notes to one. So\n" +
+			"@annotation is repeatable, and `id:` names a note so a later\n" +
+			"@annotation(id: …) attaches the same one instead of creating a copy. The id\n" +
+			"is scoped to the flow being authored and is not stored in the model —\n" +
+			"DESCRIBE re-derives labels, and emits one only for a note that really is\n" +
+			"shared. Two notes with identical text and no id stay two notes.\n\n" +
+			"position:/size: are the note's own geometry, omitted whenever they match\n" +
+			"what a rewrite re-derives (100px above the activity, stacked 60px per extra\n" +
+			"note, 200x50), so an ordinary note keeps the short form. (#1077)",
 		Example: "create microflow MyModule.ACT_Flow (\n  @position(145, 0)\n  $In: String\n)\nreturns String as $Out\nbegin\n" +
 			"  @start(145, 100)\n  @position(200, 100)\n  @anchor(from: bottom, to: top)\n" +
 			"  @curve(from: (40, -90), to: (-40, 90))\n  declare $Tmp String = $In;\n" +

@@ -101,6 +101,7 @@ func (v *microflowValidator) addViolation(ruleID string, severity linter.Severit
 // validate runs all checks on the microflow body.
 func (v *microflowValidator) validate(body []ast.MicroflowStatement) {
 	v.checkListOperationIterator(body)
+	v.checkAnnotationLabels(body)
 
 	// Walk the body for per-statement checks (validation feedback, return value checks)
 	v.emptyListVars = make(map[string]bool)
@@ -195,6 +196,7 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 	for _, s := range body {
 		v.checkUnknownAnnotations(s)
 		v.checkErrorHandlingContinueSupported(s)
+		v.checkErrorHandlingSupported(s)
 		switch stmt := s.(type) {
 		case *ast.ValidationFeedbackStmt:
 			if isEmptyMessage(stmt.Message) {
@@ -1343,6 +1345,29 @@ func stmtErrorHandling(stmt ast.MicroflowStatement) *ast.ErrorHandlingClause {
 		return s.ErrorHandling
 	case *ast.ExecuteDatabaseQueryStmt:
 		return s.ErrorHandling
+	// The eight statements #1078 gave an onErrorClause. Without them here, MDL076
+	// cannot see a clause these statements now accept, and MDL077 cannot refuse
+	// one on a list operation or aggregate.
+	case *ast.DeclareStmt:
+		return s.ErrorHandling
+	case *ast.MfSetStmt:
+		return s.ErrorHandling
+	case *ast.ChangeObjectStmt:
+		return s.ErrorHandling
+	case *ast.LogStmt:
+		return s.ErrorHandling
+	case *ast.ShowPageStmt:
+		return s.ErrorHandling
+	case *ast.ClosePageStmt:
+		return s.ErrorHandling
+	case *ast.ShowMessageStmt:
+		return s.ErrorHandling
+	case *ast.ValidationFeedbackStmt:
+		return s.ErrorHandling
+	case *ast.ListOperationStmt:
+		return s.ErrorHandling
+	case *ast.AggregateListStmt:
+		return s.ErrorHandling
 	}
 	return nil
 }
@@ -1494,4 +1519,53 @@ func (v *microflowValidator) checkUnknownAnnotations(s ast.MicroflowStatement) {
 				"@excluded, @anchor, @curve and @merge on a microflow statement. If `@%s` is a typo of "+
 				"one of those, correct it; container size is not authorable (upstream #884).", name))
 	}
+	for _, bad := range ann.InvalidNotes {
+		v.addViolation("MDL079", linter.SeverityError,
+			fmt.Sprintf("`@annotation` parameter `%s` is not one mxcli understands, so the note it "+
+				"belongs to is not written at all", bad),
+			"A note is either `@annotation 'text'`, or the long form "+
+				"`@annotation(id: n1, text: 'text', position: (x, y), size: (w, h))` where every parameter "+
+				"except one of `id:`/`text:` is optional. `id:` names a note so a later "+
+				"`@annotation(id: n1)` attaches THAT note to another activity instead of creating a "+
+				"second one (mendixlabs/mxcli#1077).")
+	}
+}
+
+// checkAnnotationLabels refuses an `@annotation(id: …)` that never gets a text.
+//
+// This is a whole-body check rather than a per-statement one because a label is
+// declared on one statement and referenced on another — the point of having
+// labels at all. The flow builder refuses the same thing at exec time, but its
+// errors do not escape a loop body, and `check` is what people run.
+func (v *microflowValidator) checkAnnotationLabels(body []ast.MicroflowStatement) {
+	// One pass, in statement order, because that is what the flow builder does:
+	// a two-pass check would accept a reference written above its declaration
+	// and exec would then refuse it. DESCRIBE never emits that shape either — it
+	// declares a note at its first mention in traversal order — so agreeing with
+	// the builder costs nothing and keeps `check` honest.
+	declared := map[string]bool{}
+	var walk func([]ast.MicroflowStatement)
+	walk = func(stmts []ast.MicroflowStatement) {
+		for _, s := range stmts {
+			if ann := ast.StatementAnnotations(s); ann != nil {
+				for _, note := range append(append([]ast.MicroflowAnnotation{}, ann.Notes...), ann.FreeNotes...) {
+					switch {
+					case note.Label == "":
+					case note.Text != "":
+						declared[note.Label] = true
+					case !declared[note.Label]:
+						v.addViolation("MDL079", linter.SeverityError,
+							fmt.Sprintf("`@annotation(id: %s)` refers to a note that has not been declared above it", note.Label),
+							fmt.Sprintf("The FIRST mention of a note carries its text: "+
+								"`@annotation(id: %s, text: '…')`. Later mentions attach that same note to "+
+								"another activity with `@annotation(id: %s)`.", note.Label, note.Label))
+					}
+				}
+			}
+			for _, nested := range ast.StatementBodies(s) {
+				walk(nested)
+			}
+		}
+	}
+	walk(body)
 }

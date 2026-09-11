@@ -597,6 +597,29 @@ $var/Module.AssociationName/attribute   -- Chained
 commit $Order;                                          -- Annotations apply here
 ```
 
+### Annotations Are Notes, and a Note Can Be Shared
+
+A note is a node with edges in Mendix, not a property of the activity it
+documents. So `@annotation` is **repeatable** — one activity can carry several,
+each its own note — and one note can be attached to several activities:
+
+```mdl
+@annotation(id: n1, text: 'both of these touch the same record')
+commit $Order;
+@annotation(id: n1)                     -- attaches THAT note, does not copy it
+commit $Invoice;
+```
+
+`id:` is scoped to the flow you are writing and is not stored in the model; it
+exists only so a second mention can point at the first. **Without it, two lines
+with identical text are two separate notes** — mxcli never merges on text.
+
+A note's own canvas geometry is `position: (x, y)` and `size: (w, h)`, e.g.
+`@annotation(text: 'note', position: (175, -40), size: (260, 70))`. Omit them
+and the note goes 100px above the activity at 200×50, stacking 60px per extra
+note; DESCRIBE omits them again whenever they match, so an ordinary note keeps
+the short `@annotation 'text'` form.
+
 ### Execute Database Query Pattern
 ```mdl
 -- Static query (3-part name: Module.Connection.Query)
@@ -634,3 +657,38 @@ call microflow ... on error rollback;                  -- Rollback on error
 call microflow ... on error { log ...; return ...; };  -- Custom handler
 call microflow ... on error without rollback { ... };  -- No rollback
 ```
+
+The clause goes on whichever activity may fail, not only on calls:
+
+```mdl
+declare $Name String = 'default' on error { return 'could not initialise'; };
+$Name = $Other/Name on error { return 'lookup failed'; };
+change $Order (Status = Shipped) on error { log error 'could not ship'; return; };
+log info node 'App' 'starting' on error { return; };
+show message 'saved' on error { return; };
+validation feedback $Order/Total message 'must be positive' on error { return; };
+show page Module.Page on error { return; };
+close page on error { return; };
+```
+
+**Two limits, both reported rather than silently ignored:**
+
+- **`on error continue` is rejected by Mendix** (CE6035) on `create`, `change`,
+  `commit`, `log`, `show page`, `close page`, `show message` and
+  `validation feedback` — **MDL076**. A custom `{ handler }` is accepted on all
+  of them; `continue` is fine on `declare`, `set`, `retrieve`, `delete` and
+  `call microflow`. Measured on 11.14.0 — note that create-*variable* and
+  change-*variable* accept `continue` while change-*object* does not.
+- **The list-operation and aggregate forms of `set`** (`$x = head($l)`,
+  `$n = count($l)`) have no error handling in Mendix at all — **MDL077**.
+
+**In a nanoflow, almost none of them take a clause at all.** `change`, `log`,
+`show page`, `close page`, `show message` and `validation feedback` are CE6035
+there whichever form is written; only `declare` and `set` accept one. See
+`write-nanoflows`.
+
+**End the handler.** A handler body that does not finish with `return` or `throw`
+merges back into the main flow, so a variable created *after* the merge point is
+out of scope on the error path — CE0108, which Studio Pro reports for the same
+model. Ending the handler (as Studio Pro does when you wire it to an end event)
+avoids this entirely.

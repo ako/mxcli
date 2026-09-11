@@ -1,0 +1,42 @@
+-- mendixlabs/mxcli#1067 (c): a member added later is invisible to a role whose
+-- access rule was granted per member.
+--
+-- Run this, then add an attribute:
+--
+--     mxcli exec 1067-new-member-access-warning.mdl -p app.mpr
+--     mxcli -p app.mpr -c "alter entity Zz1067c.Doc add attribute Priority: String"
+--
+-- `alter entity` used to print only "Added attribute 'Priority'". It now also
+-- reports that Zz1067c.Narrow cannot see it, and prints the GRANT that widens
+-- the rule.
+--
+-- Why: a new member joins each access rule at that rule's
+-- DefaultMemberAccessRights. MDL derives that property rather than setting it —
+-- `write *` gives ReadWrite, `read *` gives ReadOnly, and a grant written purely
+-- as a member list leaves it at None. Nothing is skipped: measured on 11.13.0,
+-- the BSON carries one MemberAccess per rule for the new attribute and mxbuild
+-- reports 0 errors. The attribute is simply granted None, so it renders blank.
+--
+-- Note which rule is NOT reported. Zz1067c.Mid is narrower than Zz1067c.Wide —
+-- it can read everything but write only one member — and it still sees new
+-- members, because `read *` set its default to ReadOnly. The discriminator is
+-- the rule's default, not the width of its member list.
+
+create module Zz1067c;
+create module role Zz1067c.Wide;
+create module role Zz1067c.Mid;
+create module role Zz1067c.Narrow;
+
+create entity Zz1067c.Doc (
+  Subject: String,
+  Body: String
+);
+
+-- Default ReadWrite: sees new members.
+grant Zz1067c.Wide on Zz1067c.Doc (create, delete, read *, write *);
+
+-- Default ReadOnly: sees new members, despite the narrower write list.
+grant Zz1067c.Mid on Zz1067c.Doc (read *, write (Subject));
+
+-- Default None: does NOT see new members. This is the one reported.
+grant Zz1067c.Narrow on Zz1067c.Doc (read (Subject));

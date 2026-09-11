@@ -1,0 +1,130 @@
+-- ============================================================================
+-- mendixlabs/mxcli#1077: a note wired to several activities came back copied
+-- ============================================================================
+--
+-- Report: "When I have an annotation linked to multiple activities, in the MDL
+-- the @annotation is duplicated. When regenerating the microflow, the annotation
+-- is created multiple times instead of one time. MDL currently does not (really)
+-- support one annotation linked to multiple activities."
+-- mxcli v0.21 / Mendix 11.12.3.
+--
+-- The closing sentence is the diagnosis. In Mendix a note is a NODE with edges —
+-- one Microflows$Annotation joined to any number of activities by
+-- Microflows$AnnotationFlow — and MDL modelled it as one string per activity.
+-- A per-activity string cannot express identity, so DESCRIBE filed the caption
+-- once per target and re-executing built one note per mention.
+--
+-- ---------------------------------------------------------------------------
+-- THE SAME ROOT CAUSE, POINTING THE OTHER WAY, IS WORSE
+-- ---------------------------------------------------------------------------
+-- The relation is many-to-many, and the string lost BOTH directions:
+--
+--   A. one note → N activities came back as N notes            (the report)
+--   B. N notes → one activity came back as ONE note            (found here)
+--
+-- B is not a duplication, it is a DELETION: the AST had a single AnnotationText
+-- slot and the last @annotation line won, so the others were gone from the model
+-- after one describe → exec. Measured on Mendix 11.13.0: two notes on an
+-- activity, round trip, and 'note one' no longer exists.
+--
+-- A third loss rode along: an Annotation's own position and size were never
+-- emitted and the writer re-invented them, so every round trip moved every note
+-- to (activity.x, activity.y-100) and resized it to 200x50 — measured, a note at
+-- (175, -40) sized 260x70 came back at (360, 100) sized 200x50.
+--
+-- `mx check` reported 0 errors on every side of all three. A duplicated,
+-- deleted, or displaced note is a perfectly valid model, which is why none of
+-- this had ever been caught: mxbuild is not an oracle for a describer.
+--
+-- ---------------------------------------------------------------------------
+-- WHAT CHANGED IN THE SYNTAX
+-- ---------------------------------------------------------------------------
+-- `@annotation 'text'` is unchanged and is still what you write and what
+-- DESCRIBE emits for the ordinary case. A note only pays for the longer form
+-- when it has something the short form cannot carry:
+--
+--   @annotation(id: n1, text: 'shared', position: (x, y), size: (w, h))
+--   @annotation(id: n1)          -- attaches THAT note to another activity
+--
+-- `id:` is scoped to the flow being authored and is not stored in the model;
+-- the describer re-derives labels, so they are stable across a round trip by
+-- construction rather than by being remembered. `position:`/`size:` are omitted
+-- whenever they match what the writer would re-derive, which is what keeps
+-- existing scripts and existing DESCRIBE output unchanged.
+--
+-- The grammar needed two words: `position` and `text` are lexer keywords, and a
+-- keyword parameter key does NOT fail to parse — annotationParam falls through
+-- to its positional alternative, so the parameter is accepted and silently means
+-- nothing. `@annotation(text: 'x')` parsed and was discarded before this fix.
+--
+-- ---------------------------------------------------------------------------
+-- MEASURED on Mendix 11.13.0 / mxbuild 11.13
+-- ---------------------------------------------------------------------------
+-- Each microflow below: exec, `describe microflow`, exec the output, describe
+-- again. The two describes are byte-identical, and the shared case reports
+-- "Unchanged microflow" on the re-exec — the rebuild was semantically equal to
+-- what was stored, so nothing was even written. Both engines (default and
+-- MXCLI_ENGINE=legacy) produce identical output; unlike #1078 this defect was
+-- never engine-specific.
+--
+-- Entities assumed: none. Adjust the log node name for your project.
+-- ============================================================================
+
+-- The reporter's shape: ONE note documenting two activities. Before the fix,
+-- describing this and running the output back created a second note.
+create or modify microflow MyFirstModule.ACT_1077_Shared () returns String
+begin
+  @annotation(id: warn, text: 'both of these touch the same record', position: (175, -40), size: (260, 70))
+  log info node 'Bug1077' 'first';
+  @annotation(id: warn)
+  log info node 'Bug1077' 'second';
+  return 'ok';
+end;
+
+-- Defect B: two DIFFERENT notes on one activity. Before the fix only the last
+-- survived. Neither is positioned here, and neither has to be: unplaced notes
+-- stack upwards (100px above the activity, then 60px per note) rather than
+-- landing on top of each other. DESCRIBE gives both back on the short form,
+-- because that stacking is exactly what it re-derives.
+create or modify microflow MyFirstModule.ACT_1077_Stacked () returns String
+begin
+  @annotation 'the first thing to know'
+  @annotation 'the second thing to know'
+  log info node 'Bug1077' 'busy step';
+  return 'ok';
+end;
+
+-- A note whose text is the same on two activities but which are genuinely two
+-- separate notes. This is the control for the shared case above: identical text
+-- must NOT be merged, or the fix would be trading one silent rewrite for
+-- another.
+create or modify microflow MyFirstModule.ACT_1077_SameTextTwice () returns String
+begin
+  @annotation 'check this'
+  log info node 'Bug1077' 'first';
+  @annotation 'check this'
+  log info node 'Bug1077' 'second';
+  return 'ok';
+end;
+
+-- A note inside an `on error` handler body. Its Annotation object reached the
+-- model but its AnnotationFlow did not — the handler's sub-builder collected
+-- annotation flows into its own slice and the merge back copied objects and
+-- sequence flows only — so the note arrived detached, floating on the canvas.
+create or modify microflow MyFirstModule.ACT_1077_InHandler () returns String
+begin
+  declare $name String = 'value' on error {
+    @annotation 'this is where it goes wrong'
+    log error node 'Bug1077' 'boom';
+    return 'failed';
+  };
+  return $name;
+end;
+
+-- Control for the whole file: no notes at all, so DESCRIBE must emit none and
+-- the round trip must not invent one.
+create or modify microflow MyFirstModule.ACT_1077_NoNotes () returns String
+begin
+  log info node 'Bug1077' 'nothing to see';
+  return 'ok';
+end;

@@ -51,6 +51,11 @@ create page "OfflineSync"."Mobile_Home"
 -- names plus "Offline".
 create or replace navigation "PhoneOffline"
   home page "OfflineSync"."Mobile_Home"
+  -- Studio Pro's "Throw error when server rejects objects during
+  -- synchronization". Spelled with the phrase MDL already uses for failure
+  -- handling (a microflow's ON ERROR CONTINUE), and omitting the clause leaves
+  -- the stored value alone rather than resetting it.
+  on sync error continue
   sync (
     -- Fetched from the server; never held on the device.
     sync "OfflineSync"."Setting" online;

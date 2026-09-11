@@ -540,8 +540,10 @@ it is for pages.
 | Start event | `@start(x, y)` | Canvas position of the start, on the **first** statement. Omit it and the start is placed one spacing unit left of the first activity and MOVES with it on a rewrite; a start that is not at that derived spot is treated as hand-placed, survives a rewrite, and is emitted by DESCRIBE (#951) |
 | Caption | `@caption 'text'` | Custom caption (before activity) |
 | Color | `@color Green` | Background color (before activity) |
-| Annotation | `@annotation 'text'` | Visual note attached to next activity |
-| Free annotation | `@annotation 'text'` before `@position(...)` | Free-floating visual note preserved by order |
+| Annotation | `@annotation 'text'` | Visual note attached to next activity. **Repeatable** — an activity can carry several, and each is its own note |
+| Shared annotation | `@annotation(id: n1, text: 'note')` then `@annotation(id: n1)` | ONE note wired to several activities, which is how Mendix stores it. Without the `id:` the two lines are two separate notes, even with identical text. The id is scoped to the flow being authored and is not stored (#1077) |
+| Annotation geometry | `@annotation(text: 'note', position: (x, y), size: (w, h))` | The note's own place and box on the canvas. Both are omitted whenever they match what a rewrite re-derives — 100px above the activity, stacked 60px per extra note, at 200×50 — so an ordinary note stays on the short form |
+| Free annotation | `@annotation 'text'` before `@position(...)` | Free-floating visual note preserved by order. A free note has no activity to be placed relative to, so DESCRIBE always emits its `position:` |
 | IF | `if condition then ... [else ...] end if;` | |
 | Enum split | `case $Var when Value then ... end case;` | Enumeration decision branches. Bare enum values (never quoted or qualified), one branch per value **including `(empty)`** (MDL056), no `else` (MDL008), no `AS` alias |
 | Type split | `split type $Var when Module.Entity then ... when (empty) then ... end split;` | Runtime specialization branches. Same `when ... then` shape as the enum split. Needs a branch per subtype **and** the base entity (CE0090); `when (empty) then` is the **null-object** flow, not a default, and cannot be omitted (CE0089). Legacy `case Module.Entity` / `else` still parse (MDL065 warns) |
@@ -553,7 +555,7 @@ it is for pages.
 | Execute DB query | `$Result = execute database query Module.Conn.Query;` | 3-part name; supports DYNAMIC, params, CONNECTION override |
 | Import mapping | `[$Var =] import from mapping Module.IMM($SourceVar) [all\|first\|limit <e> [offset <e>]];` | Apply import mapping to string variable. Trailing clause is Studio Pro's Range; omitted = infer from the mapping's root. `first` binds one OBJECT (`limit 1` is a one-element LIST). Mendix rejects `offset` on a non-list mapping (CE6100) |
 | Export mapping | `$Var = export to mapping Module.EMM($EntityVar);` | Apply export mapping to entity, returns string |
-| Error handling | `... on error continue\|rollback\|{ handler };` | Not supported on EXECUTE DATABASE QUERY |
+| Error handling | `... on error continue\|rollback\|{ handler }\|without rollback { handler };` | Goes on the activity that may fail — including `declare`, `set`, `change`, `log`, `show page`, `close page`, `show message` and `validation feedback`, which gained it in mendixlabs/mxcli#1078 so a Studio Pro handler survives DESCRIBE. `on error continue` is refused (MDL076) where Mendix raises CE6035: create, change, commit, log, show page, close page, show message, validation feedback — a custom `{ handler }` is accepted on all of them. The list-operation and aggregate forms of `set` have no error handling at all (MDL077). Not supported on EXECUTE DATABASE QUERY. **In a nanoflow** only `declare` and `set` take a clause at all — `change`, `log`, `show page`, `close page`, `show message` and `validation feedback` are CE6035 there in every form, and are refused. A handler that does not end in `return`/`throw` merges back into the main flow, so a later variable is out of scope on the error path (CE0108) |
 
 **Activity defaults.** An omitted modifier always means Mendix's own default, so a
 bare MDL statement produces the same activity as dragging a fresh one onto the
@@ -625,7 +627,8 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 | Revoke nanoflow access | `revoke execute on nanoflow Mod.NF from Mod.Role, ...;` | |
 | Grant page access | `grant view on page Mod.Page to Mod.Role, ...;` | |
 | Revoke page access | `revoke view on page Mod.Page from Mod.Role, ...;` | |
-| Grant entity access | `grant Mod.Role on Mod.Entity (create, delete, read *, write *);` | Additive — merges with existing. Inherited members are named like the entity's own (`read *` covers them); an unknown name is an error. Entities extending `System.User` are the exception — their platform members must not be granted |
+| Grant entity access | `grant Mod.Role on Mod.Entity (create, delete, read *, write *);` | Additive — merges with existing. A module role must be qualified: a bare `Role` parses but is refused (MDL-GRANT02). Inherited members are named like the entity's own (`read *` covers them); an unknown name is an error. Entities extending `System.User` are the exception — their platform members must not be granted |
+| Access for members added later | — | A rule's default for new members is derived from the grant: `write *` → ReadWrite, `read *` → ReadOnly, member lists alone → **None**. So an attribute added later is granted None on a member-listed rule — clean build, blank field. `alter entity … add attribute` warns and prints the widening grant. The rule's *default* decides this, not how narrow its member list is |
 | Revoke entity access | `revoke Mod.Role on Mod.Entity;` | Full revoke — removes entire rule |
 | Revoke entity access (partial) | `revoke Mod.Role on Mod.Entity (read (attr));` | Partial — downgrades specific rights |
 | Set security level | `alter project security level off\|prototype\|production;` | |
@@ -675,6 +678,23 @@ project unopenable in Studio Pro and mxbuild.
 
 **Parameter values in `with (...)` are quoted strings**, not bare variables:
 `call microflow Mod.MF with (Request = '$WorkflowContext')`.
+
+**An enumeration decision also needs an empty outcome.** Mendix generates one
+outcome per enumeration value **plus one for the empty value**, and MxBuild
+compares the stored set against that: anything else is CE6686 ("Regenerate the
+outcomes"). Write it as `'' -> { }` alongside the named values — `check` reports
+a missing one as `MDL-WF06`. It applies to `call microflow` outcomes branching on
+an enumeration return as well, and a required (`not null`) attribute does **not**
+exempt it. Boolean decisions (`true`/`false`) do not take one.
+
+```sql
+  decision '$WorkflowContext/Kind'
+    outcomes
+      'Module.Kind.Standard' -> { }
+      'Module.Kind.Priority' -> { }
+      '' -> { }
+  ;
+```
 
 **Example:**
 ```sql

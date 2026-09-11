@@ -33,10 +33,21 @@ func init() {
 			"entity access", "grant", "revoke", "read", "write",
 			"create", "delete", "xpath", "row-level security",
 		},
-		Syntax: "GRANT <role> ON <module>.<entity> (<rights>) [WHERE '<xpath>'];\n" +
-			"REVOKE <role> ON <module>.<entity>;\n" +
-			"REVOKE <role> ON <module>.<entity> (<rights>);\n\n" +
+		Syntax: "GRANT <module>.<role> ON <module>.<entity> (<rights>) [WHERE '<xpath>'];\n" +
+			"REVOKE <module>.<role> ON <module>.<entity>;\n" +
+			"REVOKE <module>.<role> ON <module>.<entity> (<rights>);\n\n" +
 			"Rights: CREATE, DELETE, READ *, READ (<attr>,...), WRITE *, WRITE (<attr>,...)\n\n" +
+			"A module role is always Module.Role. A bare role name parses but is\n" +
+			"refused (MDL-GRANT02) — mxcli cannot tell which module it belongs to.\n\n" +
+			"Members added later:\n" +
+			"  A rule also carries a default for members added AFTER it was written,\n" +
+			"  derived from the grant: WRITE * gives ReadWrite, READ * gives ReadOnly,\n" +
+			"  and member lists alone leave it None. So an attribute added later is\n" +
+			"  granted None on a member-listed rule — a clean build in which the field\n" +
+			"  renders blank for that role. ALTER ENTITY ... ADD ATTRIBUTE warns and\n" +
+			"  prints the GRANT that widens it. What decides this is the rule's\n" +
+			"  default, not how narrow its member list is: READ *, WRITE (Email) is\n" +
+			"  narrower than READ *, WRITE * and still picks up new members.\n\n" +
 			"Inherited members:\n" +
 			"  Mendix inheritance is multi-table — a child adds attributes to its\n" +
 			"  parent's, and ALL the parent's members belong to the child. Name them\n" +

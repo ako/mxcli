@@ -11,6 +11,7 @@ CREATE OR REPLACE NAVIGATION profile
     [ MENU (
         menu_items
     ) ]
+    [ ON SYNC ERROR { THROW | CONTINUE } ]
     [ SYNC (
         sync_rules
     ) ]
@@ -114,6 +115,13 @@ quoted `WHERE 'xpath'` still parses, but every quote inside it must be doubled.
 
 The block replaces the stored list, the way `MENU` replaces the menu. Omitting
 it leaves the stored configuration alone.
+
+`ON SYNC ERROR THROW | CONTINUE` is Studio Pro's *"Throw error when server
+rejects objects during synchronization"*, and defaults to `THROW`. It reuses the
+phrase MDL already has for failure handling — a microflow's `ON ERROR CONTINUE`
+— rather than introducing a keyword of its own. Omitting the clause leaves the
+stored value alone, and `DESCRIBE NAVIGATION` emits it only when it is not the
+default.
 
 An entity's *compatibility mode* flag has no MDL syntax. It is read, preserved
 across a rewrite, and reported by `DESCRIBE NAVIGATION` — never silently

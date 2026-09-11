@@ -6,6 +6,7 @@ package executor
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,84 +15,207 @@ import (
 	"github.com/mendixlabs/mxcli/sdk/microflows"
 )
 
-// buildAnnotationsByTarget builds a map from activity ID to annotation captions.
-// It joins AnnotationFlows (destination → activity) with Annotation objects (caption).
-func buildAnnotationsByTarget(oc *microflows.MicroflowObjectCollection) map[model.ID][]string {
-	result := make(map[model.ID][]string)
-	if oc == nil {
-		return result
-	}
+// describedAnnotation is one Annotation object as the describer sees it: its
+// text, its canvas geometry — and its IDENTITY, which is the part that used to
+// be thrown away here. A note wired to N activities was filed under each target
+// as a bare caption, so DESCRIBE emitted N copies and re-executing the output
+// created N notes (mendixlabs/mxcli#1077).
+type describedAnnotation struct {
+	ID       model.ID
+	Caption  string
+	Position model.Point
+	Size     model.Size
 
-	annotCaptions := make(map[model.ID]string)
-	collectAnnotationCaptions(oc, annotCaptions)
-
-	// Map each annotation flow's destination (the activity) to the annotation's caption
-	for _, af := range oc.AnnotationFlows {
-		if caption, ok := annotCaptions[af.OriginID]; ok && caption != "" {
-			result[af.DestinationID] = append(result[af.DestinationID], caption)
-		}
-	}
-
-	return result
+	// Shared is true when more than one AnnotationFlow points at this note.
+	// Only a shared note needs a label, so the everyday `@annotation 'text'`
+	// form is left exactly as it was.
+	Shared bool
 }
 
-func collectAnnotationCaptions(oc *microflows.MicroflowObjectCollection, captions map[model.ID]string) {
+// annotationEmitter renders the @annotation lines for a describe traversal.
+//
+// It is stateful on purpose: WHICH mention of a shared note carries the
+// declaration and which are references depends on traversal order, and that is
+// only known while walking. One emitter per describe call — never a package
+// global, so concurrent describes (captureDescribeParallel) stay independent.
+type annotationEmitter struct {
+	byTarget map[model.ID][]describedAnnotation
+
+	// labels and nextLabel are SHARED by reference with any overlay emitter
+	// (see withOverlay), because a note may be declared in the parent
+	// collection and referenced from inside a loop body.
+	labels    map[model.ID]string
+	nextLabel *int
+}
+
+// buildAnnotationsByTarget joins AnnotationFlows (destination → activity) with
+// the Annotation objects they originate from, keeping each note's identity so a
+// shared one can be emitted once and referenced afterwards.
+func buildAnnotationsByTarget(oc *microflows.MicroflowObjectCollection) *annotationEmitter {
+	zero := 0
+	e := &annotationEmitter{
+		byTarget:  make(map[model.ID][]describedAnnotation),
+		labels:    make(map[model.ID]string),
+		nextLabel: &zero,
+	}
+	if oc == nil {
+		return e
+	}
+
+	notes := make(map[model.ID]*microflows.Annotation)
+	collectAnnotationObjects(oc, notes)
+
+	targetCount := make(map[model.ID]int)
+	for _, af := range oc.AnnotationFlows {
+		targetCount[af.OriginID]++
+	}
+
+	for _, af := range oc.AnnotationFlows {
+		note, ok := notes[af.OriginID]
+		if !ok || note.Caption == "" {
+			continue
+		}
+		e.byTarget[af.DestinationID] = append(e.byTarget[af.DestinationID], describedAnnotation{
+			ID:       note.ID,
+			Caption:  note.Caption,
+			Position: note.Position,
+			Size:     note.Size,
+			Shared:   targetCount[af.OriginID] > 1,
+		})
+	}
+
+	return e
+}
+
+func collectAnnotationObjects(oc *microflows.MicroflowObjectCollection, out map[model.ID]*microflows.Annotation) {
 	if oc == nil {
 		return
 	}
 	for _, obj := range oc.Objects {
 		if annot, ok := obj.(*microflows.Annotation); ok {
-			captions[annot.ID] = annot.Caption
+			out[annot.ID] = annot
 			continue
 		}
 		if loop, ok := obj.(*microflows.LoopedActivity); ok {
-			collectAnnotationCaptions(loop.ObjectCollection, captions)
+			collectAnnotationObjects(loop.ObjectCollection, out)
 		}
 	}
 }
 
-// mergeAnnotationsByTarget combines parent-level annotations with the
-// loop-local overlay so each activity gets every caption that points at it,
-// regardless of which collection the annotation flow lives in.
+// withOverlay returns an emitter covering both this emitter's targets and the
+// overlay's, sharing the label state by reference so a note declared in the
+// parent collection and referenced inside a loop body keeps one label.
 //
-// When one side is empty the function returns the other map by reference (no
-// copy). The current callers — emitLoopBody passing a freshly built overlay,
-// or a freshly inherited parent map — never mutate the result, so aliasing is
-// safe. New callers that intend to mutate the result must copy first.
-func mergeAnnotationsByTarget(base, overlay map[model.ID][]string) map[model.ID][]string {
-	if len(base) == 0 {
+// Neither input map is mutated. When one side is empty the other's map is
+// returned by reference (no copy), which the current callers — emitLoopBody
+// with a freshly built overlay — never write to.
+func (e *annotationEmitter) withOverlay(overlay *annotationEmitter) *annotationEmitter {
+	if e == nil {
 		return overlay
 	}
-	if len(overlay) == 0 {
-		return base
+	if overlay == nil || len(overlay.byTarget) == 0 {
+		return e
 	}
-	merged := make(map[model.ID][]string, len(base)+len(overlay))
-	for id, captions := range base {
-		merged[id] = captions
+	out := &annotationEmitter{labels: e.labels, nextLabel: e.nextLabel}
+	if len(e.byTarget) == 0 {
+		out.byTarget = overlay.byTarget
+		return out
 	}
-	for id, captions := range overlay {
-		merged[id] = append(merged[id], captions...)
+	out.byTarget = make(map[model.ID][]describedAnnotation, len(e.byTarget)+len(overlay.byTarget))
+	for id, notes := range e.byTarget {
+		out.byTarget[id] = notes
 	}
-	return merged
+	for id, notes := range overlay.byTarget {
+		out.byTarget[id] = append(out.byTarget[id], notes...)
+	}
+	return out
 }
 
-// collectFreeAnnotations returns captions for annotations not referenced by any AnnotationFlow.
-func collectFreeAnnotations(oc *microflows.MicroflowObjectCollection) []string {
+// labelFor returns the emitted label for a note and whether this is its first
+// mention (the one that must carry the text).
+func (e *annotationEmitter) labelFor(id model.ID) (label string, first bool) {
+	if existing, ok := e.labels[id]; ok {
+		return existing, false
+	}
+	// Lazily initialised so a hand-built emitter (tests construct one with just
+	// byTarget) cannot panic on a shared note.
+	if e.labels == nil {
+		e.labels = map[model.ID]string{}
+	}
+	if e.nextLabel == nil {
+		e.nextLabel = new(int)
+	}
+	*e.nextLabel++
+	label = fmt.Sprintf("n%d", *e.nextLabel)
+	e.labels[id] = label
+	return label, true
+}
+
+// lines renders the @annotation lines for one activity.
+//
+// The short form is kept wherever it is lossless: an unshared note sitting at
+// the position and size the writer would re-derive emits `@annotation 'text'`,
+// exactly as before. Only a note that is shared, or that has been moved or
+// resized on the canvas, pays for the longer form — so this fix does not churn
+// the output of every microflow that has a note in it.
+func (e *annotationEmitter) lines(target model.ID, activityPos model.Point, indentStr string) []string {
+	if e == nil {
+		return nil
+	}
+	var out []string
+	for i, note := range e.byTarget[target] {
+		if note.Shared {
+			label, first := e.labelFor(note.ID)
+			if !first {
+				out = append(out, indentStr+fmt.Sprintf("@annotation(id: %s)", label))
+				continue
+			}
+			// A shared note's geometry is always spelled out. Its default
+			// depends on which mention created it, and pinning that down would
+			// couple the two sides far more tightly than it is worth.
+			out = append(out, indentStr+fmt.Sprintf("@annotation(id: %s, text: %s, position: (%d, %d), size: (%d, %d))",
+				label, mdlQuote(note.Caption), note.Position.X, note.Position.Y, note.Size.Width, note.Size.Height))
+			continue
+		}
+
+		defPos, defSize := defaultAnnotationGeometry(activityPos, i)
+		var params []string
+		if note.Position != defPos {
+			params = append(params, fmt.Sprintf("position: (%d, %d)", note.Position.X, note.Position.Y))
+		}
+		if note.Size != defSize && note.Size != (model.Size{}) {
+			params = append(params, fmt.Sprintf("size: (%d, %d)", note.Size.Width, note.Size.Height))
+		}
+		if len(params) == 0 {
+			out = append(out, indentStr+fmt.Sprintf("@annotation %s", mdlQuote(note.Caption)))
+			continue
+		}
+		out = append(out, indentStr+fmt.Sprintf("@annotation(text: %s, %s)",
+			mdlQuote(note.Caption), strings.Join(params, ", ")))
+	}
+	return out
+}
+
+// collectFreeAnnotations returns the annotations no AnnotationFlow points at —
+// notes that sit on the canvas documenting the flow as a whole.
+func collectFreeAnnotations(oc *microflows.MicroflowObjectCollection) []describedAnnotation {
 	if oc == nil {
 		return nil
 	}
 
-	// Collect annotation IDs that are referenced by flows
 	referencedAnnotations := make(map[model.ID]bool)
 	for _, af := range oc.AnnotationFlows {
 		referencedAnnotations[af.OriginID] = true
 	}
 
-	var result []string
+	var result []describedAnnotation
 	for _, obj := range oc.Objects {
 		if annot, ok := obj.(*microflows.Annotation); ok {
 			if !referencedAnnotations[annot.ID] && annot.Caption != "" {
-				result = append(result, annot.Caption)
+				result = append(result, describedAnnotation{
+					ID: annot.ID, Caption: annot.Caption,
+					Position: annot.Position, Size: annot.Size,
+				})
 			}
 		}
 	}
@@ -105,8 +229,15 @@ func prependFreeAnnotationLines(oc *microflows.MicroflowObjectCollection, activi
 	}
 
 	prefix := make([]string, 0, len(freeAnnots))
-	for _, text := range freeAnnots {
-		prefix = append(prefix, fmt.Sprintf("@annotation %s", mdlQuote(text)))
+	for _, note := range freeAnnots {
+		// A free note is attached to nothing, so there is no activity position
+		// to derive its default from — the writer places it from wherever the
+		// cursor happens to be. Its geometry is therefore always spelled out.
+		line := fmt.Sprintf("@annotation(text: %s, position: (%d, %d)", mdlQuote(note.Caption), note.Position.X, note.Position.Y)
+		if note.Size != (model.Size{}) {
+			line += fmt.Sprintf(", size: (%d, %d)", note.Size.Width, note.Size.Height)
+		}
+		prefix = append(prefix, line+")")
 	}
 	return append(prefix, activityLines...)
 }
@@ -629,7 +760,7 @@ func emitObjectAnnotations(
 	obj microflows.MicroflowObject,
 	lines *[]string,
 	indentStr string,
-	annotationsByTarget map[model.ID][]string,
+	annotationsByTarget *annotationEmitter,
 	flowsByOrigin map[model.ID][]*microflows.SequenceFlow,
 	flowsByDest map[model.ID][]*microflows.SequenceFlow,
 	activityMap map[model.ID]microflows.MicroflowObject,
@@ -671,11 +802,7 @@ func emitObjectAnnotations(
 	}
 
 	// @annotation (attached Annotation objects)
-	if annotationsByTarget != nil {
-		for _, caption := range annotationsByTarget[currentID] {
-			*lines = append(*lines, indentStr+fmt.Sprintf("@annotation %s", mdlQuote(caption)))
-		}
-	}
+	*lines = append(*lines, annotationsByTarget.lines(currentID, pos, indentStr)...)
 }
 
 // emitActivityStatement appends the formatted activity statement (with error handling)
@@ -692,7 +819,7 @@ func emitActivityStatement(
 	microflowNames map[model.ID]string,
 	lines *[]string,
 	indentStr string,
-	annotationsByTarget map[model.ID][]string,
+	annotationsByTarget *annotationEmitter,
 ) {
 	if stmt == "" {
 		return
@@ -715,7 +842,7 @@ func emitActivityStatement(
 		// render it commented-out, so the artifact still shows what the model
 		// holds. Guard-don't-drop, in a path that cannot round-trip.
 		emitCommentedErrorHandler(
-			ctx, obj, flowsByOrigin, activityMap, entityNames, microflowNames, lines, indentStr)
+			ctx, obj, flowsByOrigin, activityMap, entityNames, microflowNames, lines, indentStr, annotationsByTarget)
 		return
 	}
 
@@ -739,7 +866,7 @@ func emitActivityStatement(
 		errStmts := collectErrorHandlerStatements(
 			ctx,
 			errorHandlerFlow.DestinationID,
-			activityMap, flowsByOrigin, entityNames, microflowNames,
+			activityMap, flowsByOrigin, entityNames, microflowNames, annotationsByTarget,
 		)
 
 		stmtWithoutSemi := strings.TrimSuffix(strings.TrimSpace(stmt), ";")
@@ -784,6 +911,7 @@ func emitCommentedErrorHandler(
 	microflowNames map[model.ID]string,
 	lines *[]string,
 	indentStr string,
+	annotationsByTarget *annotationEmitter,
 ) {
 	errorHandlerFlow := findErrorHandlerFlow(flowsByOrigin[obj.GetID()])
 	if errorHandlerFlow == nil {
@@ -800,7 +928,7 @@ func emitCommentedErrorHandler(
 	}
 
 	errStmts := collectErrorHandlerStatements(
-		ctx, errorHandlerFlow.DestinationID, activityMap, flowsByOrigin, entityNames, microflowNames)
+		ctx, errorHandlerFlow.DestinationID, activityMap, flowsByOrigin, entityNames, microflowNames, annotationsByTarget)
 	if len(errStmts) == 0 {
 		*lines = append(*lines, indentStr+"-- "+suffix+" { };")
 		return
@@ -841,7 +969,7 @@ func traverseFlow(
 	indent int,
 	sourceMap map[string]elkSourceRange,
 	headerLineCount int,
-	annotationsByTarget map[model.ID][]string,
+	annotationsByTarget *annotationEmitter,
 ) {
 	if currentID == "" || visited[currentID] {
 		return
@@ -1032,7 +1160,7 @@ func traverseFlowUntilMerge(
 	indent int,
 	sourceMap map[string]elkSourceRange,
 	headerLineCount int,
-	annotationsByTarget map[model.ID][]string,
+	annotationsByTarget *annotationEmitter,
 ) {
 	if currentID == "" || currentID == mergeID || visited[currentID] {
 		return
@@ -1201,7 +1329,7 @@ func continueAfterSplitJoin(
 	indent int,
 	sourceMap map[string]elkSourceRange,
 	headerLineCount int,
-	annotationsByTarget map[model.ID][]string,
+	annotationsByTarget *annotationEmitter,
 ) {
 	if joinID == "" {
 		return
@@ -1231,7 +1359,7 @@ func continueAfterNestedSplitJoin(
 	indent int,
 	sourceMap map[string]elkSourceRange,
 	headerLineCount int,
-	annotationsByTarget map[model.ID][]string,
+	annotationsByTarget *annotationEmitter,
 ) {
 	if joinID == "" || joinID == parentMergeID {
 		return
@@ -1319,7 +1447,7 @@ func traverseLoopBody(
 	indent int,
 	sourceMap map[string]elkSourceRange,
 	headerLineCount int,
-	annotationsByTarget map[model.ID][]string,
+	annotationsByTarget *annotationEmitter,
 ) {
 	// Loop bodies can contain the same structured control flow as top-level
 	// microflows. Reuse the main traversal with a loop-local split/merge map so
@@ -1341,13 +1469,13 @@ func emitLoopBody(
 	indent int,
 	sourceMap map[string]elkSourceRange,
 	headerLineCount int,
-	annotationsByTarget map[model.ID][]string,
+	annotationsByTarget *annotationEmitter,
 ) {
 	if loop.ObjectCollection == nil || len(loop.ObjectCollection.Objects) == 0 {
 		return
 	}
 
-	loopAnnotationsByTarget := mergeAnnotationsByTarget(annotationsByTarget, buildAnnotationsByTarget(loop.ObjectCollection))
+	loopAnnotationsByTarget := annotationsByTarget.withOverlay(buildAnnotationsByTarget(loop.ObjectCollection))
 
 	// Build a map of objects in the loop body
 	loopActivityMap := make(map[model.ID]microflows.MicroflowObject)
@@ -1563,7 +1691,7 @@ func emitEnumSplitStatement(
 	indent int,
 	sourceMap map[string]elkSourceRange,
 	headerLineCount int,
-	annotationsByTarget map[model.ID][]string,
+	annotationsByTarget *annotationEmitter,
 ) {
 	indentStr := strings.Repeat("  ", indent)
 	*lines = append(*lines, indentStr+"case $"+variable)
@@ -1620,7 +1748,7 @@ func emitInheritanceSplitStatement(
 	indent int,
 	sourceMap map[string]elkSourceRange,
 	headerLineCount int,
-	annotationsByTarget map[model.ID][]string,
+	annotationsByTarget *annotationEmitter,
 ) {
 	split, _ := activityMap[currentID].(*microflows.InheritanceSplit)
 	if split == nil {
@@ -2040,53 +2168,59 @@ func hasCustomErrorHandler(errType microflows.ErrorHandlingType) bool {
 
 // getActionErrorHandlingType extracts the ErrorHandlingType from the action inside an ActionActivity.
 // Most action types store ErrorHandlingType at the action level, not the activity level.
+//
+// This gates far more than a suffix. emitActivityStatement only walks an
+// activity's error branch when hasCustomErrorHandler() agrees, so an action whose
+// type is not reported here loses its ENTIRE `on error { … }` block from DESCRIBE
+// — silently, and in valid-looking MDL, so a describe→edit→exec round-trip
+// deletes the handler from the model (mendixlabs/mxcli#1078).
 func getActionErrorHandlingType(activity *microflows.ActionActivity) microflows.ErrorHandlingType {
 	if activity == nil || activity.Action == nil {
 		return ""
 	}
 
-	switch action := activity.Action.(type) {
-	case *microflows.MicroflowCallAction:
-		return action.ErrorHandlingType
-	case *microflows.NanoflowCallAction:
-		return action.ErrorHandlingType
-	case *microflows.JavaActionCallAction:
-		return action.ErrorHandlingType
-	case *microflows.JavaScriptActionCallAction:
-		return action.ErrorHandlingType
-	case *microflows.CallExternalAction:
-		return action.ErrorHandlingType
-	case *microflows.RestCallAction:
-		return action.ErrorHandlingType
-	case *microflows.WebServiceCallAction:
-		return action.ErrorHandlingType
-	case *microflows.RestOperationCallAction:
-		return "" // RestOperationCallAction does not support custom error handling (CE6035)
-	case *microflows.ExecuteDatabaseQueryAction:
-		return action.ErrorHandlingType
-	case *microflows.ImportXmlAction:
-		return action.ErrorHandlingType
-	case *microflows.ExportXmlAction:
-		return action.ErrorHandlingType
-	case *microflows.CommitObjectsAction:
-		return action.ErrorHandlingType
-	case *microflows.RetrieveAction:
-		return action.ErrorHandlingType
-	case *microflows.DeleteObjectAction:
-		return action.ErrorHandlingType
-	case *microflows.DownloadFileAction:
-		return action.ErrorHandlingType
-	case *microflows.SynchronizeAction:
-		return action.ErrorHandlingType
-	case *microflows.UnsupportedAction:
-		// Read off the stored action by property name — see errorHandlingTypeOf.
-		// Without this the handler on an unmapped action reads as "no error
-		// handling" and its branch is dropped (#863).
-		return action.ErrorHandlingType
-	default:
-		// Fall back to activity level for action types without ErrorHandlingType field
-		return activity.ErrorHandlingType
+	// The one deliberate exclusion: the field is stored, but Mendix refuses a
+	// custom handler on this action (CE6035), so reporting it would render a
+	// block that cannot be executed back.
+	if _, ok := activity.Action.(*microflows.RestOperationCallAction); ok {
+		return ""
 	}
+
+	if errType := actionErrorHandlingField(activity.Action); errType != "" {
+		return errType
+	}
+	// Fall back to activity level for action types without ErrorHandlingType field.
+	return activity.ErrorHandlingType
+}
+
+// actionErrorHandlingField reads ErrorHandlingType off any action that declares it.
+//
+// Reflection rather than a case per action type. The hand-maintained switch this
+// replaces had drifted to 17 of the 38 action types that carry the field, and
+// every one of the 21 it missed — CreateObjectAction and ChangeObjectAction
+// among them — dropped that activity's whole error branch from DESCRIBE. The
+// list had already been patched twice for individual instances (#863, #1020's
+// neighbour) and silently regrew, which is what makes an enumeration the wrong
+// shape here: a new action type must not have to be remembered.
+//
+// Actions embed model.BaseElement, which has no such field, so a promoted field
+// cannot be picked up by accident.
+func actionErrorHandlingField(action microflows.MicroflowAction) microflows.ErrorHandlingType {
+	v := reflect.ValueOf(action)
+	for v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return ""
+		}
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return ""
+	}
+	f := v.FieldByName("ErrorHandlingType")
+	if !f.IsValid() || f.Kind() != reflect.String {
+		return ""
+	}
+	return microflows.ErrorHandlingType(f.String())
 }
 
 // collectErrorHandlerStatements traverses the error handler flow and collects statements.
@@ -2098,10 +2232,20 @@ func collectErrorHandlerStatements(
 	flowsByOrigin map[model.ID][]*microflows.SequenceFlow,
 	entityNames map[model.ID]string,
 	microflowNames map[model.ID]string,
+	annotationsByTarget *annotationEmitter,
 ) []string {
 	var statements []string
 	visited := make(map[model.ID]bool)
 	stopID := firstReachableErrorHandlerMerge(startID, activityMap, flowsByOrigin)
+
+	// A note on a handler-body activity is emitted here or nowhere: this
+	// traversal is a second, smaller describer and the main one never reaches
+	// inside an `on error { … }` block. Without it the write path attaches the
+	// note and the read path drops it, which is the same round-trip loss #1077
+	// is about, one nesting level down.
+	notes := func(obj microflows.MicroflowObject, indentStr string) {
+		statements = append(statements, annotationsByTarget.lines(obj.GetID(), obj.GetPosition(), indentStr)...)
+	}
 	splitMergeMap := findErrorHandlerSplitMergePoints(ctx, activityMap, flowsByOrigin)
 
 	var traverse func(id model.ID, boundary model.ID, indent int)
@@ -2122,6 +2266,7 @@ func collectErrorHandlerStatements(
 		if _, isSplit := obj.(*microflows.ExclusiveSplit); isSplit {
 			stmt := formatActivity(ctx, obj, entityNames, microflowNames)
 			if stmt != "" {
+				notes(obj, indentStr)
 				statements = append(statements, indentStr+stmt)
 			}
 			nestedMergeID := splitMergeMap[id]
@@ -2148,6 +2293,7 @@ func collectErrorHandlerStatements(
 		}
 
 		if stmt := formatActivity(ctx, obj, entityNames, microflowNames); stmt != "" {
+			notes(obj, indentStr)
 			statements = append(statements, indentStr+stmt)
 		}
 		for _, flow := range findNormalFlows(flowsByOrigin[id]) {
@@ -2222,7 +2368,7 @@ func (e *Executor) traverseFlow(
 	indent int,
 	sourceMap map[string]elkSourceRange,
 	headerLineCount int,
-	annotationsByTarget map[model.ID][]string,
+	annotationsByTarget *annotationEmitter,
 ) {
 	// Legacy wrapper — preserved for tests and unmigrated callers that don't
 	// supply flowsByDest. Passing nil suppresses @anchor emission, matching
@@ -2271,6 +2417,7 @@ func (e *Executor) collectErrorHandlerStatements(
 	flowsByOrigin map[model.ID][]*microflows.SequenceFlow,
 	entityNames map[model.ID]string,
 	microflowNames map[model.ID]string,
+	annotationsByTarget *annotationEmitter,
 ) []string {
-	return collectErrorHandlerStatements(e.newExecContext(context.Background()), startID, activityMap, flowsByOrigin, entityNames, microflowNames)
+	return collectErrorHandlerStatements(e.newExecContext(context.Background()), startID, activityMap, flowsByOrigin, entityNames, microflowNames, annotationsByTarget)
 }

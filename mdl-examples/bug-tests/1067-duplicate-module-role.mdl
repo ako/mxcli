@@ -1,0 +1,40 @@
+-- mendixlabs/mxcli#1067, follow-up: a duplicate CREATE MODULE ROLE.
+--
+-- The last survivor of the under-reporting class dbe5cc2a closed for documents.
+-- `create module role M.Admin` on a role that already exists passed
+-- `check --references` and then failed at exec — after every statement before it
+-- had been written, since mxcli does not run a script in one transaction. A
+-- module role is not a *document*, so it was never in stmtCreateInfo and fell
+-- outside that sweep.
+--
+-- Run this twice against the same project:
+--
+--     mxcli exec 1067-duplicate-module-role.mdl -p app.mpr      # first run: creates
+--     mxcli check 1067-duplicate-module-role.mdl -p app.mpr --references
+--
+-- The second command now reports:
+--     statement 2: module role already exists in project: Zz1067d.Admin
+--         — use CREATE OR MODIFY to update it
+--
+-- This repro is a plain .mdl, not a .fail.mdl: the check needs a project to
+-- decide anything, and `make check-mdl` runs `check` WITHOUT one. Naming it
+-- .fail.mdl would report "negative test unexpectedly passed" — a working rule
+-- made to look regressed. The guard itself is covered by unit tests in
+-- mdl/executor/validate_duplicates_module_role_test.go.
+--
+-- Two cases that must stay clean, and are the reason this is not a blanket
+-- "role exists" check:
+--
+--   * CREATE OR MODIFY (below) — the re-runnable spelling the docs recommend.
+--   * A role mxcli AUTO-PROVISIONED. Creating any document in a module with no
+--     roles makes mxcli add `User` itself; `create module role M.User` then
+--     SUCCEEDS at exec ("already exists (auto-provisioned)"), adopting the
+--     caller's casing. Flagging that would refuse a working script over a role
+--     the user never asked for.
+
+create module Zz1067d;
+
+create module role Zz1067d.Admin description 'Full access';
+
+-- Re-runnable: this one is never reported, on any run.
+create or modify module role Zz1067d.Viewer description 'Read-only';

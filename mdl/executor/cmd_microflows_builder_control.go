@@ -614,6 +614,19 @@ func (fb *flowBuilder) addLoopStatement(s *ast.LoopStmt) model.ID {
 		hierarchy:    fb.hierarchy,    // Share hierarchy
 		restServices: fb.restServices, // Share REST services for parameter classification
 		isNanoflow:   fb.isNanoflow,
+		// Share the note registry, so a note declared outside the loop and
+		// referenced on a body activity attaches to the SAME Annotation rather
+		// than being refused. The describer emits exactly that (its label state
+		// is shared across the loop overlay), so a builder that refused it would
+		// reject its own DESCRIBE output.
+		//
+		// The resulting shape — Annotation in the parent collection, both
+		// AnnotationFlows in the parent collection, one destination inside the
+		// loop — was measured at 0 errors on mxbuild 11.13. mxbuild is the only
+		// oracle available here; Studio Pro is stricter in general, though this
+		// is the same split mxcli already ships for an ordinary loop-body note,
+		// whose flow is hoisted to the parent a few lines below. (#1077)
+		annotationsByLabel: fb.annotationsByLabel,
 	}
 
 	// Process loop body statements and connect them with flows.
@@ -701,6 +714,13 @@ func (fb *flowBuilder) addLoopStatement(s *ast.LoopStmt) model.ID {
 	// This is how Mendix stores them - all flows at the microflow level
 	fb.flows = append(fb.flows, loopBuilder.flows...)
 	fb.annotationFlows = append(fb.annotationFlows, loopBuilder.annotationFlows...)
+	// Refusals raised in the body were collected into the sub-builder and
+	// dropped on the floor, so exec reported success on a flow it had silently
+	// written wrong (#1077).
+	fb.errors = append(fb.errors, loopBuilder.errors...)
+	if fb.annotationsByLabel == nil {
+		fb.annotationsByLabel = loopBuilder.annotationsByLabel
+	}
 
 	// Re-apply this loop's own annotations now that its activity exists.
 	if savedLoopAnnotations != nil {
@@ -932,6 +952,19 @@ func (fb *flowBuilder) addWhileStatement(s *ast.WhileStmt) model.ID {
 		hierarchy:    fb.hierarchy,
 		restServices: fb.restServices,
 		isNanoflow:   fb.isNanoflow,
+		// Share the note registry, so a note declared outside the loop and
+		// referenced on a body activity attaches to the SAME Annotation rather
+		// than being refused. The describer emits exactly that (its label state
+		// is shared across the loop overlay), so a builder that refused it would
+		// reject its own DESCRIBE output.
+		//
+		// The resulting shape — Annotation in the parent collection, both
+		// AnnotationFlows in the parent collection, one destination inside the
+		// loop — was measured at 0 errors on mxbuild 11.13. mxbuild is the only
+		// oracle available here; Studio Pro is stricter in general, though this
+		// is the same split mxcli already ships for an ordinary loop-body note,
+		// whose flow is hoisted to the parent a few lines below. (#1077)
+		annotationsByLabel: fb.annotationsByLabel,
 	}
 
 	// Body bookkeeping is addLoopStatement's, verbatim: a WHILE body is a loop
@@ -1009,6 +1042,13 @@ func (fb *flowBuilder) addWhileStatement(s *ast.WhileStmt) model.ID {
 	fb.objects = append(fb.objects, loop)
 	fb.flows = append(fb.flows, loopBuilder.flows...)
 	fb.annotationFlows = append(fb.annotationFlows, loopBuilder.annotationFlows...)
+	// Refusals raised in the body were collected into the sub-builder and
+	// dropped on the floor, so exec reported success on a flow it had silently
+	// written wrong (#1077).
+	fb.errors = append(fb.errors, loopBuilder.errors...)
+	if fb.annotationsByLabel == nil {
+		fb.annotationsByLabel = loopBuilder.annotationsByLabel
+	}
 
 	if savedWhileAnnotations != nil {
 		fb.applyAnnotations(loop.ID, savedWhileAnnotations)

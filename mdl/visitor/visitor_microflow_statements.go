@@ -107,8 +107,12 @@ func buildMicroflowStatement(ctx parser.IMicroflowStatementContext) ast.Microflo
 		stmt = buildRemoveFromListStatement(removeFrom)
 	} else if showPage := mfCtx.ShowPageStatement(); showPage != nil {
 		stmt = buildShowPageStatement(showPage)
-	} else if mfCtx.ClosePageStatement() != nil {
-		stmt = &ast.ClosePageStmt{NumberOfPages: 1}
+	} else if closePage := mfCtx.ClosePageStatement(); closePage != nil {
+		close := &ast.ClosePageStmt{NumberOfPages: 1}
+		if errClause := closePage.OnErrorClause(); errClause != nil {
+			close.ErrorHandling = buildOnErrorClause(errClause)
+		}
+		stmt = close
 	} else if mfCtx.ShowHomePageStatement() != nil {
 		stmt = &ast.ShowHomePageStmt{}
 	} else if showMsg := mfCtx.ShowMessageStatement(); showMsg != nil {
@@ -280,17 +284,30 @@ func extractMicroflowAnnotations(annotations []parser.IAnnotationContext) *ast.A
 			seenActivityMetadata = true
 
 		case "annotation":
-			// @annotation 'text' — bare annotationValue
-			if valCtx := ann.AnnotationValue(); valCtx != nil {
-				text := extractAnnotationValueString(valCtx)
-				if text != "" {
-					if !seenActivityMetadata && hasLaterActivityAnnotation(annotations, i+1) {
-						result.FreeAnnotations = append(result.FreeAnnotations, text)
-					} else {
-						result.AnnotationText = text
-					}
-					hasAny = true
+			// Two forms. `@annotation 'text'` is the everyday one and is
+			// unchanged. `@annotation(id: n1, text: '…', position: (x, y),
+			// size: (w, h))` carries the note's identity and geometry, which the
+			// bare form cannot express (#1077).
+			//
+			// The annotation rule already accepted parenthesised params, so that
+			// form PARSED before this and was silently discarded. Two of the
+			// four keys still needed a grammar change: `text` and `position` are
+			// lexer keywords, and a keyword key does not fail the parse — it
+			// falls through to annotationParam's positional alternative — so
+			// they were being accepted and quietly ignored.
+			note, ok := parseNoteAnnotation(ann, result)
+			if ok {
+				// Free-floating only when nothing has claimed this statement
+				// yet AND an activity annotation follows: the note belongs to
+				// the canvas, not to the statement below it.
+				if !seenActivityMetadata && hasLaterActivityAnnotation(annotations, i+1) {
+					result.FreeNotes = append(result.FreeNotes, note)
+				} else {
+					result.Notes = append(result.Notes, note)
 				}
+				hasAny = true
+			} else if len(result.InvalidNotes) > 0 {
+				hasAny = true
 			}
 
 		case "excluded":
@@ -367,6 +384,79 @@ func extractMicroflowAnnotations(annotations []parser.IAnnotationContext) *ast.A
 		return nil
 	}
 	return result
+}
+
+// parseNoteAnnotation reads one `@annotation` into a MicroflowAnnotation.
+//
+// Anything it cannot use is recorded on result.InvalidNotes rather than
+// dropped, and makes the note itself invalid: a typo'd parameter would
+// otherwise cost the reader the whole note, or — worse for `id:` — turn a
+// reference to an existing note into a second, textless one. Validation refuses
+// them (MDL079); the visitor's job is only to not lose them.
+func parseNoteAnnotation(ann *parser.AnnotationContext, result *ast.ActivityAnnotations) (ast.MicroflowAnnotation, bool) {
+	var note ast.MicroflowAnnotation
+
+	// @annotation 'text' — the bare form.
+	if valCtx := ann.AnnotationValue(); valCtx != nil {
+		note.Text = extractAnnotationValueString(valCtx)
+		return note, note.Text != ""
+	}
+
+	params := ann.AnnotationParams()
+	if params == nil {
+		return note, false
+	}
+
+	for _, p := range params.(*parser.AnnotationParamsContext).AllAnnotationParam() {
+		pCtx := p.(*parser.AnnotationParamContext)
+		nameCtx := pCtx.AnnotationParamName()
+		if nameCtx == nil {
+			// Positional. Deliberately unsupported: `@annotation('a', 'b')`
+			// has no reading that is obviously right, and guessing one would
+			// silently mean something.
+			result.InvalidNotes = append(result.InvalidNotes, strings.TrimSpace(pCtx.GetText()))
+			continue
+		}
+		switch strings.ToLower(nameCtx.GetText()) {
+		case "id":
+			if v := pCtx.AnnotationValue(); v != nil {
+				note.Label = extractAnnotationValueIdentifier(v)
+			}
+			if note.Label == "" {
+				result.InvalidNotes = append(result.InvalidNotes, strings.TrimSpace(pCtx.GetText()))
+			}
+		case "text":
+			if v := pCtx.AnnotationValue(); v != nil {
+				note.Text = extractAnnotationValueString(v)
+			}
+			if note.Text == "" {
+				result.InvalidNotes = append(result.InvalidNotes, strings.TrimSpace(pCtx.GetText()))
+			}
+		case "position":
+			pt, ok := annotationPointValue(pCtx)
+			if !ok {
+				result.InvalidNotes = append(result.InvalidNotes, strings.TrimSpace(pCtx.GetText()))
+				continue
+			}
+			note.Position = pt
+		case "size":
+			pt, ok := annotationPointValue(pCtx)
+			if !ok {
+				result.InvalidNotes = append(result.InvalidNotes, strings.TrimSpace(pCtx.GetText()))
+				continue
+			}
+			note.Size = &ast.BoxSize{Width: pt.X, Height: pt.Y}
+		default:
+			result.InvalidNotes = append(result.InvalidNotes, strings.TrimSpace(pCtx.GetText()))
+		}
+	}
+
+	// A note needs either text (a declaration) or a label (a reference to one).
+	if note.Text == "" && note.Label == "" {
+		result.InvalidNotes = append(result.InvalidNotes, strings.TrimSpace(ann.GetText()))
+		return note, false
+	}
+	return note, true
 }
 
 func hasLaterActivityAnnotation(annotations []parser.IAnnotationContext, start int) bool {
@@ -668,6 +758,11 @@ func buildDeclareStatement(ctx parser.IDeclareStatementContext) *ast.DeclareStmt
 		stmt.InitialValue = appendStatementExpressionTrailingWhitespace(expr, stmt.InitialValue)
 	}
 
+	// Check for ON ERROR clause
+	if errClause := declCtx.OnErrorClause(); errClause != nil {
+		stmt.ErrorHandling = buildOnErrorClause(errClause)
+	}
+
 	return stmt
 }
 
@@ -725,7 +820,34 @@ func buildCastObjectStatement(ctx parser.ICastObjectStatementContext) *ast.CastO
 // buildSetStatement converts SET statement context to MfSetStmt or specialized statement types.
 // When the expression is a list operation (HEAD, TAIL, etc.) or aggregate (COUNT, SUM, etc.),
 // this returns the specialized statement type instead of MfSetStmt.
+//
+// The ON ERROR clause is attached here rather than at each of the dozen return
+// points below. Only the plain MfSetStmt form can honour it — Mendix gives
+// ChangeVariableAction an ErrorHandlingType but gives ListOperationsAction and
+// AggregateAction none — so the specialized nodes carry it only to be refused by
+// MDL077, never to be executed.
 func buildSetStatement(ctx parser.ISetStatementContext) ast.MicroflowStatement {
+	stmt := buildSetStatementNode(ctx)
+	if stmt == nil || ctx == nil {
+		return stmt
+	}
+	errClause := ctx.(*parser.SetStatementContext).OnErrorClause()
+	if errClause == nil {
+		return stmt
+	}
+	eh := buildOnErrorClause(errClause)
+	switch s := stmt.(type) {
+	case *ast.MfSetStmt:
+		s.ErrorHandling = eh
+	case *ast.ListOperationStmt:
+		s.ErrorHandling = eh
+	case *ast.AggregateListStmt:
+		s.ErrorHandling = eh
+	}
+	return stmt
+}
+
+func buildSetStatementNode(ctx parser.ISetStatementContext) ast.MicroflowStatement {
 	if ctx == nil {
 		return nil
 	}
@@ -1097,6 +1219,11 @@ func buildChangeObjectStatement(ctx parser.IChangeObjectStatementContext) *ast.C
 	}
 	stmt.Commit = buildCommitClause(changeCtx.CommitClause())
 	stmt.RefreshInClient = changeCtx.REFRESH() != nil
+
+	// Check for ON ERROR clause
+	if errClause := changeCtx.OnErrorClause(); errClause != nil {
+		stmt.ErrorHandling = buildOnErrorClause(errClause)
+	}
 
 	return stmt
 }

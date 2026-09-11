@@ -44,6 +44,7 @@ pattern (rule + `.fail.mdl` repro + `fix-issue.md` CE→rule row):
 | `MDL-WIDGET15` | adjacent inline (Text/Paragraph) dynamictexts fuse | info (layout) |
 | `MDL031` (pass-through) | view pass-through string column length ≠ source → CE6770 | `--references` |
 | (assoc validate) | `create association` to/from a view entity → CE6771 | `--references` |
+| `MDL-WF06` | enumeration decision / call-microflow outcomes with no empty-valued branch → CE6686 | syntax-only |
 
 Two more ledger cases in this class were closed by **fixing the write path** rather
 than adding a check — the MDL is structurally valid, so `check` can't see it; the
@@ -51,6 +52,23 @@ model was being *written* wrong: navigation-list item names (CE7247/CE0495) and 
 orphaned index left by `create or modify` dropping an indexed attribute (which
 *crashed* `mx check`). These belong to the same "check ↔ build parity" mission but
 are writer fixes, not heuristics.
+
+**`MDL-WF06` (2026-09).** Mendix generates a decision's outcomes as *one per
+enumeration value plus one for the empty value*, and MxBuild compares the stored
+set against that generated set — so an enumeration decision written without
+`'' -> { }` is CE6686 ("Regenerate the outcomes"), which `check` and `exec` both
+accepted. Measured on mxbuild 11.10.0 in a blank app: the two-value decision is 1
+error and adding the empty outcome takes it to 0; a **required (`not null`)**
+attribute does *not* exempt it (still CE6686), which is what settles the severity
+as error rather than warning; and a `call microflow` activity branching on an
+enumeration return fails and clears identically, so the rule runs at both call
+sites. mxbuild wants set *equality*, so a missing enumeration **value** is CE6686
+too — that half needs the enumeration's definition and belongs to the reference
+pass, not to a syntax-only rule. It is also the first workflow rule to run on
+`ALTER WORKFLOW`: an inserted or replaced activity reaches the same build error
+(measured), and nothing had ever validated one. The other workflow rules stay
+CREATE-only on purpose — MDL-WF01/WF02 describe a state a later op in the same
+script can repair, and MDL-WF05 needs activities the ALTER statement cannot see.
 
 **Standing policy:** when a new missing check is reported, implement it here (or as
 a write-path fix when the construct is valid MDL). The two remaining originally-

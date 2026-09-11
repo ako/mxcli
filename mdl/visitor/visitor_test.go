@@ -1962,11 +1962,11 @@ END;`
 	if logStmt.Annotations == nil {
 		t.Fatal("expected annotations")
 	}
-	if got := logStmt.Annotations.FreeAnnotations; len(got) != 1 || got[0] != "free note" {
+	if got := logStmt.Annotations.FreeNotes; len(got) != 1 || got[0].Text != "free note" {
 		t.Fatalf("free annotations = %#v, want [free note]", got)
 	}
-	if logStmt.Annotations.AnnotationText != "" {
-		t.Fatalf("attached annotation = %q, want empty", logStmt.Annotations.AnnotationText)
+	if len(logStmt.Annotations.Notes) != 0 {
+		t.Fatalf("attached annotations = %#v, want empty", logStmt.Annotations.Notes)
 	}
 }
 
@@ -1996,11 +1996,12 @@ END;`
 		t.Fatal("expected annotations")
 	}
 	want := []string{"first free note", "second free note", "third free note"}
-	if got := logStmt.Annotations.FreeAnnotations; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+	got := logStmt.Annotations.FreeNotes
+	if len(got) != len(want) || got[0].Text != want[0] || got[1].Text != want[1] || got[2].Text != want[2] {
 		t.Fatalf("free annotations = %#v, want %#v", got, want)
 	}
-	if logStmt.Annotations.AnnotationText != "" {
-		t.Fatalf("attached annotation = %q, want empty", logStmt.Annotations.AnnotationText)
+	if len(logStmt.Annotations.Notes) != 0 {
+		t.Fatalf("attached annotations = %#v, want empty", logStmt.Annotations.Notes)
 	}
 }
 
@@ -2027,11 +2028,11 @@ END;`
 	if logStmt.Annotations == nil {
 		t.Fatal("expected annotations")
 	}
-	if logStmt.Annotations.AnnotationText != "attached note" {
-		t.Fatalf("attached annotation = %q, want attached note", logStmt.Annotations.AnnotationText)
+	if got := logStmt.Annotations.Notes; len(got) != 1 || got[0].Text != "attached note" {
+		t.Fatalf("attached annotations = %#v, want [attached note]", got)
 	}
-	if len(logStmt.Annotations.FreeAnnotations) != 0 {
-		t.Fatalf("free annotations = %#v, want empty", logStmt.Annotations.FreeAnnotations)
+	if len(logStmt.Annotations.FreeNotes) != 0 {
+		t.Fatalf("free annotations = %#v, want empty", logStmt.Annotations.FreeNotes)
 	}
 }
 

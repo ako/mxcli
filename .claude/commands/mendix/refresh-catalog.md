@@ -31,6 +31,12 @@ REFRESH CATALOG FULL FORCE;
 - Use FULL mode before using SEARCH command
 - Use SOURCE mode for searching MDL definitions
 
+The cache's mode is sticky. Once a project has a FULL or SOURCE cache, a plain
+`REFRESH CATALOG` rebuilds at that level rather than dropping to FAST, and a
+command that needs less (`mxcli check -p`, `show structure`, `describe`) never
+replaces it with a narrower one. To go back to a cheaper level, delete
+`.mxcli/catalog.db` and refresh.
+
 ## Example Queries After Refresh
 
 ```sql

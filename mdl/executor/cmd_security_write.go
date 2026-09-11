@@ -213,10 +213,9 @@ func execCreateUserRole(ctx *ExecContext, s *ast.CreateUserRoleStmt) error {
 	}
 
 	// Build qualified module role names
-	var moduleRoleNames []string
-	for _, mr := range s.ModuleRoles {
-		qn := mr.Module + "." + mr.Name
-		moduleRoleNames = append(moduleRoleNames, qn)
+	moduleRoleNames, err := qualifiedModuleRoleNames(s.ModuleRoles)
+	if err != nil {
+		return err
 	}
 
 	// Check if role already exists
@@ -276,9 +275,9 @@ func execAlterUserRole(ctx *ExecContext, s *ast.AlterUserRoleStmt) error {
 	}
 
 	// Build qualified module role names
-	var moduleRoleNames []string
-	for _, mr := range s.ModuleRoles {
-		moduleRoleNames = append(moduleRoleNames, mr.Module+"."+mr.Name)
+	moduleRoleNames, err := qualifiedModuleRoleNames(s.ModuleRoles)
+	if err != nil {
+		return err
 	}
 
 	if err := ctx.Backend.AlterUserRoleModuleRoles(ps.ID, s.Name, s.Add, moduleRoleNames); err != nil {
@@ -1064,10 +1063,47 @@ func execRevokeWorkflowAccess(ctx *ExecContext, s *ast.RevokeWorkflowAccessStmt)
 }
 
 // validateModuleRole checks that a module role exists in the project.
+// qualifiedModuleRoleNames renders a statement's module-role list as
+// "Module.Role" strings, refusing any entry that has no module.
+//
+// The refusal is the point. A user-role statement does not resolve its module
+// roles against the project — it stores the names it is given — so an
+// unqualified `Wide` used to be concatenated into ".Wide" and written out with a
+// success message. Nothing in mxcli complained; mxbuild refused the project with
+// CE1613 "The selected module role '.Wide' no longer exists"
+// (mendixlabs/mxcli#1067). Reported as MDL-GRANT02 at check time.
+func qualifiedModuleRoleNames(roles []ast.QualifiedName) ([]string, error) {
+	out := make([]string, 0, len(roles))
+	for _, r := range roles {
+		if r.Module == "" {
+			return nil, mdlerrors.NewValidationf(
+				"module role %q is not module-qualified — write <Module>.%s "+
+					"(run `show module roles` to list the roles this project has)",
+				r.Name, r.Name)
+		}
+		out = append(out, r.String())
+	}
+	return out, nil
+}
+
 func validateModuleRole(ctx *ExecContext, role ast.QualifiedName) error {
+	// An unqualified role reaches here with an empty Module, because the grammar
+	// spells a module role as `qualifiedName` and its module part is optional.
+	// Reported as MDL-GRANT02 at check time; this is the exec-side guard, and it
+	// has to name the real problem — the old message ran the empty module through
+	// `NewBackend`, which prefixes "failed to ", and printed
+	// "failed to module not found for role .Wide" (mendixlabs/mxcli#1067).
+	if role.Module == "" {
+		return mdlerrors.NewValidationf(
+			"module role %q is not module-qualified — write <Module>.%s "+
+				"(run `show module roles` to list the roles this project has)",
+			role.Name, role.Name)
+	}
 	module, err := findModule(ctx, role.Module)
 	if err != nil {
-		return mdlerrors.NewBackend(fmt.Sprintf("module not found for role %s.%s", role.Module, role.Name), err)
+		return mdlerrors.NewValidationf(
+			"module %q not found, so the module role %s cannot be resolved: %v",
+			role.Module, role.String(), err)
 	}
 
 	ms, err := ctx.Backend.GetModuleSecurity(module.ID)

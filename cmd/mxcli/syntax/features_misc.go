@@ -154,6 +154,7 @@ DISCONNECT;`,
 			"navigation profile", "phone profile", "tablet profile",
 			"offline profile", "offline navigation", "sync", "synchronization",
 			"offline sync", "offline entity", "pwa", "download mode",
+			"throw error", "sync error", "partial sync", "server rejects",
 		},
 		Syntax: `CREATE OR REPLACE NAVIGATION <profile>
   HOME PAGE Module.Page
@@ -164,6 +165,7 @@ DISCONNECT;`,
     MENU ITEM 'Label' PAGE Module.Page [ICON Module.IconCollection.Name];
     MENU 'Group' [ICON Module.IconCollection.Name] ( ... );
   )]
+  [ON SYNC ERROR THROW|CONTINUE]
   [SYNC (
     SYNC Module.Entity ONLINE;
     SYNC Module.Entity ALL;
@@ -213,6 +215,12 @@ DISCONNECT;`,
 -- A quoted WHERE '<xpath>' still parses, but every quote inside it doubles,
 -- and a stored constraint already carries Mendix's own escaping, so the two
 -- compose into runs of six quotes. DESCRIBE emits the bracket form.
+--
+-- ON SYNC ERROR is Studio Pro's "Throw error when server rejects objects
+-- during synchronization", and defaults to THROW. It uses the phrase MDL
+-- already has for failure handling (a microflow's ON ERROR CONTINUE) rather
+-- than a new keyword. OMITTING it leaves the stored value alone; DESCRIBE emits
+-- it only when it is not the default.
 --
 -- The block REPLACES the stored list, the way MENU replaces the menu. An
 -- entity's compatibility-mode flag has no syntax and is preserved across the

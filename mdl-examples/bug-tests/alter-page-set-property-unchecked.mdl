@@ -1,0 +1,89 @@
+-- ============================================================================
+-- `ALTER PAGE ... SET <prop> ON <widget>` was not resolved by `mxcli check`
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   Both of these passed `mxcli check -p app.mpr --references` — exit 0, "All
+--   references valid" — and were then refused by `exec`:
+--
+--     set NoSuchProperty = 10 on dgProducts;
+--       Error: failed to set: failed to set NoSuchProperty on dgProducts:
+--         pluggable property "NoSuchProperty" not found
+--     set PageSize = 12 on noSuchWidget;
+--       Error: failed to set: failed to set PageSize on noSuchWidget:
+--         widget "noSuchWidget" not found
+--
+--   The inversion validate_alter_target.go describes, one level further in:
+--   check is meant to be the strict gate and exec the thing that runs, so a
+--   script passed every pre-flight and then stopped halfway, having applied the
+--   statements before the typo and none after.
+--
+-- Root cause:
+--   ValidateWidgetProperties resolves the properties of widgets a statement
+--   CARRIES — CREATE PAGE's tree, and ALTER's INSERT and REPLACE trees. A SET
+--   carries no widget: it names one that is already stored, so its property can
+--   only be resolved against the DOCUMENT, which that pass never opens.
+--
+-- After fix:
+--   `check --references` dry-runs each SET against a throwaway copy of the
+--   stored document (pagemutator.Probe) and reports the setter's own error,
+--   with the property keys the stored widget declares appended. The vocabulary
+--   is not restated anywhere: a pluggable widget's keys belong to whatever
+--   widget package the project has installed, so the only way to be right about
+--   them is to ask the document.
+--
+-- Usage:
+--   mxcli exec  mdl-examples/bug-tests/alter-page-set-property-unchecked.mdl -p app.mpr
+--   mxcli check mdl-examples/bug-tests/alter-page-set-property-unchecked.mdl -p app.mpr --references
+--
+--   This file is the WORKING half: every statement below must pass check and
+--   exec. The two failing spellings are in the header above, on purpose — a
+--   bug-test that always exits 1 cannot be run in the suite.
+-- ============================================================================
+
+create entity MyFirstModule.Product ( Title: String(200), Brand: String(100) );
+
+create or replace page MyFirstModule.P_SetChecked
+(
+  Title: 'Set checked',
+  Layout: Atlas_Core.Atlas_Default
+)
+{
+  container cGrid {
+    datagrid dgProducts (DataSource: database MyFirstModule.Product, PageSize: 20) {
+      column colTitle (Attribute: Title, Caption: 'Title')
+    }
+  }
+}
+
+-- A property the widget really declares, in each of the spellings an author
+-- writes: the one DESCRIBE PAGE prints, the one the template stores, and the
+-- flat cases. A check that resolved names case-sensitively would refuse the
+-- tool's own DESCRIBE output — that was mendixlabs/mxcli#1069, and this is the
+-- control that the pre-flight did not reintroduce it.
+alter page MyFirstModule.P_SetChecked {
+  set PageSize = 12 on dgProducts;
+  set pageSize = 13 on dgProducts;
+  set pagesize = 14 on dgProducts;
+}
+
+-- A first-class property on a built-in widget: resolved by the setter's switch,
+-- not by anything the document declares, so the check must let it through in
+-- any casing (mendixlabs/mxcli#1069's sibling — see
+-- alter-page-lowercase-set-on-builtin.mdl).
+alter page MyFirstModule.P_SetChecked {
+  set class = 'fl-grid-wrap' on cGrid;
+  set Class = 'fl-grid-wrap mx-spacing-top-large' on cGrid;
+}
+
+-- A widget the script itself adds is not in the stored document, and must not
+-- be reported as missing. Only its EXISTENCE is affected — a target that DOES
+-- resolve is still checked. Note the column is addressed by its DERIVED name
+-- (`Brand`, the bound attribute), not the `colBrand` written in the INSERT,
+-- which is why the suppression cannot be a name match.
+alter page MyFirstModule.P_SetChecked {
+  insert after dgProducts.Title { column colBrand (Attribute: Brand, Caption: 'Brand') }
+  set Caption = 'Brand name' on dgProducts.Brand;
+}
+
+describe page MyFirstModule.P_SetChecked;

@@ -51,7 +51,12 @@ func TestEmitLoopBody_AnnotationNeverBecomesTheBodyStart(t *testing.T) {
 			if !strings.Contains(out, "in the loop") {
 				t.Errorf("loop body was dropped — the activity is absent from describe output.\ngot:\n%s", out)
 			}
-			if !strings.Contains(out, "@annotation 'explains the step'") {
+			// Matched on the text, not on a whole line: every case here places
+			// the note somewhere the writer would not have put it, so its
+			// position is spelled out and the long form is the correct emit
+			// (mendixlabs/mxcli#1077). What this test is about is that the note
+			// survives and does not become the body's first statement.
+			if !strings.Contains(out, "'explains the step'") {
 				t.Errorf("the annotation itself was dropped.\ngot:\n%s", out)
 			}
 		})
@@ -139,7 +144,7 @@ func TestDescribeLoopBody_SurvivesAnnotationAtBuilderPositions(t *testing.T) {
 				&ast.LogStmt{
 					Level:       ast.LogInfo,
 					Message:     &ast.LiteralExpr{Kind: ast.LiteralString, Value: "has name"},
-					Annotations: &ast.ActivityAnnotations{AnnotationText: "note on statement"},
+					Annotations: &ast.ActivityAnnotations{Notes: []ast.MicroflowAnnotation{{Text: "note on statement"}}},
 				},
 			},
 		},

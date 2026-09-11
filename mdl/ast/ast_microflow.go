@@ -168,10 +168,11 @@ func (s *DropNanoflowStmt) isStatement() {}
 
 // DeclareStmt represents: DECLARE $Var Type = expr
 type DeclareStmt struct {
-	Variable     string               // Variable name (without $ prefix)
-	Type         DataType             // Variable type
-	InitialValue Expression           // Optional initial value
-	Annotations  *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	Variable      string               // Variable name (without $ prefix)
+	Type          DataType             // Variable type
+	InitialValue  Expression           // Optional initial value
+	Annotations   *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	ErrorHandling *ErrorHandlingClause // Optional ON ERROR clause
 }
 
 func (s *DeclareStmt) isMicroflowStatement() {}
@@ -232,9 +233,10 @@ func (s *CastObjectStmt) isMicroflowStatement() {}
 // MfSetStmt represents: SET $Var = expr or SET $Var/Attr = expr
 // (Named MfSetStmt to avoid conflict with existing SetStmt for SET key = value)
 type MfSetStmt struct {
-	Target      string               // Variable name or attribute path
-	Value       Expression           // Value to assign
-	Annotations *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	Target        string               // Variable name or attribute path
+	Value         Expression           // Value to assign
+	Annotations   *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	ErrorHandling *ErrorHandlingClause // Optional ON ERROR clause
 }
 
 func (s *MfSetStmt) isMicroflowStatement() {}
@@ -278,13 +280,18 @@ type FlowAnchors struct {
 // ActivityAnnotations holds metadata annotations for microflow activities.
 // These are emitted as @position, @caption, @color, @annotation, @excluded, @anchor lines in MDL.
 type ActivityAnnotations struct {
-	Position        *Position    // @position(x, y)
-	Caption         string       // @caption 'text'
-	Color           string       // @color Green
-	AnnotationText  string       // @annotation 'text'
-	FreeAnnotations []string     // Multiple free-floating @annotation lines in source order
-	Excluded        bool         // @excluded
-	Anchor          *FlowAnchors // @anchor(from: X, to: Y) — anchors of the flow leaving this statement
+	Position *Position // @position(x, y)
+	Caption  string    // @caption 'text'
+	Color    string    // @color Green
+	// Notes are the @annotation lines attached to this statement, in source
+	// order. A SLICE, not one string: see MicroflowAnnotation.
+	Notes []MicroflowAnnotation
+
+	// FreeNotes are @annotation lines that stand on their own — a note on the
+	// canvas wired to nothing.
+	FreeNotes []MicroflowAnnotation
+	Excluded  bool         // @excluded
+	Anchor    *FlowAnchors // @anchor(from: X, to: Y) — anchors of the flow leaving this statement
 
 	// Split-specific anchors for IF statements. When the statement is not an
 	// IF these remain nil. The grammar accepts them on IfStmt only:
@@ -338,6 +345,12 @@ type ActivityAnnotations struct {
 	// than silently straightening the edge.
 	InvalidCurves []string
 
+	// InvalidNotes holds the raw text of any `@annotation(...)` parameter
+	// the visitor could not use — an unknown key, or a malformed `position:`/`size:`
+	// pair — so validation can refuse it. Dropping it would lose the note
+	// itself, not just the parameter.
+	InvalidNotes []string
+
 	// UnknownNames holds annotation names the visitor did not recognise, in
 	// source order, so validation can refuse them.
 	//
@@ -348,6 +361,44 @@ type ActivityAnnotations struct {
 	// for. Layout is the whole point of these annotations, so a name that does
 	// nothing has to say so. (upstream #884)
 	UnknownNames []string
+}
+
+// MicroflowAnnotation is one `@annotation` line — the yellow note Studio Pro
+// draws beside an activity.
+//
+// In Mendix's model a note is a NODE with edges (`Microflows$Annotation` joined
+// to activities by `Microflows$AnnotationFlow`), not a property of the activity
+// it documents: one note can be wired to several activities, and several notes
+// to one activity. MDL modelled it as a single string per activity, which lost
+// both directions — a shared note came back copied once per target, and a
+// second note on one activity overwrote the first, silently
+// (mendixlabs/mxcli#1077). Hence a slice, and hence Label.
+type MicroflowAnnotation struct {
+	// Label is the `id:` in `@annotation(id: n1, text: '…')`. It exists only so
+	// a later `@annotation(id: n1)` can attach the SAME note to another
+	// activity instead of creating a second one. It is scoped to the flow being
+	// authored and is NOT stored in the model — the describer re-derives labels
+	// from scratch, so they are stable across a round trip by construction
+	// rather than by being remembered.
+	Label string
+
+	// Text is the note's caption. Empty on a pure reference
+	// (`@annotation(id: n1)`), which attaches a note already declared above.
+	Text string
+
+	// Position and Size are the note's own canvas geometry, which Mendix stores per
+	// annotation and MDL had no way to spell. Nil means "let the writer place
+	// it" — see defaultAnnotationGeometry in mdl/executor, which the builder and
+	// the describer both consult so a round trip need not spell out a position
+	// that can be re-derived.
+	Position *Position
+	Size     *BoxSize
+}
+
+// BoxSize is a width/height pair in canvas pixels.
+type BoxSize struct {
+	Width  int
+	Height int
 }
 
 // FlowCurve is the pair of bezier control vectors on a sequence flow. Either end
@@ -394,6 +445,7 @@ type ChangeObjectStmt struct {
 	Commit          CommitFlag           // Commit setting (default CommitNo)
 	RefreshInClient bool                 // Whether to refresh in client
 	Annotations     *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	ErrorHandling   *ErrorHandlingClause // Optional ON ERROR clause
 }
 
 func (s *ChangeObjectStmt) isMicroflowStatement() {}
@@ -534,11 +586,12 @@ func (p *TemplateParam) IsDataSourceRef() bool {
 
 // LogStmt represents: LOG LEVEL [NODE expr] message [WITH params]
 type LogStmt struct {
-	Level       LogLevel             // Log level (INFO, WARNING, etc.)
-	Node        Expression           // Optional log node expression
-	Message     Expression           // Message expression
-	Template    []TemplateParam      // Optional WITH template params
-	Annotations *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	Level         LogLevel             // Log level (INFO, WARNING, etc.)
+	Node          Expression           // Optional log node expression
+	Message       Expression           // Message expression
+	Template      []TemplateParam      // Optional WITH template params
+	Annotations   *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	ErrorHandling *ErrorHandlingClause // Optional ON ERROR clause
 }
 
 func (s *LogStmt) isMicroflowStatement() {}
@@ -725,6 +778,10 @@ type ListOperationStmt struct {
 	OffsetExpr     Expression           // Offset expression for RANGE
 	LimitExpr      Expression           // Limit expression for RANGE
 	Annotations    *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	// ErrorHandling is recorded only so the clause can be REFUSED. Mendix's
+	// ListOperationsAction has no ErrorHandlingType, so an ON ERROR here has
+	// nowhere to go; parsing it and reporting it beats dropping it silently.
+	ErrorHandling *ErrorHandlingClause
 }
 
 func (s *ListOperationStmt) isMicroflowStatement() {}
@@ -785,6 +842,9 @@ type AggregateListStmt struct {
 	ReturnType   *DataType
 
 	Annotations *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	// ErrorHandling is recorded only so the clause can be REFUSED — Mendix's
+	// AggregateAction has no ErrorHandlingType. See ListOperationStmt.
+	ErrorHandling *ErrorHandlingClause
 }
 
 func (s *AggregateListStmt) isMicroflowStatement() {}
@@ -829,13 +889,14 @@ type ShowPageArg struct {
 
 // ShowPageStmt represents: SHOW PAGE Module.Page($param = $value) [FOR $obj] [WITH (settings)]
 type ShowPageStmt struct {
-	PageName    QualifiedName        // Page to show
-	Arguments   []ShowPageArg        // Page parameter arguments
-	ForObject   string               // Optional FOR variable (without $ prefix)
-	Title       string               // Optional title override
-	Location    string               // Optional location: Content, Popup, Modal (default: Content)
-	ModalForm   bool                 // Whether to show as modal
-	Annotations *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	PageName      QualifiedName        // Page to show
+	Arguments     []ShowPageArg        // Page parameter arguments
+	ForObject     string               // Optional FOR variable (without $ prefix)
+	Title         string               // Optional title override
+	Location      string               // Optional location: Content, Popup, Modal (default: Content)
+	ModalForm     bool                 // Whether to show as modal
+	Annotations   *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	ErrorHandling *ErrorHandlingClause // Optional ON ERROR clause
 }
 
 func (s *ShowPageStmt) isMicroflowStatement() {}
@@ -844,6 +905,7 @@ func (s *ShowPageStmt) isMicroflowStatement() {}
 type ClosePageStmt struct {
 	NumberOfPages int                  // Number of pages to close (default 1)
 	Annotations   *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	ErrorHandling *ErrorHandlingClause // Optional ON ERROR clause
 }
 
 func (s *ClosePageStmt) isMicroflowStatement() {}
@@ -857,10 +919,11 @@ func (s *ShowHomePageStmt) isMicroflowStatement() {}
 
 // ShowMessageStmt represents: SHOW MESSAGE 'text' TYPE Information OBJECTS [$Var1, $Var2];
 type ShowMessageStmt struct {
-	Message      Expression           // The message text (string template)
-	Type         string               // Information, Warning, Error (default: Information)
-	TemplateArgs []Expression         // Template arguments for message placeholders {1}, {2}, etc.
-	Annotations  *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	Message       Expression           // The message text (string template)
+	Type          string               // Information, Warning, Error (default: Information)
+	TemplateArgs  []Expression         // Template arguments for message placeholders {1}, {2}, etc.
+	Annotations   *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	ErrorHandling *ErrorHandlingClause // Optional ON ERROR clause
 }
 
 func (s *ShowMessageStmt) isMicroflowStatement() {}
@@ -895,6 +958,7 @@ type ValidationFeedbackStmt struct {
 	Message       Expression           // The feedback message (string template)
 	TemplateArgs  []Expression         // Template arguments for message placeholders
 	Annotations   *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	ErrorHandling *ErrorHandlingClause // Optional ON ERROR clause
 }
 
 func (s *ValidationFeedbackStmt) isMicroflowStatement() {}

@@ -66,6 +66,11 @@ func buildLogStatement(ctx parser.ILogStatementContext) *ast.LogStmt {
 		}
 	}
 
+	// Check for ON ERROR clause
+	if errClause := logCtx.OnErrorClause(); errClause != nil {
+		stmt.ErrorHandling = buildOnErrorClause(errClause)
+	}
+
 	return stmt
 }
 
@@ -1182,6 +1187,11 @@ func buildShowPageStatement(ctx parser.IShowPageStatementContext) *ast.ShowPageS
 		}
 	}
 
+	// Check for ON ERROR clause
+	if errClause := showCtx.OnErrorClause(); errClause != nil {
+		stmt.ErrorHandling = buildOnErrorClause(errClause)
+	}
+
 	return stmt
 }
 
@@ -1253,6 +1263,11 @@ func buildShowMessageStatement(ctx parser.IShowMessageStatementContext) *ast.Sho
 			value = appendExpressionListTrailingWhitespace(listCtx, nextParserRuleContext(allExprs, i), expr, value)
 			stmt.TemplateArgs = append(stmt.TemplateArgs, value)
 		}
+	}
+
+	// Check for ON ERROR clause
+	if errClause := smCtx.OnErrorClause(); errClause != nil {
+		stmt.ErrorHandling = buildOnErrorClause(errClause)
 	}
 
 	return stmt
@@ -1336,6 +1351,11 @@ func buildValidationFeedbackStatement(ctx parser.IValidationFeedbackStatementCon
 			value = appendExpressionListTrailingWhitespace(listCtx, nextParserRuleContext(allExprs, i), expr, value)
 			stmt.TemplateArgs = append(stmt.TemplateArgs, value)
 		}
+	}
+
+	// Check for ON ERROR clause
+	if errClause := vfCtx.OnErrorClause(); errClause != nil {
+		stmt.ErrorHandling = buildOnErrorClause(errClause)
 	}
 
 	return stmt

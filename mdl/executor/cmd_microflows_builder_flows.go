@@ -32,6 +32,23 @@ func convertErrorHandlingType(eh *ast.ErrorHandlingClause) microflows.ErrorHandl
 // ehType returns the error handling type for an activity in this flow context.
 // Nanoflows default to "Abort" because they have no transactions; microflows
 // default to "Rollback". An explicit ON ERROR clause always overrides the default.
+//
+// Most builders want THIS, not explicitErrorHandling below, and the two are not
+// interchangeable — picking the wrong one is a silent CE6035. Which is right
+// depends entirely on what the call site did before:
+//
+//   - A builder that already supplied a default here (every create/change/log/
+//     page/message/validation activity) must keep using ehType. Returning empty
+//     discards the flow flavour, and the writer's literal "Rollback" is CE6035 on
+//     every un-annotated activity in a NANOFLOW, whose default is Abort. That is
+//     mendixlabs/mxcli#1078's regression: green unit suite, 11 errors under
+//     `make test-integration`.
+//   - Retrieve and Delete use explicitErrorHandling because their writers emitted
+//     a hardcoded "Rollback" that those two actions accept in every flow flavour,
+//     so empty is a no-op there.
+//
+// Same helper pair, opposite correct answer. Ask what the old expression returned
+// in EVERY context before replacing it, not just the one under test.
 func (fb *flowBuilder) ehType(eh *ast.ErrorHandlingClause) microflows.ErrorHandlingType {
 	if fb.isNanoflow && eh == nil {
 		return microflows.ErrorHandlingTypeAbort
@@ -704,6 +721,11 @@ func (fb *flowBuilder) addErrorHandlerFlow(sourceActivityID model.ID, sourceX in
 		hierarchy:    fb.hierarchy,
 		restServices: fb.restServices,
 		isNanoflow:   fb.isNanoflow,
+		// A handler's activities are merged into the PARENT's object collection
+		// below, so a note declared outside the handler and referenced inside it
+		// (or the reverse) lands in one collection — sharing the registry is
+		// sound here in a way it is not across a loop boundary (#1077).
+		annotationsByLabel: fb.annotationsByLabel,
 	}
 
 	var lastErrID model.ID
@@ -734,9 +756,19 @@ func (fb *flowBuilder) addErrorHandlerFlow(sourceActivityID model.ID, sourceX in
 		}
 	}
 
-	// Append error handler objects and flows to the main builder
+	// Append error handler objects and flows to the main builder.
+	//
+	// annotationFlows and errors are part of that: without them a note written
+	// inside `on error { … }` arrived as an Annotation with no edge — a
+	// free-floating sticky note instead of one attached to the activity — and a
+	// refusal raised in the handler body never reached the caller (#1077).
 	fb.objects = append(fb.objects, errBuilder.objects...)
 	fb.flows = append(fb.flows, errBuilder.flows...)
+	fb.annotationFlows = append(fb.annotationFlows, errBuilder.annotationFlows...)
+	fb.errors = append(fb.errors, errBuilder.errors...)
+	if fb.annotationsByLabel == nil {
+		fb.annotationsByLabel = errBuilder.annotationsByLabel
+	}
 
 	// If the error handler ends with RAISE ERROR or RETURN, it terminates there.
 	// Otherwise, return the last activity ID so caller can create a merge.

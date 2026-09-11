@@ -55,6 +55,7 @@ var (
 //   - MDL-WF03: decision / call-microflow outcome that is not a qualified
 //     enumeration value identifier (Module.Enumeration.Value) — a value the
 //     loader rejects makes the project unopenable, not merely un-buildable
+//   - MDL-WF06: enumeration outcomes with no empty-valued branch (CE6686)
 //   - MDL-WF04: standalone `annotation` in a workflow body (unloadable model)
 //   - MDL-WF05: `jump to` a target that names no activity (see validate_workflow_jump.go)
 func ValidateWorkflow(stmt *ast.CreateWorkflowStmt) []linter.Violation {
@@ -90,8 +91,10 @@ func ValidateWorkflow(stmt *ast.CreateWorkflowStmt) []linter.Violation {
 			}
 		case *ast.WorkflowDecisionNode:
 			out = append(out, checkWorkflowOutcomeNames(n.Outcomes, "decision", loc)...)
+			out = append(out, checkWorkflowEmptyEnumOutcome(n.Outcomes, "decision", workflowDecisionLabel(n), loc)...)
 		case *ast.WorkflowCallMicroflowNode:
 			out = append(out, checkWorkflowOutcomeNames(n.Outcomes, "call microflow", loc)...)
+			out = append(out, checkWorkflowEmptyEnumOutcome(n.Outcomes, "call microflow", workflowCallMicroflowLabel(n), loc)...)
 		case *ast.WorkflowAnnotationActivityNode:
 			// MDL-WF04 — a standalone annotation is written into the workflow's
 			// activity flow, but Mendix constructs every child of that list with a
@@ -178,6 +181,97 @@ func lastSegment(s string) string {
 	return s
 }
 
+// checkWorkflowEmptyEnumOutcome flags an activity that branches on an
+// enumeration without an outcome for the EMPTY value (MDL-WF06).
+//
+// Mendix generates one outcome per enumeration value **plus one with an empty
+// value**, and mxbuild compares the stored set against that generated set:
+// anything else is CE6686 ("The current outcomes of the ... do not match the
+// configured expression/microflow. Regenerate the outcomes."). Studio Pro's own
+// documents agree — every enum decision in the FactoryManagement demo app
+// stores the extra Workflows$EnumerationValueConditionOutcome with Value ”.
+//
+// Measured on mxbuild 11.10.0, in a blank 11.10.0 app:
+//
+//   - decision on `$WorkflowContext/Kind` with the two enum values → 1 error,
+//     CE6686; adding `” -> { }` → 0 errors.
+//   - the same decision on an attribute carrying a REQUIRED (not null)
+//     validation rule → still CE6686. The empty outcome is not about whether
+//     the value can be empty in practice, which is why this is an error rather
+//     than a warning.
+//   - a call-microflow activity branching on an enumeration-returning microflow
+//     → the same CE6686 ("...of the call microflow activity do not match the
+//     configured microflow"), cleared the same way. Hence both call sites.
+//   - a boolean decision (true/false) is 0 errors with no empty outcome, so the
+//     rule must classify outcomes exactly as buildConditionOutcome does.
+//
+// mxbuild wants set EQUALITY, so a missing enumeration *value* is CE6686 too
+// (measured: Standard + ” on a two-value enum is 1 error). That half needs the
+// enumeration's definition and so belongs to the reference pass, not here; this
+// rule reports only what is decidable from the statement alone.
+func checkWorkflowEmptyEnumOutcome(outcomes []ast.WorkflowConditionOutcomeNode, kind, label string, loc linter.Location) []linter.Violation {
+	var enumValues []string
+	for _, o := range outcomes {
+		switch o.Value {
+		case "True", "False":
+			// A boolean branch: buildConditionOutcome emits a
+			// BooleanConditionOutcome and mxbuild wants exactly true/false.
+			return nil
+		case "Default":
+			// A VoidConditionOutcome — not an enumeration branch.
+			continue
+		case "":
+			// The empty-valued enumeration outcome this rule is about.
+			return nil
+		default:
+			enumValues = append(enumValues, o.Value)
+		}
+	}
+	if len(enumValues) == 0 {
+		return nil
+	}
+	// Quote the CE6686 text MxBuild actually prints for this activity kind, so
+	// searching the build output for it lands here.
+	ceText := "the current outcomes of the decision activity do not match the configured expression"
+	if kind == "call microflow" {
+		ceText = "the current outcomes of the call microflow activity do not match the configured microflow"
+	}
+	return []linter.Violation{{
+		RuleID:   "MDL-WF06",
+		Severity: linter.SeverityError,
+		Location: loc,
+		Message: fmt.Sprintf(
+			"%s %s branches on an enumeration but has no outcome for the empty value — MxBuild rejects this (CE6686 %q)",
+			kind, label, ceText),
+		Suggestion: "Add an empty outcome alongside the named values: `'' -> { }`. Mendix generates one outcome per enumeration value plus one for the empty value, and the stored set must match — a required (not null) attribute does not exempt it.",
+	}}
+}
+
+// workflowDecisionLabel returns a human-readable label for a decision.
+func workflowDecisionLabel(n *ast.WorkflowDecisionNode) string {
+	switch {
+	case n.Name != "":
+		return "'" + n.Name + "'"
+	case n.Caption != "":
+		return "'" + n.Caption + "'"
+	case n.Expression != "":
+		return "on '" + n.Expression + "'"
+	}
+	return "(unnamed)"
+}
+
+// workflowCallMicroflowLabel returns a human-readable label for a call-microflow
+// activity.
+func workflowCallMicroflowLabel(n *ast.WorkflowCallMicroflowNode) string {
+	if n.Name != "" {
+		return "'" + n.Name + "'"
+	}
+	if qn := n.Microflow.String(); qn != "" && qn != "." {
+		return "'" + qn + "'"
+	}
+	return "(unnamed)"
+}
+
 // workflowUserTaskLabel returns a human-readable label for a user task.
 func workflowUserTaskLabel(n *ast.WorkflowUserTaskNode) string {
 	if n.Name != "" {
@@ -229,10 +323,18 @@ func walkWorkflowActivities(acts []ast.WorkflowActivityNode, visit func(ast.Work
 	}
 }
 
-// ValidateAlterWorkflow applies MDL-WF03 to ALTER WORKFLOW … INSERT CONDITION.
-// The condition lands in the same EnumerationValueConditionOutcome.Value as a
-// CREATE-time outcome (wfmutator.InsertBranch), so it corrupts the project
-// identically; guarding only CREATE would leave the same write one keyword away.
+// ValidateAlterWorkflow applies the rules that ALTER WORKFLOW can reach:
+// MDL-WF03 to … INSERT CONDITION, and MDL-WF06 to every activity the statement
+// introduces. Both writes land in exactly the fields a CREATE-time outcome
+// does, so guarding only CREATE would leave each one a keyword away.
+//
+// The other rules are not simply un-ported. MDL-WF01/WF02 describe a state a
+// later op in the same script can still repair (`SET ACTIVITY … PAGE`), and
+// MDL-WF05 resolves jump targets against activities the statement cannot see.
+// An inserted activity's outcome SET, by contrast, is complete where it is
+// written — `INSERT OUTCOME` cannot extend it, since on a decision it writes a
+// UserTaskOutcome into a ConditionOutcome list and yields a model Mendix cannot
+// load at all (ako/mxcli#415).
 func ValidateAlterWorkflow(stmt *ast.AlterWorkflowStmt) []linter.Violation {
 	var out []linter.Violation
 	loc := linter.Location{
@@ -240,6 +342,35 @@ func ValidateAlterWorkflow(stmt *ast.AlterWorkflowStmt) []linter.Violation {
 		DocumentType: "workflow",
 		DocumentName: stmt.Name.Name,
 	}
+
+	// MDL-WF06 over the activities the statement adds.
+	var added []ast.WorkflowActivityNode
+	for _, op := range stmt.Operations {
+		switch o := op.(type) {
+		case *ast.InsertAfterOp:
+			added = append(added, o.NewActivity)
+		case *ast.ReplaceActivityOp:
+			added = append(added, o.NewActivity)
+		case *ast.InsertOutcomeOp:
+			added = append(added, o.Activities...)
+		case *ast.InsertPathOp:
+			added = append(added, o.Activities...)
+		case *ast.InsertBranchOp:
+			added = append(added, o.Activities...)
+		case *ast.InsertBoundaryEventOp:
+			added = append(added, o.Activities...)
+		}
+	}
+	walkWorkflowActivities(added, func(a ast.WorkflowActivityNode) {
+		switch n := a.(type) {
+		case *ast.WorkflowDecisionNode:
+			out = append(out, checkWorkflowEmptyEnumOutcome(n.Outcomes, "decision", workflowDecisionLabel(n), loc)...)
+		case *ast.WorkflowCallMicroflowNode:
+			out = append(out, checkWorkflowEmptyEnumOutcome(n.Outcomes, "call microflow", workflowCallMicroflowLabel(n), loc)...)
+		}
+	})
+
+	// MDL-WF03 over the condition an INSERT CONDITION writes.
 	for _, op := range stmt.Operations {
 		ins, ok := op.(*ast.InsertBranchOp)
 		if !ok {
