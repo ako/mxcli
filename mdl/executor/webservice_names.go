@@ -41,10 +41,13 @@ import (
 //   - ListRawUnitsByType matches the type EXACTLY, despite its parameter being
 //     called typePrefix. "WebServices$ImportedServiceImpl" returns the document;
 //     "WebServices$ImportedService" and "WebServices" both return nothing.
-//   - The type is `ImportedServiceImpl`, not `ImportedWebService`.
-//     resolveWebServiceReference in cmd_microflows_format_action.go asks for
-//     "WebServices$ImportedWebService" and therefore resolves nothing on a real
-//     project — a separate defect, on the DESCRIBE side, left alone here.
+//   - The type is `ImportedServiceImpl`, not `ImportedWebService`. The name
+//     modelsdk/gen and generated/metamodel both use — WebServices$ImportedWebService
+//     — is the SDK name; nothing is stored under it. A DESCRIBE-side resolver
+//     asked for that one and therefore matched nothing, which went unnoticed
+//     because its fallback was already the right answer (see
+//     TestFormatAction_WebServiceCallRendersStoredQualifiedNames); it has since
+//     been removed.
 const importedServiceType = "WebServices$ImportedServiceImpl"
 
 // resolveWebServiceName returns the WSDL service name for the imported service
