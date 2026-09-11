@@ -1,0 +1,155 @@
+-- ============================================================================
+-- mendixlabs/mxcli#1076: ALTER PAGE REPLACE / INSERT resolves the new widget's
+-- attribute bindings against the wrong data context
+-- ============================================================================
+--
+-- Symptom: `mxcli check --references` and `mxcli exec` both report success, and
+-- the model then fails at `mx check` (or renders nothing) in two shapes:
+--
+--   1. a data view bound `datasource: selection <list>` — the binding silently
+--      re-scoped to the OUTER data view's entity:
+--        [CE1613] "The selected attribute 'BugTest1076.Dashboard.PeriodLabel'
+--                  no longer exists." at Text 'txtPreviewPeriod'
+--      DESCRIBE masks this one: it prints the short attribute name, which reads
+--      exactly as it did before.
+--   2. a PLUGGABLE list (Gallery, DataGrid 2) sourced by a microflow/nanoflow —
+--      the binding was dropped entirely:
+--        [CE0402] "No value specified." at Text 'txtName2'
+--      DESCRIBE shows `ContentParams: [{1} = <unbound>]`.
+--
+-- Root cause: the mutator resolved a widget's scope in two separate walks that
+-- each knew a different subset of the ten Forms$*Source kinds.
+-- Forms$ListenTargetSource carries no EntityRef at all (only the listen
+-- target's NAME), so the entity walk left the context at the outer data view;
+-- and the flow walk read only a widget's TOP-LEVEL DataSource key, so a
+-- pluggable list — whose source sits in Object.Properties[datasource] — was
+-- invisible to it.
+--
+-- Fix: one resolver (resolveSourceScope in mdl/backend/pagemutator/mutator.go)
+-- over one walk. It reads the entity, the flow, or the listen target's own
+-- source, from wherever this widget kind keeps it; a source that resolves to no
+-- entity now SHADOWS the enclosing one instead of letting it be inherited.
+--
+-- Verify (measured on mxbuild 11.10.0): exec this script, then `mx check` →
+-- 0 errors, and every `describe page` below binds each ContentParams to its own
+-- entity. Against the pre-fix binary the same script gives 2 × CE1613 and three
+-- `<unbound>` bindings.
+--
+-- Measurement trap: a CE1613 elsewhere in the project SUPPRESSES the CE0402s of
+-- the unbound ones in the same `mx check` run — it reports the two CE1613s and
+-- nothing else, and the three CE0402s appear only once those are fixed. Count
+-- the bindings in `describe`, not the errors.
+-- ============================================================================
+
+create module BugTest1076;
+/
+
+create persistent entity BugTest1076.Dashboard ( Name: String );
+create persistent entity BugTest1076.DashboardVersion ( PeriodLabel: String );
+create association BugTest1076.DashboardVersion_Dashboard
+  from BugTest1076.DashboardVersion to BugTest1076.Dashboard;
+create persistent entity BugTest1076.Item ( Name: String );
+/
+
+create microflow BugTest1076.DS_Items () returns list of BugTest1076.Item as $out
+begin
+  retrieve $out from BugTest1076.Item;
+  return $out;
+end;
+/
+
+-- ---------------------------------------------------------------------------
+-- 1. Selection-driven data view nested inside a page-level data view.
+--    dvSelected's children are DashboardVersion, never Dashboard.
+-- ---------------------------------------------------------------------------
+create or replace page BugTest1076.Dashboard_View
+( Title: 'Dashboard', Layout: Atlas_Core.Atlas_Default,
+  Params: { $Dashboard: BugTest1076.Dashboard } )
+{
+  dataview dvDashboard (datasource: $Dashboard) {
+    listview lvVersions (datasource: association BugTest1076.DashboardVersion_Dashboard) {
+      dynamictext txtRow (content: '{1}', ContentParams: [{1} = PeriodLabel])
+    }
+    dataview dvSelected (datasource: selection lvVersions) {
+      dynamictext txtPreviewPeriod (content: 'Period: {1}', ContentParams: [{1} = PeriodLabel])
+    }
+  }
+}
+/
+
+alter page BugTest1076.Dashboard_View {
+  replace txtPreviewPeriod with {
+    dynamictext txtPreviewPeriod (content: 'Preview {1}', ContentParams: [{1} = PeriodLabel])
+  }
+}
+/
+
+-- INSERT INTO the selection data view takes the same scope as REPLACE.
+alter page BugTest1076.Dashboard_View {
+  insert into dvSelected {
+    dynamictext txtPreviewProbe (content: 'P {1}', ContentParams: [{1} = PeriodLabel])
+  }
+}
+/
+
+-- ---------------------------------------------------------------------------
+-- 2. Pluggable list sourced by a microflow: its entity is the flow's RETURN
+--    type, and its source lives inside the widget's Object, not beside it.
+-- ---------------------------------------------------------------------------
+create or replace page BugTest1076.Page_MfGallery
+( Title: 'MfGallery', Layout: Atlas_Core.Atlas_Default )
+{
+  gallery galMf (datasource: microflow BugTest1076.DS_Items) {
+    template t1 {
+      container ctnCard {
+        dynamictext txtName (content: '{1}', ContentParams: [{1} = Name])
+      }
+    }
+  }
+}
+/
+
+alter page BugTest1076.Page_MfGallery {
+  replace txtName with {
+    container ctnWrap {
+      dynamictext txtName2 (content: '{1}', ContentParams: [{1} = Name])
+    }
+  }
+}
+/
+
+alter page BugTest1076.Page_MfGallery {
+  insert after txtName2 {
+    dynamictext txtNameProbe (content: 'Q {1}', ContentParams: [{1} = Name])
+  }
+}
+/
+
+-- ---------------------------------------------------------------------------
+-- 3. Both halves at once: a selection data view listening to a PLUGGABLE list.
+--    Resolving it means following the listen target INTO its Object.
+-- ---------------------------------------------------------------------------
+create or replace page BugTest1076.Page_SelGallery
+( Title: 'SelGallery', Layout: Atlas_Core.Atlas_Default )
+{
+  gallery galItems (datasource: database BugTest1076.Item) {
+    template t1 {
+      dynamictext txtCard (content: '{1}', ContentParams: [{1} = Name])
+    }
+  }
+  dataview dvSel (datasource: selection galItems) {
+    dynamictext txtSel (content: 'S {1}', ContentParams: [{1} = Name])
+  }
+}
+/
+
+alter page BugTest1076.Page_SelGallery {
+  replace txtSel with {
+    dynamictext txtSel (content: 'S2 {1}', ContentParams: [{1} = Name])
+  }
+}
+/
+
+describe page BugTest1076.Dashboard_View;
+describe page BugTest1076.Page_MfGallery;
+describe page BugTest1076.Page_SelGallery;

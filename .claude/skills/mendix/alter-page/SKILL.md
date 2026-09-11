@@ -239,6 +239,16 @@ dataview's entity as their context. Supported on simple containers (container,
 dataview, groupbox, scroll-container region); for a layout grid or tab container,
 insert relative to a widget inside the target column/tab instead.
 
+**The context comes from the nearest enclosing data source, whatever kind it is**
+— a database or association source, a microflow/nanoflow source (the entity is
+the flow's return type), or `datasource: selection <list>`, which takes the
+entity of the list it listens to. A bare attribute in the inserted or replaced
+widget resolves against that entity, exactly as it would in `create page`. When
+no enclosing source can be resolved, the binding is written unset rather than
+guessed at — `describe page` then prints `<unbound>`, and mxbuild reports
+`CE0402 "No value specified."`, so re-describe the page after an ALTER that
+moves data-bound widgets.
+
 ### DROP - Remove Widgets
 
 ```sql
