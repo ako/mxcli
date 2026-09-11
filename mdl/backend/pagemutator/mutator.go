@@ -949,8 +949,12 @@ func (m *Mutator) SetPluggableProperty(widgetRef string, propKey string, opName 
 	return fmt.Errorf("pluggable property %q not found on widget %q", propKey, widgetRef)
 }
 
+// EnclosingEntity returns the entity context that applies to a widget's
+// SIBLINGS — what REPLACE and INSERT BEFORE/AFTER build against — i.e. the
+// entity of the nearest enclosing data source.
 func (m *Mutator) EnclosingEntity(widgetRef string) string {
-	return findEnclosingEntityContext(m.rawData, widgetRef)
+	ds, _ := findNearestDataSourceDoc(m.rawData, widgetRef)
+	return resolveSourceScope(m.rawData, ds).Entity
 }
 
 // EnclosingDataSourceFlow returns the microflow/nanoflow qualified name of the
@@ -967,8 +971,9 @@ func (m *Mutator) EnclosingEntity(widgetRef string) string {
 func (m *Mutator) EnclosingDataSourceFlow(widgetRef string, forChildren bool) (microflow, nanoflow string) {
 	if forChildren {
 		if result := m.widgetFinder(m.rawData, widgetRef); result != nil {
-			if ds := bsonnav.DGetDoc(result.widget, "DataSource"); ds != nil {
-				return flowFromDataSourceDoc(ds)
+			if ds := widgetOwnDataSourceDoc(result.widget); ds != nil {
+				scope := resolveSourceScope(m.rawData, ds)
+				return scope.Microflow, scope.Nanoflow
 			}
 		}
 	}
@@ -976,7 +981,8 @@ func (m *Mutator) EnclosingDataSourceFlow(widgetRef string, forChildren bool) (m
 	if !ok {
 		return "", ""
 	}
-	return flowFromDataSourceDoc(ds)
+	scope := resolveSourceScope(m.rawData, ds)
+	return scope.Microflow, scope.Nanoflow
 }
 
 // flowFromDataSourceDoc extracts the microflow/nanoflow qualified name from a
@@ -1004,39 +1010,135 @@ func (m *Mutator) EnclosingEntityForChildren(widgetRef string) string {
 	if result == nil {
 		return ""
 	}
-	if ent := extractEntityFromDataSource(result.widget); ent != "" {
-		return ent
+	// A widget that declares a source of its own governs its children, even when
+	// that source names no entity: a flow-sourced or selection-bound list whose
+	// scope cannot be read here must SHADOW the enclosing entity rather than let
+	// it be inherited — inheriting it is how a binding silently re-scoped to the
+	// outer data view (#1076).
+	if ds := widgetOwnDataSourceDoc(result.widget); ds != nil {
+		return resolveSourceScope(m.rawData, ds).Entity
 	}
-	if ent := extractPluggableDataSourceEntity(result.widget); ent != "" {
-		return ent
-	}
-	return findEnclosingEntityContext(m.rawData, widgetRef)
+	return m.EnclosingEntity(widgetRef)
 }
 
-// widgetOwnEntity returns the entity a widget contributes to its descendants,
-// whatever kind of widget it is. A plain Forms$ container keeps its source at
-// the top level; a pluggable one (DataGrid2, Gallery) keeps it in
-// Object.Properties under the schema's "datasource" key. EnclosingEntityForChildren
-// already consulted both, but the recursive walk consulted only the first, so a
-// widget nested under a pluggable list inherited the PAGE's context instead of
-// the list's.
-func widgetOwnEntity(wDoc bson.D) string {
-	if ent := extractEntityFromDataSource(wDoc); ent != "" {
-		return ent
-	}
-	return extractPluggableDataSourceEntity(wDoc)
+// ---------------------------------------------------------------------------
+// Data source resolution
+// ---------------------------------------------------------------------------
+
+// sourceScope is what one data source hands to the widgets under it: the entity
+// it names, or the qualified name of the microflow/nanoflow whose RETURN type is
+// that entity — which lives in the flow document, so only a caller holding the
+// model can finish that half.
+//
+// Mendix has ten data source kinds and they divide exactly three ways: seven
+// carry an EntityRef (Association, CustomWidgetXPath, DataView, GridXPath,
+// ImageViewer, ListViewXPath, ReferenceSet — see the `DataSource is implemented
+// by` list in generated/metamodel/types.go), two are flows (Microflow,
+// Nanoflow), and one — ListenTargetSource — carries neither and borrows the
+// scope of the widget it listens to. Every kind is therefore resolved here, and
+// a source that still resolves to nothing means the model names nothing, not
+// that this walk has another shape left to learn. Each time one kind was handled
+// somewhere and not elsewhere, the result was a binding written against the
+// wrong entity: association and flow sources (FINDINGS #55), pluggable widgets
+// (#935), selection sources and pluggable flow sources (#1076).
+type sourceScope struct {
+	Entity    string
+	Microflow string
+	Nanoflow  string
 }
 
-// extractPluggableDataSourceEntity walks a CustomWidget's Object.Properties[]
-// looking for a "datasource" property and returns the EntityRef.Entity if any.
-func extractPluggableDataSourceEntity(widgetDoc bson.D) string {
+// resolveSourceScope reads one widget's "DataSource" document. root is the whole
+// unit, needed only to follow a selection source to its listen target.
+func resolveSourceScope(root bson.D, ds bson.D) sourceScope {
+	return resolveSourceScopeVia(root, ds, nil)
+}
+
+// resolveSourceScopeVia carries the listen targets already followed, so a
+// selection chain that loops back on itself terminates instead of recursing
+// forever. Studio Pro will not author that, but a hand-written ALTER can.
+func resolveSourceScopeVia(root bson.D, ds bson.D, seen map[string]bool) sourceScope {
+	if ds == nil {
+		return sourceScope{}
+	}
+	if entity := entityFromEntityRef(bsonnav.DGetDoc(ds, "EntityRef")); entity != "" {
+		return sourceScope{Entity: entity}
+	}
+	if mf, nf := flowFromDataSourceDoc(ds); mf != "" || nf != "" {
+		return sourceScope{Microflow: mf, Nanoflow: nf}
+	}
+	// Forms$ListenTargetSource — `dataview dv (datasource: selection lv)`. It
+	// stores the target widget's NAME and nothing else, so its scope is whatever
+	// the target's own source resolves to, which may in turn be an association,
+	// a flow or another selection.
+	target := bsonnav.DGetString(ds, "ListenTarget")
+	if target == "" || seen[target] {
+		return sourceScope{}
+	}
+	if seen == nil {
+		seen = make(map[string]bool, 2)
+	}
+	seen[target] = true
+	return resolveSourceScopeVia(root, listenTargetDataSource(root, target), seen)
+}
+
+// listenTargetDataSource returns the data source of the widget a selection
+// source names. A listen target is addressed by name and need not be a sibling
+// of the listening widget, so it is searched for over the whole unit; keying the
+// search on "carries this Name and a data source" rather than on a list of
+// container shapes is what keeps it working for a pluggable list, whose source
+// sits three levels inside its Object.
+func listenTargetDataSource(root bson.D, name string) bson.D {
+	var found bson.D
+	var walk func(v any)
+	walk = func(v any) {
+		if found != nil {
+			return
+		}
+		switch node := v.(type) {
+		case bson.D:
+			if bsonnav.DGetString(node, "Name") == name {
+				if ds := widgetOwnDataSourceDoc(node); ds != nil {
+					found = ds
+					return
+				}
+			}
+			for _, kv := range node {
+				walk(kv.Value)
+			}
+		case bson.A:
+			for _, elem := range node {
+				walk(elem)
+			}
+		}
+	}
+	walk(root)
+	return found
+}
+
+// widgetOwnDataSourceDoc returns the widget's own "DataSource" document,
+// wherever its kind keeps it: at the top level for a plain Forms$ widget, and
+// under Object.Properties[datasource].Value for a pluggable one (Gallery,
+// DataGrid 2). Reading only the first is what made a flow-sourced gallery
+// contribute nothing, so a widget replaced inside its template was written with
+// no binding at all (#1076).
+func widgetOwnDataSourceDoc(wDoc bson.D) bson.D {
+	if ds := bsonnav.DGetDoc(wDoc, "DataSource"); ds != nil {
+		return ds
+	}
+	return pluggableDataSourceDoc(wDoc)
+}
+
+// pluggableDataSourceDoc walks a CustomWidget's Object.Properties[] for the
+// property the widget's schema keys "datasource", and returns its DataSource
+// document.
+func pluggableDataSourceDoc(widgetDoc bson.D) bson.D {
 	obj := bsonnav.DGetDoc(widgetDoc, "Object")
 	if obj == nil {
-		return ""
+		return nil
 	}
 	propKeyMap := buildPropKeyMap(widgetDoc)
 	if len(propKeyMap) == 0 {
-		return ""
+		return nil
 	}
 	for _, prop := range bsonnav.DGetArrayElements(bsonnav.DGet(obj, "Properties")) {
 		propDoc, ok := prop.(bson.D)
@@ -1051,15 +1153,11 @@ func extractPluggableDataSourceEntity(widgetDoc bson.D) string {
 		if valDoc == nil {
 			continue
 		}
-		dsDoc := bsonnav.DGetDoc(valDoc, "DataSource")
-		if dsDoc == nil {
-			continue
-		}
-		if entity := entityFromEntityRef(bsonnav.DGetDoc(dsDoc, "EntityRef")); entity != "" {
-			return entity
+		if dsDoc := bsonnav.DGetDoc(valDoc, "DataSource"); dsDoc != nil {
+			return dsDoc
 		}
 	}
-	return ""
+	return nil
 }
 
 func (m *Mutator) WidgetScope() map[string]model.ID {
@@ -1687,150 +1785,6 @@ func sanitizeColumnName(caption string) string {
 // Entity context extraction
 // ---------------------------------------------------------------------------
 
-// findEnclosingEntityContext walks the raw BSON tree to find the entity context.
-func findEnclosingEntityContext(rawData bson.D, widgetName string) string {
-	if formCall := bsonnav.DGetDoc(rawData, "FormCall"); formCall != nil {
-		args := bsonnav.DGetArrayElements(bsonnav.DGet(formCall, "Arguments"))
-		for _, arg := range args {
-			argDoc, ok := arg.(bson.D)
-			if !ok {
-				continue
-			}
-			if ctx := findEntityContextInWidgets(argDoc, "Widgets", widgetName, ""); ctx != "" {
-				return ctx
-			}
-		}
-	}
-	if ctx := findEntityContextInWidgets(rawData, "Widgets", widgetName, ""); ctx != "" {
-		return ctx
-	}
-	if widgetContainer := bsonnav.DGetDoc(rawData, "Widget"); widgetContainer != nil {
-		if ctx := findEntityContextInWidgets(widgetContainer, "Widgets", widgetName, ""); ctx != "" {
-			return ctx
-		}
-	}
-	return ""
-}
-
-func findEntityContextInWidgets(parentDoc bson.D, key string, widgetName string, currentEntity string) string {
-	elements := bsonnav.DGetArrayElements(bsonnav.DGet(parentDoc, key))
-	for _, elem := range elements {
-		wDoc, ok := elem.(bson.D)
-		if !ok {
-			continue
-		}
-		if bsonnav.DGetString(wDoc, "Name") == widgetName {
-			return currentEntity
-		}
-		entityCtx := currentEntity
-		if ent := widgetOwnEntity(wDoc); ent != "" {
-			entityCtx = ent
-		}
-		if ctx := findEntityContextInChildren(wDoc, widgetName, entityCtx); ctx != "" {
-			return ctx
-		}
-	}
-	return ""
-}
-
-func findEntityContextInChildren(wDoc bson.D, widgetName string, currentEntity string) string {
-	typeName := bsonnav.DGetString(wDoc, "$Type")
-
-	if ctx := findEntityContextInWidgets(wDoc, "Widgets", widgetName, currentEntity); ctx != "" {
-		return ctx
-	}
-	if ctx := findEntityContextInWidgets(wDoc, "FooterWidgets", widgetName, currentEntity); ctx != "" {
-		return ctx
-	}
-	if strings.Contains(typeName, "LayoutGrid") {
-		rows := bsonnav.DGetArrayElements(bsonnav.DGet(wDoc, "Rows"))
-		for _, row := range rows {
-			rowDoc, ok := row.(bson.D)
-			if !ok {
-				continue
-			}
-			cols := bsonnav.DGetArrayElements(bsonnav.DGet(rowDoc, "Columns"))
-			for _, col := range cols {
-				colDoc, ok := col.(bson.D)
-				if !ok {
-					continue
-				}
-				if ctx := findEntityContextInWidgets(colDoc, "Widgets", widgetName, currentEntity); ctx != "" {
-					return ctx
-				}
-			}
-		}
-	}
-	tabPages := bsonnav.DGetArrayElements(bsonnav.DGet(wDoc, "TabPages"))
-	for _, tp := range tabPages {
-		tpDoc, ok := tp.(bson.D)
-		if !ok {
-			continue
-		}
-		if ctx := findEntityContextInWidgets(tpDoc, "Widgets", widgetName, currentEntity); ctx != "" {
-			return ctx
-		}
-	}
-	if controlBar := bsonnav.DGetDoc(wDoc, "ControlBar"); controlBar != nil {
-		if ctx := findEntityContextInWidgets(controlBar, "Items", widgetName, currentEntity); ctx != "" {
-			return ctx
-		}
-	}
-	if strings.Contains(typeName, "CustomWidget") {
-		if obj := bsonnav.DGetDoc(wDoc, "Object"); obj != nil {
-			props := bsonnav.DGetArrayElements(bsonnav.DGet(obj, "Properties"))
-			for _, prop := range props {
-				propDoc, ok := prop.(bson.D)
-				if !ok {
-					continue
-				}
-				valDoc := bsonnav.DGetDoc(propDoc, "Value")
-				if valDoc == nil {
-					continue
-				}
-				if ctx := findEntityContextInWidgets(valDoc, "Widgets", widgetName, currentEntity); ctx != "" {
-					return ctx
-				}
-				// One level deeper: an object-list item (a DataGrid2 column, an
-				// Accordion group, a PopupMenu item) is a WidgetObject of its own,
-				// and its widgets hang off ITS properties — Objects[].Properties[]
-				// .Value.Widgets. The loop above only reaches the grid's own widget
-				// properties, so a customContent cell was invisible to this walk and
-				// everything inside it reported no enclosing entity. That is the
-				// same descent findInWidgetChildren gained in #834; here it was
-				// still missing, so ALTER PAGE could FIND those widgets but built
-				// their bindings with an empty entity context — an association path
-				// in ContentParams then landed in the document as a literal
-				// attribute name (CE1613, #935).
-				//
-				// Deliberately keyed on the BSON shape rather than on the schema's
-				// "columns" property key: the same nesting carries every pluggable
-				// object list, and reading the key would tie the walk to one widget.
-				for _, item := range bsonnav.DGetArrayElements(bsonnav.DGet(valDoc, "Objects")) {
-					itemDoc, ok := item.(bson.D)
-					if !ok {
-						continue
-					}
-					for _, itemProp := range bsonnav.DGetArrayElements(bsonnav.DGet(itemDoc, "Properties")) {
-						itemPropDoc, ok := itemProp.(bson.D)
-						if !ok {
-							continue
-						}
-						itemValDoc := bsonnav.DGetDoc(itemPropDoc, "Value")
-						if itemValDoc == nil {
-							continue
-						}
-						if ctx := findEntityContextInWidgets(itemValDoc, "Widgets", widgetName, currentEntity); ctx != "" {
-							return ctx
-						}
-					}
-				}
-			}
-		}
-	}
-	return ""
-}
-
 // findNearestDataSourceDoc returns the "DataSource" sub-document of the NEAREST
 // container enclosing widgetName that declares one, and whether widgetName was
 // found at all. Unlike findEnclosingEntityContext — which resolves to an entity
@@ -1872,7 +1826,7 @@ func findNearestDSInWidgets(parentDoc bson.D, key string, widgetName string, cur
 			return curDS, true
 		}
 		childDS := curDS
-		if ds := bsonnav.DGetDoc(wDoc, "DataSource"); ds != nil {
+		if ds := widgetOwnDataSourceDoc(wDoc); ds != nil {
 			childDS = ds
 		}
 		if ds, found := findNearestDSInChildren(wDoc, widgetName, childDS); found {
@@ -1928,19 +1882,41 @@ func findNearestDSInChildren(wDoc bson.D, widgetName string, curDS bson.D) (bson
 				if !ok {
 					continue
 				}
-				if valDoc := bsonnav.DGetDoc(propDoc, "Value"); valDoc != nil {
-					if ds, found := findNearestDSInWidgets(valDoc, "Widgets", widgetName, curDS); found {
-						return ds, true
+				valDoc := bsonnav.DGetDoc(propDoc, "Value")
+				if valDoc == nil {
+					continue
+				}
+				if ds, found := findNearestDSInWidgets(valDoc, "Widgets", widgetName, curDS); found {
+					return ds, true
+				}
+				// One level deeper: an object-list item (a DataGrid 2 column, an
+				// Accordion group) keeps its widgets at Objects[].Properties[]
+				// .Value.Widgets. The entity walk gained this descent in #935 and
+				// this one did not, so a widget in a customContent cell under a
+				// FLOW-sourced grid was never reached at all.
+				for _, item := range bsonnav.DGetArrayElements(bsonnav.DGet(valDoc, "Objects")) {
+					itemDoc, ok := item.(bson.D)
+					if !ok {
+						continue
+					}
+					for _, itemProp := range bsonnav.DGetArrayElements(bsonnav.DGet(itemDoc, "Properties")) {
+						itemPropDoc, ok := itemProp.(bson.D)
+						if !ok {
+							continue
+						}
+						itemValDoc := bsonnav.DGetDoc(itemPropDoc, "Value")
+						if itemValDoc == nil {
+							continue
+						}
+						if ds, found := findNearestDSInWidgets(itemValDoc, "Widgets", widgetName, curDS); found {
+							return ds, true
+						}
 					}
 				}
 			}
 		}
 	}
 	return nil, false
-}
-
-func extractEntityFromDataSource(wDoc bson.D) string {
-	return entityFromEntityRef(bsonnav.DGetDoc(bsonnav.DGetDoc(wDoc, "DataSource"), "EntityRef"))
 }
 
 // entityFromEntityRef resolves a datasource's EntityRef to an entity name,

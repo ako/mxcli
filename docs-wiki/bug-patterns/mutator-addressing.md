@@ -94,6 +94,27 @@ bug: it turns a silent no-op into a project Studio Pro cannot open.
 "widget not found" turned out to be two independent defects, and the fix for the
 reported nesting alone would not have made the reporter's command work.
 
+**Naming the node is half the problem; the other half is naming its scope.** A
+widget inserted or replaced in place has to be built in the data context its new
+position implies, and the mutator reads that context out of raw BSON rather than
+from the model the CREATE builder carries. Three separate reports — an
+association-bound list, a widget inside a pluggable column, a selection-driven
+data view — were all the same defect: the walk understood some of Mendix's data
+source kinds and not others, so the widget was built against the *enclosing*
+entity, or against none. The symptom is the worst shape in this family, because
+`mxcli check`, `exec` and `describe` all report normally and the model fails at
+`mx check` or simply renders nothing.
+
+Two things make that class closable rather than recurring. The **set of source
+kinds is closed and small** — `generated/metamodel`'s `DataSource is implemented
+by` list has ten, dividing into "carries an entity", "is a flow whose return type
+is the entity", and "borrows another widget's scope" — so one resolver can be
+demonstrably complete where a per-kind patch never is. And **a source that
+resolves to nothing must shadow the enclosing entity, not fall through to it**:
+falling through is what silently produced a *plausible* wrong entity instead of
+an obvious empty one, which is why the failure reached mxbuild rather than the
+author.
+
 ## See also
 
 - [fix-issue findings](../../.claude/skills/fix-issue/findings/) — the individual
