@@ -3,6 +3,8 @@
 package modelsdkbackend
 
 import (
+	"strings"
+
 	"go.mongodb.org/mongo-driver/v2/bson"
 
 	"github.com/mendixlabs/mxcli/model"
@@ -374,11 +376,17 @@ func actionFromGen(el element.Element) microflows.MicroflowAction {
 				out.ReceiveMappingID = model.ID(rawStr(imc, "ReturnValueMapping"))
 			}
 		}
+		// RequestHandling / ExportMappingCall is a shape NO reference document
+		// carries — all three of ako/TestApp's calls store RequestBodyHandling —
+		// so SendMappingID was never populated from a real project. Kept because
+		// removing it would be a guess in the other direction, and read the real
+		// key below.
 		if rqh, ok := raw.Lookup("RequestHandling").DocumentOK(); ok {
 			if emc, ok := rqh.Lookup("ExportMappingCall").DocumentOK(); ok {
 				out.SendMappingID = model.ID(rawStr(emc, "Mapping"))
 			}
 		}
+		readWebServiceRequestBody(raw, out)
 		if webServiceActionRequiresRawBSON(raw) {
 			out.RawBSON = raw
 		}
@@ -898,30 +906,212 @@ func readMappingCall(doc, imc bson.Raw) (h *microflows.ResultHandlingMapping, fo
 }
 
 // webServiceActionRequiresRawBSON reports whether a CALL WEB SERVICE action
-// carries any field the structured describe form can't represent, in which case
+// carries anything the structured describe form can't reproduce, in which case
 // the renderer emits the `call web service raw '<base64>'` fallback. Mirrors the
-// legacy webServiceActionRequiresRawBSON supported-key set exactly so both engines
-// agree on when to fall back.
+// legacy webServiceActionRequiresRawBSON decision exactly so both engines agree
+// on when to fall back.
+//
+// The question is NOT "is this key known" but "would writing this back from the
+// structured form produce the same document". Until the request body became
+// authorable the two were the same, because the nine keys below were the only
+// ones the writer emitted. They are not the same now: a real call carries
+// fifteen, and six of the new ones are boilerplate mxcli writes at ONE fixed
+// value. Admitting them by name would silently normalise a call with HTTP
+// authentication, a custom location or a non-default proxy the moment anyone
+// ran describe → exec on it — which is the silent drop this whole change exists
+// to remove, reintroduced one layer up.
+//
+// So each of those six is admitted only AT that value. Anything else keeps the
+// raw fallback, which round-trips byte for byte.
 func webServiceActionRequiresRawBSON(raw bson.Raw) bool {
-	supported := map[string]bool{
+	// Keys the structured form carries in full, whatever their value.
+	represented := map[string]bool{
 		"$ID":               true,
 		"$Type":             true,
 		"ErrorHandlingType": true,
 		"ImportedService":   true,
 		"OperationName":     true,
 		"TimeOutExpression": true,
-		"UseRequestTimeOut": true,
-		"NewResultHandling": true,
 		"RequestHandling":   true,
+		// ServiceName is not written by DESCRIBE and does not need to be: the
+		// write path re-reads it from the imported service document, which is
+		// the authoritative source (that is the CE0386 fix). A call whose
+		// service cannot be resolved is already broken.
+		"ServiceName": true,
 	}
 	els, err := raw.Elements()
 	if err != nil {
 		return true
 	}
 	for _, el := range els {
-		if !supported[el.Key()] {
-			return true
+		key := el.Key()
+		if represented[key] {
+			continue
 		}
+		if ok, known := webServiceFixedValueIsDefault(raw, key); known {
+			if !ok {
+				return true
+			}
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// webServiceFixedValueIsDefault reports whether one of the keys mxcli writes at a
+// FIXED value currently holds that value. known is false for a key it does not
+// judge, which the caller treats as unrepresentable.
+func webServiceFixedValueIsDefault(raw bson.Raw, key string) (ok, known bool) {
+	switch key {
+	case "IsValidationRequired":
+		v, isBool := raw.Lookup(key).BooleanOK()
+		return isBool && !v, true
+	case "UseRequestTimeOut":
+		v, isBool := raw.Lookup(key).BooleanOK()
+		return isBool && v, true
+	case "RequestProxyType":
+		return rawStr(raw, key) == "DefaultProxy", true
+	case "ProxyConfiguration":
+		return raw.Lookup(key).Type == bson.TypeNull, true
+	case "HttpConfiguration":
+		doc, isDoc := raw.Lookup(key).DocumentOK()
+		return isDoc && isDefaultWebServiceHTTPConfig(doc), true
+	case "RequestHeaderHandling":
+		doc, isDoc := raw.Lookup(key).DocumentOK()
+		return isDoc && isEmptySimpleRequestHandling(doc), true
+	case "RequestBodyHandling":
+		doc, isDoc := raw.Lookup(key).DocumentOK()
+		return isDoc && webServiceRequestBodyIsRepresentable(doc), true
+	case "NewResultHandling":
+		doc, isDoc := raw.Lookup(key).DocumentOK()
+		return isDoc && webServiceResultHandlingIsRepresentable(doc), true
+	}
+	return false, false
+}
+
+// webServiceResultHandlingIsRepresentable reports whether a call's result
+// handling is one the writer reproduces exactly.
+//
+// This key used to be admitted by name, which was safe only while the six
+// boilerplate keys kept every real call on the raw path anyway. A describe →
+// exec round trip over ako/TestApp caught both ways it is not:
+//
+//   - Clients.SaveOrder binds $IsSaved with NO import mapping, and its
+//     VariableType is DataTypes$BooleanType — the OPERATION's own return type,
+//     which lives in the WSDL and is therefore not derivable from MDL. Written
+//     back as VoidType it is two errors: CE0366 "Cannot store in variable when
+//     there is no return value" and CE6011 "The type of the output variable does
+//     not match the return type of the operation."
+//   - Clients.GetOrders carries Range.SingleObject false where mxcli writes true
+//     — the one divergence from the reference documents still unexplained. No
+//     error comes of it, which is precisely why it must not be written silently:
+//     the round trip would change the user's document with nothing to show for it.
+//
+// So a result handling is representable only when the writer's fixed values are
+// already the stored ones. mxcli's own calls qualify; Studio Pro's do not, and
+// keep the byte-exact raw fallback until SingleObject is settled.
+func webServiceResultHandlingIsRepresentable(doc bson.Raw) bool {
+	if rawStr(doc, "$Type") != "Microflows$ResultHandling" {
+		return false
+	}
+	bound := rawStr(doc, "ResultVariableName") != ""
+	if bind, ok := doc.Lookup("Bind").BooleanOK(); !ok || bind != bound {
+		return false
+	}
+	imc, hasMapping := doc.Lookup("ImportMappingCall").DocumentOK()
+	vt, hasType := doc.Lookup("VariableType").DocumentOK()
+	if !hasType {
+		return false
+	}
+	if !hasMapping {
+		// No mapping: the writer emits VoidType, so only VoidType round-trips.
+		return rawStr(vt, "$Type") == "DataTypes$VoidType"
+	}
+	if rawStr(vt, "$Type") != "DataTypes$ObjectType" {
+		return false
+	}
+	if rawStr(imc, "$Type") != "Microflows$ImportMappingCall" ||
+		rawStr(imc, "Commit") != "YesWithoutEvents" ||
+		rawStr(imc, "ContentType") != "Xml" ||
+		rawStr(imc, "ObjectHandlingBackup") != "Create" ||
+		rawStr(imc, "ParameterVariableName") != "" ||
+		rawStr(imc, "ReturnValueMapping") == "" {
+		return false
+	}
+	if force, ok := imc.Lookup("ForceSingleOccurrence").BooleanOK(); !ok || force {
+		return false
+	}
+	rng, ok := imc.Lookup("Range").DocumentOK()
+	if !ok || rawStr(rng, "$Type") != "Microflows$ConstantRange" {
+		return false
+	}
+	single, ok := rng.Lookup("SingleObject").BooleanOK()
+	return ok && single
+}
+
+// isDefaultWebServiceHTTPConfig reports whether an HttpConfiguration is the one a
+// SOAP call gets when nothing is configured — the only one mxcli writes.
+func isDefaultWebServiceHTTPConfig(doc bson.Raw) bool {
+	if rawStr(doc, "$Type") != "Microflows$HttpConfiguration" {
+		return false
+	}
+	for _, key := range []string{"ClientCertificate", "CustomLocation",
+		"HttpAuthenticationPassword", "HttpAuthenticationUserName"} {
+		if rawStr(doc, key) != "" {
+			return false
+		}
+	}
+	if doc.Lookup("CustomLocationTemplate").Type != bson.TypeNull {
+		return false
+	}
+	if rawStr(doc, "HttpMethod") != "Post" {
+		return false
+	}
+	for key, want := range map[string]bool{"OverrideLocation": false, "UseHttpAuthentication": false} {
+		v, isBool := doc.Lookup(key).BooleanOK()
+		if !isBool || v != want {
+			return false
+		}
+	}
+	return len(rawDocElements(doc, "HttpHeaderEntries")) == 0
+}
+
+// isEmptySimpleRequestHandling reports whether a request handling is the bare
+// Simple form — no parameter mappings — which is all mxcli writes for headers.
+func isEmptySimpleRequestHandling(doc bson.Raw) bool {
+	return rawStr(doc, "$Type") == "Microflows$SimpleRequestHandling" &&
+		rawStr(doc, "NullValueOption") == "LeaveOutElement" &&
+		len(rawDocElements(doc, "ParameterMappings")) == 0
+}
+
+// webServiceRequestBodyIsRepresentable reports whether a RequestBodyHandling is
+// one MDL can spell: an export mapping, or simple parameter mappings whose names
+// survive the round trip.
+func webServiceRequestBodyIsRepresentable(doc bson.Raw) bool {
+	switch rawStr(doc, "$Type") {
+	case "Microflows$MappingRequestHandling":
+		// All three properties are carried on the model and restated by MDL.
+		return rawStr(doc, "MappingId") != "" && rawStr(doc, "MappingVariableName") != ""
+	case "Microflows$SimpleRequestHandling":
+		if rawStr(doc, "NullValueOption") != "LeaveOutElement" {
+			return false
+		}
+		for _, pm := range rawDocElements(doc, "ParameterMappings") {
+			// An ADVANCED mapping (a per-parameter export mapping) has no MDL
+			// spelling at all, and a non-empty ParameterName is a shape no
+			// reference document carries, so neither is judged representable.
+			if rawStr(pm, "$Type") != "Microflows$WebServiceOperationSimpleParameterMapping" ||
+				rawStr(pm, "ParameterName") != "" {
+				return false
+			}
+			// The parameter name MDL spells is the path's last segment; without
+			// one the write path could not rebuild the same path.
+			if !strings.Contains(rawStr(pm, "ParameterPath"), "|") {
+				return false
+			}
+		}
+		return true
 	}
 	return false
 }
@@ -1156,6 +1346,60 @@ func errorHandlingTypeOf(el element.Element) string {
 // Element 0 of a Mendix array is a version marker (an int32), never data, so it
 // simply fails the document check and is skipped — the same shape the mapping
 // readers above rely on.
+// readWebServiceRequestBody reads a SOAP call's RequestBodyHandling — the
+// polymorphic child holding EITHER the operation's arguments or an export
+// mapping — back into the semantic model.
+//
+// Dispatched on $Type, never on which fields happen to be present: the two
+// variants differ in arity, and assigning whichever keys are there would
+// quietly turn one into the other.
+//
+// The parameter NAME is recovered from the stored ParameterPath's last segment,
+// which is what MDL spells. A path with no "|" yields no name, so the argument
+// is read with an empty Name and the describe path renders the action raw —
+// better than inventing a name that would write a different path back.
+func readWebServiceRequestBody(raw bson.Raw, out *microflows.WebServiceCallAction) {
+	body, ok := raw.Lookup("RequestBodyHandling").DocumentOK()
+	if !ok {
+		return
+	}
+	switch rawStr(body, "$Type") {
+	case "Microflows$MappingRequestHandling":
+		// STORAGE NAMES: MappingId / MappingVariableName. gen binds the same two
+		// as Mapping / MappingArgumentVariableName — both listed in its key
+		// audit — so a reader keyed on gen's names finds nothing here.
+		out.SendMappingID = model.ID(rawStr(body, "MappingId"))
+		out.SendMappingVariable = rawStr(body, "MappingVariableName")
+		out.SendMappingContentType = rawStr(body, "ContentType")
+	case "Microflows$SimpleRequestHandling":
+		for _, pm := range rawDocElements(body, "ParameterMappings") {
+			if rawStr(pm, "$Type") != "Microflows$WebServiceOperationSimpleParameterMapping" {
+				// An advanced (per-parameter export mapping) entry, which MDL
+				// cannot author. Read nothing rather than half of it; the raw
+				// fallback carries the action.
+				continue
+			}
+			path := rawStr(pm, "ParameterPath")
+			name := ""
+			if i := strings.LastIndex(path, "|"); i >= 0 {
+				name = path[i+1:]
+			}
+			// Absent reads as true: both reference mappings carry true, and a
+			// bound parameter is by definition one Studio Pro has ticked.
+			checked, ok := pm.Lookup("IsChecked").BooleanOK()
+			if !ok {
+				checked = true
+			}
+			out.Arguments = append(out.Arguments, microflows.WebServiceArgument{
+				Name:       name,
+				Path:       path,
+				Expression: rawStr(pm, "Argument"),
+				Checked:    checked,
+			})
+		}
+	}
+}
+
 func rawDocElements(raw bson.Raw, key string) []bson.Raw {
 	arr, ok := raw.Lookup(key).ArrayOK()
 	if !ok {

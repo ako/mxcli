@@ -544,6 +544,11 @@ func isEmptyJavaActionArgument(expr ast.Expression) bool {
 // addCallWebServiceAction creates a legacy SOAP WebServiceCallAction.
 func (fb *flowBuilder) addCallWebServiceAction(s *ast.CallWebServiceStmt) model.ID {
 	activityX := fb.posX
+	// The same function `mxcli check` runs, so the two cannot drift on what a
+	// valid request body is (MDL-SOAP01).
+	if err := checkWebServiceRequestBodyStmt(s); err != nil {
+		fb.addError("%v", err)
+	}
 	action := &microflows.WebServiceCallAction{
 		BaseElement:       model.BaseElement{ID: model.ID(types.GenerateID())},
 		ErrorHandlingType: convertErrorHandlingType(s.ErrorHandling),
@@ -573,8 +578,12 @@ func (fb *flowBuilder) addCallWebServiceAction(s *ast.CallWebServiceStmt) model.
 		// passed. The gate was green BECAUSE the fixture was broken — a valid
 		// reference was the one input that triggered the defect, and nothing
 		// tested one.
-		SendMappingID:    model.ID(s.SendMappingID),
-		ReceiveMappingID: model.ID(s.ReceiveMappingID),
+		SendMappingID: model.ID(s.SendMappingID),
+		// The variable the export mapping maps FROM. Mendix stores it as
+		// MappingRequestHandling.MappingVariableName, and a send mapping without
+		// one cannot be written — refused above rather than written incomplete.
+		SendMappingVariable: s.SendMappingVariable,
+		ReceiveMappingID:    model.ID(s.ReceiveMappingID),
 		// The entity the receive mapping produces, which types the result
 		// variable. Empty when unresolvable, and the writers keep VoidType.
 		ResultEntity:      resolveImportMappingEntity(fb.backend, s.ReceiveMappingID),
@@ -592,6 +601,7 @@ func (fb *flowBuilder) addCallWebServiceAction(s *ast.CallWebServiceStmt) model.
 	if s.Timeout != nil {
 		action.TimeoutExpression = fb.exprToString(s.Timeout)
 	}
+	action.Arguments = fb.webServiceArguments(s)
 
 	activity := &microflows.ActionActivity{
 		BaseActivity: microflows.BaseActivity{
@@ -620,6 +630,58 @@ func (fb *flowBuilder) addCallWebServiceAction(s *ast.CallWebServiceStmt) model.
 	}
 
 	return activity.ID
+}
+
+// webServiceArguments binds the statement's arguments to the stored
+// ParameterPath each one needs.
+//
+// The path is derived from the OPERATION document rather than written by the
+// author: Mendix stores
+// `http%3A//www.example.com/:GetOrder|OrderId` where MDL says `OrderId`, and
+// putting that in a script would fail every readability test the language is
+// held to. The same move `send rest request` already makes — it stores each
+// parameter under a qualified key and shows only the last segment.
+//
+// A path that cannot be derived is an ERROR, not a fallback. The other
+// resolvers in this file fall back because their alternative is the value that
+// ships today; there is no shipping value for a path that has never been
+// written, and a fabricated one reproduces CE0178 with different text in it.
+func (fb *flowBuilder) webServiceArguments(s *ast.CallWebServiceStmt) []microflows.WebServiceArgument {
+	if len(s.Arguments) == 0 {
+		return nil
+	}
+	element := resolveWebServiceOperationElement(fb.backend, s.ServiceID, s.OperationName)
+	if element == "" {
+		fb.addError("call web service %s: cannot resolve operation %s in the imported "+
+			"service document, so the arguments have no parameter path to bind to.\n"+
+			"  Arguments need the consumed service to be present and to declare the "+
+			"operation — check the name against `describe microflow` on an existing call, "+
+			"or drop the argument list",
+			s.ServiceID, s.OperationName)
+		return nil
+	}
+
+	out := make([]microflows.WebServiceArgument, 0, len(s.Arguments))
+	for _, arg := range s.Arguments {
+		path := webServiceParameterPath(element, arg.Name)
+		if path == "" {
+			fb.addError("call web service %s: cannot build the parameter path for %q "+
+				"from operation element %q — a name containing '%%' is refused because "+
+				"Mendix's escaping of it is unverified",
+				s.ServiceID, arg.Name, element)
+			return nil
+		}
+		out = append(out, microflows.WebServiceArgument{
+			Name:       arg.Name,
+			Path:       path,
+			Expression: fb.exprToString(arg.Value),
+			// Both reference mappings carry true, and Studio Pro's checkbox is
+			// ticked for a parameter that is bound at all — which an argument is,
+			// by being written.
+			Checked: true,
+		})
+	}
+	return out
 }
 
 // resolveExternalActionReturnKind looks up the called OData action in the

@@ -786,13 +786,28 @@ type WebServiceCallAction struct {
 	// operation within this one. Resolved from the imported service document by
 	// the executor (see resolveWebServiceName); empty means it could not be
 	// established, and the writers fall back to deriving it from ServiceID.
-	ServiceName       string   `json:"serviceName,omitempty"`
-	OperationName     string   `json:"operationName,omitempty"`
-	SendMappingID     model.ID `json:"sendMappingId,omitempty"`
-	ReceiveMappingID  model.ID `json:"receiveMappingId,omitempty"`
-	OutputVariable    string   `json:"outputVariable,omitempty"`
-	UseReturnVariable bool     `json:"useReturnVariable"`
-	TimeoutExpression string   `json:"timeoutExpression,omitempty"`
+	ServiceName   string `json:"serviceName,omitempty"`
+	OperationName string `json:"operationName,omitempty"`
+	// Arguments binds the operation's parameters — Mendix's
+	// Microflows$SimpleRequestHandling. Mutually exclusive with SendMappingID:
+	// a call stores ONE RequestBodyHandling, and the executor refuses a
+	// statement that asks for both.
+	Arguments     []WebServiceArgument `json:"arguments,omitempty"`
+	SendMappingID model.ID             `json:"sendMappingId,omitempty"`
+	// SendMappingVariable is the variable the send mapping maps FROM
+	// (MappingRequestHandling.MappingVariableName). An export mapping always
+	// maps an object, so a send mapping without it is incomplete.
+	SendMappingVariable string `json:"sendMappingVariable,omitempty"`
+	// SendMappingContentType is the stored ContentType of a send mapping,
+	// carried through a rewrite rather than normalised. Studio Pro wrote "Json"
+	// on the one reference document available (ako/TestApp Clients.SaveOrder),
+	// which is surprising on an XML protocol and is why this is preserved
+	// rather than derived. Empty means "write the default".
+	SendMappingContentType string   `json:"sendMappingContentType,omitempty"`
+	ReceiveMappingID       model.ID `json:"receiveMappingId,omitempty"`
+	OutputVariable         string   `json:"outputVariable,omitempty"`
+	UseReturnVariable      bool     `json:"useReturnVariable"`
+	TimeoutExpression      string   `json:"timeoutExpression,omitempty"`
 	// ResultEntity is the qualified entity the RECEIVE mapping produces, which
 	// Mendix stores as the call's result VariableType. Resolved from the mapping
 	// document by the executor; empty means it could not be established and the
@@ -801,6 +816,25 @@ type WebServiceCallAction struct {
 }
 
 func (WebServiceCallAction) isMicroflowAction() {}
+
+// WebServiceArgument binds one SOAP operation parameter to an expression —
+// a Microflows$WebServiceOperationSimpleParameterMapping.
+//
+// Name is the bare parameter name as MDL spells it ("OrderId"). Path is the
+// stored ParameterPath, which is the operation's escaped RequestBodyElementName
+// plus "|" plus the name ("http%3A//www.example.com/:GetOrder|OrderId"). The
+// executor derives Path from the operation document; a Path that could not be
+// established stays empty and the call is refused rather than written with a
+// fabricated one, since a wrong path reproduces CE0178 with different text in it.
+type WebServiceArgument struct {
+	Name       string `json:"name"`
+	Path       string `json:"path,omitempty"`
+	Expression string `json:"expression,omitempty"`
+	// Checked mirrors the stored IsChecked. Both reference mappings carry true
+	// and no false has been observed, so it defaults to true on a fresh write
+	// and is preserved on a rewrite rather than normalised.
+	Checked bool `json:"checked"`
+}
 
 // RestCallAction calls a REST service.
 type RestCallAction struct {

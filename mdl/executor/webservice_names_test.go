@@ -240,3 +240,95 @@ func TestResolveImportMappingEntity_UnresolvableIsEmpty(t *testing.T) {
 		t.Errorf("nil backend = %q, want \"\"", got)
 	}
 }
+
+// operationDoc builds an imported service whose single service declares
+// operations with their RequestBodyElementName — the shape the ParameterPath
+// derivation reads.
+func operationDoc(t *testing.T, docName, serviceName string, ops map[string]string) []byte {
+	t.Helper()
+	opArr := bson.A{int32(2)}
+	for name, element := range ops {
+		opArr = append(opArr, bson.M{
+			"$Type": "WebServices$OperationInfoImpl",
+			"Name":  name, "RequestBodyElementName": element,
+		})
+	}
+	out, err := bson.Marshal(bson.M{
+		"$Type": importedServiceType, "Name": docName,
+		"Description": bson.M{"Services": bson.A{int32(2), bson.M{
+			"$Type": "WebServices$ServiceInfoImpl", "Name": serviceName, "Operations": opArr,
+		}}},
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return out
+}
+
+// TestWebServiceParameterPath pins the escaping character for character.
+//
+// Measured on ako/TestApp (11.14.0): operation element
+// "http://www.example.com/:GetOrder" and parameter "OrderId" are stored as
+// "http%3A//www.example.com/:GetOrder|OrderId". Note what is NOT escaped — the
+// slashes, and the colon BETWEEN namespace and local name — because a plausible
+// wrong escaping is exactly what mxbuild accepts and Studio Pro does not.
+func TestWebServiceParameterPath(t *testing.T) {
+	got := webServiceParameterPath("http://www.example.com/:GetOrder", "OrderId")
+	if want := "http%3A//www.example.com/:GetOrder|OrderId"; got != want {
+		t.Errorf("webServiceParameterPath = %q, want %q", got, want)
+	}
+	// An element with no namespace at all keeps the bare local name.
+	if got := webServiceParameterPath("GetOrder", "OrderId"); got != "GetOrder|OrderId" {
+		t.Errorf("unqualified element = %q, want GetOrder|OrderId", got)
+	}
+	// A "|" inside a segment would otherwise be read as the separator.
+	if got := webServiceParameterPath("urn:a|b:Op", "P"); got != "urn%3Aa%7Cb:Op|P" {
+		t.Errorf("pipe not escaped: %q", got)
+	}
+}
+
+// TestWebServiceParameterPath_RefusesUnverifiableEscaping — a segment already
+// containing "%" is refused rather than encoded or passed through. Whether
+// Mendix writes %25 there is unmeasured, and both answers produce a path that
+// silently addresses the wrong parameter.
+func TestWebServiceParameterPath_RefusesUnverifiableEscaping(t *testing.T) {
+	for _, tc := range []struct{ element, name string }{
+		{"http://x/%y:Op", "P"},
+		{"http://x/:Op", "P%1"},
+		{"", "P"},
+		{"http://x/:Op", ""},
+	} {
+		if got := webServiceParameterPath(tc.element, tc.name); got != "" {
+			t.Errorf("webServiceParameterPath(%q, %q) = %q, want \"\"", tc.element, tc.name, got)
+		}
+	}
+}
+
+// TestResolveWebServiceOperationElement reads the prefix every argument's path
+// is built from, off the operation rather than out of the WSDL text.
+func TestResolveWebServiceOperationElement(t *testing.T) {
+	b := backendWithUnits(operationDoc(t, "OrderSoapClient", "OrdersWS", map[string]string{
+		"GetOrder":  "http://www.example.com/:GetOrder",
+		"SaveOrder": "http://www.example.com/:SaveOrder",
+	}))
+
+	if got := resolveWebServiceOperationElement(b, "Clients.OrderSoapClient", "GetOrder"); got != "http://www.example.com/:GetOrder" {
+		t.Errorf("= %q", got)
+	}
+	// Unresolvable every way returns "", and the caller REFUSES rather than
+	// falling back — there is no shipping value for a path never written.
+	for _, tc := range []struct{ name, qn, op string }{
+		{"no such operation", "Clients.OrderSoapClient", "Nope"},
+		{"no such document", "Clients.Missing", "GetOrder"},
+		{"no operation named", "Clients.OrderSoapClient", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := resolveWebServiceOperationElement(b, tc.qn, tc.op); got != "" {
+				t.Errorf("= %q, want \"\"", got)
+			}
+		})
+	}
+	if got := resolveWebServiceOperationElement(nil, "Clients.OrderSoapClient", "GetOrder"); got != "" {
+		t.Errorf("nil backend = %q", got)
+	}
+}

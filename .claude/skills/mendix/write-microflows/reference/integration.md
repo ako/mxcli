@@ -12,7 +12,7 @@ round-trip without dropping SOAP actions.
 -- Structured form. Resolved SOAP references use normal qualified names.
 $Root = call web service SampleSOAP.OrderService
 operation FetchSampleItems
-send mapping SampleSOAP.OrderRequest
+send mapping SampleSOAP.OrderRequest from $Request
 receive mapping SampleSOAP.OrderResponse
 timeout 30
 on error rollback;
@@ -20,12 +20,62 @@ on error rollback;
 -- Quoted raw IDs are accepted when old project references are dangling or unavailable.
 $Root = call web service 'sample-service-id'
 operation FetchSampleItems
-send mapping 'sample-send-mapping-id'
 receive mapping 'sample-receive-mapping-id';
 
 -- Raw escape hatch emitted for unsupported SOAP fields.
 $Root = call web service raw 'AQID';
 ```
+
+### The request body: arguments OR a send mapping, never both
+
+A call stores **one** request body (`Microflows$RequestBodyHandling`), so the two
+forms are alternatives. Asking for both is refused as **MDL-SOAP01** by
+`mxcli check` and by `exec` — the same function runs in each.
+
+**Arguments** bind the operation's parameters, in the same `(Name = value)` form
+every other call statement uses:
+
+```mdl
+$Order = call web service Clients.OrderSoapClient
+operation GetOrder (OrderId = $Customer/OrderId)
+receive mapping Clients.SoapOrdersImportMapping;
+```
+
+Mendix stores each one under a `ParameterPath`
+(`http%3A//www.example.com/:GetOrder|OrderId`) built from the operation's request
+body element. mxcli reads that element off the consumed service document and
+builds the path, so the script names only the parameter. Two consequences:
+
+- **The consumed service must be present and declare the operation.** An
+  operation mxcli cannot resolve is refused rather than written with a made-up
+  path — a wrong path reproduces the same error with different text in it.
+- **A misspelled parameter name cannot be caught by `mxcli check`.** The names
+  live in the WSDL's inline schema, which mxcli does not parse; the error arrives
+  from mxbuild as **CE0178** "Body parameter mapping needs to be refreshed" —
+  which is also what you get if you omit arguments an operation requires.
+
+**A send mapping** builds the whole body from an export mapping, and needs the
+variable it maps **from**:
+
+```mdl
+call web service Clients.OrderSoapClient
+operation SaveOrder
+send mapping Clients.SoapOrderExportMapping from $NewSaveOrder;
+```
+
+`from $var` is not optional. An export mapping maps an object and Mendix stores
+which one; without it the call builds as **CE0369** "Cannot use simple request
+body, as the operation's body is complex".
+
+### Why DESCRIBE sometimes still shows base64
+
+`describe microflow` renders a SOAP call structurally only when re-executing that
+MDL would reproduce the stored document exactly. A call configured beyond what
+MDL spells — HTTP authentication, a custom location, SOAP headers, a per-parameter
+export mapping, or a result typed from the WSDL rather than from an import
+mapping — keeps the `call web service raw '<base64>'` form, which round-trips
+byte for byte. That is deliberate: rendering it structurally would silently
+normalise the call on the next `exec`.
 
 **Design note:** the raw payload is base64-encoded BSON for the complete action
 and is authoritative on re-exec. Treat this as round-trip support, not a

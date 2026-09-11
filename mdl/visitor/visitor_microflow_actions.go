@@ -530,8 +530,15 @@ func buildCallWebServiceStatement(ctx parser.ICallWebServiceStatementContext) *a
 	callCtx := ctx.(*parser.CallWebServiceStatementContext)
 
 	stmt := &ast.CallWebServiceStmt{}
-	if v := callCtx.VARIABLE(); v != nil {
-		stmt.OutputVariable = strings.TrimPrefix(v.GetText(), "$")
+	// Two VARIABLE positions now: the output variable before EQUALS, and the
+	// send mapping's source after FROM. Walk them positionally against the
+	// tokens that gate each, as the webServiceReference walk below does — with
+	// no output variable, the send variable IS the first one.
+	vars := callCtx.AllVARIABLE()
+	varIdx := 0
+	if callCtx.EQUALS() != nil && len(vars) > varIdx {
+		stmt.OutputVariable = strings.TrimPrefix(vars[varIdx].GetText(), "$")
+		varIdx++
 	}
 
 	if callCtx.RAW() != nil {
@@ -556,10 +563,16 @@ func buildCallWebServiceStatement(ctx parser.ICallWebServiceStatementContext) *a
 	if callCtx.OPERATION() != nil && len(refs) > idx {
 		stmt.OperationName = webServiceReferenceText(refs[idx])
 		idx++
+		if argList := callCtx.CallArgumentList(); argList != nil {
+			stmt.Arguments = buildCallArgumentList(argList)
+		}
 	}
 	if callCtx.SEND() != nil && len(refs) > idx {
 		stmt.SendMappingID = webServiceReferenceText(refs[idx])
 		idx++
+		if callCtx.FROM() != nil && len(vars) > varIdx {
+			stmt.SendMappingVariable = strings.TrimPrefix(vars[varIdx].GetText(), "$")
+		}
 	}
 	if callCtx.RECEIVE() != nil && len(refs) > idx {
 		stmt.ReceiveMappingID = webServiceReferenceText(refs[idx])

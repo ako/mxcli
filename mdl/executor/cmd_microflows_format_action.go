@@ -1015,10 +1015,21 @@ func formatWebServiceCallAction(ctx *ExecContext, a *microflows.WebServiceCallAc
 	// three resolvers that used to stand here actually did.
 	parts := []string{prefix + "call web service " + formatWebServiceReference(string(a.ServiceID))}
 	if a.OperationName != "" {
-		parts = append(parts, "operation "+formatWebServiceReference(a.OperationName))
+		op := "operation " + formatWebServiceReference(a.OperationName)
+		// The arguments carry the stored ParameterPath, but only its last
+		// segment is spelled in MDL — the rest is rebuilt from the operation
+		// document on the way back in.
+		if args := formatWebServiceArguments(a.Arguments); args != "" {
+			op += " (" + args + ")"
+		}
+		parts = append(parts, op)
 	}
 	if a.SendMappingID != "" {
-		parts = append(parts, "send mapping "+formatWebServiceReference(string(a.SendMappingID)))
+		send := "send mapping " + formatWebServiceReference(string(a.SendMappingID))
+		if a.SendMappingVariable != "" {
+			send += " from $" + a.SendMappingVariable
+		}
+		parts = append(parts, send)
 	}
 	if a.ReceiveMappingID != "" {
 		parts = append(parts, "receive mapping "+formatWebServiceReference(string(a.ReceiveMappingID)))
@@ -1027,6 +1038,27 @@ func formatWebServiceCallAction(ctx *ExecContext, a *microflows.WebServiceCallAc
 		parts = append(parts, "timeout "+strings.TrimRight(a.TimeoutExpression, " \t\n\r"))
 	}
 	return strings.Join(parts, "\n") + ";"
+}
+
+// formatWebServiceArguments renders the operation's argument list, or "" when
+// there is nothing MDL can spell.
+//
+// An argument whose Name did not survive the read — a ParameterPath with no
+// "|", which no reference document has — renders nothing at all, and the
+// action falls back to the raw form rather than emitting a list that would
+// write a different path back.
+func formatWebServiceArguments(args []microflows.WebServiceArgument) string {
+	if len(args) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg.Name == "" {
+			return ""
+		}
+		parts = append(parts, arg.Name+" = "+arg.Expression)
+	}
+	return strings.Join(parts, ", ")
 }
 
 func formatWebServiceReference(ref string) string {

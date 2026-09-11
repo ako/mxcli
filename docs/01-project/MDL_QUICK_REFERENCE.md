@@ -520,7 +520,14 @@ it is for pages.
 | Call JS action | `$Result = call javascript action Module.Name (Param = $value);` | JavaScript action (nanoflow/microflow) |
 | Call Java action | `$Result = call java action Module.Name (Param = $value);` | Java action (microflow only) |
 | Call web service | `$Result = call web service Module.Service operation OperationName;` | Legacy SOAP; quoted refs are fallback for dangling raw IDs |
+| Call web service (arguments) | `$Result = call web service Module.Service operation GetOrder (OrderId = $Id) receive mapping Module.IMM;` | Binds the operation's parameters, same `(Name = value)` form as every other call. mxcli builds the stored `ParameterPath` from the operation, so the script names only the parameter. Needs the consumed service present — an operation it cannot resolve is refused, not guessed. Without them an operation that takes parameters is **CE0178** |
+| Call web service (send mapping) | `call web service Module.Service operation SaveOrder send mapping Module.EMM from $Order;` | Request body built by an export mapping. `from $var` is **required** — Mendix stores which object is mapped, and without it the call is **CE0369** |
 | Call web service raw | `$Result = call web service raw 'base64-bson';` | Escape hatch for byte-for-byte legacy SOAP round-trip |
+
+> **A call has ONE request body.** Arguments and a send mapping are alternatives —
+> Mendix stores one `RequestBodyHandling` — so a statement asking for both is
+> refused as **MDL-SOAP01** by `mxcli check` and by `exec`, which call the same
+> function.
 | REST call (string) | `$Var = rest call get '<url>' returns string;` | Body as string |
 | REST call (response) | `$Var = rest call get '<url>' returns response;` | `System.HttpResponse` object. There is no specialization form — Mendix does not allow HttpResponse to be specialized (CE1540) |
 | REST call (file document) | `$Var = rest call get '<url>' returns Module.MyFile;` | Stores the body in a file document. Must be a **specialization** of `System.FileDocument` — the base type is rejected as a return type (CE0362 / MDL064) |

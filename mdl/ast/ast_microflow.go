@@ -650,15 +650,20 @@ func (s *CallJavaScriptActionStmt) isMicroflowStatement() {}
 
 // CallWebServiceStmt represents a legacy SOAP web service call.
 type CallWebServiceStmt struct {
-	OutputVariable   string               // Optional output variable
-	RawBSONBase64    string               // Raw Microflows$CallWebServiceAction BSON for lossless roundtrip
-	ServiceID        string               // Consumed web service ID or qualified name
-	OperationName    string               // Operation name
-	SendMappingID    string               // Optional export mapping ID or qualified name
-	ReceiveMappingID string               // Optional import mapping ID or qualified name
-	Timeout          Expression           // Optional timeout expression
-	ErrorHandling    *ErrorHandlingClause // Optional ON ERROR clause
-	Annotations      *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	OutputVariable string         // Optional output variable
+	RawBSONBase64  string         // Raw Microflows$CallWebServiceAction BSON for lossless roundtrip
+	ServiceID      string         // Consumed web service ID or qualified name
+	OperationName  string         // Operation name
+	Arguments      []CallArgument // Optional operation arguments — Microflows$SimpleRequestHandling
+	SendMappingID  string         // Optional export mapping ID or qualified name
+	// SendMappingVariable is the variable the export mapping maps FROM. An
+	// export mapping always maps an object, so a send mapping without one is
+	// incomplete — Mendix stores it as MappingRequestHandling.MappingVariableName.
+	SendMappingVariable string
+	ReceiveMappingID    string               // Optional import mapping ID or qualified name
+	Timeout             Expression           // Optional timeout expression
+	ErrorHandling       *ErrorHandlingClause // Optional ON ERROR clause
+	Annotations         *ActivityAnnotations // Optional @position, @caption, @color, @annotation
 }
 
 func (s *CallWebServiceStmt) isMicroflowStatement() {}

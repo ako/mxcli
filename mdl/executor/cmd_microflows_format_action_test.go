@@ -1360,3 +1360,67 @@ func TestFormatAction_WebServiceCallRaw(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// TestFormatAction_WebServiceCallArgumentsAndSendMapping — DESCRIBE renders both
+// request-body forms, and renders them so they parse back.
+//
+// The argument list shows only the parameter NAME; the stored ParameterPath
+// ("http%3A//www.example.com/:GetOrder|OrderId") is rebuilt from the operation
+// document on the way back in. Putting the path in the script would fail every
+// readability test the language is held to — and `send rest request` already
+// makes the same move, showing `code` where the model holds Mod.Svc.Op.code.
+func TestFormatAction_WebServiceCallArgumentsAndSendMapping(t *testing.T) {
+	ctx, _ := newMockCtx(t, withBackend(&mock.MockBackend{IsConnectedFunc: func() bool { return true }}),
+		withHierarchy(mkHierarchy()))
+
+	args := formatAction(ctx, &microflows.WebServiceCallAction{
+		ServiceID:     "Clients.OrderSoapClient",
+		OperationName: "GetOrder",
+		Arguments: []microflows.WebServiceArgument{
+			{Name: "OrderId", Path: "http%3A//www.example.com/:GetOrder|OrderId", Expression: "$Customer/OrderId", Checked: true},
+			{Name: "Verbose", Path: "http%3A//www.example.com/:GetOrder|Verbose", Expression: "true", Checked: true},
+		},
+		ReceiveMappingID: "Clients.SoapOrdersImportMapping",
+		OutputVariable:   "Orders",
+	}, nil, nil)
+	want := "$Orders = call web service Clients.OrderSoapClient\n" +
+		"operation GetOrder (OrderId = $Customer/OrderId, Verbose = true)\n" +
+		"receive mapping Clients.SoapOrdersImportMapping;"
+	if args != want {
+		t.Errorf("arguments form:\n got %q\nwant %q", args, want)
+	}
+
+	send := formatAction(ctx, &microflows.WebServiceCallAction{
+		ServiceID:           "Clients.OrderSoapClient",
+		OperationName:       "SaveOrder",
+		SendMappingID:       "Clients.SoapOrderExportMapping",
+		SendMappingVariable: "NewSaveOrder",
+	}, nil, nil)
+	wantSend := "call web service Clients.OrderSoapClient\n" +
+		"operation SaveOrder\n" +
+		"send mapping Clients.SoapOrderExportMapping from $NewSaveOrder;"
+	if send != wantSend {
+		t.Errorf("send mapping form:\n got %q\nwant %q", send, wantSend)
+	}
+}
+
+// TestFormatAction_WebServiceCallArgumentWithoutAName renders no argument list
+// at all rather than a partial one.
+//
+// A ParameterPath with no "|" yields no name on the way in — a shape no
+// reference document carries — and emitting `operation X ( = expr)` would write
+// a DIFFERENT path back. The action keeps the raw fallback instead, which is
+// decided by the reader; this is the belt to that braces.
+func TestFormatAction_WebServiceCallArgumentWithoutAName(t *testing.T) {
+	ctx, _ := newMockCtx(t, withBackend(&mock.MockBackend{IsConnectedFunc: func() bool { return true }}),
+		withHierarchy(mkHierarchy()))
+
+	got := formatAction(ctx, &microflows.WebServiceCallAction{
+		ServiceID:     "M.S",
+		OperationName: "Op",
+		Arguments:     []microflows.WebServiceArgument{{Path: "no-separator", Expression: "1"}},
+	}, nil, nil)
+	if strings.Contains(got, "(") {
+		t.Errorf("emitted a partial argument list: %q", got)
+	}
+}
