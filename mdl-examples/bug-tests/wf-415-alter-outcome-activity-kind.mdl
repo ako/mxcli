@@ -1,0 +1,75 @@
+-- ako/mxcli#415 — an ALTER WORKFLOW insert op must match the activity's kind.
+--
+-- An activity's outcome list is TYPED, and each inserting op writes exactly one
+-- outcome type into it:
+--
+--   INSERT OUTCOME          -> Workflows$UserTaskOutcome        (user task only)
+--   INSERT PATH             -> Workflows$ParallelSplitOutcome   (parallel split only)
+--   INSERT CONDITION        -> Workflows$…ConditionOutcome      (decision / call microflow)
+--   INSERT BOUNDARY EVENT   -> a boundary event                 (user task, call microflow,
+--                                                                call workflow, wait for notification)
+--
+-- Before the fix none of them checked what they were pointed at. Measured on
+-- mxbuild 11.10.0 against this project sitting at 0 errors, each of these six
+-- statements left a model Mendix cannot LOAD — `mx check` dies at "Loading the
+-- mpr file" with a .NET exception, before validating anything, and Studio Pro
+-- will not open the project:
+--
+--   alter workflow WF415.WF insert outcome 'X' on decision9 { };      -- InvalidCastException
+--   alter workflow WF415.WF insert outcome 'X' on split1 { };         -- InvalidCastException
+--   alter workflow WF415.WF insert path on decision9 { };             -- InvalidOperationException
+--   alter workflow WF415.WF insert path on task1 { };                 -- InvalidOperationException
+--   alter workflow WF415.WF insert condition 'WF415.Kind.Standard' on task1 { };   -- InvalidOperationException
+--   alter workflow WF415.WF insert condition 'WF415.Kind.Standard' on split1 { };  -- InvalidOperationException
+--
+-- They are now refused, by the one function `check --references` and `exec`
+-- share, and the refusal names the op that fits the target.
+--
+-- This file is NOT a .fail.mdl: the guard resolves the target against the
+-- STORED workflow, so it needs a project, and `make check-mdl` runs `check`
+-- with none. What follows is the correct form of each op — run it against a
+-- project with `mxcli exec` and `mx check` should stay at 0 errors.
+
+create module WF415;
+
+create enumeration WF415.Kind (Standard 'Standard', Priority 'Priority');
+
+create persistent entity WF415.Ctx (
+  Kind: Enumeration(WF415.Kind)
+);
+
+create page WF415.TaskPage
+  (
+    Title: 'Task',
+    Layout: Atlas_Core.Atlas_Default,
+    Params: { $TaskPageParam: System.WorkflowUserTask }
+  )
+  {
+    CONTAINER c1 { }
+  }
+
+create workflow WF415.WF parameter $WorkflowContext: WF415.Ctx
+begin
+  user task task1 'Review'
+    page WF415.TaskPage
+    outcomes 'OK' { };
+
+  -- An enumeration decision carries one outcome per value plus the empty one
+  -- (MDL-WF06 / CE6686).
+  decision decision9 '$WorkflowContext/Kind'
+    outcomes
+      'WF415.Kind.Standard' -> { }
+      'WF415.Kind.Priority' -> { }
+      '' -> { }
+  ;
+
+  parallel split split1
+    path 1 { }
+    path 2 { }
+  ;
+end workflow;
+
+-- Each op aimed at the activity kind whose list can hold what it writes.
+alter workflow WF415.WF insert outcome 'Rejected' on task1 { };
+alter workflow WF415.WF insert path on split1 { };
+alter workflow WF415.WF insert boundary event on task1 timer '1h' { };
