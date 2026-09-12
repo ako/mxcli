@@ -1,0 +1,354 @@
+[
+ {
+  "module": "Administration",
+  "microflow": "ManageMyAccount",
+  "class": "recombinable",
+  "branches": 3,
+  "overlap": 3,
+  "split_at": "220, 200"
+ },
+ {
+  "module": "DatabaseReplication",
+  "microflow": "BCo_CustomConstraint",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 2,
+  "split_at": "-365, 200"
+ },
+ {
+  "module": "DatabaseReplication",
+  "microflow": "BCo_CustomConstraint",
+  "class": "interleaved",
+  "branches": 3,
+  "overlap": 4,
+  "split_at": "-85, 200"
+ },
+ {
+  "module": "DatabaseReplication",
+  "microflow": "BCo_CustomConstraint",
+  "class": "interleaved",
+  "branches": 2,
+  "overlap": 4,
+  "split_at": "400, 65"
+ },
+ {
+  "module": "DatabaseReplication",
+  "microflow": "BCo_CustomConstraint",
+  "class": "interleaved",
+  "branches": 3,
+  "overlap": 5,
+  "split_at": "540, 65"
+ },
+ {
+  "module": "DatabaseReplication",
+  "microflow": "BCo_TableMapping",
+  "class": "interleaved",
+  "branches": 5,
+  "overlap": 30,
+  "split_at": "50, 200"
+ },
+ {
+  "module": "DatabaseReplication",
+  "microflow": "Column_SetCorrectRefObjectType",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 8,
+  "split_at": "520, 200"
+ },
+ {
+  "module": "DatabaseReplication",
+  "microflow": "IVK_CustomConstraint_Save",
+  "class": "interleaved",
+  "branches": 10,
+  "overlap": 6,
+  "split_at": "487, 390"
+ },
+ {
+  "module": "DatabaseReplication",
+  "microflow": "IVK_SaveImportCall",
+  "class": "recombinable",
+  "branches": 3,
+  "overlap": 4,
+  "split_at": "185, 200"
+ },
+ {
+  "module": "DatabaseReplication",
+  "microflow": "ValidateColumnMapping",
+  "class": "recombinable",
+  "branches": 3,
+  "overlap": 14,
+  "split_at": "-130, 350"
+ },
+ {
+  "module": "DatabaseReplication",
+  "microflow": "ValidateColumnMapping",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 5,
+  "split_at": "1355, 255"
+ },
+ {
+  "module": "DatabaseReplication",
+  "microflow": "ValidateDatabase",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 2,
+  "split_at": "265, 200"
+ },
+ {
+  "module": "DatabaseReplication",
+  "microflow": "ValidateTableMapping",
+  "class": "recombinable",
+  "branches": 4,
+  "overlap": 2,
+  "split_at": "190, 230"
+ },
+ {
+  "module": "DatabaseReplication",
+  "microflow": "ValidateTableMapping",
+  "class": "interleaved",
+  "branches": 5,
+  "overlap": 10,
+  "split_at": "50, 115"
+ },
+ {
+  "module": "Email_Connector",
+  "microflow": "ACT_EmailAccount_ClientCredentialsGrant_SaveAutoConfig",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 22,
+  "split_at": "-1955, -415"
+ },
+ {
+  "module": "Email_Connector",
+  "microflow": "ACT_EmailAccount_ClientCredentialsGrant_SaveManualConfig",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 12,
+  "split_at": "-1775, -290"
+ },
+ {
+  "module": "Email_Connector",
+  "microflow": "ACT_EmailAccount_GetOrRenewTokenJavaAction",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 16,
+  "split_at": "-1760, -485"
+ },
+ {
+  "module": "Email_Connector",
+  "microflow": "ACT_EmailAccount_GetOrRenewTokenJavaAction",
+  "class": "recombinable",
+  "branches": 3,
+  "overlap": 2,
+  "split_at": "-770, -485"
+ },
+ {
+  "module": "Email_Connector",
+  "microflow": "ACT_EmailAccount_SaveAutoConfig",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 8,
+  "split_at": "-145, -240"
+ },
+ {
+  "module": "Email_Connector",
+  "microflow": "ACT_EmailAccount_SaveAutoConfig",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 20,
+  "split_at": "-908, -240"
+ },
+ {
+  "module": "Email_Connector",
+  "microflow": "ACT_EmailAccount_SaveEmailSecurityConfiguration",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 12,
+  "split_at": "-1060, -60"
+ },
+ {
+  "module": "Email_Connector",
+  "microflow": "ACT_EmailAccount_SaveEmailSecurityConfiguration",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 4,
+  "split_at": "-550, -60"
+ },
+ {
+  "module": "Email_Connector",
+  "microflow": "ACT_EmailAccount_SaveManualConfig",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 17,
+  "split_at": "-1545, -230"
+ },
+ {
+  "module": "Email_Connector",
+  "microflow": "ACT_EmailAccount_SaveManualConfig",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 8,
+  "split_at": "-577, -230"
+ },
+ {
+  "module": "Email_Connector",
+  "microflow": "ACT_EmailAccount_Save_EmailSecurityConfig",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 12,
+  "split_at": "-1089, -60"
+ },
+ {
+  "module": "Email_Connector",
+  "microflow": "ACT_EmailAccount_Save_EmailSecurityConfig",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 4,
+  "split_at": "-579, -60"
+ },
+ {
+  "module": "Email_Connector",
+  "microflow": "OCH_LDapConfiguration_AuthType",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 3,
+  "split_at": "25, 170"
+ },
+ {
+  "module": "Email_Connector",
+  "microflow": "SUB_EmailAccount_Save",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 13,
+  "split_at": "-2280, 75"
+ },
+ {
+  "module": "Email_Connector",
+  "microflow": "SUB_EmailAccount_SaveReceiveConfig",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 8,
+  "split_at": "-1638, -240"
+ },
+ {
+  "module": "Email_Connector",
+  "microflow": "SUB_EmailAccount_SaveSendConfig",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 8,
+  "split_at": "-1638, -240"
+ },
+ {
+  "module": "Email_Connector",
+  "microflow": "VAL_BatchDetails",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 1,
+  "split_at": "-385, 55"
+ },
+ {
+  "module": "Encryption",
+  "microflow": "MB_SaveCertificate",
+  "class": "recombinable",
+  "branches": 3,
+  "overlap": 10,
+  "split_at": "-585, 200"
+ },
+ {
+  "module": "ExcelImporter",
+  "microflow": "BCo_Column",
+  "class": "recombinable",
+  "branches": 12,
+  "overlap": 12,
+  "split_at": "770, 200"
+ },
+ {
+  "module": "ExcelImporter",
+  "microflow": "Column_SetCorrectRefObjectType",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 8,
+  "split_at": "520, 200"
+ },
+ {
+  "module": "ExcelImporter",
+  "microflow": "Column_SetDetails",
+  "class": "recombinable",
+  "branches": 4,
+  "overlap": 2,
+  "split_at": "190, 200"
+ },
+ {
+  "module": "ExcelImporter",
+  "microflow": "IVK_Column_Save",
+  "class": "interleaved",
+  "branches": 5,
+  "overlap": 12,
+  "split_at": "55, 200"
+ },
+ {
+  "module": "ExcelImporter",
+  "microflow": "SetColumnStatus",
+  "class": "interleaved",
+  "branches": 12,
+  "overlap": 10,
+  "split_at": "335, 200"
+ },
+ {
+  "module": "ExcelImporter",
+  "microflow": "SetColumnStatus",
+  "class": "recombinable",
+  "branches": 5,
+  "overlap": 3,
+  "split_at": "725, 200"
+ },
+ {
+  "module": "ExcelImporter",
+  "microflow": "ValidateTemplate",
+  "class": "interleaved",
+  "branches": 5,
+  "overlap": 18,
+  "split_at": "1295, 230"
+ },
+ {
+  "module": "FeedbackModule",
+  "microflow": "VAL_Feedback",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 3,
+  "split_at": "-215, 200"
+ },
+ {
+  "module": "FeedbackModule",
+  "microflow": "VAL_Feedback",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 3,
+  "split_at": "770, 200"
+ },
+ {
+  "module": "WorkflowCommons",
+  "microflow": "DS_WorkflowTaskDefinition_Selectable_UserImplementation",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 5,
+  "split_at": "465, 170"
+ },
+ {
+  "module": "WorkflowCommons",
+  "microflow": "OCH_DashboardContext_UpdateTaskDashboard",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 2,
+  "split_at": "320, 200"
+ },
+ {
+  "module": "WorkflowCommons",
+  "microflow": "SUB_UserTask_Assign",
+  "class": "recombinable",
+  "branches": 2,
+  "overlap": 3,
+  "split_at": "-190, 125"
+ }
+]

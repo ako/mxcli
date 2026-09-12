@@ -1,13 +1,15 @@
 ---
 title: Structured description of irreducible microflow graphs
-status: draft
+status: partial
 date: 2026-08-20
 ---
 
 # Proposal: Structured description of irreducible microflow graphs
 
-**Status:** Draft
-**Date:** 2026-08-20
+**Status:** Partial — Phase 0 (detector, `MDL-FLOW01`, describe-time warning) is
+shipped; the prevalence scan that gates the rest is
+[measured below](#measured-2026-09-12) and selects Mode 3. Phases 1–2 unscheduled.
+**Date:** 2026-08-20 (scan: 2026-09-12)
 
 `DESCRIBE MICROFLOW` renders a microflow's control flow as nested `if/then/else`.
 That works only for graphs that are *properly nested*. A Mendix microflow is an
@@ -253,10 +255,10 @@ Classification for each irreducible split:
 - **interleaved** — the intersection contains an activity, or the branches have
   more than one shared entry point.
 
-### The prevalence scan (to be run against demo projects)
+### The prevalence scan
 
 ```bash
-mxcli lint -p app.mpr --rule MDL-FLOW01 --format json
+mxcli lint -p app.mpr -r MDL-FLOW01 --format json
 ```
 
 Emit per finding: qualified microflow name, module, split position,
@@ -265,10 +267,88 @@ classification, branch count, size of the overlap region. What the numbers decid
 | Result | Consequence |
 |---|---|
 | Irreducible graphs are rare | Ship Mode 2 only; refuse the rest. Mode 3 not worth building. |
-| Common and mostly *recombinable* | Mode 3 earns its cost; it is the pretty answer for most of them. |
+| **Common and mostly *recombinable*** | **Mode 3 earns its cost; it is the pretty answer for most of them.** |
 | Common and mostly *interleaved* | Mode 2 is the whole feature; Mode 3 would rarely apply. |
 
-Until this is measured, Modes 2 and 3 are **unscheduled**.
+#### Measured, 2026-09-12
+
+Corpus: **555 microflows** across **10 Mendix-authored Marketplace modules**
+installed into one 11.6.6 project. Administration 4.3.2 and FeedbackModule 4.0.2
+ship with a blank app; the rest were installed with
+`mxcli marketplace install <id> -p app.mpr`:
+
+| Module | Content id | Version |
+|---|---:|---|
+| Workflow Commons | 117066 | 4.5.0 (newest built for 11.6.6) |
+| Email Connector | 120739 | 6.4.3 |
+| DatabaseReplication | 160 | 9.3.1 |
+| ExcelImporter | 72 | 11.2.2 |
+| Encryption | 1011 | 11.1.2 |
+| Audittrail | 138 | 10.2.2 |
+| Community Commons | 170 | 11.5.1 |
+
+Marketplace code was chosen
+over demo projects because the result is **reproducible by anyone** from a
+content id and a version, rather than resting on two numbers pasted into a doc.
+All 44 findings — module, microflow, class, branch count, overlap size, split
+position — are in
+[`data/flow01-prevalence-2026-09-12.json`](data/flow01-prevalence-2026-09-12.json),
+so the table below can be recomputed rather than taken on trust.
+
+| Module | Microflows | With a branching split | Flagged | recombinable | interleaved |
+|---|---:|---:|---:|---:|---:|
+| WorkflowCommons | 176 | 63 | 3 | 3 | 0 |
+| Email_Connector | 135 | 65 | 12 | 17 | 0 |
+| DatabaseReplication | 121 | 72 | 8 | 7 | 6 |
+| ExcelImporter | 79 | 37 | 6 | 4 | 3 |
+| Encryption | 16 | 6 | 1 | 1 | 0 |
+| AuditTrail | 8 | 3 | 0 | 0 | 0 |
+| Administration | 8 | 4 | 1 | 1 | 0 |
+| FeedbackModule | 7 | 3 | 1 | 2 | 0 |
+| CommunityCommons | 4 | 4 | 0 | 0 | 0 |
+| MyFirstModule | 1 | 0 | 0 | 0 | 0 |
+| **Total** | **555** | **257** | **32** | **35** | **9** |
+
+- **5.8 %** of all microflows are irreducible (32 / 555), and **12.5 %** of the
+  ones that actually branch (32 / 257). **7 of 10** modules contain at least one.
+- **44 findings** over those 32 microflows — a microflow can carry more than one
+  irreducible split. **80 % recombinable** (35), **20 % interleaved** (9).
+- Interleaved graphs cluster: all 9 are in DatabaseReplication (6) and
+  ExcelImporter (3). Both are old modules — 9.3.1 and a long lineage — which is
+  consistent with crossed flows being something that accretes under maintenance
+  rather than something anyone draws on purpose.
+
+**This is the middle row.** Irreducible graphs are not a curiosity — one in eight
+branching microflows written by Mendix's own teams cannot be described faithfully
+today — and they are overwhelmingly *recombinable*, which is the class Mode 3 can
+render as ordinary nested `if`s. So **Mode 3 earns its cost**, and Mode 2 is the
+honest fallback for the ~20 % that stay crossed. Scheduling is still a separate
+call; what is settled is that Mode 3 is not speculative work.
+
+Two caveats that matter more than the percentages:
+
+- **The shipped lint rule never sees this corpus.** `LintContext.Microflows()`
+  filters through `notPlatformModule`, so `mxcli lint` deliberately skips
+  Marketplace and System modules — linting code the user cannot edit would be
+  noise. The numbers above were obtained by bypassing that filter in a
+  throwaway build. The coverage that *does* reach these microflows is the
+  **describe-time warning**, which is not lint: describing
+  `Administration.ManageMyAccount` emits the #923 warning today. Prevalence in a
+  user's own modules is therefore still unmeasured, and may differ.
+- **Rules are not covered.** `FullMicroflow` returns nothing for the 5
+  `RULE`-typed flows (and the 39 nanoflows) in this project, so the rule skips
+  them silently. A rule is "a special kind of microflow" and can branch, so this
+  is a real gap in the detector's reach, not just in this measurement.
+
+Method and control, since a rule that never runs and a rule that finds nothing
+look identical: the scan was instrumented to report what it actually examined —
+`seen=599 loadfail=44 analysed=555 atrisk=257 branchingsplits=560 findings=44` —
+and the 44 load failures reconcile exactly with the catalog's 39 `NANOFLOW` + 5
+`RULE` rows, so all 555 microflows were genuinely walked. The discriminating
+control is a pair: `Administration.ManageMyAccount`, with **one** branching
+split, is flagged and warns on describe, while
+`Email_Connector.VAL_EmailTemplateRecipients`, with **ten**, is silent on both.
+The detector keys on branch *structure*, not on how much a microflow branches.
 
 ### Files to modify/create
 
