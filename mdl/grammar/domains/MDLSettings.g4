@@ -713,7 +713,7 @@ keyword
     | AFTER | BEFORE | DEFINE | FRAGMENT | FRAGMENTS | SLOT
 
     // General-purpose words (only tokens not already listed above)
-    | ACTION | BOTH | CONTEXT | DATA | FORMAT | ITEM | LIST
+    | ACTION | BLOCKING | BOTH | CONTEXT | DATA | FORMAT | ITEM | LIST
     | DEFINITION | IGNORE | MESSAGE | MOD | DIV | MULTIPLE | NONE | OBJECT | OBJECTS
     | OVERRIDABLE | ROOT
     | SINGLE | SQL | TEMPLATE | TEXT | TYPE | VALUE

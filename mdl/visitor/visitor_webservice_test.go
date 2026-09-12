@@ -84,3 +84,64 @@ func TestCallWebServiceRawStatement(t *testing.T) {
 		t.Errorf("raw statement should not set structured refs: %#v", call)
 	}
 }
+
+// TestCallWebServiceArguments — the operation's arguments use callArgumentList,
+// the same `(Name = value)` form every other call statement in MDL uses, so the
+// visitor reuses the same builder.
+func TestCallWebServiceArguments(t *testing.T) {
+	stmt := firstStatement(t, `$Order = call web service Clients.OrderSoapClient
+operation GetOrder (OrderId = $Customer/OrderId, Verbose = true)
+receive mapping Clients.SoapOrdersImportMapping;`)
+
+	call := stmt.(*ast.CallWebServiceStmt)
+	if call.OperationName != "GetOrder" {
+		t.Fatalf("OperationName = %q", call.OperationName)
+	}
+	if len(call.Arguments) != 2 {
+		t.Fatalf("read %d arguments, want 2: %#v", len(call.Arguments), call.Arguments)
+	}
+	if call.Arguments[0].Name != "OrderId" || call.Arguments[1].Name != "Verbose" {
+		t.Errorf("argument names = %q, %q", call.Arguments[0].Name, call.Arguments[1].Name)
+	}
+	if call.Arguments[0].Value == nil {
+		t.Error("argument expression not built")
+	}
+}
+
+// TestCallWebServiceSendMappingVariable — `from $var` names the object the
+// export mapping maps, which Mendix stores as MappingVariableName.
+//
+// The output variable and this one are both VARIABLE tokens in the same rule,
+// so the visitor walks them positionally against EQUALS and FROM. The second
+// case below is the one that breaks a naive "first VARIABLE is the output"
+// reading: there is no output variable, so the FIRST variable in the statement
+// is the send mapping's.
+func TestCallWebServiceSendMappingVariable(t *testing.T) {
+	withOutput := firstStatement(t, `$Ok = call web service Clients.OrderSoapClient
+operation SaveOrder
+send mapping Clients.SoapOrderExportMapping from $NewSaveOrder;`).(*ast.CallWebServiceStmt)
+	if withOutput.OutputVariable != "Ok" || withOutput.SendMappingVariable != "NewSaveOrder" {
+		t.Errorf("output = %q, send variable = %q", withOutput.OutputVariable, withOutput.SendMappingVariable)
+	}
+
+	noOutput := firstStatement(t, `call web service Clients.OrderSoapClient
+operation SaveOrder
+send mapping Clients.SoapOrderExportMapping from $NewSaveOrder;`).(*ast.CallWebServiceStmt)
+	if noOutput.OutputVariable != "" {
+		t.Errorf("OutputVariable = %q, want empty", noOutput.OutputVariable)
+	}
+	if noOutput.SendMappingVariable != "NewSaveOrder" {
+		t.Errorf("SendMappingVariable = %q, want NewSaveOrder", noOutput.SendMappingVariable)
+	}
+}
+
+// TestCallWebServiceWithoutNewClauses — every statement that parsed before still
+// parses, with both new fields empty.
+func TestCallWebServiceWithoutNewClauses(t *testing.T) {
+	call := firstStatement(t, `$Root = call web service SampleSOAP.OrderService
+operation FetchSampleItems
+receive mapping SampleSOAP.OrderResponse;`).(*ast.CallWebServiceStmt)
+	if len(call.Arguments) != 0 || call.SendMappingVariable != "" {
+		t.Errorf("new fields set on an old-shape statement: %#v", call)
+	}
+}

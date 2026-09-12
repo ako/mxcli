@@ -3,6 +3,8 @@
 package mpr
 
 import (
+	"strings"
+
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
 
@@ -472,11 +474,15 @@ func parseWebServiceCallAction(raw map[string]any) *microflows.WebServiceCallAct
 			action.ReceiveMappingID = model.ID(extractString(call["ReturnValueMapping"]))
 		}
 	}
+	// RequestHandling / ExportMappingCall is a shape no reference document
+	// carries — the real key is RequestBodyHandling, read below — so this never
+	// populated SendMappingID from a real project.
 	if requestHandling := extractBsonMap(raw["RequestHandling"]); requestHandling != nil {
 		if call := extractBsonMap(requestHandling["ExportMappingCall"]); call != nil {
 			action.SendMappingID = model.ID(extractString(call["Mapping"]))
 		}
 	}
+	parseWebServiceRequestBody(raw, action)
 	if webServiceActionRequiresRawBSON(raw) {
 		if rawBSON, err := bson.Marshal(raw); err == nil {
 			action.RawBSON = rawBSON
@@ -486,22 +492,202 @@ func parseWebServiceCallAction(raw map[string]any) *microflows.WebServiceCallAct
 	return action
 }
 
+// parseWebServiceRequestBody reads a SOAP call's RequestBodyHandling back into
+// the semantic model. Mirrors modelsdkbackend.readWebServiceRequestBody.
+//
+// Dispatched on $Type, never on which fields are present: MappingRequestHandling
+// and SimpleRequestHandling differ in arity, so assigning whichever keys turn up
+// would quietly turn one into the other.
+func parseWebServiceRequestBody(raw map[string]any, action *microflows.WebServiceCallAction) {
+	body := extractBsonMap(raw["RequestBodyHandling"])
+	if body == nil {
+		return
+	}
+	switch extractString(body["$Type"]) {
+	case "Microflows$MappingRequestHandling":
+		// STORAGE NAMES: MappingId / MappingVariableName — not gen's Mapping /
+		// MappingArgumentVariableName, both of which its key audit lists as wrong.
+		action.SendMappingID = model.ID(extractString(body["MappingId"]))
+		action.SendMappingVariable = extractString(body["MappingVariableName"])
+		action.SendMappingContentType = extractString(body["ContentType"])
+	case "Microflows$SimpleRequestHandling":
+		for _, el := range extractBsonArray(body["ParameterMappings"]) {
+			pm := extractBsonMap(el)
+			if pm == nil || extractString(pm["$Type"]) != "Microflows$WebServiceOperationSimpleParameterMapping" {
+				// An advanced (per-parameter export mapping) entry, which MDL
+				// cannot author. The raw fallback carries the action; reading
+				// half of it here would be worse than reading none.
+				continue
+			}
+			path := extractString(pm["ParameterPath"])
+			name := ""
+			if i := strings.LastIndex(path, "|"); i >= 0 {
+				name = path[i+1:]
+			}
+			action.Arguments = append(action.Arguments, microflows.WebServiceArgument{
+				Name:       name,
+				Path:       path,
+				Expression: extractString(pm["Argument"]),
+				// Absent reads as true: both reference mappings carry true, and
+				// a bound parameter is one Studio Pro has ticked.
+				Checked: extractBool(pm["IsChecked"], true),
+			})
+		}
+	}
+}
+
+// webServiceActionRequiresRawBSON reports whether the structured describe form
+// would fail to reproduce this action, in which case the renderer falls back to
+// `call web service raw '<base64>'`. Mirrors
+// modelsdkbackend.webServiceActionRequiresRawBSON decision for decision — see the
+// comment there for why the six boilerplate keys are admitted only AT the value
+// mxcli writes rather than by name.
 func webServiceActionRequiresRawBSON(raw map[string]any) bool {
-	supported := map[string]bool{
+	represented := map[string]bool{
 		"$ID":               true,
 		"$Type":             true,
 		"ErrorHandlingType": true,
 		"ImportedService":   true,
 		"OperationName":     true,
 		"TimeOutExpression": true,
-		"UseRequestTimeOut": true,
-		"NewResultHandling": true,
 		"RequestHandling":   true,
+		// Re-read from the imported service document on write (the CE0386 fix),
+		// so DESCRIBE need not carry it.
+		"ServiceName": true,
 	}
-	for key := range raw {
-		if !supported[key] {
+	for key, value := range raw {
+		if represented[key] {
+			continue
+		}
+		ok, known := webServiceFixedValueIsDefault(key, value)
+		if !known || !ok {
 			return true
 		}
+	}
+	return false
+}
+
+// webServiceFixedValueIsDefault reports whether one of the keys mxcli writes at a
+// FIXED value currently holds it. known is false for a key it does not judge.
+func webServiceFixedValueIsDefault(key string, value any) (ok, known bool) {
+	switch key {
+	case "IsValidationRequired":
+		return !extractBool(value, true), true
+	case "UseRequestTimeOut":
+		return extractBool(value, false), true
+	case "RequestProxyType":
+		return extractString(value) == "DefaultProxy", true
+	case "ProxyConfiguration":
+		return value == nil, true
+	case "HttpConfiguration":
+		return isDefaultWebServiceHTTPConfig(extractBsonMap(value)), true
+	case "RequestHeaderHandling":
+		return isEmptySimpleRequestHandling(extractBsonMap(value)), true
+	case "RequestBodyHandling":
+		return webServiceRequestBodyIsRepresentable(extractBsonMap(value)), true
+	case "NewResultHandling":
+		return webServiceResultHandlingIsRepresentable(extractBsonMap(value)), true
+	}
+	return false, false
+}
+
+// webServiceResultHandlingIsRepresentable reports whether a call's result
+// handling is one the writer reproduces exactly. See the comment on the
+// modelsdk twin for the two ako/TestApp calls that prove it cannot be admitted
+// by name: a BooleanType result with no mapping, and Range.SingleObject false.
+func webServiceResultHandlingIsRepresentable(doc map[string]any) bool {
+	if doc == nil || extractString(doc["$Type"]) != "Microflows$ResultHandling" {
+		return false
+	}
+	bound := extractString(doc["ResultVariableName"]) != ""
+	if extractBool(doc["Bind"], !bound) != bound {
+		return false
+	}
+	vt := extractBsonMap(doc["VariableType"])
+	if vt == nil {
+		return false
+	}
+	imc := extractBsonMap(doc["ImportMappingCall"])
+	if imc == nil {
+		return extractString(vt["$Type"]) == "DataTypes$VoidType"
+	}
+	if extractString(vt["$Type"]) != "DataTypes$ObjectType" {
+		return false
+	}
+	if extractString(imc["$Type"]) != "Microflows$ImportMappingCall" ||
+		extractString(imc["Commit"]) != "YesWithoutEvents" ||
+		extractString(imc["ContentType"]) != "Xml" ||
+		extractString(imc["ObjectHandlingBackup"]) != "Create" ||
+		extractString(imc["ParameterVariableName"]) != "" ||
+		extractString(imc["ReturnValueMapping"]) == "" ||
+		extractBool(imc["ForceSingleOccurrence"], true) {
+		return false
+	}
+	rng := extractBsonMap(imc["Range"])
+	return rng != nil &&
+		extractString(rng["$Type"]) == "Microflows$ConstantRange" &&
+		extractBool(rng["SingleObject"], false)
+}
+
+// isDefaultWebServiceHTTPConfig reports whether an HttpConfiguration is the one a
+// SOAP call gets when nothing is configured — the only one mxcli writes.
+func isDefaultWebServiceHTTPConfig(doc map[string]any) bool {
+	if doc == nil || extractString(doc["$Type"]) != "Microflows$HttpConfiguration" {
+		return false
+	}
+	for _, key := range []string{"ClientCertificate", "CustomLocation",
+		"HttpAuthenticationPassword", "HttpAuthenticationUserName"} {
+		if extractString(doc[key]) != "" {
+			return false
+		}
+	}
+	if doc["CustomLocationTemplate"] != nil {
+		return false
+	}
+	if extractString(doc["HttpMethod"]) != "Post" {
+		return false
+	}
+	if extractBool(doc["OverrideLocation"], true) || extractBool(doc["UseHttpAuthentication"], true) {
+		return false
+	}
+	return len(extractBsonArray(doc["HttpHeaderEntries"])) == 0
+}
+
+// isEmptySimpleRequestHandling reports whether a request handling is the bare
+// Simple form — no parameter mappings — which is all mxcli writes for headers.
+func isEmptySimpleRequestHandling(doc map[string]any) bool {
+	return doc != nil &&
+		extractString(doc["$Type"]) == "Microflows$SimpleRequestHandling" &&
+		extractString(doc["NullValueOption"]) == "LeaveOutElement" &&
+		len(extractBsonArray(doc["ParameterMappings"])) == 0
+}
+
+// webServiceRequestBodyIsRepresentable reports whether a RequestBodyHandling is
+// one MDL can spell: an export mapping, or simple parameter mappings whose names
+// survive the round trip.
+func webServiceRequestBodyIsRepresentable(doc map[string]any) bool {
+	if doc == nil {
+		return false
+	}
+	switch extractString(doc["$Type"]) {
+	case "Microflows$MappingRequestHandling":
+		return extractString(doc["MappingId"]) != "" && extractString(doc["MappingVariableName"]) != ""
+	case "Microflows$SimpleRequestHandling":
+		if extractString(doc["NullValueOption"]) != "LeaveOutElement" {
+			return false
+		}
+		for _, el := range extractBsonArray(doc["ParameterMappings"]) {
+			pm := extractBsonMap(el)
+			if pm == nil ||
+				extractString(pm["$Type"]) != "Microflows$WebServiceOperationSimpleParameterMapping" ||
+				extractString(pm["ParameterName"]) != "" {
+				return false
+			}
+			if !strings.Contains(extractString(pm["ParameterPath"]), "|") {
+				return false
+			}
+		}
+		return true
 	}
 	return false
 }

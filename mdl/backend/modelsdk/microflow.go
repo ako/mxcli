@@ -200,6 +200,11 @@ func microflowFromGen(mf *genMf.Microflow, containerID model.ID) *microflows.Mic
 		// message configured → mx check CE4899.
 		AllowConcurrentExecution: mf.AllowConcurrentExecution(),
 		MarkAsUsed:               mf.MarkAsUsed(),
+		// The same class again, and this one is a security setting: without it
+		// a rewrite turned "apply entity access" OFF, widening what the
+		// microflow may read and write. mx check and mxbuild are both silent,
+		// because the model is valid either way.
+		ApplyEntityAccess: mf.ApplyEntityAccess(),
 	}
 	out.ID = model.ID(mf.ID())
 	// AllowedModuleRoles (BY_NAME role references) — without these DESCRIBE omits

@@ -173,6 +173,7 @@ var mdlGeneratedKeywords = []protocol.CompletionItem{
 	{Label: "EMPTY", Kind: protocol.CompletionItemKindKeyword, Detail: "Microflow keyword"},
 	{Label: "OBJECT", Kind: protocol.CompletionItemKindKeyword, Detail: "Microflow keyword"},
 	{Label: "OBJECTS", Kind: protocol.CompletionItemKindKeyword, Detail: "Microflow keyword"},
+	{Label: "BLOCKING", Kind: protocol.CompletionItemKindKeyword, Detail: "Microflow keyword"},
 
 	// Widget keyword
 	{Label: "PAGES", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},

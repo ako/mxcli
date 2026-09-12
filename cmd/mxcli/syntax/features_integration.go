@@ -235,6 +235,61 @@ func init() {
 		SeeAlso: []string{"rest", "rest.consumed", "microflow"},
 	})
 
+	// ── SOAP (legacy web services) ────────────────────────────────────
+
+	Register(SyntaxFeature{
+		Path:    "soap",
+		Summary: "Legacy SOAP web service calls: operations, arguments, send/receive mappings",
+		Keywords: []string{
+			"soap", "web service", "call web service", "wsdl",
+			"imported service", "consumed web service", "operation",
+			"send mapping", "receive mapping", "request body",
+			"parameter path", "ce0178", "ce0369", "ce0386",
+		},
+		Syntax: "[$Var =] CALL WEB SERVICE Module.ImportedService\n" +
+			"  [OPERATION Name [(Param = expr, ...)]]\n" +
+			"  [SEND MAPPING Module.ExportMapping FROM $var]\n" +
+			"  [RECEIVE MAPPING Module.ImportMapping]\n" +
+			"  [TIMEOUT expr]\n" +
+			"  [ON ERROR ...];\n\n" +
+			"[$Var =] CALL WEB SERVICE RAW '<base64-bson>';\n\n" +
+			"-- The REQUEST BODY is one of two things, never both: the operation's\n" +
+			"-- arguments, or an export mapping. Mendix stores ONE\n" +
+			"-- RequestBodyHandling, so asking for each is refused as MDL-SOAP01 by\n" +
+			"-- `mxcli check` and by exec, which run the same function.\n" +
+			"--\n" +
+			"-- ARGUMENTS use the same (Name = value) form as every other call\n" +
+			"-- statement. Mendix keys each one by a ParameterPath\n" +
+			"-- (http%3A//www.example.com/:GetOrder|OrderId) built from the\n" +
+			"-- operation's request body element; mxcli reads that off the consumed\n" +
+			"-- service document, so the script names only the parameter. The\n" +
+			"-- service must therefore be present and declare the operation — one it\n" +
+			"-- cannot resolve is refused, not written with a guessed path. Omitting\n" +
+			"-- arguments an operation requires is CE0178.\n" +
+			"--\n" +
+			"-- A misspelled PARAMETER NAME cannot be checked: the names live in the\n" +
+			"-- WSDL's inline schema, which mxcli does not parse. It arrives as\n" +
+			"-- CE0178 from mxbuild.\n" +
+			"--\n" +
+			"-- SEND MAPPING needs FROM $var — an export mapping maps an object and\n" +
+			"-- Mendix stores which one. Without it the call builds as CE0369.\n" +
+			"--\n" +
+			"-- DESCRIBE renders the structured form only when re-executing it would\n" +
+			"-- reproduce the stored document exactly. A call with HTTP\n" +
+			"-- authentication, a custom location, SOAP headers, a per-parameter\n" +
+			"-- export mapping, or a result typed from the WSDL rather than from an\n" +
+			"-- import mapping keeps the RAW form, which round-trips byte for byte.",
+		Example: "-- Arguments\n" +
+			"$Order = call web service Clients.OrderSoapClient\n" +
+			"  operation GetOrder (OrderId = $Customer/OrderId)\n" +
+			"  receive mapping Clients.SoapOrdersImportMapping;\n\n" +
+			"-- Export mapping as the request body\n" +
+			"call web service Clients.OrderSoapClient\n" +
+			"  operation SaveOrder\n" +
+			"  send mapping Clients.SoapOrderExportMapping from $NewSaveOrder;",
+		SeeAlso: []string{"integration", "microflow", "rest"},
+	})
+
 	Register(SyntaxFeature{
 		Path:    "rest.consumed",
 		Summary: "Create consumed REST clients with operations, mappings, and authentication",

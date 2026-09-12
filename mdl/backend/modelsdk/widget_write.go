@@ -710,8 +710,27 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 	case *pages.CustomWidget:
 		return customWidgetToGen(x)
 
+	// The widgets that used to send a user to the legacy engine, none of them
+	// covered by the doctype gate — see widget_write_legacy_gaps.go.
+	//
+	// pages.Text (Forms$Text) is deliberately NOT here. Mendix has no such type,
+	// so writing one makes the project unopenable; the keyword that built it is
+	// refused (mdl/executor/validate_widget_retired.go) and nothing constructs
+	// the struct any more. An old project that carries one keeps it because
+	// ALTER PAGE mutates the stored gen document rather than rebuilding from the
+	// semantic model — this switch is never asked about it.
+	case *pages.DropDown:
+		return dropDownToGen(x)
+
+	case *pages.StaticImage:
+		return staticImageToGen(x)
+
+	case *pages.DynamicImage:
+		return dynamicImageToGen(x)
+
 	default:
-		return nil, fmt.Errorf("CreatePage: widget %T not yet supported by the modelsdk engine — rerun with MXCLI_ENGINE=legacy", w)
+		return nil, fmt.Errorf("CreatePage: widget %T is not supported by either engine — "+
+			"please file an issue with the MDL that produced it", w)
 	}
 }
 
@@ -1214,6 +1233,13 @@ func dataViewSourceToGen(ds pages.DataSource) (element.Element, error) {
 		ms.SetMicroflowSettings(microflowSettingsToGen(d.Microflow, d.ParameterMappings))
 		return ms, nil
 
+	// A NANOFLOW data source. Its sibling above goes through gen; this one is
+	// built raw because gen binds the nanoflow name directly on the source while
+	// Studio Pro nests it in a Forms$NanoflowSettings child — see
+	// nanoflowSourceToGen.
+	case *pages.NanoflowSource:
+		return nanoflowSourceToGen(d), nil
+
 	case *pages.AssociationSource:
 		// A DataView showing a to-one referenced object ("data from context over
 		// an association") is a Forms$DataViewSource whose EntityRef is an
@@ -1223,7 +1249,7 @@ func dataViewSourceToGen(ds pages.DataSource) (element.Element, error) {
 		return dataViewContextAssociationSourceToGen(d), nil
 
 	default:
-		return nil, fmt.Errorf("CreatePage: DataView source %T not yet supported by the modelsdk engine — rerun with MXCLI_ENGINE=legacy", ds)
+		return nil, fmt.Errorf("CreatePage: DataView source %T is not supported by either engine — please file an issue", ds)
 	}
 }
 
@@ -1306,10 +1332,17 @@ func listViewSourceToGen(ds pages.DataSource) (element.Element, error) {
 		ms.SetForceFullObjects(false)
 		ms.SetMicroflowSettings(microflowSettingsToGen(d.Microflow, d.ParameterMappings))
 		return ms, nil
+
+	// A NANOFLOW data source. Its sibling above goes through gen; this one is
+	// built raw because gen binds the nanoflow name directly on the source while
+	// Studio Pro nests it in a Forms$NanoflowSettings child — see
+	// nanoflowSourceToGen.
+	case *pages.NanoflowSource:
+		return nanoflowSourceToGen(d), nil
 	case *pages.AssociationSource:
 		return associationSourceToGen(d), nil
 	default:
-		return nil, fmt.Errorf("CreatePage: ListView source %T not yet supported by the modelsdk engine — rerun with MXCLI_ENGINE=legacy", ds)
+		return nil, fmt.Errorf("CreatePage: ListView source %T is not supported by either engine — please file an issue", ds)
 	}
 }
 
@@ -1361,11 +1394,18 @@ func customWidgetDataSourceToGen(ds pages.DataSource) (element.Element, error) {
 		ms.SetMicroflowSettings(microflowSettingsToGen(d.Microflow, d.ParameterMappings))
 		return ms, nil
 
+	// A NANOFLOW data source. Its sibling above goes through gen; this one is
+	// built raw because gen binds the nanoflow name directly on the source while
+	// Studio Pro nests it in a Forms$NanoflowSettings child — see
+	// nanoflowSourceToGen.
+	case *pages.NanoflowSource:
+		return nanoflowSourceToGen(d), nil
+
 	case *pages.AssociationSource:
 		return associationSourceToGen(d), nil
 
 	default:
-		return nil, fmt.Errorf("modelsdk: pluggable widget data source %T not yet supported — rerun with MXCLI_ENGINE=legacy", ds)
+		return nil, fmt.Errorf("modelsdk: pluggable widget data source %T is not supported by either engine — please file an issue", ds)
 	}
 }
 
@@ -1609,7 +1649,7 @@ func clientActionToGen(a pages.ClientAction) (element.Element, error) {
 		g.SetPageSettings(formSettingsToGen(x.PageName))
 		return g, nil
 	default:
-		return nil, fmt.Errorf("CreatePage: client action %T not yet supported by the modelsdk engine — rerun with MXCLI_ENGINE=legacy", a)
+		return nil, fmt.Errorf("CreatePage: client action %T is not supported by either engine — please file an issue", a)
 	}
 }
 

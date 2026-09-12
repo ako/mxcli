@@ -120,6 +120,10 @@ func buildMicroflowFromStmt(ctx *ExecContext, s *ast.CreateMicroflowStmt, opts b
 	// Excluded is model state, not script state: an absent @excluded must not
 	// clear a stored exclusion (#914).
 	existingExcluded := false
+	// Same reasoning for "apply entity access", and it matters more: it is a
+	// SECURITY setting, so an absent annotation must preserve a stored true
+	// rather than widening what the microflow may read and write.
+	existingApplyEntityAccess := false
 	var existingDocumentation string
 	preserveDocumentation := false
 	var existingActionInfo, existingWorkflowInfo *types.MicroflowActionInfo
@@ -144,6 +148,7 @@ func buildMicroflowFromStmt(ctx *ExecContext, s *ast.CreateMicroflowStmt, opts b
 		existingAllowedRoles = cloneRoleIDs(existing.AllowedModuleRoles)
 		preserveAllowedRoles = true
 		existingExcluded = existing.Excluded
+		existingApplyEntityAccess = existing.ApplyEntityAccess
 		// The toolbox entries hold four PNG bitmaps MDL cannot name, so a
 		// rewrite carries them rather than rebuilding from the clause.
 		existingActionInfo = existing.MicroflowActionInfo
@@ -204,6 +209,7 @@ func buildMicroflowFromStmt(ctx *ExecContext, s *ast.CreateMicroflowStmt, opts b
 		AllowConcurrentExecution: true, // Default: allow concurrent execution
 		MarkAsUsed:               false,
 		Excluded:                 s.Excluded || existingExcluded,
+		ApplyEntityAccess:        carriedApplyEntityAccess(s.ApplyEntityAccess, existingApplyEntityAccess),
 	}
 	if preserveDocumentation {
 		mf.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existingDocumentation)

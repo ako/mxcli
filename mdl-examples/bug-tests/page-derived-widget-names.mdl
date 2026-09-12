@@ -46,7 +46,7 @@ create or modify page DerivedNames.Overview
     LAYOUTGRID lgFirst {
       ROW row1 {
         COLUMN col1 (DesktopWidth: AutoFill) {
-          STATICTEXT stFirst (Content: 'First grid')
+          DYNAMICTEXT stFirst (Content: 'First grid')
         }
       }
     }

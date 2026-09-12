@@ -64,7 +64,7 @@ Everything mxcli can do, organized by use case.
 | Modify page | `ALTER PAGE ... SET/INSERT/DROP/REPLACE` | In-place modifications |
 | Built-in widgets | TEXTBOX, TEXTAREA, DATEPICKER, etc. | All standard widgets |
 | Layout widgets | LAYOUTGRID, CONTAINER, GROUPBOX | With responsive columns |
-| Display widgets | DYNAMICTEXT, STATICTEXT, IMAGE | Including pluggable Image |
+| Display widgets | DYNAMICTEXT, IMAGE | Including pluggable Image |
 | Data widgets | DATAVIEW, LISTVIEW | With datasource binding |
 | Pluggable widgets | DATAGRID2, GALLERY, COMBOBOX | Template-based |
 | Action buttons | ACTIONBUTTON | Save, cancel, microflow, page |

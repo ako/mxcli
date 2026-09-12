@@ -56,6 +56,7 @@ func (b *Builder) ExitCreateMicroflowStatement(ctx *parser.CreateMicroflowStatem
 				stmt.Excluded = true
 			}
 		}
+		stmt.ApplyEntityAccess = applyEntityAccessAnnotation(createStmt)
 	}
 	stmt.Documentation, stmt.DocumentationSet = findDocComment(ctx)
 
@@ -108,6 +109,9 @@ func (b *Builder) ExitCreateNanoflowStatement(ctx *parser.CreateNanoflowStatemen
 				stmt.Excluded = true
 			}
 		}
+		// No @applyentityaccess on a nanoflow: it runs in the client and
+		// Nanoflows$Nanoflow stores no such property, so the annotation would
+		// parse and do nothing.
 	}
 	stmt.Documentation, stmt.DocumentationSet = findDocComment(ctx)
 
@@ -153,6 +157,7 @@ func (b *Builder) ExitCreateRuleStatement(ctx *parser.CreateRuleStatementContext
 				stmt.Excluded = true
 			}
 		}
+		stmt.ApplyEntityAccess = applyEntityAccessAnnotation(createStmt)
 	}
 	stmt.Documentation, stmt.DocumentationSet = findDocComment(ctx)
 
@@ -410,4 +415,34 @@ func buildExposeBitmaps(clauses []parser.IExposeBitmapClauseContext) []ast.Expos
 		out = append(out, b)
 	}
 	return out
+}
+
+// applyEntityAccessAnnotation reads `@applyentityaccess` off a document's
+// annotations, or nil when it is absent.
+//
+// nil is not false: an absent annotation PRESERVES the stored setting, the way
+// @excluded and the doc comment do, because the setting is model state rather
+// than script state. Collapsing the two is the bug this exists to fix — a
+// rewrite that did not mention it turned "apply entity access" off.
+//
+// The bare form means true; `@applyentityaccess(false)` clears it. No grammar
+// change is needed for either: annotationValue already accepts a literal.
+func applyEntityAccessAnnotation(createStmt parser.ICreateStatementContext) *bool {
+	if createStmt == nil {
+		return nil
+	}
+	for _, ann := range createStmt.AllAnnotation() {
+		annCtx := ann.(*parser.AnnotationContext)
+		if !strings.EqualFold(annCtx.AnnotationName().GetText(), "applyentityaccess") {
+			continue
+		}
+		value := true
+		if params := annCtx.AnnotationParams(); params != nil {
+			if strings.EqualFold(strings.TrimSpace(params.GetText()), "false") {
+				value = false
+			}
+		}
+		return &value
+	}
+	return nil
 }

@@ -1,0 +1,60 @@
+-- The three built-in widgets that used to send a user to MXCLI_ENGINE=legacy.
+--
+-- `dropdown`, `staticimage` and `dynamicimage` were refused by the default
+-- (modelsdk) engine with "widget *pages.X not yet supported by the modelsdk
+-- engine", which is one of the reasons the legacy engine could not be retired.
+-- Nothing in mdl-examples/ or in any skill used the keywords, so the doctype
+-- gate ran green while four plain widget keywords failed on the default engine.
+--
+-- All three are DEPRECATED in the Mendix 11 React client — mxbuild reports
+-- CE0582 on each and Studio Pro offers to convert them — so this file is not in
+-- doctype-tests/, which is the "should be used" corpus. Prefer COMBOBOX and the
+-- pluggable IMAGE. mxcli still has to write them correctly, because a project
+-- being converted UP already contains them.
+--
+-- The BSON is pinned by unit tests, not by this file: `check` never serializes.
+-- See mdl/backend/modelsdk/widget_write_legacy_gaps_test.go and
+-- sdk/mpr/writer_widgets_image_test.go, which assert the same shape for both
+-- engines against the three Studio-Pro-authored Forms$StaticImageViewer widgets
+-- in ako/TestApp.
+
+create or modify module WidgetProbe;
+
+create or modify enumeration WidgetProbe.Status (
+  Open 'Open',
+  Closed 'Closed'
+);
+
+create or modify entity WidgetProbe.Ticket (
+  Title: string(200),
+  Status: enum WidgetProbe.Status
+);
+
+create or replace page WidgetProbe.PDeprecatedWidgets
+(
+  params: { $Ticket: WidgetProbe.Ticket },
+  title: 'Deprecated built-in widgets',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  layoutgrid lg1 { row row1 { column col1 (desktopwidth: autofill) {
+  dataview dvTicket (datasource: $Ticket) {
+    textbox txtTitle (label: 'Title', attribute: Title)
+
+    -- Forms$DropDown. The pluggable COMBOBOX is the Mendix 11 widget.
+    dropdown ddStatus (label: 'Status', attribute: Status)
+
+    -- Forms$StaticImageViewer. MDL cannot name the image (there is no `Image:`
+    -- on this widget), so it always writes the unset value — which is the empty
+    -- string, not null. mxbuild reports CE0436 "No image selected." for that,
+    -- inherently and on both engines.
+    staticimage imgStatic (width: 120, height: 80)
+
+    -- Forms$ImageViewer, whose DataSource is a Forms$ImageViewerSource. MDL
+    -- cannot bind that source's entity path either, so mxbuild reports CE0489
+    -- "Select an entity for the data source of this dynamic image" — again on
+    -- both engines, and again a missing property rather than a wrong one.
+    dynamicimage imgDynamic (width: 120, height: 80)
+  }
+  }}}
+}

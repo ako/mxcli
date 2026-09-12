@@ -352,6 +352,10 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 		case *ast.RestCallStmt:
 			// #922: `returns Module.Entity` must name a FileDocument specialization.
 			v.checkRestFileDocumentResult(stmt)
+		case *ast.CallWebServiceStmt:
+			// MDL-SOAP01: a call stores ONE request body, so arguments and a send
+			// mapping are alternatives. Same function exec calls.
+			v.checkWebServiceRequestBody(stmt)
 		case *ast.LoopStmt:
 			// Check: @caption on a loop is silently dropped — Mendix for-loops
 			// have no caption (Microflows$LoopedActivity has no Caption

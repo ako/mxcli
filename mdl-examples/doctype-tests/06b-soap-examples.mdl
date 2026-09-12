@@ -5,15 +5,43 @@ create entity SampleSOAP.OrderResponse (
 );
 /
 
-create microflow SampleSOAP.ACT_FetchItems ()
+-- A call's REQUEST BODY is one of two things, never both: the operation's
+-- arguments, or an export mapping. Mendix stores one RequestBodyHandling, so
+-- writing both is refused as MDL-SOAP01.
+
+-- Form 1: an export mapping, with the variable it maps FROM. The variable is
+-- not optional — without it Mendix has no object to map and the call builds as
+-- CE0369 "Cannot use simple request body, as the operation's body is complex".
+create microflow SampleSOAP.ACT_FetchItems ($Request : SampleSOAP.OrderResponse)
 returns SampleSOAP.OrderResponse as $Root
 begin
   $Root = call web service SampleSOAP.OrderService
   operation FetchSampleItems
-  send mapping SampleSOAP.OrderRequest
+  send mapping SampleSOAP.OrderRequest from $Request
   receive mapping SampleSOAP.OrderResponse
   timeout 30
   on error rollback;
+
+  return $Root;
+end;
+/
+
+-- Form 2: the operation's arguments, in the same (Name = value) form every
+-- other call statement uses. Each one binds a named parameter of the operation;
+-- mxcli builds the stored ParameterPath from the operation's request body
+-- element, so the script says only the parameter name.
+--
+-- This form needs the consumed service to be present and to declare the
+-- operation — there is no path to build otherwise, and exec refuses rather than
+-- inventing one. That is why this example is the dangling-reference one's
+-- opposite and cannot be written against SampleSOAP.OrderService here; see
+-- mdl-examples/bug-tests for a run against a real WSDL.
+create microflow SampleSOAP.ACT_FetchItemsNoBody ()
+returns SampleSOAP.OrderResponse as $Root
+begin
+  $Root = call web service SampleSOAP.OrderService
+  operation FetchSampleItems
+  receive mapping SampleSOAP.OrderResponse;
 
   return $Root;
 end;

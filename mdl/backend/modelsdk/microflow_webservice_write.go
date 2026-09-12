@@ -60,21 +60,29 @@ import (
 //     made assigning the result its own error (CE0366). VoidType stays the
 //     fallback for a mapping that cannot be resolved.
 //
-// Two remain:
+// Two more have since been fixed, and they turned out to be one thing:
+// RequestBodyHandling is a polymorphic child holding EITHER the operation's
+// arguments or an export mapping, so what looked like two gaps was the two
+// branches of one property.
+//
+//   - Operation ARGUMENTS are Microflows$WebServiceOperationSimpleParameterMapping
+//     entries inside a SimpleRequestHandling, keyed by an escaped ParameterPath
+//     ("http%3A//www.example.com/:GetOrder|OrderId" — the operation's
+//     RequestBodyElementName, escaped, plus "|" plus the parameter). Writing that
+//     list empty gave CE0178 "Body parameter mapping needs to be refreshed".
+//   - A SEND MAPPING is a Microflows$MappingRequestHandling, NOT the
+//     Mendix$AdvancedRequestHandling legacy's comment named (that type appears in
+//     none of the three reference documents). Writing SimpleRequestHandling
+//     regardless — which both engines did — dropped the mapping silently and gave
+//     CE0369 "Cannot use simple request body, as the operation's body is complex".
+//
+// One remains:
 //
 //   - Range.SingleObject follows the operation's cardinality; both reference
 //     calls write false where both engines write true. No error has been
 //     measured from it, so it is left until one is — the reference roots carry
 //     MaxOccurs 1 while the calls carry SingleObject false, so it is NOT simply
 //     the mapping's cardinality and would be a guess today.
-//   - Operation ARGUMENTS are Microflows$WebServiceOperationSimpleParameterMapping
-//     entries inside RequestBodyHandling.ParameterMappings, keyed by an escaped
-//     ParameterPath ("http%3A//www.example.com/:GetOrder|OrderId" — the
-//     operation's RequestBodyElementName, escaped, plus "|" plus the parameter).
-//     Writing that list empty gives CE0178 "Body parameter mapping needs to be
-//     refreshed" — now the ONLY error left on a real call. It needs MDL SYNTAX
-//     before it can be written at all: callWebServiceStatement has no argument
-//     list, so there is nothing to serialize yet.
 //
 // Two shapes are deliberately NOT re-derived here:
 //
@@ -87,14 +95,28 @@ import (
 //     already carries one such collision: Microflows$HttpHeaderEntry is
 //     registered as 2 in microflow_write.go and as 3 in odata_write.go, and
 //     which one wins is decided by file order.)
-//   - RequestBodyHandling is always SimpleRequestHandling, even when the
-//     statement carries a SEND MAPPING — matching legacy, and WRONG: the real
-//     type is Microflows$MappingRequestHandling (see above). Until that is
-//     implemented the send mapping is silently dropped on both engines, and
-//     `call web service raw` is the only way to author one.
+//   - MappingRequestHandling's two keys are written as RAW strings rather than
+//     through the gen accessors. gen binds them as `Mapping` and
+//     `MappingArgumentVariableName`; Studio Pro stores `MappingId` and
+//     `MappingVariableName` (modelsdk/gen/keyaudit_test.go). A document written
+//     through gen's names is one mxbuild tolerates and Studio Pro cannot open.
 //
 // Every null the document carries is written IN KEY POSITION rather than through
 // NullFields, for the same reason and with the same consequence — see addNull.
+
+func init() {
+	// A populated ParameterMappings list leads with marker 2 (measured on all
+	// three ako/TestApp calls). The codec's default is 3, so WITHOUT this the
+	// arguments would serialize under the wrong array version — the class of
+	// defect that makes a project Studio Pro cannot open, and one mxbuild does
+	// not catch.
+	//
+	// Unlike the markers the note above keeps out of the registry, this child
+	// type is SOAP-only: nothing else writes a
+	// WebServiceOperationSimpleParameterMapping, so there is no writer for a
+	// global registration to disturb.
+	codec.RegisterListMarker("Microflows$WebServiceOperationSimpleParameterMapping", 2)
+}
 
 // webServiceCallActionToGen builds a Microflows$CallWebServiceAction. Mirrors
 // sdk/mpr.serializeWebServiceCallAction field-for-field, in the same key order.
@@ -122,8 +144,10 @@ func webServiceCallActionToGen(a *microflows.WebServiceCallAction) element.Eleme
 	addPart(g, "NewResultHandling", webServiceResultHandlingToGen(a))
 	addStr(g, "OperationName", a.OperationName)
 	addNull(g, "ProxyConfiguration")
-	addPart(g, "RequestBodyHandling", simpleRequestHandlingToGen())
-	addPart(g, "RequestHeaderHandling", simpleRequestHandlingToGen())
+	addPart(g, "RequestBodyHandling", webServiceRequestBodyToGen(a))
+	// The HEADER handling is always Simple and always empty: MDL cannot author
+	// SOAP headers, and all three reference calls carry the bare form.
+	addPart(g, "RequestHeaderHandling", simpleRequestHandlingToGen(nil))
 	addStr(g, "RequestProxyType", "DefaultProxy")
 	addStr(g, "ServiceName", webServiceName(a))
 	addStr(g, "TimeOutExpression", orDefault(a.TimeoutExpression, "300"))
@@ -199,12 +223,64 @@ func webServiceVariableType(a *microflows.WebServiceCallAction) element.Element 
 	return vt
 }
 
-// simpleRequestHandlingToGen builds the Microflows$SimpleRequestHandling used for
-// both the body and the header handling.
-func simpleRequestHandlingToGen() element.Element {
+// webServiceRequestBodyToGen builds RequestBodyHandling — the polymorphic child
+// that carries EITHER the operation's arguments or an export mapping.
+//
+// The executor refuses a statement asking for both (MDL-SOAP01), so the branch
+// here is a plain else: a send mapping wins only because it cannot coexist with
+// arguments, not by precedence.
+func webServiceRequestBodyToGen(a *microflows.WebServiceCallAction) element.Element {
+	if a.SendMappingID != "" {
+		return mappingRequestHandlingToGen(a)
+	}
+	return simpleRequestHandlingToGen(a.Arguments)
+}
+
+// mappingRequestHandlingToGen builds Microflows$MappingRequestHandling — a SOAP
+// request body produced by an export mapping.
+//
+// Both name keys are written RAW. gen binds them as `Mapping` and
+// `MappingArgumentVariableName`, which are the SDK names; Studio Pro stores
+// `MappingId` and `MappingVariableName`, and both mismatches are listed in
+// modelsdk/gen/keyaudit_test.go. mxbuild tolerates the wrong spellings, so the
+// symptom of getting this wrong is not a build error — it is a document Studio
+// Pro cannot open.
+func mappingRequestHandlingToGen(a *microflows.WebServiceCallAction) element.Element {
+	rh := newElem("Microflows$MappingRequestHandling", "")
+	// "Json" is what Studio Pro wrote on the one reference document
+	// (ako/TestApp Clients.SaveOrder) — surprising on an XML protocol, which is
+	// why a stored value is carried through rather than normalised, and why the
+	// default is the observed one rather than the plausible one.
+	addStr(rh, "ContentType", orDefault(a.SendMappingContentType, "Json"))
+	addStr(rh, "MappingId", string(a.SendMappingID))
+	addStr(rh, "MappingVariableName", a.SendMappingVariable)
+	return rh
+}
+
+// simpleRequestHandlingToGen builds the Microflows$SimpleRequestHandling that
+// carries the operation's arguments. Passing nil gives the empty form, which is
+// what the header handling and an argument-less call use.
+func simpleRequestHandlingToGen(args []microflows.WebServiceArgument) element.Element {
 	rh := newElem("Microflows$SimpleRequestHandling", "")
 	addStr(rh, "NullValueOption", "LeaveOutElement")
-	addEmptyTypedList(rh, "ParameterMappings", 2)
+	if len(args) == 0 {
+		addEmptyTypedList(rh, "ParameterMappings", 2)
+		return rh
+	}
+	children := make([]element.Element, 0, len(args))
+	for _, arg := range args {
+		pm := newElem("Microflows$WebServiceOperationSimpleParameterMapping", "")
+		addStr(pm, "Argument", arg.Expression)
+		addBool(pm, "IsChecked", arg.Checked)
+		// ParameterName is "" in both reference mappings. What fills it is
+		// unmeasured — plausibly an RPC-style binding, which neither reference
+		// operation uses — so it is written empty rather than guessed at from
+		// the argument's own name.
+		addStr(pm, "ParameterName", "")
+		addStr(pm, "ParameterPath", arg.Path)
+		children = append(children, pm)
+	}
+	addPartList(rh, "ParameterMappings", children)
 	return rh
 }
 

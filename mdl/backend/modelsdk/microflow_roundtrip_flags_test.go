@@ -56,3 +56,34 @@ func TestMicroflowRoundTrip_ConcurrentExecutionFlags(t *testing.T) {
 		t.Error("MarkAsUsed lost on round-trip (want true)")
 	}
 }
+
+// TestMicroflowRoundTrip_ApplyEntityAccess is the third property in this struct
+// to go the way #723 §A describes, and the only one with a security consequence.
+//
+// "Apply entity access" makes a microflow run under the current user's entity
+// access rules rather than with full access, so it only ever NARROWS. Both
+// writers hardcoded false and microflowFromGen did not read it back, so every
+// rewrite turned it off — widening what the microflow may read and write, with
+// nothing to report it: `mxcli check` is quiet, mxbuild is quiet, and the model
+// is valid either way.
+//
+// Measured across 342 microflows in 4 projects (11.14.0): every microflow
+// storing true came back false. The write half is the assertion below; the
+// executor's preserve-on-rewrite rule is TestCarriedApplyEntityAccess.
+func TestMicroflowRoundTrip_ApplyEntityAccess(t *testing.T) {
+	mf := &microflows.Microflow{Name: "ACT_Secured", ApplyEntityAccess: true}
+	mf.ID = model.ID("mf-2")
+
+	if got := roundTripMicroflow(t, mf); !got.ApplyEntityAccess {
+		t.Error("ApplyEntityAccess lost on round-trip — the microflow now runs with " +
+			"FULL access instead of the user's (want true)")
+	}
+
+	// The other direction has to survive too: a stored false must not become
+	// true, or the fix would be a different silent change in the same place.
+	off := &microflows.Microflow{Name: "ACT_Plain"}
+	off.ID = model.ID("mf-3")
+	if got := roundTripMicroflow(t, off); got.ApplyEntityAccess {
+		t.Error("ApplyEntityAccess invented on round-trip (want false)")
+	}
+}

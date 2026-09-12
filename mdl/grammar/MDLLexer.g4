@@ -251,6 +251,10 @@ WITH: W I T H;
 EMPTY: E M P T Y;
 OBJECT: O B J E C T;
 OBJECTS: O B J E C T S;
+// SHOW MESSAGE … BLOCKING — Studio Pro's "blocking" checkbox on a message
+// action. Listed in the `keyword` rule too, so `blocking` stays usable as an
+// ordinary identifier.
+BLOCKING: B L O C K I N G;
 
 // =============================================================================
 // PAGE / WIDGET KEYWORDS

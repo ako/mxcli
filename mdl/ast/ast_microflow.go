@@ -65,6 +65,15 @@ type CreateMicroflowStmt struct {
 	Folder           string // Folder path within module (e.g., "Resources/Images")
 	CreateOrModify   bool
 	Excluded         bool // @excluded — document excluded from project
+	// ApplyEntityAccess is Studio Pro's "apply entity access" checkbox, set by
+	// `@applyentityaccess` / `@applyentityaccess(false)`.
+	//
+	// A POINTER because absent and false are different answers: an absent
+	// annotation preserves what is stored (the setting is model state, like
+	// @excluded), while an explicit false clears it. A plain bool would make
+	// every rewrite that did not mention it turn the setting off, which is the
+	// bug this field exists to fix.
+	ApplyEntityAccess *bool
 	// Expose holds the EXPOSED AS … ACTION clauses. A microflow has two toolbox
 	// entries — one for the microflow editor, one for the workflow editor — so
 	// there can be one of each.
@@ -119,6 +128,11 @@ type CreateNanoflowStmt struct {
 	Folder           string // Folder path within module
 	CreateOrModify   bool
 	Excluded         bool // @excluded — document excluded from project
+	// No ApplyEntityAccess: a nanoflow runs in the CLIENT and Mendix stores no
+	// such property on Nanoflows$Nanoflow (modelsdk/gen declares the accessor
+	// on Microflow and Rule only). Carrying it here would give the annotation
+	// somewhere to parse and nothing to do.
+	//
 	// Expose is parsed but refused: only Microflows$Microflow carries the toolbox
 	// properties. Accepting it in the grammar and explaining the refusal beats a
 	// parse error that says only "no viable alternative".
@@ -142,6 +156,15 @@ type CreateRuleStmt struct {
 	Folder           string // Folder path within module
 	CreateOrModify   bool
 	Excluded         bool // @excluded — document excluded from project
+	// ApplyEntityAccess is Studio Pro's "apply entity access" checkbox, set by
+	// `@applyentityaccess` / `@applyentityaccess(false)`.
+	//
+	// A POINTER because absent and false are different answers: an absent
+	// annotation preserves what is stored (the setting is model state, like
+	// @excluded), while an explicit false clears it. A plain bool would make
+	// every rewrite that did not mention it turn the setting off, which is the
+	// bug this field exists to fix.
+	ApplyEntityAccess *bool
 	// Expose is parsed but refused — see CreateNanoflowStmt.Expose.
 	Expose []ExposeActionClause
 }
@@ -650,15 +673,20 @@ func (s *CallJavaScriptActionStmt) isMicroflowStatement() {}
 
 // CallWebServiceStmt represents a legacy SOAP web service call.
 type CallWebServiceStmt struct {
-	OutputVariable   string               // Optional output variable
-	RawBSONBase64    string               // Raw Microflows$CallWebServiceAction BSON for lossless roundtrip
-	ServiceID        string               // Consumed web service ID or qualified name
-	OperationName    string               // Operation name
-	SendMappingID    string               // Optional export mapping ID or qualified name
-	ReceiveMappingID string               // Optional import mapping ID or qualified name
-	Timeout          Expression           // Optional timeout expression
-	ErrorHandling    *ErrorHandlingClause // Optional ON ERROR clause
-	Annotations      *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	OutputVariable string         // Optional output variable
+	RawBSONBase64  string         // Raw Microflows$CallWebServiceAction BSON for lossless roundtrip
+	ServiceID      string         // Consumed web service ID or qualified name
+	OperationName  string         // Operation name
+	Arguments      []CallArgument // Optional operation arguments — Microflows$SimpleRequestHandling
+	SendMappingID  string         // Optional export mapping ID or qualified name
+	// SendMappingVariable is the variable the export mapping maps FROM. An
+	// export mapping always maps an object, so a send mapping without one is
+	// incomplete — Mendix stores it as MappingRequestHandling.MappingVariableName.
+	SendMappingVariable string
+	ReceiveMappingID    string               // Optional import mapping ID or qualified name
+	Timeout             Expression           // Optional timeout expression
+	ErrorHandling       *ErrorHandlingClause // Optional ON ERROR clause
+	Annotations         *ActivityAnnotations // Optional @position, @caption, @color, @annotation
 }
 
 func (s *CallWebServiceStmt) isMicroflowStatement() {}
@@ -922,6 +950,7 @@ type ShowMessageStmt struct {
 	Message       Expression           // The message text (string template)
 	Type          string               // Information, Warning, Error (default: Information)
 	TemplateArgs  []Expression         // Template arguments for message placeholders {1}, {2}, etc.
+	Blocking      bool                 // BLOCKING — the message halts the client until dismissed
 	Annotations   *ActivityAnnotations // Optional @position, @caption, @color, @annotation
 	ErrorHandling *ErrorHandlingClause // Optional ON ERROR clause
 }

@@ -21,9 +21,9 @@ func TestChildSerializeErr_RecordedAndDrained(t *testing.T) {
 		t.Fatalf("accumulator not empty at start: %v", err)
 	}
 
-	// A nanoflow datasource is not yet representable by the codec engine.
+	// A listen-to-widget datasource is not yet representable by the codec engine.
 	got := codecChildSerializer{}.SerializeCustomWidgetDataSource(
-		&pages.NanoflowSource{Nanoflow: "M.GetOrders"})
+		&pages.ListenToWidgetSource{})
 	if got != nil {
 		t.Errorf("unsupported datasource serialized to %v, want nil", got)
 	}
@@ -32,7 +32,7 @@ func TestChildSerializeErr_RecordedAndDrained(t *testing.T) {
 	if err == nil {
 		t.Fatal("failure was not recorded; it would be dropped silently")
 	}
-	if !strings.Contains(err.Error(), "NanoflowSource") {
+	if !strings.Contains(err.Error(), "ListenToWidgetSource") {
 		t.Errorf("error does not name the construct: %v", err)
 	}
 
@@ -69,7 +69,7 @@ func TestCreatePage_FailsOnDroppedChild(t *testing.T) {
 
 	// Simulate the executor building a widget tree whose child could not be
 	// serialized, exactly as SerializeCustomWidgetDataSource does above.
-	codecChildSerializer{}.SerializeCustomWidgetDataSource(&pages.NanoflowSource{Nanoflow: "M.GetOrders"})
+	codecChildSerializer{}.SerializeCustomWidgetDataSource(&pages.ListenToWidgetSource{})
 
 	page := &pages.Page{Name: "DropProbe"}
 	page.ID = model.ID("")
@@ -77,7 +77,7 @@ func TestCreatePage_FailsOnDroppedChild(t *testing.T) {
 	if err == nil {
 		t.Fatal("CreatePage succeeded after a child was dropped")
 	}
-	if !strings.Contains(err.Error(), "NanoflowSource") {
+	if !strings.Contains(err.Error(), "ListenToWidgetSource") {
 		t.Errorf("error does not explain what was dropped: %v", err)
 	}
 }

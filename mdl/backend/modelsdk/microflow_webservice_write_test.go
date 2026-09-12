@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	bsonv1 "go.mongodb.org/mongo-driver/bson"
+	bsonv2 "go.mongodb.org/mongo-driver/v2/bson"
 
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
@@ -312,5 +313,262 @@ func assertTypedArrayMarker(t *testing.T, doc bsonv1.D, key string, want int32) 
 	}
 	if got, ok := arr[0].(int32); !ok || got != want {
 		t.Errorf("%s marker = %#v, want int32(%d)", key, arr[0], want)
+	}
+}
+
+// TestWebServiceCallAction_ArgumentsAreSimpleParameterMappings is the regression
+// test for CE0178.
+//
+// An operation taking parameters needs them bound, and an empty
+// SimpleRequestHandling.ParameterMappings is mxbuild's "Body parameter mapping
+// needs to be refreshed." Measured on 11.14.0 against ako/TestApp: the same
+// script goes 1 error -> 0 once the list is written.
+//
+// The ParameterPath is asserted character for character against what Studio Pro
+// stored, because a plausible wrong escaping is exactly what mxbuild accepts and
+// Studio Pro does not.
+func TestWebServiceCallAction_ArgumentsAreSimpleParameterMappings(t *testing.T) {
+	a := fullWebServiceCall()
+	a.Arguments = []microflows.WebServiceArgument{{
+		Name:       "OrderId",
+		Path:       "http%3A//www.example.com/:GetOrder|OrderId",
+		Expression: "$Customer/OrderId",
+		Checked:    true,
+	}}
+
+	body, ok := docGet(encodeMicroflowAction(t, a), "RequestBodyHandling").(bsonv1.D)
+	if !ok {
+		t.Fatal("RequestBodyHandling is not a document")
+	}
+	if got := docGet(body, "$Type"); got != "Microflows$SimpleRequestHandling" {
+		t.Fatalf("$Type = %#v, want Microflows$SimpleRequestHandling", got)
+	}
+
+	arr, ok := docGet(body, "ParameterMappings").(bsonv1.A)
+	if !ok || len(arr) != 2 {
+		t.Fatalf("ParameterMappings = %#v, want the marker plus one mapping", docGet(body, "ParameterMappings"))
+	}
+	// Marker 2 — measured on all three reference calls. The codec's DEFAULT is
+	// 3, so without the RegisterListMarker in the writer this is the assertion
+	// that fails, and a wrong marker is the class of defect that makes a project
+	// Studio Pro cannot open while mxbuild stays silent.
+	if got, isInt := arr[0].(int32); !isInt || got != 2 {
+		t.Errorf("ParameterMappings marker = %#v, want int32(2)", arr[0])
+	}
+
+	pm, ok := arr[1].(bsonv1.D)
+	if !ok {
+		t.Fatalf("mapping = %#v, want a document", arr[1])
+	}
+	for _, want := range []struct {
+		key string
+		val any
+	}{
+		{"$Type", "Microflows$WebServiceOperationSimpleParameterMapping"},
+		{"Argument", "$Customer/OrderId"},
+		{"IsChecked", true},
+		// "" in both reference mappings; what fills it is unmeasured.
+		{"ParameterName", ""},
+		{"ParameterPath", "http%3A//www.example.com/:GetOrder|OrderId"},
+	} {
+		if got := docGet(pm, want.key); got != want.val {
+			t.Errorf("%s = %#v, want %#v", want.key, got, want.val)
+		}
+	}
+
+	// The HEADER handling stays the bare empty form — it is not where arguments go.
+	hdr, ok := docGet(encodeMicroflowAction(t, a), "RequestHeaderHandling").(bsonv1.D)
+	if !ok {
+		t.Fatal("RequestHeaderHandling is not a document")
+	}
+	assertTypedArrayMarker(t, hdr, "ParameterMappings", 2)
+}
+
+// TestWebServiceCallAction_SendMappingIsAMappingRequestHandling is the
+// regression test for CE0369.
+//
+// `send mapping` parsed, was accepted and was DISCARDED: the writer emitted an
+// empty SimpleRequestHandling regardless, and mxbuild reported "Cannot use
+// simple request body, as the operation's body is complex". The mapping name
+// appeared zero times in the written document, on either engine.
+//
+// The two name keys are the ones modelsdk/gen gets wrong (its key audit lists
+// Mapping -> MappingId and MappingArgumentVariableName -> MappingVariableName),
+// so this test is what stops a future rewrite through the gen accessors: the
+// wrong spellings build clean and give a document Studio Pro cannot open.
+func TestWebServiceCallAction_SendMappingIsAMappingRequestHandling(t *testing.T) {
+	a := fullWebServiceCall()
+	a.ReceiveMappingID = ""
+	a.OutputVariable = ""
+	a.UseReturnVariable = false
+	a.SendMappingID = "Clients.SoapOrderExportMapping"
+	a.SendMappingVariable = "NewSaveOrder"
+
+	body, ok := docGet(encodeMicroflowAction(t, a), "RequestBodyHandling").(bsonv1.D)
+	if !ok {
+		t.Fatal("RequestBodyHandling is not a document")
+	}
+	for _, want := range []struct {
+		key string
+		val any
+	}{
+		{"$Type", "Microflows$MappingRequestHandling"},
+		// "Json" on an XML protocol is what Studio Pro wrote on the one
+		// reference document — written as observed, not as it would seem.
+		{"ContentType", "Json"},
+		{"MappingId", "Clients.SoapOrderExportMapping"},
+		{"MappingVariableName", "NewSaveOrder"},
+	} {
+		if got := docGet(body, want.key); got != want.val {
+			t.Errorf("%s = %#v, want %#v", want.key, got, want.val)
+		}
+	}
+	// A marker variant carries no Value/ParameterMappings of the other form.
+	if got := docGet(body, "ParameterMappings"); got != nil {
+		t.Errorf("ParameterMappings = %#v on a mapping body, want absent", got)
+	}
+}
+
+// TestWebServiceCallAction_SendMappingContentTypeIsCarried — a stored
+// ContentType survives a rewrite rather than being normalised to the default.
+// One reference document is not enough to call "Json" the rule.
+func TestWebServiceCallAction_SendMappingContentTypeIsCarried(t *testing.T) {
+	a := fullWebServiceCall()
+	a.SendMappingID = "M.Export"
+	a.SendMappingVariable = "Order"
+	a.SendMappingContentType = "Xml"
+
+	body, _ := docGet(encodeMicroflowAction(t, a), "RequestBodyHandling").(bsonv1.D)
+	if got := docGet(body, "ContentType"); got != "Xml" {
+		t.Errorf("ContentType = %#v, want the stored Xml", got)
+	}
+}
+
+// referenceSoapActionMap is the fifteen-key shape every ako/TestApp SOAP call
+// carries, with mxcli's own values for the six boilerplate keys.
+//
+// It is built as a map and mutated BEFORE marshalling on purpose. Round-tripping
+// through bson.Unmarshal to poke at a nested field does not work here: driver v2
+// decodes nested documents into bson.D even when the top level is a bson.M, the
+// mirror image of the map-vs-D trap already recorded for driver v1.
+func referenceSoapActionMap() bsonv2.M {
+	return bsonv2.M{
+		"$Type":             "Microflows$CallWebServiceAction",
+		"ErrorHandlingType": "Rollback",
+		"HttpConfiguration": bsonv2.M{
+			"$Type":                      "Microflows$HttpConfiguration",
+			"ClientCertificate":          "",
+			"CustomLocation":             "",
+			"CustomLocationTemplate":     nil,
+			"HttpAuthenticationPassword": "",
+			"HttpAuthenticationUserName": "",
+			"HttpHeaderEntries":          bsonv2.A{int32(3)},
+			"HttpMethod":                 "Post",
+			"OverrideLocation":           false,
+			"UseHttpAuthentication":      false,
+		},
+		"ImportedService":      "Clients.OrderSoapClient",
+		"IsValidationRequired": false,
+		"NewResultHandling": bsonv2.M{
+			"$Type": "Microflows$ResultHandling", "Bind": true,
+			"ImportMappingCall": bsonv2.M{
+				"$Type": "Microflows$ImportMappingCall", "Commit": "YesWithoutEvents",
+				"ContentType": "Xml", "ForceSingleOccurrence": false,
+				"ObjectHandlingBackup": "Create", "ParameterVariableName": "",
+				"Range":              bsonv2.M{"$Type": "Microflows$ConstantRange", "SingleObject": true},
+				"ReturnValueMapping": "Clients.SoapOrdersImportMapping",
+			},
+			"ResultVariableName": "Orders",
+			"VariableType":       bsonv2.M{"$Type": "DataTypes$ObjectType", "Entity": "Clients.Order"},
+		},
+		"OperationName": "GetOrder", "ProxyConfiguration": nil,
+		"RequestBodyHandling": bsonv2.M{
+			"$Type": "Microflows$SimpleRequestHandling", "NullValueOption": "LeaveOutElement",
+			"ParameterMappings": bsonv2.A{int32(2), bsonv2.M{
+				"$Type":    "Microflows$WebServiceOperationSimpleParameterMapping",
+				"Argument": "2", "IsChecked": true, "ParameterName": "",
+				"ParameterPath": "http%3A//www.example.com/:GetOrder|OrderId",
+			}},
+		},
+		"RequestHeaderHandling": bsonv2.M{
+			"$Type": "Microflows$SimpleRequestHandling", "NullValueOption": "LeaveOutElement",
+			"ParameterMappings": bsonv2.A{int32(2)},
+		},
+		"RequestProxyType": "DefaultProxy", "ServiceName": "OrdersWS",
+		"TimeOutExpression": "300", "UseRequestTimeOut": true,
+	}
+}
+
+func marshalAction(t *testing.T, m bsonv2.M) bsonv2.Raw {
+	t.Helper()
+	out, err := bsonv2.Marshal(m)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return out
+}
+
+// TestWebServiceActionRequiresRawBSON_AgreesWithLegacy mirrors the sdk/mpr twin
+// case for case. The two engines implement this decision SEPARATELY — one over
+// bson.Raw, one over map[string]any — so nothing but a pair of tests keeps them
+// from drifting, and a drift here means the same project describes differently
+// depending on which engine read it.
+func TestWebServiceActionRequiresRawBSON_AgreesWithLegacy(t *testing.T) {
+	if webServiceActionRequiresRawBSON(marshalAction(t, referenceSoapActionMap())) {
+		t.Error("an action mxcli would write itself still falls back to raw")
+	}
+
+	for _, tc := range []struct {
+		name  string
+		mutit func(bsonv2.M)
+	}{
+		// Measured: Clients.GetOrders stores SingleObject FALSE where mxcli
+		// writes true. No error comes of it, which is exactly why writing it
+		// back must not happen silently.
+		{"Range.SingleObject differs", func(m bsonv2.M) {
+			m["NewResultHandling"].(bsonv2.M)["ImportMappingCall"].(bsonv2.M)["Range"] =
+				bsonv2.M{"$Type": "Microflows$ConstantRange", "SingleObject": false}
+		}},
+		// Measured: Clients.SaveOrder binds $IsSaved with NO import mapping and
+		// a DataTypes$BooleanType — the OPERATION's return type, which lives in
+		// the WSDL. Written back as VoidType it is CE0366 + CE6011.
+		{"result type comes from the WSDL, not a mapping", func(m bsonv2.M) {
+			m["NewResultHandling"] = bsonv2.M{
+				"$Type": "Microflows$ResultHandling", "Bind": true,
+				"ImportMappingCall":  nil,
+				"ResultVariableName": "IsSaved",
+				"VariableType":       bsonv2.M{"$Type": "DataTypes$BooleanType"},
+			}
+		}},
+		{"HTTP authentication configured", func(m bsonv2.M) {
+			m["HttpConfiguration"].(bsonv2.M)["UseHttpAuthentication"] = true
+		}},
+		{"custom location", func(m bsonv2.M) {
+			m["HttpConfiguration"].(bsonv2.M)["CustomLocation"] = "https://elsewhere/"
+		}},
+		{"a SOAP header is configured", func(m bsonv2.M) {
+			m["RequestHeaderHandling"].(bsonv2.M)["ParameterMappings"] = bsonv2.A{int32(2),
+				bsonv2.M{"$Type": "Microflows$WebServiceOperationSimpleParameterMapping"}}
+		}},
+		{"validation required", func(m bsonv2.M) { m["IsValidationRequired"] = true }},
+		{"non-default proxy", func(m bsonv2.M) { m["RequestProxyType"] = "NoProxy" }},
+		{"timeout disabled", func(m bsonv2.M) { m["UseRequestTimeOut"] = false }},
+		{"advanced parameter mapping", func(m bsonv2.M) {
+			m["RequestBodyHandling"].(bsonv2.M)["ParameterMappings"] = bsonv2.A{int32(2),
+				bsonv2.M{"$Type": "Microflows$WebServiceOperationAdvancedParameterMapping"}}
+		}},
+		{"parameter path with no name segment", func(m bsonv2.M) {
+			pms := m["RequestBodyHandling"].(bsonv2.M)["ParameterMappings"].(bsonv2.A)
+			pms[1].(bsonv2.M)["ParameterPath"] = "http%3A//www.example.com/:GetOrder"
+		}},
+		{"unknown key entirely", func(m bsonv2.M) { m["SomethingNew"] = int32(1) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := referenceSoapActionMap()
+			tc.mutit(m)
+			if !webServiceActionRequiresRawBSON(marshalAction(t, m)) {
+				t.Error("describes structurally, so a round trip would silently rewrite it")
+			}
+		})
 	}
 }

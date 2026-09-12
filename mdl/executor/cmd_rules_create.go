@@ -65,6 +65,10 @@ func execCreateRule(ctx *ExecContext, s *ast.CreateRuleStmt) error {
 	// Excluded is model state, not script state: an absent @excluded must not
 	// clear a stored exclusion (#914).
 	existingExcluded := false
+	// Same as the microflow path: "apply entity access" is a SECURITY setting
+	// and model state, so an absent annotation preserves the stored value
+	// rather than widening what the rule may read.
+	existingApplyEntityAccess := false
 	// Studio Pro's rule editor writes "Variable" here on both reference rules, so
 	// a rule mxcli creates matches rather than storing an empty name that Studio
 	// Pro would fill in on first edit.
@@ -87,6 +91,7 @@ func execCreateRule(ctx *ExecContext, s *ast.CreateRuleStmt) error {
 		existingID = existing.ID
 		existingContainerID = existing.ContainerID
 		existingExcluded = existing.Excluded
+		existingApplyEntityAccess = existing.ApplyEntityAccess
 		existingDocumentation = existing.Documentation
 		haveExisting = true
 		// MDL has no surface for ReturnVariableName, and Studio Pro writes one
@@ -115,6 +120,7 @@ func execCreateRule(ctx *ExecContext, s *ast.CreateRuleStmt) error {
 		Documentation:      s.Documentation,
 		MarkAsUsed:         false,
 		Excluded:           s.Excluded || existingExcluded,
+		ApplyEntityAccess:  carriedApplyEntityAccess(s.ApplyEntityAccess, existingApplyEntityAccess),
 		ReturnVariableName: existingReturnVariableName,
 	}
 
