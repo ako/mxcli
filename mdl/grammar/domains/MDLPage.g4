@@ -561,8 +561,22 @@ associationPathV3
     ;
 
 // V3 Action expressions
+//
+// NOTHING is a real alternative, not a courtesy. It is the documented spelling
+// for a deliberately inert button (docs-site/src/language/alter-page.md, the
+// quick reference, the synced alter-page skill, nine mdl-examples scripts) and
+// it was never in this rule: it reached Forms$NoAction by FAILING to match here
+// and falling through to `keyword COLON propertyValueV3` at the end of
+// widgetPropertyV3, which stores the slot as a plain string.
+//
+// That fall-through is what mendixlabs/mxcli#1062 reports: `Action: OPEN_LINK`
+// (a real keyword short its argument) and `Action: TOTALLY_MADE_UP` take the
+// same route to the same NoAction, silently. The scalar cannot be rejected
+// while the documented form still depends on it, so the promotion below is the
+// half of the fix that makes MDL-WIDGET28 possible.
 actionExprV3
     : VARIABLE                                        // $handler — a fragment action parameter (see fragmentParam)
+    | NOTHING                                         // NOTHING — an explicitly inert widget (Forms$NoAction)
     | SAVE_CHANGES (CLOSE_PAGE)?                      // SAVE_CHANGES or SAVE_CHANGES CLOSE_PAGE
     | CANCEL_CHANGES (CLOSE_PAGE)?                    // CANCEL_CHANGES
     | CLOSE_PAGE                                      // CLOSE_PAGE

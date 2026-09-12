@@ -103,6 +103,7 @@ describe icon collection Atlas_Core.Atlas_Filled   -- every icon + its reference
 ```
 
 **Action Bindings:**
+- `action: nothing` - Deliberately no action (a decorative button, a card that is not clickable)
 - `action: save_changes` - Save changes to object
 - `action: save_changes close_page` - Save and close page
 - `action: cancel_changes` - Cancel changes
@@ -128,6 +129,16 @@ describe icon collection Atlas_Core.Atlas_Filled   -- every icon + its reference
   variable is refused as **MDL-PAGEARG01** — it used to be accepted and silently
   opened the page with the context object anyway. To open a page with something
   else, call a microflow that shows it.
+- **The list above is the whole vocabulary, and a keyword without its argument is
+  not in it.** `action: open_link` with no URL, `action: show_page` with no page,
+  `action: microflow` with no name — each is **MDL-WIDGET28**. Until
+  mendixlabs/mxcli#1062 these were written as a widget with *no action at all*:
+  it rendered, carried its caption, and did nothing, while `mxcli check`, `exec`
+  and mxbuild all reported success, because a no-action widget is legal Mendix.
+  An invented keyword (`action: totally_made_up`) did the same. Use
+  `action: nothing` when a control really is meant to be inert, so a dead one
+  always means a mistake.
+- The same forms serve `onclick:` (an alias of `action:`) and `onchange:`.
 
 **Button Styles:** `default`, `primary`, `success`, `info`, `warning`, `danger`, `inverse`
 - Case-insensitive (`primary` and `Primary` both work).

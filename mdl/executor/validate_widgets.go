@@ -130,6 +130,11 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		// every widget kind and needs no definition: the SHAPE is wrong whatever
 		// the widget declares.
 		out = append(out, validateObjectEntryProperties(w, registry, locationPrefix)...)
+		// #1062: an action slot holding something that is not an action, which
+		// used to check clean, exec clean, build clean and render dead. Runs for
+		// every widget kind and needs no definition, for the same reason as the
+		// rule above: the SHAPE of the value is wrong whatever the widget is.
+		out = append(out, validateWidgetActionSlot(w, locationPrefix)...)
 		// #928: contentparams with no `{N}` placeholder to consume them.
 		if lookupWidgetDef(w, registry) != nil {
 			out = append(out, validatePluggableContentParams(w, locationPrefix)...)
