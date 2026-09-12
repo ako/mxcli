@@ -92,15 +92,20 @@ func TestPageTextsUseProjectDefaultLanguage(t *testing.T) {
 			}
 			assertTextLang(t, "button Caption", btn.CaptionTemplate.Template, lang, "Opslaan")
 
-			// Static text content — the same builder family, a different property.
-			txt, err := pb.buildTextWidgetV3(&ast.WidgetV3{
-				Type: "text", Name: "t",
+			// Dynamic text content — the same builder family, a different
+			// property. (It was `text` until buildTextWidgetV3 started refusing:
+			// that keyword wrote Forms$Text, which Mendix does not have.)
+			txt, err := pb.buildDynamicTextV3(&ast.WidgetV3{
+				Type: "dynamictext", Name: "t",
 				Properties: map[string]any{"Content": "Welkom"},
 			})
 			if err != nil {
-				t.Fatalf("buildTextWidgetV3: %v", err)
+				t.Fatalf("buildDynamicTextV3: %v", err)
 			}
-			assertTextLang(t, "text Content", txt.Caption, lang, "Welkom")
+			if txt.Content == nil {
+				t.Fatal("dynamic text has no Content")
+			}
+			assertTextLang(t, "dynamictext Content", txt.Content.Template, lang, "Welkom")
 		})
 	}
 }

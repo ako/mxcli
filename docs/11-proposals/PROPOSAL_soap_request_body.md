@@ -212,13 +212,55 @@ callWebServiceStatement
 
 `FROM` and `LPAREN`/`RPAREN` are existing tokens; no lexer change.
 
+### 3.1 Measured against the sibling call statements
+
+MDL already has three other ways to call a remote operation. Both halves of the
+proposal are taken from them rather than invented, and the one statement they
+disagree with is the one that is already out of step with the rest of the
+language.
+
+| statement | arguments | request body from a mapping |
+|---|---|---|
+| `call external action` (OData action) | `Ext.TripPin.FindAirport(code = 'EHAM')` — bare names, parenthesised **on the callee** | n/a |
+| `rest call` (REST v1, inline HTTP) | `with ({1} = $x)` — positional **URL template slots**, a different concept | `body mapping Mod.M from $var` |
+| `send rest request` (REST v2, consumed service operation) | `with ($code = 'EHAM')` — `$`-prefixed, in a separate clause | `body $var` (the mapping lives on the operation document) |
+| `call microflow` / `nanoflow` / `java action` / `execute database query` | `(Name = value)` via `callArgumentList` | n/a |
+| **SOAP, proposed** | `operation GetOrder (OrderId = $Id)` | `send mapping Mod.M from $var` |
+
+- **The argument form is the OData action's, exactly.** An OData action and a
+  SOAP operation are the same shape of thing — a named operation on a consumed
+  service, with declared parameters — and MDL already spells one
+  `Action(name = value)`. Parenthesising on the callee is also why the args
+  belong on `operation` rather than in a clause of their own: SOAP's statement
+  target is the *service*, so `operation X` is the callee, in the position
+  `call external action`'s qualified name occupies.
+- **`send mapping … from $var` is `rest call`'s `body mapping … from $var`**,
+  keyword for keyword after the noun. `send`/`body` differ only because `send
+  mapping` is already in the SOAP grammar; renaming it would break scripts for
+  nothing.
+- **`send rest request` is the divergence, and it is the outlier.** It is the
+  only place in MDL where a *parameter* name carries a `$` — DESCRIBE emits
+  `with ($code = …)` — which reads as an assignment to a variable rather than a
+  binding of a parameter. `callArgumentList` accepts both spellings, so nothing
+  forces the `$`; `call microflow Mod.M (FirstName = 'Hello')` is what the rest
+  of the language does. Matching it here would spread the wart. Worth a separate
+  issue on its own; out of scope for this proposal.
+
+There is also a **precedent for §2.1's derivation**, in that same statement:
+`RestOperationCallAction` stores each parameter under a qualified key and the
+describer strips everything before the last dot (`formatRestOperationCallAction`),
+so MDL shows `code` where the model holds `Mod.Svc.Op.code`. Deriving
+`ParameterPath` from the operation's `RequestBodyElementName` is the same move
+with a different separator — which makes it an established pattern here rather
+than a new liberty.
+
 Against the design checklist: it reads as English (*call this service, operation
 GetOrder with OrderId …*); it adds no verb; both clauses are optional, so every
 script that parses today still parses; one argument is a one-line diff; and an
 LLM that has seen `call microflow Mod.Flow (Name = $x)` generates this correctly
 from the shape alone.
 
-### 3.1 The clauses are mutually exclusive — and that is the rule to enforce
+### 3.2 The clauses are mutually exclusive — and that is the rule to enforce
 
 `RequestBodyHandling` holds one variant. So:
 
@@ -237,7 +279,7 @@ should name both clauses and say that a call sends either arguments or a mapping
 Per the repo's rule, `check` and `exec` must call the **same** function, so a
 script cannot pass one and fail the other.
 
-### 3.2 DESCRIBE
+### 3.3 DESCRIBE
 
 Round-trippable, per the layouts precedent — describe → edit → exec is how a SOAP
 call gets copied. Once `RequestBodyHandling` is representable, remove it from the
@@ -262,7 +304,7 @@ reconsidering only as an escape hatch if a real WSDL turns up whose paths are no
 `element|parameter` — none of TestApp's three are, but three is not many.
 
 **Write the send mapping now and leave arguments for later.** Tempting, since the
-mapping is four keys. Rejected because the mutual exclusivity in §3.1 is only
+mapping is four keys. Rejected because the mutual exclusivity in §3.2 is only
 enforceable once both exist; implementing one alone means `check` can refuse a
 combination it cannot yet offer an alternative to.
 
@@ -291,7 +333,7 @@ Roughly the shape the CE0386/CE0243 fixes took, and mostly reusing their parts.
    path currently looks for `RequestHandling` → `ExportMappingCall` → `Mapping`,
    a key **no TestApp document carries**, which is why `SendMappingID` was never
    populated from a real project either.
-6. **Validation**: §3.1, one function, called by `check` and `exec`.
+6. **Validation**: §3.2, one function, called by `check` and `exec`.
 7. **Version gating**: none expected — SOAP calls predate the supported range —
    but confirm against `sdk/versions/mendix-{9,10,11}.yaml` before merging.
 
@@ -335,7 +377,7 @@ a control.**
   `http%3A//www.example.com/:GetOrder|OrderId` character for character, since a
   plausible-looking wrong escaping is exactly what mxbuild would accept and
   Studio Pro would not.
-- Unit: the §3.1 refusal, and that `check` and `exec` reject the same script.
+- Unit: the §3.2 refusal, and that `check` and `exec` reject the same script.
 - `mdl-examples/doctype-tests/06b-soap-examples.mdl` extended with both forms.
 - **Integration, against ako/TestApp**: rewrite `Clients.GetOrders` and
   `Clients.SaveOrder` from MDL and get **0 errors** from `mx check`. The control

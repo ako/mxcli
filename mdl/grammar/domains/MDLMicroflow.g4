@@ -474,12 +474,24 @@ callJavaScriptActionStatement
     ;
 
 // Legacy SOAP call.
+//
+// The request body is EITHER the operation's arguments OR an export mapping —
+// Mendix stores one RequestBodyHandling, not two — so writing both is refused
+// by `mxcli check`. The grammar admits both so the refusal can name them.
+//
+// Arguments parenthesise on OPERATION, matching CALL EXTERNAL ACTION: an OData
+// action and a SOAP operation are the same shape of thing, and `operation X` is
+// the callee here (the statement's own target is the service).
+//
+// SEND MAPPING … FROM $var mirrors REST's `body mapping … from $var`. FROM
+// cannot be swallowed by the preceding qualifiedName — that rule only continues
+// across a DOT — which is why the same shape already works there.
 callWebServiceStatement
     : (VARIABLE EQUALS)? CALL WEB SERVICE
       (RAW STRING_LITERAL
       | webServiceReference
-        (OPERATION webServiceReference)?
-        (SEND MAPPING webServiceReference)?
+        (OPERATION webServiceReference (LPAREN callArgumentList? RPAREN)?)?
+        (SEND MAPPING webServiceReference (FROM VARIABLE)?)?
         (RECEIVE MAPPING webServiceReference)?
         (TIMEOUT expression)?)
       onErrorClause?
@@ -609,7 +621,7 @@ showHomePageStatement
 
 // SHOW MESSAGE 'Hello {1}' TYPE Information OBJECTS [$Name];
 showMessageStatement
-    : SHOW MESSAGE expression (TYPE identifierOrKeyword)? (OBJECTS LBRACKET expressionList RBRACKET)? onErrorClause?
+    : SHOW MESSAGE expression (TYPE identifierOrKeyword)? (OBJECTS LBRACKET expressionList RBRACKET)? BLOCKING? onErrorClause?
     ;
 
 // SYNCHRONIZE ALL;

@@ -137,15 +137,16 @@ CREATE PAGE Sales.Detail (Title: 'Detail', Layout: Atlas_Core.Atlas_Default) {
 			"--   `check --references` rather than failing the build with CE1613.\n" +
 			"--   The alternatives are the URL form above, or `ImageType: icon`.\n\n" +
 			"-- Any pluggable widget by its id (id FIRST, then the name)\nPLUGGABLEWIDGET 'com.mendix.widget.web.badge.Badge' name (value: 'x')\nCUSTOMWIDGET 'com.mendix.widget.custom.x.X' name (prop: 'x')      -- legacy spelling\n\n" +
-			"-- Accepted by the parser, NOT writable on the default engine.\n" +
-			"-- Measured on 11.13.0: each is refused with\n" +
-			"--   \"widget *pages.X not yet supported by the modelsdk engine\"\n" +
-			"-- Re-run with MXCLI_ENGINE=legacy, or use the alternative given:\n" +
-			"--   STATICTEXT     -> DYNAMICTEXT with a literal Content\n" +
+			"-- Deprecated in the Mendix 11 React client. These are written correctly by\n" +
+			"-- both engines, but mxbuild reports CE0582 (\"not supported in React client\")\n" +
+			"-- on each, so prefer the alternative:\n" +
 			"--   STATICIMAGE    -> IMAGE\n" +
 			"--   DYNAMICIMAGE   -> IMAGE\n" +
 			"--   DROPDOWN       -> COMBOBOX\n" +
-			"-- And two the executor refuses on BOTH engines, each with its own message:\n" +
+			"-- And three the executor refuses on BOTH engines, each with its own message:\n" +
+			"--   STATICTEXT         (writes Forms$Text, a type Mendix no longer has — the\n" +
+			"--                       project could not be OPENED afterwards; MDL-WIDGET29.\n" +
+			"--                       Use DYNAMICTEXT with a literal Content.)\n" +
 			"--   REFERENCESELECTOR  (unsupported widget type)\n" +
 			"--   LEGACYDATAGRID     (use DATAGRID for the pluggable equivalent on Mendix 11+)",
 		Example: "DATAVIEW dvCustomer (DataSource: $Customer) {\n  TEXTBOX txtName (Label: 'Name', Attribute: Name)\n  COMBOBOX cbStatus (Label: 'Status', Attribute: Status)\n  FOOTER footer1 {\n    ACTIONBUTTON btnSave (Caption: 'Save', Action: SAVE_CHANGES, ButtonStyle: Primary)\n    ACTIONBUTTON btnCancel (Caption: 'Cancel', Action: CANCEL_CHANGES)\n  }\n}",

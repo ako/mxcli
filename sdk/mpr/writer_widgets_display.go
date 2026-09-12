@@ -849,12 +849,18 @@ func serializeStaticImage(img *pages.StaticImage) bson.D {
 	doc := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(img.ID))},
 		{Key: "$Type", Value: "Forms$StaticImageViewer"},
+		// AlternativeText is not optional — generated/metamodel declares it
+		// without omitempty and all three Studio-Pro-authored static images in
+		// ako/TestApp carry it. It used to be omitted here.
+		{Key: "AlternativeText", Value: emptyAlternativeText()},
 		{Key: "Appearance", Value: serializeAppearance(img.Class, img.Style, img.DynamicClasses, img.DesignProperties)},
 		{Key: "ClickAction", Value: serializeClientAction(img.OnClickAction)},
 		{Key: "ConditionalVisibilitySettings", Value: nil},
 		{Key: "Height", Value: int64(img.Height)},
 		{Key: "HeightUnit", Value: "Auto"},
-		{Key: "Image", Value: nil},
+		// An unset by-name reference is "", never null: measured 0 nulls against
+		// 4,400+ empty strings over 40 (type, property) pairs in ako/TestApp.
+		{Key: "Image", Value: ""},
 		{Key: "Name", Value: img.Name},
 		{Key: "NativeAccessibilitySettings", Value: nil},
 		{Key: "Responsive", Value: img.Responsive},
@@ -865,21 +871,40 @@ func serializeStaticImage(img *pages.StaticImage) bson.D {
 	return doc
 }
 
+// emptyAlternativeText is the Forms$ClientTemplate an image widget carries when
+// no alternative text has been set — an empty Template, an empty Fallback and no
+// parameters.
+//
+// Pinned to the three Studio-Pro-authored Forms$StaticImageViewer widgets in
+// ako/TestApp (FeedbackModule). The dynamic image used to build its own version
+// of this carrying a "FallbackValue" string instead: Forms$ClientTemplate has no
+// such property (generated/metamodel: Fallback / Parameters / Template), and an
+// invented key is the failure Studio Pro reports as "Sequence contains no
+// matching element" while mxbuild builds it at 0 errors. Note the empty
+// Parameters list takes marker 2, not the 3 an empty Texts$Text takes.
+func emptyAlternativeText() bson.D {
+	emptyText := func() bson.D {
+		return bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "Texts$Text"},
+			{Key: "Items", Value: bson.A{int32(3)}},
+		}
+	}
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+		{Key: "$Type", Value: "Forms$ClientTemplate"},
+		{Key: "Fallback", Value: emptyText()},
+		{Key: "Parameters", Value: bson.A{int32(2)}},
+		{Key: "Template", Value: emptyText()},
+	}
+}
+
 // serializeDynamicImage serializes a DynamicImage widget.
 func serializeDynamicImage(img *pages.DynamicImage) bson.D {
 	doc := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(img.ID))},
 		{Key: "$Type", Value: "Forms$ImageViewer"},
-		{Key: "AlternativeText", Value: bson.D{
-			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
-			{Key: "$Type", Value: "Forms$ClientTemplate"},
-			{Key: "FallbackValue", Value: ""},
-			{Key: "Template", Value: bson.D{
-				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
-				{Key: "$Type", Value: "Texts$Text"},
-				{Key: "Items", Value: bson.A{int32(3)}},
-			}},
-		}},
+		{Key: "AlternativeText", Value: emptyAlternativeText()},
 		{Key: "Appearance", Value: serializeAppearance(img.Class, img.Style, img.DynamicClasses, img.DesignProperties)},
 		{Key: "ClickAction", Value: serializeClientAction(img.OnClickAction)},
 		{Key: "ConditionalVisibilitySettings", Value: nil},
@@ -888,7 +913,8 @@ func serializeDynamicImage(img *pages.DynamicImage) bson.D {
 			{Key: "$Type", Value: "Forms$ImageViewerSource"},
 			{Key: "EntityRef", Value: nil},
 		}},
-		{Key: "DefaultImage", Value: nil},
+		// "" not null — an unset by-name reference; see serializeStaticImage.
+		{Key: "DefaultImage", Value: ""},
 		{Key: "Height", Value: int64(img.Height)},
 		{Key: "HeightUnit", Value: "Auto"},
 		{Key: "Name", Value: img.Name},

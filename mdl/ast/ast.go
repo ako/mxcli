@@ -38,6 +38,33 @@ func (q QualifiedName) String() string {
 // Program represents a complete MDL program (sequence of statements).
 type Program struct {
 	Statements []Statement
+	// DocumentAnnotations records every annotation written before a CREATE —
+	// `@excluded`, `@position`, `@applyentityaccess` and anything misspelled —
+	// paired with the kind of document it was written on.
+	//
+	// The grammar lets ANY create statement carry annotations while only seven
+	// document kinds read one, so an annotation on the wrong document, or with a
+	// typo in it, parsed and did nothing. That is the failure MDL059 already
+	// refuses one node family over: whatever the annotation was meant to express
+	// is lost in silence.
+	//
+	// Every annotation is recorded rather than only the unrecognised ones, so
+	// which names a document accepts stays a single decision in the validator
+	// next to knownActivityAnnotations, instead of being spread across the seven
+	// visitor sites that read them.
+	DocumentAnnotations []DocumentAnnotation
+}
+
+// DocumentAnnotation is one annotation written before a CREATE statement.
+type DocumentAnnotation struct {
+	// Kind is the document it was written on, in MDL's own words ("microflow",
+	// "nanoflow", "entity", …), so the message can name it.
+	Kind string
+	// Name is the annotation, lower-cased and without the "@".
+	Name string
+	// Target is the document's qualified name where the visitor could read one,
+	// for a message that points at the right statement in a long script.
+	Target string
 }
 
 // ============================================================================

@@ -464,6 +464,9 @@ type Builder struct {
 	program    *ast.Program
 	statements []ast.Statement
 	errors     []error
+	// documentAnnotations collects every `@name` written before a CREATE, with
+	// the kind of document it was on — see ExitCreateStatement.
+	documentAnnotations []ast.DocumentAnnotation
 }
 
 // NewBuilder creates a new AST builder.
@@ -521,7 +524,10 @@ func Build(input string) (*ast.Program, []error) {
 
 	// Combine syntax errors and builder errors
 	allErrors := append(errListener.errors, builder.errors...)
-	return &ast.Program{Statements: builder.statements}, allErrors
+	return &ast.Program{
+		Statements:          builder.statements,
+		DocumentAnnotations: builder.documentAnnotations,
+	}, allErrors
 }
 
 // Errors returns any errors encountered during building.

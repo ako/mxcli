@@ -45,9 +45,10 @@ var allGateEngines = []gateEngine{
 // It exists because the matrix is most of what the gate costs: each script is
 // executed and then handed to mxbuild once PER ENGINE, and mxbuild dominates.
 // On CI the per-push job runs `modelsdk` alone (see .github/workflows/
-// push-test.yml) and the nightly runs the full matrix across the Mendix-version
-// matrix (nightly.yml), so legacy stays verified daily without every push
-// paying for it.
+// push-test.yml) and the nightly runs both — but on ONE Mendix version rather
+// than all five (nightly.yml), since nothing routes to legacy any more and it
+// was five sixths of that fleet's cost. Legacy stays verified daily, at a fifth
+// of what it used to cost, and its unit tests still run on every push.
 //
 // The DEFAULT is every engine, deliberately. Nightly could have relied on a
 // default of "modelsdk" and set "all" itself, but then a mistake in EITHER

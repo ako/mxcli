@@ -65,12 +65,22 @@ const importedServiceType = "WebServices$ImportedServiceImpl"
 // fallback in the rare two-modules-same-name case and never picks the wrong
 // service.
 func resolveWebServiceName(b backend.FullBackend, qualifiedName, operationName string) string {
-	if b == nil || qualifiedName == "" {
+	matched := findImportedServiceDoc(b, qualifiedName)
+	if matched == nil {
 		return ""
+	}
+	return serviceNameFromImportedService(matched, operationName)
+}
+
+// findImportedServiceDoc returns the contents of the imported service document
+// named by qualifiedName, or nil when it cannot be identified unambiguously.
+func findImportedServiceDoc(b backend.FullBackend, qualifiedName string) []byte {
+	if b == nil || qualifiedName == "" {
+		return nil
 	}
 	units, err := b.ListRawUnitsByType(importedServiceType)
 	if err != nil || len(units) == 0 {
-		return ""
+		return nil
 	}
 	_, bare, ok := strings.Cut(qualifiedName, ".")
 	if !ok || bare == "" {
@@ -86,14 +96,11 @@ func resolveWebServiceName(b backend.FullBackend, qualifiedName, operationName s
 			continue
 		}
 		if matched != nil {
-			return "" // ambiguous — two documents of this name
+			return nil // ambiguous — two documents of this name
 		}
 		matched = unit.Contents
 	}
-	if matched == nil {
-		return ""
-	}
-	return serviceNameFromImportedService(matched, operationName)
+	return matched
 }
 
 // serviceNameFromImportedService reads Description.Services[] and returns the
@@ -129,6 +136,89 @@ func serviceNameFromImportedService(contents []byte, operationName string) strin
 		return names[0]
 	}
 	return ""
+}
+
+// resolveWebServiceOperationElement returns the operation's stored
+// RequestBodyElementName — `"http://www.example.com/:GetOrder"` for
+// ako/TestApp's GetOrder — which is the prefix of every argument's ParameterPath.
+//
+// "" when it cannot be established, and the caller then REFUSES to write the
+// arguments rather than inventing a path. That is stricter than the other
+// resolvers here, which fall back: falling back is safe when the alternative is
+// the value that ships today, and there is no such value for a path that has
+// never been written.
+func resolveWebServiceOperationElement(b backend.FullBackend, qualifiedName, operationName string) string {
+	if operationName == "" {
+		return ""
+	}
+	matched := findImportedServiceDoc(b, qualifiedName)
+	if matched == nil {
+		return ""
+	}
+	var doc map[string]any
+	if err := bson.Unmarshal(matched, &doc); err != nil {
+		return ""
+	}
+	for _, svc := range typedArrayElements(docLookup(doc["Description"], "Services")) {
+		for _, op := range typedArrayElements(docLookup(svc, "Operations")) {
+			if name, _ := docLookup(op, "Name").(string); !strings.EqualFold(name, operationName) {
+				continue
+			}
+			element, _ := docLookup(op, "RequestBodyElementName").(string)
+			return element
+		}
+	}
+	return ""
+}
+
+// webServiceParameterPath builds the stored ParameterPath for one argument.
+//
+// Measured on ako/TestApp (11.14.0): the operation element
+// `http://www.example.com/:GetOrder` and the parameter `OrderId` are stored as
+//
+//	http%3A//www.example.com/:GetOrder|OrderId
+//
+// so the element's namespace and local name keep the `:` BETWEEN them and the
+// `|` before the parameter, while a `:` INSIDE a segment is percent-encoded. The
+// element name splits on its LAST colon, since the namespace is a URI and
+// carries colons of its own.
+//
+// "" when the path cannot be built, which the caller turns into a refusal.
+func webServiceParameterPath(operationElement, parameterName string) string {
+	if operationElement == "" || parameterName == "" {
+		return ""
+	}
+	namespace, local := "", operationElement
+	if i := strings.LastIndex(operationElement, ":"); i >= 0 {
+		namespace, local = operationElement[:i], operationElement[i+1:]
+	}
+	ns, okNS := escapeParameterPathSegment(namespace)
+	lo, okLO := escapeParameterPathSegment(local)
+	pn, okPN := escapeParameterPathSegment(parameterName)
+	if !okNS || !okLO || !okPN {
+		return ""
+	}
+	if namespace == "" {
+		return lo + "|" + pn
+	}
+	return ns + ":" + lo + "|" + pn
+}
+
+// escapeParameterPathSegment percent-encodes the two characters that would
+// otherwise be read as path structure.
+//
+// Only `:` has a reference document behind it; `|` is escaped by the same
+// reasoning and has never been observed in a namespace. A segment already
+// containing a `%` is REFUSED (ok=false) rather than encoded or passed through:
+// whether Mendix escapes it as %25 is unmeasured, and both answers produce a
+// path that silently addresses the wrong parameter.
+func escapeParameterPathSegment(s string) (string, bool) {
+	if strings.Contains(s, "%") {
+		return "", false
+	}
+	s = strings.ReplaceAll(s, ":", "%3A")
+	s = strings.ReplaceAll(s, "|", "%7C")
+	return s, true
 }
 
 // serviceDeclaresOperation reports whether a WebServices$ServiceInfoImpl lists an

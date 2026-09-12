@@ -868,18 +868,22 @@ func serializeWebServiceCallAction(a *microflows.WebServiceCallAction) bson.D {
 	doc = append(doc, bson.E{Key: "OperationName", Value: a.OperationName})
 	doc = append(doc, bson.E{Key: "ProxyConfiguration", Value: nil})
 
-	// RequestBodyHandling: always SimpleRequestHandling. Mendix$AdvancedRequestHandling
-	// (used when a send mapping is configured) requires a Studio Pro-generated example
-	// to determine the correct type storage name; use the raw BSON escape hatch for
-	// complex SOAP operations that need a send mapping until that is resolved.
-	doc = append(doc, bson.E{Key: "RequestBodyHandling", Value: bson.D{
-		{Key: "$ID", Value: idToBsonBinary(GenerateID())},
-		{Key: "$Type", Value: "Microflows$SimpleRequestHandling"},
-		{Key: "NullValueOption", Value: "LeaveOutElement"},
-		{Key: "ParameterMappings", Value: bson.A{int32(2)}},
-	}})
+	// RequestBodyHandling holds EITHER the operation's arguments or an export
+	// mapping — one polymorphic child, never both, which is why the executor
+	// refuses a statement asking for each (MDL-SOAP01).
+	//
+	// This used to be an unconditional empty SimpleRequestHandling. Both halves
+	// of that were wrong against ako/TestApp: an operation taking parameters
+	// needs them (CE0178 "Body parameter mapping needs to be refreshed"), and a
+	// send mapping is a Microflows$MappingRequestHandling — NOT the
+	// Mendix$AdvancedRequestHandling this comment used to name, a type that
+	// appears in none of the three reference documents. Writing Simple regardless
+	// dropped the mapping silently and gave CE0369 "Cannot use simple request
+	// body, as the operation's body is complex".
+	doc = append(doc, bson.E{Key: "RequestBodyHandling", Value: webServiceRequestBody(a)})
 
-	// RequestHeaderHandling is always SimpleRequestHandling.
+	// RequestHeaderHandling is always SimpleRequestHandling: MDL cannot author
+	// SOAP headers, and all three reference calls carry the bare form.
 	doc = append(doc, bson.E{Key: "RequestHeaderHandling", Value: bson.D{
 		{Key: "$ID", Value: idToBsonBinary(GenerateID())},
 		{Key: "$Type", Value: "Microflows$SimpleRequestHandling"},
@@ -894,6 +898,55 @@ func serializeWebServiceCallAction(a *microflows.WebServiceCallAction) bson.D {
 		bson.E{Key: "UseRequestTimeOut", Value: true},
 	)
 	return doc
+}
+
+// webServiceRequestBody builds a SOAP call's RequestBodyHandling — the arguments
+// form or the export-mapping form. Mirrors
+// modelsdkbackend.webServiceRequestBodyToGen key for key.
+func webServiceRequestBody(a *microflows.WebServiceCallAction) bson.D {
+	if a.SendMappingID != "" {
+		// MappingId / MappingVariableName are the STORAGE names. modelsdk/gen
+		// binds the same two properties as Mapping and
+		// MappingArgumentVariableName (its key audit lists both), and a document
+		// written under those is one mxbuild tolerates and Studio Pro cannot
+		// open — so the legacy writer, which names keys directly, is the easier
+		// of the two engines to get right here.
+		contentType := a.SendMappingContentType
+		if contentType == "" {
+			// What Studio Pro wrote on the one reference document
+			// (ako/TestApp Clients.SaveOrder) — surprising on an XML protocol,
+			// hence preserved on a rewrite rather than derived.
+			contentType = "Json"
+		}
+		return bson.D{
+			{Key: "$ID", Value: idToBsonBinary(GenerateID())},
+			{Key: "$Type", Value: "Microflows$MappingRequestHandling"},
+			{Key: "ContentType", Value: contentType},
+			{Key: "MappingId", Value: string(a.SendMappingID)},
+			{Key: "MappingVariableName", Value: a.SendMappingVariable},
+		}
+	}
+
+	// Marker 2, measured on all three reference calls.
+	mappings := bson.A{int32(2)}
+	for _, arg := range a.Arguments {
+		mappings = append(mappings, bson.D{
+			{Key: "$ID", Value: idToBsonBinary(GenerateID())},
+			{Key: "$Type", Value: "Microflows$WebServiceOperationSimpleParameterMapping"},
+			{Key: "Argument", Value: arg.Expression},
+			{Key: "IsChecked", Value: arg.Checked},
+			// "" in both reference mappings; what fills it is unmeasured, so it
+			// is written empty rather than guessed at from the argument's name.
+			{Key: "ParameterName", Value: ""},
+			{Key: "ParameterPath", Value: arg.Path},
+		})
+	}
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(GenerateID())},
+		{Key: "$Type", Value: "Microflows$SimpleRequestHandling"},
+		{Key: "NullValueOption", Value: "LeaveOutElement"},
+		{Key: "ParameterMappings", Value: mappings},
+	}
 }
 
 // serializeRestOperationCallAction serializes a Microflows$RestOperationCallAction to BSON.

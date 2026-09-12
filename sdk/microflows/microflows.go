@@ -17,6 +17,18 @@ type Microflow struct {
 	AllowConcurrentExecution bool     `json:"allowConcurrentExecution"`
 	MarkAsUsed               bool     `json:"markAsUsed"`
 	Excluded                 bool     `json:"excluded"`
+	// ApplyEntityAccess makes the microflow run under the current user's entity
+	// access rules instead of with full access — Studio Pro's "Apply entity
+	// access" checkbox.
+	//
+	// It is a SECURITY setting and it is only ever narrowing, so losing it
+	// widens what the microflow may read and write with nothing to show for it:
+	// the model stays valid, the app builds, and only a constrained user
+	// behaves differently. Both writers used to hardcode false and this struct
+	// had no field at all, so every rewrite cleared it — the third property in
+	// this struct to go that way, after AllowConcurrentExecution and
+	// MarkAsUsed (#723 §A).
+	ApplyEntityAccess bool `json:"applyEntityAccess"`
 
 	// Return type
 	ReturnType         DataType `json:"returnType,omitempty"`

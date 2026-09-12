@@ -93,7 +93,10 @@ func (w *Writer) serializeMicroflow(mf *microflows.Microflow) ([]byte, error) {
 		{Key: "$Type", Value: "Microflows$Microflow"},
 		{Key: "AllowConcurrentExecution", Value: mf.AllowConcurrentExecution},
 		{Key: "AllowedModuleRoles", Value: allowedModuleRolesArray(mf.AllowedModuleRoles)},
-		{Key: "ApplyEntityAccess", Value: false},
+		// Carried, not hardcoded — see the modelsdk twin. A hardcoded false
+		// turned "apply entity access" OFF on every rewrite, widening what the
+		// microflow may read and write.
+		{Key: "ApplyEntityAccess", Value: mf.ApplyEntityAccess},
 		{Key: "ConcurrencyErrorMicroflow", Value: ""},
 		{Key: "ConcurrenyErrorMessage", Value: bson.D{
 			{Key: "$ID", Value: idToBsonBinary(generateUUID())},

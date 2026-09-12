@@ -520,7 +520,14 @@ it is for pages.
 | Call JS action | `$Result = call javascript action Module.Name (Param = $value);` | JavaScript action (nanoflow/microflow) |
 | Call Java action | `$Result = call java action Module.Name (Param = $value);` | Java action (microflow only) |
 | Call web service | `$Result = call web service Module.Service operation OperationName;` | Legacy SOAP; quoted refs are fallback for dangling raw IDs |
+| Call web service (arguments) | `$Result = call web service Module.Service operation GetOrder (OrderId = $Id) receive mapping Module.IMM;` | Binds the operation's parameters, same `(Name = value)` form as every other call. mxcli builds the stored `ParameterPath` from the operation, so the script names only the parameter. Needs the consumed service present — an operation it cannot resolve is refused, not guessed. Without them an operation that takes parameters is **CE0178** |
+| Call web service (send mapping) | `call web service Module.Service operation SaveOrder send mapping Module.EMM from $Order;` | Request body built by an export mapping. `from $var` is **required** — Mendix stores which object is mapped, and without it the call is **CE0369** |
 | Call web service raw | `$Result = call web service raw 'base64-bson';` | Escape hatch for byte-for-byte legacy SOAP round-trip |
+
+> **A call has ONE request body.** Arguments and a send mapping are alternatives —
+> Mendix stores one `RequestBodyHandling` — so a statement asking for both is
+> refused as **MDL-SOAP01** by `mxcli check` and by `exec`, which call the same
+> function.
 | REST call (string) | `$Var = rest call get '<url>' returns string;` | Body as string |
 | REST call (response) | `$Var = rest call get '<url>' returns response;` | `System.HttpResponse` object. There is no specialization form — Mendix does not allow HttpResponse to be specialized (CE1540) |
 | REST call (file document) | `$Var = rest call get '<url>' returns Module.MyFile;` | Stores the body in a file document. Must be a **specialization** of `System.FileDocument` — the base type is rejected as a return type (CE0362 / MDL064) |
@@ -531,11 +538,14 @@ it is for pages.
 | Show page | `show page Module.PageName ($Param = $value);` | Also accepts `(Param: $value)` |
 | Close page | `close page;` | |
 | Download file | `download file $FileDocument [show in browser];` | Streams a `System.FileDocument` |
+| Show message | `show message 'text' [type Information\|Warning\|Error] [objects [$a, $b]] [blocking];` | `blocking` halts the client until the user dismisses it — Studio Pro's checkbox. It goes after `objects` and before `on error`. Without it, a describe → exec round trip turned a blocking message into a non-blocking one (16 microflows measured) |
 | Database connection credentials | `connection string @Mod.Const`, `username @Mod.Const`, `password @Mod.Const` | Constant **references** only. A literal writes an unopenable project — MDL058 |
 | Synchronize (nanoflow only) | `synchronize all;` / `synchronize unsynchronized;` / `synchronize $Obj, $List;` | Offline sync. `unsynchronized` needs Mendix 9.4+. In a microflow this is MDL057 / CE0009 |
 | Validation | `validation feedback $entity/attribute message 'message';` | Requires attribute path + MESSAGE |
 | Log | `log info\|warning\|error [node 'name'] 'message';` | |
+| Apply entity access | `@applyentityaccess` / `@applyentityaccess(false)` before `create microflow` or `create rule` | Runs the flow under the **current user's** entity access rules instead of with full access. A **security** setting and only ever narrowing, so an ABSENT annotation **preserves** what is stored rather than clearing it — the same rule as `@excluded`. Not available on a nanoflow: it runs in the client and Mendix stores no such property |
 | Position | `@position(x, y)` | Canvas position (before activity) |
+| Unknown annotation | — | **MDL059**. An annotation that parses and does nothing loses whatever it was meant to express, so a name the target does not read is refused — on a statement *and* before a `create`. Covers a typo (`@applyentityacces`), an annotation on a document kind that reads none (`@excluded` on a queue), and an activity annotation written at document level. The message names what that document does accept |
 | Parameter position | `@position(x, y)` before a parameter, **inside** the `( … )` list | The only annotation a parameter takes. Omit it and parameters form a row at 200;53, 300;53, …; a parameter off that row is treated as hand-placed, survives a rewrite, and is emitted by DESCRIBE (#993) |
 | Start event | `@start(x, y)` | Canvas position of the start, on the **first** statement. Omit it and the start is placed one spacing unit left of the first activity and MOVES with it on a rewrite; a start that is not at that derived spot is treated as hand-placed, survives a rewrite, and is emitted by DESCRIBE (#951) |
 | Caption | `@caption 'text'` | Custom caption (before activity) |

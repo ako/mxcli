@@ -246,6 +246,13 @@ func describeMicroflow(ctx *ExecContext, name ast.QualifiedName) error {
 	if targetMf.Excluded {
 		lines = append(lines, "@excluded")
 	}
+	// A SECURITY setting, and only ever narrowing: DESCRIBE has to emit it or
+	// a describe -> rename -> exec copy silently runs with full access. An
+	// absent annotation preserves the stored value on a REWRITE, but a copy
+	// has nothing to preserve from.
+	if targetMf.ApplyEntityAccess {
+		lines = append(lines, "@applyentityaccess")
+	}
 
 	// CREATE MICROFLOW header
 	qualifiedName := name.Module + "." + name.Name
@@ -587,6 +594,13 @@ func renderMicroflowMDL(
 
 	if mf.Excluded {
 		lines = append(lines, "@excluded")
+	}
+	// A SECURITY setting, and only ever narrowing: DESCRIBE has to emit it or
+	// a describe -> rename -> exec copy silently runs with full access. An
+	// absent annotation preserves the stored value on a REWRITE, but a copy
+	// has nothing to preserve from.
+	if mf.ApplyEntityAccess && flowType == "microflow" {
+		lines = append(lines, "@applyentityaccess")
 	}
 
 	qualifiedName := name.Module + "." + name.Name
@@ -1509,6 +1523,13 @@ func describeRule(ctx *ExecContext, name ast.QualifiedName) error {
 	}
 	if target.Excluded {
 		lines = append(lines, "@excluded")
+	}
+	// A SECURITY setting, and only ever narrowing: DESCRIBE has to emit it or
+	// a describe -> rename -> exec copy silently runs with full access. An
+	// absent annotation preserves the stored value on a REWRITE, but a copy
+	// has nothing to preserve from.
+	if target.ApplyEntityAccess {
+		lines = append(lines, "@applyentityaccess")
 	}
 
 	qualifiedName := name.Module + "." + name.Name

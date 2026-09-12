@@ -124,6 +124,9 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		// Slice 0: is this a widget at all, and does the parent declare this
 		// container? Both were previously left to `exec`.
 		out = append(out, validateWidgetKind(w, registry, lookupWidgetDef(parent, registry), parentObjectLists, locationPrefix)...)
+		// A keyword whose stored $Type Mendix no longer has. Unlike MDL-WIDGET25
+		// this needs no project: the type is unknown to every Mendix version.
+		out = append(out, validateRetiredWidgetKind(w, locationPrefix)...)
 		out = append(out, validatePluggableWidgetProperties(w, registry, locationPrefix)...)
 		// A repeatable property written as a property value — `attributes:
 		// [(…)]` — which used to check clean, exec, and vanish (#999). Runs for
