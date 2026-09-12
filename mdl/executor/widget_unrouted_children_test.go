@@ -27,12 +27,28 @@ func datagridLikeDef() *WidgetDefinition {
 			Operation:    "widgets",
 		}
 	}
+	// The column's two widgets-typed item slots, with the accepted child types
+	// read from the engine's own table rather than retyped — makeObjectListMapping
+	// builds the real definition the same way.
+	itemSlot := func(key string) ItemSlotMapping {
+		return ItemSlotMapping{
+			PropertyKey:        key,
+			MDLContainer:       strings.ToUpper(key),
+			Operation:          "widgets",
+			AcceptedChildTypes: itemSlotAcceptedChildTypes[id]["columns"][key],
+		}
+	}
 	return &WidgetDefinition{
-		WidgetID:    id,
-		MDLName:     "DATAGRID",
-		WidgetKind:  "pluggable",
-		ObjectLists: []ObjectListMapping{{PropertyKey: "columns", MDLContainer: "column"}},
-		ChildSlots:  []ChildSlotMapping{slot("emptyPlaceholder"), slot("filtersPlaceholder")},
+		WidgetID:   id,
+		MDLName:    "DATAGRID",
+		WidgetKind: "pluggable",
+		ObjectLists: []ObjectListMapping{{
+			PropertyKey:    "columns",
+			MDLContainer:   "column",
+			ItemProperties: []ItemPropertyMapping{{PropertyKey: "attribute", Operation: "attribute"}},
+			ItemSlots:      []ItemSlotMapping{itemSlot("content"), itemSlot("filter")},
+		}},
+		ChildSlots: []ChildSlotMapping{slot("emptyPlaceholder"), slot("filtersPlaceholder")},
 	}
 }
 

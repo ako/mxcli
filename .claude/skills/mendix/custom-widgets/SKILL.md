@@ -72,7 +72,20 @@ The error now names the container keyword and rewrites your entry into the form
 that works.
 
 `describe widget <name> -p <project.mpr>` lists a widget's container keywords
-under **Body containers**.
+under **Body containers**, and — for an object list — the widgets-typed **slots
+inside one item**, with the widget types that route into each:
+
+```
+column        object list  -> columns  authorable
+                items: showContentAs, attribute, dynamicText, …
+                slot content -> content: any other widget in the item body
+                slot filter  -> filter: textfilter | numberfilter | datefilter | dropdownfilter
+```
+
+Read that last line before guessing where something goes. It says a Data Grid 2
+column filter is written directly in the **column's** braces — not in
+`controlbar`, which is the grid-wide filter bar and renders "Unable to get
+filter store" if you put a column filter there.
 
 ### When the name is not found
 
