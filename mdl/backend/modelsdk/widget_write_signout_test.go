@@ -64,8 +64,15 @@ func TestClientActionToGen_StillRefusesWhatItCannotWrite(t *testing.T) {
 	if err == nil {
 		t.Fatal("an action with no writer was accepted, which means dropping it")
 	}
-	if !strings.Contains(err.Error(), "not yet supported") {
-		t.Errorf("unexpected message: %v", err)
+	// The message no longer says "not yet supported by the modelsdk engine —
+	// rerun with MXCLI_ENGINE=legacy": legacy cannot write this either, so that
+	// sent the reader to a workaround that was never going to work. What it must
+	// still do is name the action, so the report says which one.
+	if !strings.Contains(err.Error(), "ShowHomePageClientAction") {
+		t.Errorf("the error does not name the action: %v", err)
+	}
+	if strings.Contains(err.Error(), "MXCLI_ENGINE=legacy") {
+		t.Errorf("points at legacy, which cannot write it either: %v", err)
 	}
 }
 

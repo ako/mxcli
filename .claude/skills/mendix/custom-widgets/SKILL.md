@@ -80,6 +80,11 @@ A name resolving to no installed definition is an **error** (MDL-WIDGET25, with
 near-miss suggestions), and a container the parent does not declare is
 MDL-WIDGET26. Both need `-p`: without a project, mxcli knows only its embedded
 widgets, so it stays quiet rather than reporting every real widget as unknown.
+
+MDL-WIDGET27 needs no project: `statictext` writes `Forms$Text`, a type Mendix
+does not have, and the project that comes out cannot be *loaded* at all (`mx
+check` and Studio Pro both stop at `TypeCacheUnknownTypeException` before
+validation). Use `dynamictext` with a literal `Content:`.
 If a widget you have installed is not found, extract its definition:
 
 ```bash

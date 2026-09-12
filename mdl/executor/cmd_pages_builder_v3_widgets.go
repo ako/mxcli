@@ -636,39 +636,21 @@ func (pb *pageBuilder) buildRadioButtonsV3(w *ast.WidgetV3) (*pages.RadioButtons
 	return rb, nil
 }
 
+// buildTextWidgetV3 used to build a Forms$Text. It now refuses, because Mendix
+// has no such type: the written project fails to LOAD with
+// TypeCacheUnknownTypeException, so `mx check` and Studio Pro both reject it
+// before any validation runs. See validate_widget_retired.go for the
+// measurement — `mxcli check` reports the `statictext` spelling as MDL-WIDGET27,
+// and this is the backstop for `text`, which resolves through the widget
+// registry and so is only caught by check when a project is available.
+//
+// Reading one is still supported: an old project converted up can carry a
+// Forms$Text, and rewriting its page preserves it (widget_write_legacy_gaps.go).
+// Only creating a new one is refused.
 func (pb *pageBuilder) buildTextWidgetV3(w *ast.WidgetV3) (*pages.Text, error) {
-	st := &pages.Text{
-		BaseWidget: pages.BaseWidget{
-			BaseElement: model.BaseElement{
-				ID:       model.ID(types.GenerateID()),
-				TypeName: "Forms$Text",
-			},
-			Name: w.Name,
-		},
-		RenderMode: pages.TextRenderModeText,
-	}
-
-	// Handle Content
-	if content := w.GetContent(); content != "" {
-		st.Caption = &model.Text{
-			BaseElement: model.BaseElement{
-				ID:       model.ID(types.GenerateID()),
-				TypeName: "Texts$Text",
-			},
-			Translations: map[string]string{pb.textLang(): content},
-		}
-	}
-
-	// Handle RenderMode
-	if rm := w.GetRenderMode(); rm != "" {
-		st.RenderMode = pages.TextRenderMode(rm)
-	}
-
-	if err := pb.registerWidgetName(w.Name, st.ID); err != nil {
-		return nil, err
-	}
-
-	return st, nil
+	return nil, fmt.Errorf("widget `%s`: `%s` writes Forms$Text, a type Mendix does not have — "+
+		"the project could not be opened afterwards; use `dynamictext` instead",
+		w.Name, strings.ToLower(w.Type))
 }
 
 // dynamicTextVariableRe matches a DYNAMICTEXT Content value that is a variable

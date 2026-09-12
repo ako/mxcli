@@ -1,0 +1,35 @@
+-- `statictext` writes a type Mendix does not have (refusal, MDL-WIDGET27).
+--
+-- `mxcli check mdl-examples/bug-tests/widgets-statictext-unknown-type.fail.mdl`
+-- reports MDL-WIDGET27. Before the fix this file checked clean, executed, and
+-- produced a project that could not be LOADED at all:
+--
+--   ERROR: System.AggregateException: One or more errors occurred.
+--    (The type cache does not contain a type with qualified name Forms$Text.)
+--    ---> Mendix.Modeler.Storage.Caches.TypeCacheUnknownTypeException
+--
+-- Not a build error — a load error. `mx check` stops there before running any
+-- validation, and Studio Pro fails the same way, so the page cannot be repaired
+-- in the modeler. Measured on mxbuild 11.14.0 against ako/TestApp, and
+-- reproduced identically under MXCLI_ENGINE=legacy: both writers emitted the
+-- type, so switching engines was never a workaround.
+--
+-- Forms$Text is absent from modelsdk/gen, from generated/metamodel, and from
+-- all 3,257 Studio Pro text holders in ako/TestApp. Forms$DynamicText is the
+-- widget Mendix has.
+
+create or modify module WidgetProbe;
+
+-- REFUSED. One keyword, one unopenable project.
+create or replace page WidgetProbe.PStaticText ( title: 'S', layout: Atlas_Core.Atlas_Default )
+{
+  statictext t1 (content: 'hello')
+}
+/
+
+-- CONTROL: the replacement the refusal names. Without this the file would pass
+-- just as well against a rule that refused every text widget.
+create or replace page WidgetProbe.PDynamicText ( title: 'D', layout: Atlas_Core.Atlas_Default )
+{
+  dynamictext t2 (content: 'hello')
+}

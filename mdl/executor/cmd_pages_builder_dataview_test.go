@@ -23,7 +23,7 @@ func dataViewWith(props map[string]any, children ...*ast.WidgetV3) *ast.WidgetV3
 
 func footerBlock() *ast.WidgetV3 {
 	return &ast.WidgetV3{Type: "footer", Name: "f", Children: []*ast.WidgetV3{
-		{Type: "text", Name: "t", Properties: map[string]any{"Content": "x"}},
+		{Type: "dynamictext", Name: "t", Properties: map[string]any{"Content": "x"}},
 	}}
 }
 
