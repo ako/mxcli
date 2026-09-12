@@ -201,8 +201,16 @@ func init() {
 		// ACTIVITY keyword. This entry previously showed the operand order
 		// reversed, advertised a BEFORE that does not exist, and omitted
 		// ACTIVITY, so none of it parsed.
-		Syntax:  "ALTER WORKFLOW Module.Name SET DISPLAY '<text>';\nALTER WORKFLOW Module.Name SET DUE DATE '<expression>';\nALTER WORKFLOW Module.Name SET OVERVIEW PAGE Module.Page;\nALTER WORKFLOW Module.Name SET ACTIVITY <name> <property>;\nALTER WORKFLOW Module.Name INSERT AFTER <name> <activity>;\nALTER WORKFLOW Module.Name DROP ACTIVITY <name>;\nALTER WORKFLOW Module.Name REPLACE ACTIVITY <name> WITH <activity>;\nALTER WORKFLOW Module.Name INSERT OUTCOME '<name>' ON <activity> { <activities> };\nALTER WORKFLOW Module.Name DROP OUTCOME '<name>' ON <activity>;",
-		Example: "ALTER WORKFLOW HR.LeaveApproval SET DUE DATE 'addDays([%CurrentDateTime%], 7)';\nALTER WORKFLOW HR.LeaveApproval INSERT AFTER ReviewTask\n  CALL MICROFLOW HR.NotifyHR;\nALTER WORKFLOW HR.LeaveApproval DROP ACTIVITY ObsoleteStep;",
+		//
+		// The four INSERT ops that add to an activity's outcome list each write
+		// ONE outcome type, and the list is typed per activity kind — INSERT
+		// OUTCOME only on a user task, INSERT PATH only on a parallel split,
+		// INSERT CONDITION only on a decision or call microflow. Aiming one at
+		// the wrong kind used to produce a project Mendix could not LOAD
+		// (ako/mxcli#415); it is refused now, but the entry documented only two
+		// of the ops, which is how an author reached for the wrong one.
+		Syntax:  "ALTER WORKFLOW Module.Name SET DISPLAY '<text>';\nALTER WORKFLOW Module.Name SET DUE DATE '<expression>';\nALTER WORKFLOW Module.Name SET OVERVIEW PAGE Module.Page;\nALTER WORKFLOW Module.Name SET ACTIVITY <name> <property>;\nALTER WORKFLOW Module.Name INSERT AFTER <name> <activity>;\nALTER WORKFLOW Module.Name DROP ACTIVITY <name>;\nALTER WORKFLOW Module.Name REPLACE ACTIVITY <name> WITH <activity>;\nALTER WORKFLOW Module.Name INSERT OUTCOME '<name>' ON <user-task> { <activities> };\nALTER WORKFLOW Module.Name DROP OUTCOME '<name>' ON <activity>;\nALTER WORKFLOW Module.Name INSERT CONDITION '<Module.Enum.Value>' ON <decision|call-microflow> { <activities> };\nALTER WORKFLOW Module.Name INSERT PATH ON <parallel-split> { <activities> };\nALTER WORKFLOW Module.Name INSERT BOUNDARY EVENT ON <activity> TIMER '<expression>' { <activities> };",
+		Example: "ALTER WORKFLOW HR.LeaveApproval SET DUE DATE 'addDays([%CurrentDateTime%], 7)';\nALTER WORKFLOW HR.LeaveApproval INSERT AFTER ReviewTask\n  CALL MICROFLOW HR.NotifyHR;\nALTER WORKFLOW HR.LeaveApproval DROP ACTIVITY ObsoleteStep;\n\n-- The INSERT op has to match the activity kind: an outcome list is typed,\n-- and the wrong one is refused (it would leave a project Mendix cannot open).\nALTER WORKFLOW HR.LeaveApproval INSERT OUTCOME 'Rejected' ON ReviewTask { };\nALTER WORKFLOW HR.LeaveApproval INSERT CONDITION 'HR.Status.Urgent' ON Triage { };\nALTER WORKFLOW HR.LeaveApproval INSERT PATH ON NotifyAll { };",
 		SeeAlso: []string{"workflow.create", "workflow.drop"},
 	})
 }

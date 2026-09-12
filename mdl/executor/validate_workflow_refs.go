@@ -225,5 +225,11 @@ func validateAlterWorkflowRefs(ctx *ExecContext, s *ast.AlterWorkflowStmt, sc *s
 			}
 		}
 	}
+	// An inserting op must also be aimed at an activity whose document can hold
+	// what it writes — ako/mxcli#415, where it could not and the project stopped
+	// loading. Same function for both passes, so `check --references` and `exec`
+	// cannot drift.
+	errs = append(errs, validateAlterWorkflowActivityKinds(ctx, s)...)
+
 	return append(errs, validateWorkflowReferences(ctx, added, sc)...)
 }

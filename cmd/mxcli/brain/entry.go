@@ -126,12 +126,49 @@ func NewRequirement(text string, anchors []string, slice string, now time.Time) 
 	if !sliceName.MatchString(slice) {
 		return Entry{}, fmt.Errorf("slice %q: use letters, digits, '-' and '_' (a leading number orders it: 01-accounts)", slice)
 	}
+	if err := requirementAnchorsArePlannable(anchors); err != nil {
+		return Entry{}, err
+	}
 	e.Kind, e.Slice = KindRequirement, slice
 	// The id folds in the slice, so the same sentence can legitimately appear
 	// as a requirement of two slices without the second being refused as a
 	// duplicate.
 	e.ID = e.computeID()
 	return e, nil
+}
+
+// requirementAnchorsArePlannable refuses a requirement anchored at a bare
+// MODULE.
+//
+// A requirement's anchors point FORWARD: not resolving means "not built yet",
+// which is what lets `brain plan` derive progress from the model instead of from
+// a status column somebody has to remember to update. A module anchor breaks
+// that, because a module resolves the instant it exists — long before any of the
+// work inside it. Measured on ako/ChipCoV1: two requirements anchored at
+// `@Maintenance` (the brand theme, and the tablet/phone profiles) both reported
+// BUILT after slice 01 with none of their work done.
+//
+// It is refused rather than warned about because the failure is silent and
+// flattering: the plan reports progress that has not happened, and nothing else
+// in the system disagrees. A decision anchored at a module is still perfectly
+// fine — its anchor points BACKWARD, and "this module exists" is exactly the
+// fact a cross-cutting decision about it wants to assert.
+func requirementAnchorsArePlannable(anchors []string) error {
+	parsed, err := ParseAnchors(anchors)
+	if err != nil {
+		return err
+	}
+	for i, a := range parsed {
+		if a.Element != "" {
+			continue
+		}
+		return fmt.Errorf(
+			"requirement anchor %s names a module, which resolves as soon as the module exists — "+
+				"so the requirement would report as built before any of its work is done. "+
+				"Anchor at a document the slice actually creates (@%s.SomePage, @%s.ACT_Something) instead",
+			anchors[i], a.Module, a.Module)
+	}
+	return nil
 }
 
 // sliceName is deliberately permissive about ordering: a slice is sorted by
