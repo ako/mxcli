@@ -195,6 +195,16 @@ DISCONNECT;`,
 --   Responsive  Phone  Tablet                       online
 --   ResponsiveOffline  PhoneOffline  TabletOffline  offline
 --
+-- The offline kinds need a PWA serving layer, and mxcli run --local does NOT
+-- provide one: no service worker, no manifest, so the runtime answers with the
+-- Responsive profile whatever the device is (measured on 11.14.0, including
+-- with ?profile= forcing it). The profile is still authored and built --
+-- verify routing somewhere other than the local runner.
+--
+-- Adding a PWA profile to an Atlas app also costs one build error you did not
+-- write: every page it reaches must be offline capable, and Atlas' own
+-- FeedbackWidget snippet is not -- CE9269, 0 errors to 1 on the profile alone.
+--
 -- SYNC configures offline synchronization, and an offline profile downloads
 -- NOTHING until its entities have one -- a profile with no SYNC block builds,
 -- routes and installs as a PWA, and shows an empty app.

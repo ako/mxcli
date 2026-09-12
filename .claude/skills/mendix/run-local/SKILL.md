@@ -311,6 +311,31 @@ headless so it is not rebuilt for them (that would cost ~30 s on a loop whose po
 is two seconds) — the run prints a note instead, and a subsequent `run --local`
 restores it.
 
+### The PWA layer is not served, so an offline profile never loads
+
+`run --local` serves the **online** client only. Measured on 11.14.0:
+
+```
+GET /sw.js                  -> 404
+GET /manifest.webmanifest   -> 400
+```
+
+No service worker, no manifest — so an offline navigation profile has no entry
+point to be loaded through, and the runtime answers with the **Responsive**
+profile whatever the device is. The client does its part correctly: its first
+`/xas/` call sends `deviceType: "Phone"` from an iPhone user agent, and forcing
+the choice with `?profile=PhoneOffline` is picked up and still returns
+Responsive.
+
+Nothing is wrong with the model when this happens. The profile is authored,
+built and shipped into `deployment/model/` — probe labels planted in a Phone
+profile's menu appear in `deployment/model/i18n/translations.properties`. It is
+the serving layer that is absent here.
+
+So: **do not use `run --local` to check that an offline or form-factor profile
+routes.** Whether a packaged deployment routes to it is a different question and
+is not answered by this harness. (mxcli-ledger FINDINGS Phase 37a–c.)
+
 ### Screenshots when the app has an https root URL (`--hub`)
 
 Under `--hub` the runtime boots with the public **https** root URL, so it marks

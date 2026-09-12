@@ -490,10 +490,34 @@ the profile takes the whole page graph, which mxcli does not walk. The fix is
 either to keep the page off the offline profile, or to bring the value one hop
 closer — add an attribute to the intermediate entity and keep it in step.
 
-**The synchronization config is derived, not authored.** `offlineEntityConfigs`
-starts empty and Studio Pro fills it from the entities the reachable pages use;
-only rows that differ from the defaults (`syncMode: Online`, no constraint) are
-stored. MDL does not author per-entity sync modes — set those in Studio Pro.
+**Per-entity sync modes are authored with the `SYNC` block** above — the
+paragraph that used to stand here said to set them in Studio Pro, which has not
+been true since `CREATE NAVIGATION … SYNC (…)` shipped. What remains true is
+that `offlineEntityConfigs` starts empty: an offline profile with no `SYNC`
+block downloads nothing and shows an empty app.
+
+**`mxcli run --local` cannot tell you whether the profile routes.** It serves
+the online client only — no service worker (`/sw.js` 404) and no manifest
+(`/manifest.webmanifest` 400) on 11.14.0 — so an offline profile has no entry
+point to load through, and the runtime answers with **Responsive** whatever the
+device is. This is not a fault in the profile: it is built and shipped into
+`deployment/model/`, and the client does send `deviceType: "Phone"` from a phone
+user agent. Forcing it with `?profile=PhoneOffline` is picked up and still
+returns Responsive. Whether a packaged deployment routes correctly is a
+different question that this harness does not answer.
+
+**Adding a PWA profile to an Atlas app costs one build error you did not
+write.** Every page the profile reaches becomes subject to the offline-capable
+check, and Atlas' own layout fails it:
+
+```
+[CE9269] Custom widget 'Feedback' is not offline capable and cannot be used on
+pages that are accessible through an offline-based navigation profile.
+  — at Atlas_Core / Snippet 'FeedbackWidget' / Feedback 'feedback1'
+```
+
+Measured: 0 errors → 1 on adding the profile alone, back to 0 after dropping the
+Feedback snippet from the layout. Nothing warns before you take that route.
 
 ## Checklist
 
