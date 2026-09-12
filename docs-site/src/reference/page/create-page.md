@@ -125,6 +125,18 @@ values, including the argument list.
 | Page | `Action: PAGE Module.PageName` | Opens a page |
 | Close | `Action: CLOSE_PAGE` | Closes the current page |
 | Delete | `Action: DELETE` | Deletes the context object |
+| Nothing | `Action: NOTHING` | Deliberately no action — a decorative button, a card that is not clickable |
+
+The set is closed. Anything else in an action slot is an error
+(**MDL-WIDGET28**), and that includes a real action keyword **missing its
+argument** — `Action: OPEN_LINK` with no URL, `Action: SHOW_PAGE` with no page.
+Such a widget used to be written with no action at all: it rendered, carried its
+caption, and did nothing, while `mxcli check`, `exec` and mxbuild all reported
+success, because a no-action widget is perfectly legal Mendix. Write `NOTHING`
+when a control is genuinely meant to be inert, so that a dead one always means a
+mistake.
+
+The same values serve `OnClick:` (an alias of `Action:`) and `OnChange:`.
 
 A microflow or nanoflow action is a **call**: every parameter the flow declares
 needs an argument, or Mendix rejects the page with **CE1571**. An enclosing data
