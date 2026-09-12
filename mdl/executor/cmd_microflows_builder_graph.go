@@ -204,6 +204,12 @@ func (fb *flowBuilder) buildFlowGraph(stmts []ast.MicroflowStatement, returns *a
 	// one. (#884)
 	fb.applyFlowCurves()
 
+	// Give any end event that two paths reach a merge to join them at. Also
+	// here, and for the same reason as the curves: the two flows can be created
+	// by unrelated builders in either order, so no single creation site can see
+	// the collision.
+	fb.mergeOverConnectedEndEvents()
+
 	return &microflows.MicroflowObjectCollection{
 		BaseElement:     model.BaseElement{ID: model.ID(types.GenerateID())},
 		Objects:         fb.objects,

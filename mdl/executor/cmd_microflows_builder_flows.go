@@ -1027,3 +1027,90 @@ func containsTerminalStmt(stmts []ast.MicroflowStatement) bool {
 	}
 	return false
 }
+
+// mergeOverConnectedEndEvents gives every end event that more than one path
+// reaches an exclusive merge to join them at.
+//
+// An end event accepts exactly ONE incoming sequence flow — joining two paths
+// is what a merge is for — so a second flow into one is CE0709 "Sequence flow
+// is not accepted by origin or destination". Only mxbuild catches it: the
+// document is otherwise well formed, so `mxcli check` passes and the project
+// still opens, which is how this survived a describe → exec round trip of a
+// whole project with everything else green.
+//
+// The shape that produced it is an empty `on error … { }` handler inside a
+// branch whose sibling also returns:
+//
+//	if … then
+//	  $r = call microflow M.Sub() on error without rollback { };
+//	  return $r;          -- the normal path reaches the end event
+//	else
+//	  return 'no';        -- and so does this one
+//	end if;
+//
+// It runs as a post-pass rather than at the site that wires the error flow,
+// because the two colliding flows are created by unrelated builders in either
+// order: the error flow lands first and the branch's flow arrives afterwards,
+// so neither site can see the collision. Same reasoning as applyFlowCurves.
+//
+// Merging is what Studio Pro writes here, and it is also what keeps the
+// microflow's single return value — a second end event would need one of its
+// own, and MDL never said what it should be.
+//
+// Scoped to end events on purpose. Other node types also accept one inbound
+// flow, so the same collision is possible in principle, but an end event is the
+// only one measured to occur (1 microflow in 41 across the audit corpus) and
+// widening the rewrite to nodes with real inbound semantics — a loop, a merge's
+// own feeders — without a case to test it on would be a guess.
+func (fb *flowBuilder) mergeOverConnectedEndEvents() {
+	endEvents := make(map[model.ID]bool)
+	for _, obj := range fb.objects {
+		if ev, ok := obj.(*microflows.EndEvent); ok {
+			endEvents[ev.ID] = true
+		}
+	}
+	if len(endEvents) == 0 {
+		return
+	}
+
+	// First-seen order, so the merges are created deterministically rather than
+	// in map order — a shuffled object list is a spurious diff on every write.
+	var order []model.ID
+	inbound := make(map[model.ID][]int)
+	for i, flow := range fb.flows {
+		if flow == nil || !endEvents[flow.DestinationID] {
+			continue
+		}
+		if _, seen := inbound[flow.DestinationID]; !seen {
+			order = append(order, flow.DestinationID)
+		}
+		inbound[flow.DestinationID] = append(inbound[flow.DestinationID], i)
+	}
+
+	for _, endID := range order {
+		idxs := inbound[endID]
+		if len(idxs) < 2 {
+			continue
+		}
+		merge := &microflows.ExclusiveMerge{
+			BaseMicroflowObject: microflows.BaseMicroflowObject{
+				BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+				Position:    model.Point{X: fb.posX - HorizontalSpacing/2, Y: fb.baseY},
+				Size:        model.Size{Width: MergeSize, Height: MergeSize},
+			},
+		}
+		fb.objects = append(fb.objects, merge)
+
+		// The merge inherits how the first path entered the end event; the
+		// re-pointed flows lose it, because a connection index describes an
+		// edge's landing on a node and these now land on the merge.
+		destIndex := fb.flows[idxs[0]].DestinationConnectionIndex
+		for _, i := range idxs {
+			fb.flows[i].DestinationID = merge.ID
+			fb.flows[i].DestinationConnectionIndex = 0
+		}
+		mergeFlow := newHorizontalFlow(merge.ID, endID)
+		mergeFlow.DestinationConnectionIndex = destIndex
+		fb.flows = append(fb.flows, mergeFlow)
+	}
+}

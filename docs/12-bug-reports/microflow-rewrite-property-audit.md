@@ -124,13 +124,44 @@ as an ordinary identifier — pinned by a test.
 
 ### Still open, and newly measured
 
-Round-tripping **every** microflow in TestApp produces a project that does not
-build: **CE0709** "Sequence flow is not accepted by origin or destination". The
-control is the same operation on the pre-fix binary, which gives the identical
-error — so this is pre-existing flow-graph drift, not a consequence of these
-fixes, and it belongs to the "flow graph changed in 40/42" row rather than to
-either property above. It is a stronger statement of the reviewability problem
-than the 417-line diff, and wants its own investigation.
+~~Round-tripping **every** microflow in TestApp produces a project that does not
+build: **CE0709** "Sequence flow is not accepted by origin or destination".~~
+**Diagnosed and fixed.** It was never "flow-graph drift" — that was a label for
+an unexplained symptom, and the "flow graph changed in 40/42" row it was filed
+under is mostly bezier vectors and connection indices, so it pointed nowhere.
+
+In Mendix an end event accepts exactly **one** incoming sequence flow; joining
+two paths is what a merge is for. An empty `on error … { }` handler inside a
+branch whose sibling also returns gave one two. Measured on the single microflow
+that tripped it, `FeedbackModule.SUB_Feedback_SendToServer`:
+
+| | stored (Studio Pro) | after the round trip |
+|---|---|---|
+| end events | two, in-degree 1 each | one in-degree 1, one **in-degree 2** |
+| exclusive merges | 5 | 1 |
+
+The two colliding flows are the `else` branch's return and the error-handler flow
+out of `Post feedback to App Insights`. Reproduced in six lines
+(`mdl-examples/bug-tests/microflow-empty-error-handler-end-event.mdl`): the same
+microflow with a statement in the handler block builds clean.
+
+The fix is a post-pass over the finished graph — an end event two paths reach
+gets a merge in front of it — rather than a guard at the site that wires the
+error flow, because the two flows are created by unrelated builders in either
+order and neither site can see the collision. A merge and not a second end event:
+that is what Studio Pro writes, and the microflow has one return value.
+
+Whole-project round trip after the fix: **0 errors**, from 1.
+
+Two of the three microflows that lose merges (`ConvertBase64String`,
+`VAL_Feedback`) always built clean, because their freed branches each got their
+own end event — which is the control that makes "in-degree 2 is the trigger" a
+measurement rather than a story.
+
+Still open, and separate: **DESCRIBE cannot spell "the error flow rejoins the
+main path here"**, so a round trip still flattens Studio Pro's merge chain. That
+is now a cosmetic diff rather than an unbuildable project, and closing it needs
+new MDL syntax.
 
 `ConcurrenyErrorMessage` and `ConcurrencyErrorMicroflow` are still hardcoded.
 Neither is a demonstrated loss (see the benign table), so closing those holes

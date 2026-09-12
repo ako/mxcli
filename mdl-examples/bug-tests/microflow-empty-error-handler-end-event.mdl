@@ -1,0 +1,72 @@
+-- An empty `on error … { }` gave an end event two incoming flows (CE0709).
+--
+-- In Mendix an end event accepts exactly ONE incoming sequence flow — joining
+-- two paths is what a merge is for. The shape below produced two: the THEN
+-- branch's error-handler flow and the ELSE branch's return both landed on the
+-- same end event, and mxbuild rejected it with
+--
+--   [error] [CE0709] "Sequence flow is not accepted by origin or destination."
+--
+-- `mxcli check` passed, `exec` wrote it, and the project still OPENED — the
+-- document is well formed, just over-connected — so only a build caught it.
+-- That is how it survived a describe → exec round trip of all 41 microflows in
+-- ako/TestApp with every other check green: 1 microflow tripped it,
+-- FeedbackModule.SUB_Feedback_SendToServer, whose stored Studio Pro version
+-- routes the error flow through a chain of merges that DESCRIBE cannot spell
+-- and therefore emits as the empty handler block below.
+--
+-- The fix is a post-pass over the finished graph: an end event that two paths
+-- reach gets an exclusive merge in front of it. A merge, not a second end event
+-- — Studio Pro writes a merge here, and the microflow has one return value,
+-- which a second end event would need its own copy of.
+--
+-- The DESCRIBE side is a separate gap and is NOT fixed: MDL still has no way to
+-- say "the error flow rejoins the main path here", so a round trip flattens the
+-- merge chain. That is now harmless rather than unbuildable.
+
+create or modify module EhProbe;
+
+create or replace microflow EhProbe.Helper () returns String
+begin
+  return 'x';
+end;
+/
+
+-- THE CASE. Both branches return, and the THEN branch's call carries an empty
+-- error handler. Before the fix this built a project mxbuild refused.
+create or replace microflow EhProbe.EmptyHandler () returns String
+begin
+  if 1 = 1 then
+    $r = call microflow EhProbe.Helper() on error without rollback { };
+    return $r;
+  else
+    return 'no';
+  end if;
+end;
+/
+
+-- CONTROL 1: the same shape with a statement in the handler block. It routes
+-- its own path, never needed the merge, and must not gain one. Without this the
+-- file would pass equally against a builder that merged in front of every end
+-- event unconditionally.
+create or replace microflow EhProbe.FilledHandler () returns String
+begin
+  if 1 = 1 then
+    $r = call microflow EhProbe.Helper() on error without rollback { return 'err'; };
+    return $r;
+  else
+    return 'no';
+  end if;
+end;
+/
+
+-- CONTROL 2: no error handling at all. The post-pass must leave an ordinary
+-- if/else alone — the narrowest statement that it does not rewrite every graph.
+create or replace microflow EhProbe.PlainIf () returns String
+begin
+  if 1 = 1 then
+    return 'yes';
+  else
+    return 'no';
+  end if;
+end;
