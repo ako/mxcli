@@ -10,7 +10,7 @@ import (
 )
 
 // ValidateRegionToggleMode flags a scroll-container region whose ToggleMode is
-// not one of the five members Mendix stores (MDL-WIDGET29).
+// not one of the five members Mendix stores (MDL-WIDGET30).
 //
 // The property decides whether the region collapses, which is the whole
 // difference between Atlas_Default's sidebar and Atlas_TopBar's, and it is the
@@ -45,7 +45,7 @@ func ValidateRegionToggleMode(prog *ast.Program) []linter.Violation {
 				}
 			}
 			out = append(out, linter.Violation{
-				RuleID:   "MDL-WIDGET29",
+				RuleID:   "MDL-WIDGET30",
 				Severity: linter.SeverityError,
 				Message: fmt.Sprintf(
 					"%s: ToggleMode %q is not one of Mendix's members, so it is dropped when the "+

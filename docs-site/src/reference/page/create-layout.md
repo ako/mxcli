@@ -132,7 +132,7 @@ difference between them:
 
 These are the members Mendix stores, not the captions Studio Pro's dropdown
 shows — its *"Shrink content (initially closed)"* is `ShrinkContentInitiallyClosed`.
-A caption is **refused** (`MDL-WIDGET29`) rather than written, because Mendix
+A caption is **refused** (`MDL-WIDGET30`) rather than written, because Mendix
 drops a member it does not recognise when the document loads: the layout would
 exec clean, build clean, and render as if the property had never been set.
 

@@ -2,7 +2,7 @@
 -- collapse behaviour was not carried, and a wrong value for it was not caught.
 --
 -- NEGATIVE test (.fail.mdl): this script must FAIL `mxcli check`. It can be a
--- .fail.mdl because MDL-WIDGET29 needs no project — the fault is the value's
+-- .fail.mdl because MDL-WIDGET30 needs no project — the fault is the value's
 -- shape, settled by the parse alone, and `make check-mdl` runs check without
 -- one.
 --
@@ -42,7 +42,7 @@
 --   spend an afternoon on it is to type what Studio Pro's dropdown displays —
 --   Mendix drops an unrecognised member on load, so the layout would build at
 --   0 errors and render with no toggle behaviour, which is the same silence in
---   a new place. Each region below is refused by MDL-WIDGET29; the corrected
+--   a new place. Each region below is refused by MDL-WIDGET30; the corrected
 --   spelling is in the comment above it.
 
 create module RegionToggleFail;

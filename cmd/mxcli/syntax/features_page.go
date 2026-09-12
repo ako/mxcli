@@ -145,7 +145,7 @@ CREATE PAGE Sales.Detail (Title: 'Detail', Layout: Atlas_Core.Atlas_Default) {
 			"--   DROPDOWN       -> COMBOBOX\n" +
 			"-- And three the executor refuses on BOTH engines, each with its own message:\n" +
 			"--   STATICTEXT         (writes Forms$Text, a type Mendix no longer has — the\n" +
-			"--                       project could not be OPENED afterwards; MDL-WIDGET29.\n" +
+			"--                       project could not be OPENED afterwards; MDL-WIDGET30.\n" +
 			"--                       Use DYNAMICTEXT with a literal Content.)\n" +
 			"--   REFERENCESELECTOR  (unsupported widget type)\n" +
 			"--   LEGACYDATAGRID     (use DATAGRID for the pluggable equivalent on Mendix 11+)",
@@ -376,7 +376,7 @@ CREATE PAGE Sales.Detail (Title: 'Detail', Layout: Atlas_Core.Atlas_Default) {
 			"    -- ShrinkContentInitiallyClosed, Atlas_TopBar SlideOverContent).\n" +
 			"    -- These are the stored members, not Studio Pro's captions — its\n" +
 			"    -- \"Shrink content (initially closed)\" is ShrinkContentInitiallyClosed,\n" +
-			"    -- and a caption is refused (MDL-WIDGET29) rather than written, since\n" +
+			"    -- and a caption is refused (MDL-WIDGET30) rather than written, since\n" +
 			"    -- Mendix drops an unknown member on load and the layout would build\n" +
 			"    -- at 0 errors with no toggle behaviour at all.\n" +
 			"    REGION left (Size: 232, SizeMode: 'Pixels',\n" +

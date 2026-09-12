@@ -80,7 +80,7 @@ create or replace layout LayoutTest.App_Default (
 --
 -- These are the members Mendix stores, not Studio Pro's captions: its "Shrink
 -- content (initially closed)" is ShrinkContentInitiallyClosed. A value outside
--- the list is refused (MDL-WIDGET29) rather than written, because Mendix drops
+-- the list is refused (MDL-WIDGET30) rather than written, because Mendix drops
 -- an unknown member on load — the layout would build at 0 errors and render
 -- with no toggle behaviour at all.
 --

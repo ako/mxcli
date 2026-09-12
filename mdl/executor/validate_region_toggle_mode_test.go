@@ -12,13 +12,13 @@ import (
 	"github.com/mendixlabs/mxcli/sdk/pages"
 )
 
-// widget29 parses a script and returns its MDL-WIDGET29 violations.
+// widget30 parses a script and returns its MDL-WIDGET30 violations.
 //
 // Through visitor.Build rather than hand-built widgets, because half of what is
 // being asserted is that a region's property list reaches the rule at all: MDL
 // accepts any `key: value` on a region, which is exactly how a mistyped
 // ToggleMode used to pass check, pass exec and vanish.
-func widget29(t *testing.T, src string) []linter.Violation {
+func widget30(t *testing.T, src string) []linter.Violation {
 	t.Helper()
 	prog, errs := visitor.Build(src)
 	if len(errs) > 0 {
@@ -26,7 +26,7 @@ func widget29(t *testing.T, src string) []linter.Violation {
 	}
 	var out []linter.Violation
 	for _, v := range ValidateRegionToggleMode(prog) {
-		if v.RuleID == "MDL-WIDGET29" {
+		if v.RuleID == "MDL-WIDGET30" {
 			out = append(out, v)
 		}
 	}
@@ -50,7 +50,7 @@ func layoutSrc(regionProps string) string {
 // the editor would type. Before the rule it was accepted, dropped on load, and
 // the layout rendered with no toggle behaviour at 0 build errors.
 func TestRegionToggleMode_StudioProCaptionIsReported(t *testing.T) {
-	got := widget29(t, layoutSrc(`Size: 232, SizeMode: 'Pixels', ToggleMode: 'Shrink content (initially closed)'`))
+	got := widget30(t, layoutSrc(`Size: 232, SizeMode: 'Pixels', ToggleMode: 'Shrink content (initially closed)'`))
 	if len(got) != 1 {
 		t.Fatalf("got %d violations, want 1: %+v", len(got), got)
 	}
@@ -73,7 +73,7 @@ func TestRegionToggleMode_StudioProCaptionIsReported(t *testing.T) {
 func TestRegionToggleMode_EveryMemberIsClean(t *testing.T) {
 	for _, mode := range pages.ScrollContainerToggleModes {
 		t.Run(mode, func(t *testing.T) {
-			if got := widget29(t, layoutSrc(fmt.Sprintf("ToggleMode: '%s'", mode))); len(got) != 0 {
+			if got := widget30(t, layoutSrc(fmt.Sprintf("ToggleMode: '%s'", mode))); len(got) != 0 {
 				t.Errorf("member %q reported: %+v", mode, got)
 			}
 		})
@@ -81,7 +81,7 @@ func TestRegionToggleMode_EveryMemberIsClean(t *testing.T) {
 }
 
 func TestRegionToggleMode_CaseIsNotTheFault(t *testing.T) {
-	if got := widget29(t, layoutSrc(`ToggleMode: 'shrinkcontentinitiallyclosed'`)); len(got) != 0 {
+	if got := widget30(t, layoutSrc(`ToggleMode: 'shrinkcontentinitiallyclosed'`)); len(got) != 0 {
 		t.Errorf("a lowercase member was reported: %+v", got)
 	}
 }
@@ -90,7 +90,7 @@ func TestRegionToggleMode_CaseIsNotTheFault(t *testing.T) {
 // silent — the rule is about a value that cannot mean anything, not about the
 // property being absent.
 func TestRegionToggleMode_AbsentPropertyIsSilent(t *testing.T) {
-	if got := widget29(t, layoutSrc(`Size: 232, SizeMode: 'Pixels', Class: 'region-sidebar'`)); len(got) != 0 {
+	if got := widget30(t, layoutSrc(`Size: 232, SizeMode: 'Pixels', Class: 'region-sidebar'`)); len(got) != 0 {
 		t.Errorf("a region without a toggle mode was reported: %+v", got)
 	}
 }
@@ -99,7 +99,7 @@ func TestRegionToggleMode_AbsentPropertyIsSilent(t *testing.T) {
 // than the layout statement, so this is the case that would break if the walk
 // were narrowed to CREATE LAYOUT.
 func TestRegionToggleMode_ReportedOnAPageToo(t *testing.T) {
-	got := widget29(t, `create page M.Home (title: 'Home') {
+	got := widget30(t, `create page M.Home (title: 'Home') {
   scrollcontainer sc {
     region left (ToggleMode: 'SlideOver') {
       text lbl (Content: 'x')
