@@ -2818,3 +2818,35 @@ create page PgTest.P_OrderWithCustomer (
     }
   }
 }
+
+-- ============================================================================
+-- MARK: An explicitly inert widget — `action: nothing`
+-- ============================================================================
+-- NOTHING is the spelling for a control that is deliberately wired to no
+-- action: a button that only carries a caption for a layout, a container that
+-- is styled as a card but is not clickable. It writes Forms$NoAction.
+--
+-- It is here because it only became a real action expression in
+-- mendixlabs/mxcli#1062. Before that it was documented and used but absent from
+-- the grammar: it reached Forms$NoAction by FAILING to parse as an action and
+-- falling through to the generic property branch, which stores the slot as a
+-- plain string. `Action: OPEN_LINK` (a real keyword short its argument) and
+-- `Action: TOTALLY_MADE_UP` took the same route to the same dead widget, with
+-- check, exec and mxbuild all clean — so the fall-through could not be rejected
+-- until this form had a branch of its own.
+--
+-- The gate is the point: this must survive `exec` into a real project and
+-- `mx check`, which is what distinguishes a promoted grammar form from one that
+-- parses and then cannot be written (the builder's action switch ends in a
+-- `default:` that refuses unknown types).
+create page PgTest.P014_InertControls (
+  Title: 'Inert controls',
+  Layout: Atlas_Core.Atlas_Default
+)
+{
+  actionbutton btnDecorative (Caption: 'Decorative', Action: NOTHING)
+  linkbutton lnkDecorative (Caption: 'Also decorative', action: nothing)
+  container cCard (OnClick: NOTHING, Class: 'card') {
+    dynamictext txtCard (Content: 'A card that is not clickable')
+  }
+}

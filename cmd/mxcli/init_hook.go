@@ -50,6 +50,27 @@ MPR='%s'
 TAG="${MXCLI_TAG:-nightly}"
 
 if [ ! -x ./mxcli ]; then
+  # Prefer a copy that is already on this machine. Some environments ship mxcli
+  # pre-installed on PATH, and the bootstrap instructions have you delete the
+  # hardlink 'mxcli new' left in the project — after which this guard could
+  # never be satisfied by the PATH binary and re-downloaded ~85 MB on EVERY
+  # fresh session, forever. (ako/ChipCoV1)
+  #
+  # Hardlink first because that is what 'mxcli new' does and it costs nothing;
+  # fall back to a symlink across filesystems, then to a copy. Any of the three
+  # leaves ./mxcli working, which is what the rest of this script and the
+  # project's own CLAUDE.md assume.
+  onpath=$(command -v mxcli 2>/dev/null || true)
+  if [ -n "$onpath" ] && [ -x "$onpath" ]; then
+    echo "mxcli found on PATH (${onpath}) — linking it in rather than downloading."
+    ln -f "$onpath" ./mxcli 2>/dev/null ||
+      ln -sf "$onpath" ./mxcli 2>/dev/null ||
+      cp "$onpath" ./mxcli
+    chmod +x ./mxcli 2>/dev/null || true
+  fi
+fi
+
+if [ ! -x ./mxcli ]; then
   os=$(uname -s | tr 'A-Z' 'a-z')
   case "$(uname -m)" in
     x86_64|amd64) arch=amd64 ;;

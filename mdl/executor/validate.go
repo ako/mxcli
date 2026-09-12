@@ -46,6 +46,16 @@ type scriptContext struct {
 	// script-defined flow is what puts an entity into context for the widgets
 	// nested in it.
 	flowParams map[string]*flowSignature // Module.Flow (lower-cased) -> signature
+
+	// Associations and entity attributes declared in the script, for
+	// MDL-XPATH01. Same reason as flowParams above: the overwhelmingly common
+	// shape is ONE script that creates the entity, the association and the
+	// microflow constraining on it, so a rule that could only see a stored
+	// association would fire on the minority case only — and the majority case
+	// is exactly the one that reaches a build half-written.
+	associations  map[string]string          // Association (unqualified) -> Module.Association
+	entityAttrs   map[string]map[string]bool // Module.Entity -> attribute names
+	ambiguousAssc map[string]bool            // names defined in more than one module
 }
 
 // newScriptContext creates a new script context.
@@ -64,8 +74,42 @@ func newScriptContext() *scriptContext {
 
 		javaActions:       make(map[string][]string),
 		javaScriptActions: make(map[string][]string),
+		associations:      map[string]string{},
+		entityAttrs:       map[string]map[string]bool{},
+		ambiguousAssc:     map[string]bool{},
 		flowParams:        make(map[string]*flowSignature),
 	}
+}
+
+// recordEntityAttrs stores a script-declared entity's attribute names, for the
+// rules that need to tell an attribute from an association (MDL-XPATH01).
+func (sc *scriptContext) recordEntityAttrs(s *ast.CreateEntityStmt) {
+	attrs := make(map[string]bool, len(s.Attributes))
+	for _, a := range s.Attributes {
+		attrs[a.Name] = true
+	}
+	sc.entityAttrs[s.Name.String()] = attrs
+}
+
+// recordAssociation stores a script-declared association under its UNQUALIFIED
+// name, because that is the spelling an XPath constraint gets wrong. A name
+// declared in two modules is recorded as ambiguous and then dropped by the
+// rule: naming the right spelling is the whole value, and offering one of two
+// would be wrong half the time.
+//
+// Both collectDefinitions and collectSingle call this. They are two parallel
+// switches over the same statement types, so a case added to one and not the
+// other is collected on one path only — which is how this rule first shipped
+// firing against stored associations but not script-declared ones.
+func (sc *scriptContext) recordAssociation(s *ast.CreateAssociationStmt) {
+	if s.Name.Module == "" || s.Name.Name == "" {
+		return
+	}
+	if prev, ok := sc.associations[s.Name.Name]; ok && prev != s.Name.String() {
+		sc.ambiguousAssc[s.Name.Name] = true
+		return
+	}
+	sc.associations[s.Name.Name] = s.Name.String()
 }
 
 // codeActionParamNames returns the declared parameter names of a CREATE JAVA
@@ -87,7 +131,10 @@ func (sc *scriptContext) collectDefinitions(prog *ast.Program) {
 		case *ast.CreateEntityStmt:
 			if s.Name.Module != "" {
 				sc.entities[s.Name.String()] = true
+				sc.recordEntityAttrs(s)
 			}
+		case *ast.CreateAssociationStmt:
+			sc.recordAssociation(s)
 		case *ast.CreateViewEntityStmt:
 			if s.Name.Module != "" {
 				sc.entities[s.Name.String()] = true
@@ -150,7 +197,10 @@ func (sc *scriptContext) collectSingle(stmt ast.Statement) {
 	case *ast.CreateEntityStmt:
 		if s.Name.Module != "" {
 			sc.entities[s.Name.String()] = true
+			sc.recordEntityAttrs(s)
 		}
+	case *ast.CreateAssociationStmt:
+		sc.recordAssociation(s)
 	case *ast.CreateViewEntityStmt:
 		if s.Name.Module != "" {
 			sc.entities[s.Name.String()] = true
@@ -878,6 +928,7 @@ func validateFlowBodyReferences(ctx *ExecContext, body []ast.MicroflowStatement,
 
 	if len(refs.retrieves) > 0 {
 		errors = append(errors, validateRetrieveConstraints(ctx, refs.retrieves)...)
+		errors = append(errors, validateXPathAssociations(ctx, refs.retrieves, sc)...)
 	}
 
 	return errors

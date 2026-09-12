@@ -15,8 +15,18 @@
 //
 
 const OVERLAY_CSS = `
+  /* pointer-events: none for the same reason #demo-spot has it, and the reason
+     is easy to miss here: the plate is a full-width bar pinned to the BOTTOM of
+     the viewport, which is exactly where Mendix puts a page footer's buttons.
+     Without this, any control the plate covers becomes unclickable and
+     Playwright retries for 30s against "div.text from div#demo-narration
+     subtree intercepts pointer events" before failing the take — a failure that
+     names the overlay but not the reason. Reported by ako/ChipCoV1, where it
+     killed the take on an Approve button. The caption is read, never clicked,
+     so it gives up pointer events for free. */
   #demo-narration {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 2147483647;
+    pointer-events: none;
     display: flex; align-items: center; gap: 14px;
     padding: 16px 22px;
     background: rgba(17, 24, 39, .94);
@@ -49,6 +59,15 @@ const OVERLAY_CSS = `
     opacity: 0;
   }
   #demo-spot.on { opacity: 1; animation: demo-pulse 1.6s ease-in-out infinite; }
+
+  /* Reserve the plate's own height at the foot of the page. pointer-events
+     above makes a covered control CLICKABLE; this makes it VISIBLE, and the
+     film needs both — a click that lands under an opaque caption is a beat the
+     viewer cannot see happen, which is the same dead beat by another route.
+     Applied once at install, before the take starts, so nothing shifts mid-shot.
+     --demo-plate-height is overridable for an unusually long caption. */
+  :root { --demo-plate-height: 96px; }
+  body { padding-bottom: var(--demo-plate-height) !important; }
   @keyframes demo-pulse {
     0%, 100% { box-shadow: 0 0 0 4px rgba(37,99,235,.22); }
     50%      { box-shadow: 0 0 0 9px rgba(37,99,235,.10); }

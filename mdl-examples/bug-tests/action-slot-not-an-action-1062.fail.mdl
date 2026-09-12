@@ -1,0 +1,84 @@
+-- mendixlabs/mxcli#1062 — an action keyword MISSING ITS ARGUMENT silently
+-- writes a dead widget.
+--
+-- NEGATIVE test (.fail.mdl): this script must FAIL `mxcli check`. It can be a
+-- .fail.mdl — unlike the #1082 repro beside it — because MDL-WIDGET28 needs no
+-- project: the fault is the SHAPE of the value in the slot, which is settled by
+-- the parse alone. `make check-mdl` runs check with no project, so a rule that
+-- depended on a stored signature would read as regressed here (#891, #892).
+--
+-- REPORTED SYMPTOM
+--
+--   mxcli 0.21.0, Mendix 11.11.0 / 11.12.x. Three spellings, three exit-0 runs:
+--
+--     Action: OPEN_LINK 'https://example.com'   → Forms$OpenLinkClientAction
+--     Action: OPEN_LINK                         → Forms$NoAction, check passed
+--     Action: TOTALLY_MADE_UP                   → Forms$NoAction, check passed
+--
+--   "an unrecognized or under-specified token should be a parse error rather
+--   than a silent degrade to NoAction."
+--
+-- WHY IT HAPPENED
+--
+--   `actionExprV3` spells `OPEN_LINK STRING_LITERAL`, so a bare OPEN_LINK
+--   cannot match it — and ANTLR does not fail, it falls through to the generic
+--   `keyword COLON propertyValueV3` alternative at the end of widgetPropertyV3.
+--   The slot ends up holding a plain string, GetAction() type-asserts and
+--   returns nil, and the writer emits Forms$NoAction.
+--
+--   Measured on a Mendix 11.12.0 app: `mxcli check` passed, `exec` reported
+--   "Created page", `mx check` reported 0 errors, and `describe page` came back
+--   with no action on the button at all. The token appears nowhere in the unit.
+--   Nothing downstream can catch it, because a no-action button is legal
+--   Mendix — which is exactly why mxcli has to, having seen the author ask for
+--   an action.
+--
+--   Every under-specified form degraded the same way, not just OPEN_LINK:
+--   SHOW_PAGE, CREATE_OBJECT, COMPLETE_TASK, MICROFLOW and NANOFLOW without
+--   their argument, in `Action:`, `OnClick:` and `OnChange:` alike.
+--
+-- WHY THE OBVIOUS FIX WAS NOT AVAILABLE
+--
+--   `Action: NOTHING` — the documented spelling for a deliberately inert widget
+--   (docs-site, MDL_QUICK_REFERENCE, the synced alter-page skill, nine scripts
+--   in mdl-examples) — was NOT in the grammar either, and reached its
+--   Forms$NoAction through this same fall-through. Rejecting the scalar would
+--   have made shipped, working syntax an error. So NOTHING was promoted to a
+--   real actionExprV3 alternative first; see the positive case in
+--   doctype-tests/03-page-examples.mdl (PgTest.P014_InertControls).
+--
+-- Every widget below is a violation. The corrected spelling is in the comment
+-- beside each one.
+
+create or replace page BugTest1062.DeadControls
+(
+  title: 'Dead controls',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  -- The reported case: a real keyword short its argument.
+  -- Correct: Action: OPEN_LINK 'https://example.com'
+  actionbutton btnLink (caption: 'Open the site', Action: OPEN_LINK)
+
+  -- The reported case: a token that was never a keyword.
+  -- Correct: Action: NOTHING, if the button really is decorative.
+  actionbutton btnInvented (caption: 'Do the thing', Action: TOTALLY_MADE_UP)
+
+  -- The same fall-through on the other under-specified keywords.
+  -- Correct: Action: SHOW_PAGE BugTest1062.SomePage
+  actionbutton btnShow (caption: 'Details', Action: SHOW_PAGE)
+
+  -- Correct: Action: MICROFLOW BugTest1062.ACT_Something
+  actionbutton btnFlow (caption: 'Run', Action: MICROFLOW)
+
+  -- Correct: Action: COMPLETE_TASK 'Approve'
+  actionbutton btnTask (caption: 'Approve', Action: COMPLETE_TASK)
+
+  -- `OnClick:` is an alias for `Action:` and degrades identically. It keeps its
+  -- own property key when it does NOT parse, so a rule looking only at "Action"
+  -- would miss exactly the broken spelling.
+  -- Correct: OnClick: MICROFLOW BugTest1062.ACT_Something
+  container cCard (OnClick: TOTALLY_MADE_UP) {
+    dynamictext txt (content: 'A card that does nothing')
+  }
+}
