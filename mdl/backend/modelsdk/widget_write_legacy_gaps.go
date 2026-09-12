@@ -35,7 +35,7 @@ import (
 // The first of the five turned out not to be a gap at all. Closing it and
 // running the result through `mx check` showed that BOTH engines wrote a project
 // that could not be LOADED — Mendix has no Forms$Text — so `statictext` is now
-// refused at build and check time (MDL-WIDGET27,
+// refused at build and check time (MDL-WIDGET29,
 // mdl/executor/validate_widget_retired.go). Nothing constructs pages.Text any
 // more, so there is no writer for it here either — an old project that carries
 // one keeps it because ALTER PAGE mutates the stored gen document rather than

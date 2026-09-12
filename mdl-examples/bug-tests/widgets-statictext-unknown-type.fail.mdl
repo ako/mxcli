@@ -1,7 +1,7 @@
--- `statictext` writes a type Mendix does not have (refusal, MDL-WIDGET27).
+-- `statictext` writes a type Mendix does not have (refusal, MDL-WIDGET29).
 --
 -- `mxcli check mdl-examples/bug-tests/widgets-statictext-unknown-type.fail.mdl`
--- reports MDL-WIDGET27. Before the fix this file checked clean, executed, and
+-- reports MDL-WIDGET29. Before the fix this file checked clean, executed, and
 -- produced a project that could not be LOADED at all:
 --
 --   ERROR: System.AggregateException: One or more errors occurred.

@@ -58,7 +58,7 @@ func validateRetiredWidgetKind(w *ast.WidgetV3, locationPrefix string) []linter.
 		return nil
 	}
 	return []linter.Violation{{
-		RuleID:   "MDL-WIDGET27",
+		RuleID:   "MDL-WIDGET29",
 		Severity: linter.SeverityError,
 		Message: fmt.Sprintf("%s: `%s` writes %s, a type Mendix does not have — the project cannot be opened afterwards",
 			locationPrefix, strings.ToLower(w.Type), r.storedType),

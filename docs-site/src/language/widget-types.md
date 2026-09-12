@@ -508,7 +508,7 @@ accepted widget — MDL-WIDGET25, with the nearest known names suggested. A
 container keyword the parent widget does not declare is MDL-WIDGET26. Both need
 a project open (`-p`), since without one mxcli knows only its embedded widgets.
 
-A third, MDL-WIDGET27, needs no project: `statictext` writes `Forms$Text`, and
+A third, MDL-WIDGET29, needs no project: `statictext` writes `Forms$Text`, and
 Mendix has no such type. That is not a build error but a **load** error — `mx
 check` and Studio Pro both stop at `TypeCacheUnknownTypeException` before any
 validation runs, so the page cannot even be opened to repair it. Use

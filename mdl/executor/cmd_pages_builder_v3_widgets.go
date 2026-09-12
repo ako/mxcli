@@ -640,7 +640,7 @@ func (pb *pageBuilder) buildRadioButtonsV3(w *ast.WidgetV3) (*pages.RadioButtons
 // has no such type: the written project fails to LOAD with
 // TypeCacheUnknownTypeException, so `mx check` and Studio Pro both reject it
 // before any validation runs. See validate_widget_retired.go for the
-// measurement — `mxcli check` reports the `statictext` spelling as MDL-WIDGET27,
+// measurement — `mxcli check` reports the `statictext` spelling as MDL-WIDGET29,
 // and this is the backstop for `text`, which resolves through the widget
 // registry and so is only caught by check when a project is available.
 //

@@ -145,7 +145,7 @@ CREATE PAGE Sales.Detail (Title: 'Detail', Layout: Atlas_Core.Atlas_Default) {
 			"--   DROPDOWN       -> COMBOBOX\n" +
 			"-- And three the executor refuses on BOTH engines, each with its own message:\n" +
 			"--   STATICTEXT         (writes Forms$Text, a type Mendix no longer has — the\n" +
-			"--                       project could not be OPENED afterwards; MDL-WIDGET27.\n" +
+			"--                       project could not be OPENED afterwards; MDL-WIDGET29.\n" +
 			"--                       Use DYNAMICTEXT with a literal Content.)\n" +
 			"--   REFERENCESELECTOR  (unsupported widget type)\n" +
 			"--   LEGACYDATAGRID     (use DATAGRID for the pluggable equivalent on Mendix 11+)",

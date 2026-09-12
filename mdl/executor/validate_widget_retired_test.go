@@ -21,7 +21,7 @@ func TestValidateRetiredWidgetKind_StaticTextIsRefused(t *testing.T) {
 	// unlike MDL-WIDGET25 this must fire without one. Passing "" is the
 	// assertion, not a convenience.
 	got := validateRetiredWidgetKind(&ast.WidgetV3{Type: "statictext", Name: "t1"}, "page X")
-	if len(got) == 0 || got[0].RuleID != "MDL-WIDGET27" {
+	if len(got) == 0 || got[0].RuleID != "MDL-WIDGET29" {
 		t.Fatalf("statictext was accepted; got %v", got)
 	}
 	if !strings.Contains(got[0].Message, "Forms$Text") {
@@ -32,7 +32,7 @@ func TestValidateRetiredWidgetKind_StaticTextIsRefused(t *testing.T) {
 	}
 
 	// And it reaches the tree walk, or `mxcli check` never runs it.
-	if v := widgetKindViolations(t, "", []*ast.WidgetV3{{Type: "statictext", Name: "t1"}}); !containsRule(v, "MDL-WIDGET27") {
+	if v := widgetKindViolations(t, "", []*ast.WidgetV3{{Type: "statictext", Name: "t1"}}); !containsRule(v, "MDL-WIDGET29") {
 		t.Errorf("not reported by the widget-tree walk: %v", v)
 	}
 }
@@ -44,7 +44,7 @@ func TestValidateRetiredWidgetKind_DynamicTextIsSilent(t *testing.T) {
 	got := widgetKindViolations(t, "", []*ast.WidgetV3{
 		{Type: "dynamictext", Name: "t1", Properties: map[string]any{"Content": "hello"}},
 	})
-	if containsRule(got, "MDL-WIDGET27") {
+	if containsRule(got, "MDL-WIDGET29") {
 		t.Errorf("dynamictext was refused: %v", got)
 	}
 }
