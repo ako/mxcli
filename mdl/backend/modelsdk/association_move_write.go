@@ -62,6 +62,9 @@ func crossAssocToGen(ca *domainmodel.CrossModuleAssociation) *genDm.CrossAssocia
 	}
 	out.SetStorageFormat(sf)
 	out.SetDeleteBehavior(deleteBehaviorToGen(behaviorType(ca.ParentDeleteBehavior), behaviorType(ca.ChildDeleteBehavior)))
+	if ca.Source == domainmodel.OqlViewAssociationSource {
+		out.SetSource(oqlViewAssociationSourceToGen(ca.ViewSourceReference))
+	}
 	return out
 }
 
@@ -93,6 +96,13 @@ func crossAssocFromGenAssoc(a *genDm.Association, parentID, childRef string) *ge
 		}
 	}
 	out.SetDeleteBehavior(deleteBehaviorToGen(pdb, cdb))
+	// Moving the target entity to another module converts the association to a
+	// CrossAssociation. A view entity's Source has to survive that conversion, or
+	// the move — which never mentioned the association — silently breaks the
+	// build (CE6771).
+	if src, ok := a.Source().(*genDm.OqlViewAssociationSource); ok && src != nil {
+		out.SetSource(oqlViewAssociationSourceToGen(src.Reference()))
+	}
 	return out
 }
 

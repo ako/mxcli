@@ -848,6 +848,7 @@ func execCreateViewEntity(ctx *ExecContext, s *ast.CreateViewEntityStmt) error {
 		OqlQuery:          s.Query.RawQuery,
 	}
 
+	created := entity
 	if s.CreateOrModify && existingEntity != nil {
 		// Update existing entity — preserve Source object ID to avoid CE-6770
 		entity.ID = existingEntity.ID
@@ -872,6 +873,29 @@ func execCreateViewEntity(ctx *ExecContext, s *ast.CreateViewEntityStmt) error {
 		invalidateDomainModelsCache(ctx)
 		fmt.Fprintf(ctx.Output, "Created view entity: %s\n", s.Name)
 	}
+
+	// An `<alias>.ID` select column gives the view entity an ASSOCIATION to that
+	// entity, and Mendix has no separate declaration for it — the column is the
+	// declaration, so it is created here rather than by a statement of its own.
+	// Without this the OQL and the model disagree and mxbuild reports CE6770
+	// "View Entity is out of sync with the OQL Query" (FINDINGS §1).
+	//
+	// After the write, so the entity has an ID to point the association's FROM
+	// end at, and re-read so a freshly created entity is found by name.
+	if fresh, err := ctx.Backend.GetDomainModel(module.ID); err == nil {
+		if stored := fresh.FindEntityByName(s.Name.Name); stored != nil {
+			created = stored
+		}
+	}
+	if nameErrors := validateViewAssociationNames(ctx, s.Name.Module, s.Name.Name, s.Query.RawQuery, nil); len(nameErrors) > 0 {
+		return mdlerrors.NewValidationf("view entity '%s':\n  - %s",
+			s.Name.String(), strings.Join(nameErrors, "\n  - "))
+	}
+	if err := syncViewEntityAssociations(ctx, module.ID, s.Name.Module, created, s.Query.RawQuery); err != nil {
+		return err
+	}
+	invalidateHierarchy(ctx)
+	invalidateDomainModelsCache(ctx)
 
 	return nil
 }

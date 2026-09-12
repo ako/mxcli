@@ -374,6 +374,50 @@ Do not rewrite a described view into select-first just to make it look
 familiar — the stored text is what MxBuild validates against, and a needless
 rewrite is a diff for nothing.
 
+### Step 1c: Selecting an id makes an ASSOCIATION, not an attribute
+
+Selecting a persistent entity's `ID` under an alias gives the view entity an
+association to that entity. The alias becomes the association's name, and the
+column is **not** one of the view entity's attributes — so do not declare one
+for it:
+
+```sql
+create view entity Sales.OrdersVE (
+  order_date: DateTime              -- one attribute…
+) as (
+  from Sales."Order" as o
+  select o.ID        as persistent_order   -- …but two columns
+       , o.OrderDate as order_date
+);
+```
+
+mxcli creates the association member from that column. There is no separate
+statement for it, and `create association` with a view entity at either end is
+refused — Mendix rejects it (CE6771), because the association needs an
+`OqlViewAssociationSource` that a plain one does not have.
+
+Two rules:
+
+- **The alias must be free in the module, case-insensitively.** It is the
+  association's name, and Mendix reports *"Duplicate name 'Meter' in module
+  'Trends'. Entities, associations and enumerations cannot share names."* So
+  `as meter` beside an entity called `Meter` fails — name it `MeterRef`.
+- **Reach the target through a join if it is not the FROM entity**, and select
+  the id off *that* alias: `join r/Trends.Reading_Meter/Trends.Meter as m … select m.ID as MeterRef`.
+
+**Consider the flat alternative first.** An association costs a second query at
+runtime — the view returns the foreign key, and the client then fetches the
+referenced objects in a batched `IN (...)` per page, materialising real objects
+in its state. Selecting a string copy instead is one statement, one join, no
+second retrieve, and the id is still there to look the object up with:
+
+```sql
+select cast(m.ID as string) as MeterId, m.MeterCode as MeterCode, …
+```
+
+Use the association when you want to bind widgets over it (`MeterRef/MeterCode`);
+use the cast when you just need the value.
+
 ### Step 2: Write SELECT Clause
 - Use **lowercase** aggregate functions: `sum()`, `avg()`, `count()`
 - Use `count(entity.ID)` not `count(*)`

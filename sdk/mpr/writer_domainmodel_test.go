@@ -244,3 +244,66 @@ func TestSerializeAssociation_PreservesConnectionPoints(t *testing.T) {
 		t.Errorf("ChildConnection = %v, want \"0;0\" — the zero point is a value, not an absence", got["ChildConnection"])
 	}
 }
+
+// TestSerializeAssociation_OqlViewSource pins the one field that makes an
+// association to a VIEW ENTITY legal. Measured on Mendix 11.13.0: without it
+// mxbuild reports CE6771 "It is not possible to create associations to/from
+// View Entities" AND CE6770 on the view entity; adding exactly this three-key
+// subdocument takes the same project to 0 errors.
+func TestSerializeAssociation_OqlViewSource(t *testing.T) {
+	a := &domainmodel.Association{
+		Name:                "MeterRef",
+		Type:                domainmodel.AssociationTypeReference,
+		Owner:               domainmodel.AssociationOwnerDefault,
+		StorageFormat:       domainmodel.StorageFormatColumn,
+		Source:              domainmodel.OqlViewAssociationSource,
+		ViewSourceReference: "MeterRef",
+	}
+	got := dToM(serializeAssociation(a))
+	m, ok := got["Source"].(bson.M)
+	if !ok {
+		t.Fatalf("Source is %T, want a subdocument", got["Source"])
+	}
+	if m["$Type"] != domainmodel.OqlViewAssociationSource {
+		t.Errorf("$Type = %v", m["$Type"])
+	}
+	if m["Reference"] != "MeterRef" {
+		t.Errorf("Reference = %v, want the OQL select alias", m["Reference"])
+	}
+	// Three keys and no more — the shape is pinned against a Studio Pro document.
+	if len(m) != 3 {
+		t.Errorf("Source has %d keys, want exactly $ID/$Type/Reference: %v", len(m), m)
+	}
+
+	// Control: an ordinary association still writes a null Source. Widening the
+	// switch must not start decorating every association.
+	plain := dToM(serializeAssociation(&domainmodel.Association{Name: "Plain"}))
+	if plain["Source"] != nil {
+		t.Errorf("a plain association got Source = %v, want nil", plain["Source"])
+	}
+}
+
+// A view entity pointing at an entity in another module is stored as a
+// CrossAssociation, which is the shape the defect was reported in — so the two
+// serializers have to carry the field together.
+func TestSerializeCrossAssociation_OqlViewSource(t *testing.T) {
+	ca := &domainmodel.CrossModuleAssociation{
+		Name:                "persistent_order",
+		ChildRef:            "Mappings.Order",
+		Source:              domainmodel.OqlViewAssociationSource,
+		ViewSourceReference: "persistent_order",
+	}
+	m, ok := dToM(serializeCrossAssociation(ca))["Source"].(bson.M)
+	if !ok {
+		t.Fatalf("Source is %T, want a subdocument", dToM(serializeCrossAssociation(ca))["Source"])
+	}
+	if m["$Type"] != domainmodel.OqlViewAssociationSource || m["Reference"] != "persistent_order" {
+		t.Errorf("cross-association Source = %v", m)
+	}
+
+	// Control.
+	plain := dToM(serializeCrossAssociation(&domainmodel.CrossModuleAssociation{Name: "Plain"}))
+	if plain["Source"] != nil {
+		t.Errorf("a plain cross-association got Source = %v, want nil", plain["Source"])
+	}
+}

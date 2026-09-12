@@ -40,8 +40,10 @@ func inferOQLTypes(ctx *ExecContext, oqlQuery string, declaredAttrs []ast.ViewAt
 	// Extract FROM clause and build alias map
 	aliasMap := extractAliasMap(oqlQuery)
 
-	// Parse column expressions
-	columnExprs := parseSelectColumns(selectClause)
+	// An `<alias>.ID` column declares an ASSOCIATION, not an attribute, so it has
+	// no declared attribute to line up with. Dropping it here is what makes the
+	// remaining columns correspond one-to-one — see attributeSelectColumns.
+	columnExprs := attributeSelectColumns(oqlQuery, parseSelectColumns(selectClause))
 	if len(columnExprs) != len(declaredAttrs) {
 		warnings = append(warnings, fmt.Sprintf(
 			"OQL select has %d columns but %d attributes declared",
@@ -78,14 +80,40 @@ func extractAliasMap(oql string) map[string]string {
 	aliasMap := make(map[string]string)
 
 	// Match FROM Entity AS alias or FROM Entity alias patterns
-	// Also handles JOIN clauses
-	fromPattern := regexp.MustCompile(`(?i)\b(?:from|join)\s+([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*)\s+(?:as\s+)?([A-Za-z_][A-Za-z0-9_]*)`)
+	// Also handles JOIN clauses.
+	//
+	// Either half of the qualified name may be QUOTED, and that is not exotic:
+	// an OQL reserved word has to be quoted to survive MxBuild (CE0174), so
+	// `from Mappings."Order" as o` is the only way to write a source entity
+	// called Order. Matching bare names only left `o` unresolved — no type
+	// inference for its columns, and `o.ID` unrecognisable as an association
+	// column, which is exactly the reported example (FINDINGS §1).
+	fromPattern := regexp.MustCompile(`(?i)\b(?:from|join)\s+(` + oqlIdent + `\.` + oqlIdent + `)\s+(?:as\s+)?([A-Za-z_][A-Za-z0-9_]*)`)
 	matches := fromPattern.FindAllStringSubmatch(oql, -1)
 	for _, match := range matches {
 		if len(match) >= 3 {
-			entityName := match[1]
+			entityName := unquoteQualifiedOQLName(match[1])
 			alias := match[2]
 			aliasMap[alias] = entityName
+		}
+	}
+
+	// An ASSOCIATION-PATH join — `join r/Mod.Reading_Meter/Mod.Meter as m` —
+	// binds its alias to the entity at the END of the path. The pattern above
+	// cannot see it, because what follows the keyword is a path rather than a
+	// qualified name, so `m` resolved to nothing: no type inference for any of
+	// its columns, and `m.ID` unrecognisable as an association column. That join
+	// form is the ordinary way to reach a related entity in Mendix OQL.
+	pathPattern := regexp.MustCompile(
+		`(?i)\b(?:from|join)\s+[A-Za-z_]\w*(?:/` + oqlIdent + `\.` + oqlIdent + `)+\s+(?:as\s+)?([A-Za-z_]\w*)`)
+	lastEntity := regexp.MustCompile(`(` + oqlIdent + `\.` + oqlIdent + `)\s*$`)
+	for _, match := range pathPattern.FindAllStringSubmatch(oql, -1) {
+		alias := match[1]
+		// The path is everything between the keyword and the alias.
+		path := strings.TrimSuffix(strings.TrimSpace(match[0]), alias)
+		path = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(path), "as"))
+		if seg := lastEntity.FindStringSubmatch(path); seg != nil {
+			aliasMap[alias] = unquoteQualifiedOQLName(seg[1])
 		}
 	}
 
@@ -106,6 +134,18 @@ const oqlIdent = `(?:"[^"\r\n]*"|` + "`[^`\r\n]*`" + `|\w+)`
 // alias captured. Built once from oqlIdent so the five places that strip or read
 // an alias cannot disagree about what an alias looks like.
 var oqlAliasSuffixRe = regexp.MustCompile(`(?i)\s+as\s+(` + oqlIdent + `)\s*$`)
+
+// unquoteQualifiedOQLName strips quoting from each half of a Module.Entity name,
+// so `Mappings."Order"` and `Mappings.Order` resolve to the same entity. The
+// STORED query keeps its quotes — MxBuild needs them — but the name the alias
+// denotes is the bare one.
+func unquoteQualifiedOQLName(qn string) string {
+	parts := strings.SplitN(qn, ".", 2)
+	if len(parts) != 2 {
+		return unquoteOQLIdent(qn)
+	}
+	return unquoteOQLIdent(parts[0]) + "." + unquoteOQLIdent(parts[1])
+}
 
 // unquoteOQLIdent strips the quoting from an OQL identifier, so an alias can be
 // compared against a declared attribute name. The stored QUERY keeps its quotes
@@ -142,7 +182,9 @@ func ValidateOQLTypes(oql string, attrs []ast.ViewAttribute) []linter.Violation 
 		return violations
 	}
 
-	columnExprs := parseSelectColumns(selectClause)
+	// Same skip as inferOQLTypes: an association column has no declared
+	// attribute, and leaving it in shifts every attribute onto its neighbour.
+	columnExprs := attributeSelectColumns(oql, parseSelectColumns(selectClause))
 
 	for i, expr := range columnExprs {
 		if i >= len(attrs) {
