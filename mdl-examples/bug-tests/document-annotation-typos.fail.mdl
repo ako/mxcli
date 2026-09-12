@@ -1,0 +1,51 @@
+-- Document annotations that parse and do nothing (refusals, MDL059).
+--
+-- `mxcli check mdl-examples/bug-tests/document-annotation-typos.fail.mdl`
+-- reports MDL059 three times. Before the fix all three passed check AND exec,
+-- and wrote a model that built at 0 errors — the annotation was simply dropped,
+-- so whatever it was meant to express was lost in silence.
+--
+-- The grammar attaches `annotation*` to createStatement itself, so all forty-odd
+-- create kinds accept one while only six read one. That is the whole defect:
+-- being accepted by the parser said nothing about being read.
+--
+-- The valid microflow at the end is the control. Without it this file would pass
+-- just as well against a rule that refused every document annotation.
+
+create or modify module AnnProbe;
+
+-- 1. A TYPO. One 's' short, and the security setting is simply not applied:
+--    the microflow runs with full access instead of the current user's.
+@applyentityacces
+create or replace microflow AnnProbe.Typo ()
+begin
+  return;
+end;
+/
+
+-- 2. The right annotation on the WRONG DOCUMENT. A nanoflow runs in the client
+--    and Nanoflows$Nanoflow stores no such property, so there is nothing for it
+--    to set. This one was created by the change that added the annotation.
+@applyentityaccess
+create or replace nanoflow AnnProbe.WrongKind ()
+begin
+  return;
+end;
+/
+
+-- 3. An ACTIVITY annotation written at document level. @caption belongs on a
+--    statement inside the body; before CREATE it reaches nothing.
+@caption 'My microflow'
+create or replace microflow AnnProbe.ActivityAnnotationOutside ()
+begin
+  return;
+end;
+/
+
+-- CONTROL: both annotations a microflow really does read. This must stay clean.
+@excluded
+@applyentityaccess
+create or replace microflow AnnProbe.Fine ()
+begin
+  return;
+end;

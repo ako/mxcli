@@ -535,4 +535,6 @@ It is a **security** setting and it only ever narrows, so the rules mirror
   storing the flag came back without it, and nothing anywhere reported it.
 - **Turning it off is explicit**: `@applyentityaccess(false)`.
 - **Not available on a nanoflow.** A nanoflow runs in the client and Mendix stores
-  no such property, so the annotation would parse and do nothing.
+  no such property. Writing it there is **MDL059**, not a silent no-op —
+  the same rule that catches `@applyentityacces` and any other annotation the
+  document does not read. The message names what that document does accept.

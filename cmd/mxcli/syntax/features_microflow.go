@@ -308,7 +308,10 @@ func init() {
 			"@annotation(id: n1, text: 'a note', position: (x, y), size: (w, h))\n" +
 			"@annotation(id: n1)                   -- attaches THAT note to another activity\n\n" +
 			"An unrecognised @name is an error (MDL059): it would parse and do nothing,\n" +
-			"so a typo of @position would silently discard the layout.\n\n" +
+			"so a typo of @position would silently discard the layout. That covers\n" +
+			"DOCUMENT annotations too — a typo, or one on a document kind that does not\n" +
+			"read it (@applyentityaccess on a nanoflow, @excluded on a queue), is\n" +
+			"refused with the list of what that document does accept.\n\n" +
 			"@excluded and @applyentityaccess are DOCUMENT annotations — they go before\n" +
 			"CREATE, not on a statement. @applyentityaccess runs the flow under the\n" +
 			"current user's entity access rules instead of with full access; it is a\n" +

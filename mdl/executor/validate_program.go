@@ -253,5 +253,11 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 	// passed check.
 	violations = append(violations, ValidateScheduledEvents(prog)...)
 
+	// Flag an annotation written before a CREATE that the document does not
+	// read — a typo, or one on the wrong document kind. The grammar accepts an
+	// annotation on every create statement while only six read one, so these
+	// parsed and did nothing (MDL059, the same rule statements already have).
+	violations = append(violations, ValidateDocumentAnnotations(prog)...)
+
 	return violations
 }

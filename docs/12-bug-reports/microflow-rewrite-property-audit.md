@@ -136,11 +136,20 @@ than the 417-line diff, and wants its own investigation.
 Neither is a demonstrated loss (see the benign table), so closing those holes
 needs a reference project that actually sets them.
 
-One gap this change does not close: a **typo'd document annotation** parses and
-does nothing. MDL059 covers statement annotations only, so `@applyentityacces`
-is silent — as `@excluded` already was. Both typos fail safe here (an unset flag
-on a create means off; on a rewrite it means preserve), which is why this is
-noted rather than fixed.
+~~One gap this change does not close: a typo'd document annotation parses and does
+nothing.~~ **Closed.** MDL059 now covers annotations written before a `CREATE`
+as well as those on a statement. The grammar attaches `annotation*` to
+`createStatement` itself, so all forty-odd create kinds accepted one while only
+six read one — a typo (`@applyentityacces`), an annotation on a kind that reads
+none (`@excluded` on a queue), and an activity annotation written at document
+level all parsed, executed and built at 0 errors with the annotation dropped.
+
+The accepted set is a per-kind table pinned to the visitor's own string literals
+in both directions, so a name the visitor reads but the table omits (which would
+reject a valid script) and a name the table lists but nothing reads (which would
+re-open the hole) each fail a test. `mdl-examples/bug-tests/document-annotation-typos.fail.mdl`
+carries all three refusals plus a valid microflow as its control; unwiring the
+rule makes that file pass check again.
 
 ## Method, and what it is worth
 
