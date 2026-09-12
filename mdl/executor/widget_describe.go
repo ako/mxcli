@@ -169,6 +169,20 @@ type DescribedContainer struct {
 	// would be the same mistake one layer up.
 	Authorable bool `json:"authorable"`
 
+	// ItemSlots lists the WIDGETS-typed slots inside one item of an object list
+	// — a DataGrid column's `content` and `filter`, an Accordion group's
+	// `headerContent`.
+	//
+	// These were missing, and their absence had teeth. `items` above lists only
+	// the item's scalar sub-properties, so `describe widget datagrid` named
+	// `controlbar` as the one filter-shaped thing a grid declares and said
+	// nothing about a column taking a filter at all. An author asking this
+	// command where the column filter goes was therefore steered to the
+	// grid-wide filter bar — which renders "Unable to get filter store" at
+	// runtime (ako/view-entity-examples FINDINGS §2). A description that omits
+	// the right answer and offers a wrong-looking one is worse than silence.
+	ItemSlots []DescribedItemSlot `json:"itemSlots,omitempty"`
+
 	// items carries each sub-property's writable value as the WIDGET DEFINITION
 	// records it — the mapping's `default`/`value` and its enumValues. Unexported,
 	// so the JSON shape is unchanged.
@@ -179,6 +193,18 @@ type DescribedContainer struct {
 	// MDL-WIDGET08 reads the definition, so the example has to as well or the two
 	// disagree about the same sub-property.
 	items []DescribedProperty
+}
+
+// DescribedItemSlot is one widgets-typed slot inside an object-list item, with
+// the two ways a widget reaches it: an explicit `<keyword> { … }` block, or —
+// for the types in Accepts — being written directly in the item's body.
+type DescribedItemSlot struct {
+	Keyword     string   `json:"keyword"`
+	PropertyKey string   `json:"propertyKey"`
+	Accepts     []string `json:"accepts,omitempty"`
+	// Default marks the slot that takes any child matching neither route
+	// (defaultItemSlotKey). Exactly one slot per object list has it.
+	Default bool `json:"default,omitempty"`
 }
 
 func resolveWidgetTarget(registry *WidgetRegistry, arg string) (string, *WidgetDefinition) {
@@ -461,6 +487,19 @@ func PrintWidgetDescription(out io.Writer, d WidgetDescription) {
 			if len(c.ItemKeys) > 0 {
 				fmt.Fprintf(out, "  %-34s   items: %s\n", "", strings.Join(c.ItemKeys, ", "))
 			}
+			for _, is := range c.ItemSlots {
+				// Say how a widget REACHES the slot, not just that it exists —
+				// the accepted types are the answer to "where does the column
+				// filter go?", and they are the reason a filter belongs in the
+				// column's own braces rather than in the grid's filter bar.
+				how := "any other widget in the item body"
+				if len(is.Accepts) > 0 {
+					how = strings.Join(is.Accepts, " | ")
+				} else if !is.Default {
+					how = is.Keyword + " { … }"
+				}
+				fmt.Fprintf(out, "  %-34s   slot %s -> %s: %s\n", "", is.Keyword, is.PropertyKey, how)
+			}
 		}
 	}
 }
@@ -555,6 +594,18 @@ func describeContainers(def *WidgetDefinition) []DescribedContainer {
 			}
 			c.items = append(c.items, DescribedProperty{
 				Key: ip.PropertyKey, Type: ip.Operation, Default: def, Enum: ip.EnumValues,
+			})
+		}
+		// Ask the engine which slot is the default rather than restating the
+		// "content, else the first one" rule — a second copy of that rule is
+		// how the container lists drifted apart in #1036.
+		defaultKey := defaultItemSlotKey(&ol)
+		for _, is := range ol.ItemSlots {
+			c.ItemSlots = append(c.ItemSlots, DescribedItemSlot{
+				Keyword:     strings.ToLower(is.MDLContainer),
+				PropertyKey: is.PropertyKey,
+				Accepts:     append([]string(nil), is.AcceptedChildTypes...),
+				Default:     is.PropertyKey == defaultKey,
 			})
 		}
 		out = append(out, c)
@@ -658,6 +709,25 @@ func buildUsageExample(d WidgetDescription) (example string, omitted []string) {
 		item := fmt.Sprintf("  %s item%d", c.Keyword, n)
 		if k, lit := itemExampleLiteral(d, c); k != "" {
 			item += " (" + k + ": " + lit + ")"
+		}
+		// Show the item's own body when a slot routes a widget type INTO it.
+		// That routing is the part nobody guesses — a DataGrid column's filter
+		// goes in the column's braces, and an example that stops at the closing
+		// paren leaves the reader thinking a column has no body at all. Which is
+		// how the gallery `filter { … }` form got written on a grid instead.
+		var inner []string
+		for _, is := range c.ItemSlots {
+			if len(is.Accepts) == 0 {
+				continue
+			}
+			n++
+			inner = append(inner, fmt.Sprintf("    %s item%d   -- routed to this entry's `%s`",
+				is.Accepts[0], n, is.PropertyKey))
+		}
+		if len(inner) > 0 {
+			body = append(body, item+" {   -- one entry of `"+c.PropertyKey+"`\n"+
+				strings.Join(inner, "\n")+"\n  }")
+			continue
 		}
 		body = append(body, item+"   -- one entry of `"+c.PropertyKey+"`")
 	}

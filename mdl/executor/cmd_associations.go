@@ -59,6 +59,19 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 	}
 	childID := childEntity.ID
 
+	// A view entity at either end is CE6771. `check` reports it too, but a script
+	// run with --no-check must not be able to write it — that is how the reported
+	// case got a model mxbuild refuses (FINDINGS §1), and it is the same #833
+	// lesson as the module guard above.
+	for _, ep := range []struct {
+		entity *domainmodel.Entity
+		name   string
+	}{{parentEntity, s.Parent.String()}, {childEntity, s.Child.String()}} {
+		if isViewEntity(ep.entity) {
+			return viewEntityAssociationRefusal(s.Name.String(), ep.name)
+		}
+	}
+
 	// Convert types
 	assocType := domainmodel.AssociationTypeReference
 	if s.Type == ast.AssocReferenceSet {

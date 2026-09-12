@@ -1,0 +1,116 @@
+-- Bug: a view entity could not be given an association to a persistent entity,
+-- and mxcli got it wrong in three different places at once.
+--
+-- Selecting a persistent entity's ID under an alias gives a view entity an
+-- ASSOCIATION to that entity. The alias becomes the association's name, and the
+-- id column is NOT one of the view entity's attributes. Studio Pro creates the
+-- member when the column is added; there is no separate declaration anywhere.
+--
+-- Reported by ako/view-entity-examples FINDINGS §1, measured there on
+-- 10.24.24.119653 and 11.14.0. Re-measured here on 11.13.0.
+--
+-- What went wrong, in order:
+--
+--   1. `mxcli check` aligned select columns with declared attributes BY
+--      POSITION and did not skip the id column, so it did not merely go
+--      unchecked — it SHIFTED every attribute after it onto its neighbour's
+--      expression. With the id first: "attribute 'TotalKwh': declared as
+--      Decimal but OQL expression returns Integer". With it last: "OQL select
+--      has 4 columns but 3 attributes declared". Neither describes the script.
+--
+--   2. `exec` wrote the view entity and created NO association member, so the
+--      OQL and the model disagreed:
+--        11.13/11.14: CE1613 "The selected association 'X' no longer exists."
+--        10.24:       CE6770 "View Entity is out of sync with the OQL Query."
+--
+--   3. Adding it by hand with `create association` wrote one with `Source: null`,
+--      which mxbuild refuses: CE6771 "It is not possible to create associations
+--      to/from View Entities."
+--
+-- Root cause of (3), and the whole fix: Studio Pro's association carries a
+--   `Source` subdocument the plain one does not —
+--
+--     "Source": { "$Type": "DomainModels$OqlViewAssociationSource",
+--                 "Reference": "persistent_order" }   -- the OQL alias
+--
+--   Measured on 11.13.0: adding exactly that takes the project from 2 errors
+--   (CE6771 + CE6770) to 0. ONE field clears both, because the association is
+--   also what makes the id column legal on the view entity.
+--
+-- The fix derives the association from the OQL, as the platform does: the column
+--   IS the declaration. That is also what makes describe → exec round-trip —
+--   the OQL carries the column, so a described view entity rebuilds its
+--   association with no second statement to keep in step. A plain
+--   `create association` with a view entity at either end is now refused at
+--   check AND exec time, pointing at this form.
+--
+-- Measured, 11.13.0, this file:
+--   pre-fix  exec + mx check -> 2 × CE1613 (no association was created at all)
+--   fixed    exec + mx check -> 0 errors
+--   re-run   "Unchanged view entity", still 0 errors
+--   describe -> exec into a fresh project -> 0 errors
+--   MXCLI_ENGINE=legacy -> 0 errors
+--
+-- Two refusals belong with this fix and are NOT in a .fail.mdl sibling: both
+-- need a model to decide (is this endpoint a view entity? is that name taken in
+-- the module?), and `make check-mdl` runs `check` with no project — naming such
+-- a file .fail.mdl reports "negative test unexpectedly passed" and makes a
+-- working rule look regressed (the Makefile's #891/#892 note). They are covered
+-- by unit tests in mdl/executor/oql_view_associations_test.go; the measured
+-- messages, with -p, are:
+--
+--   create association VAssoc.BadRef from VAssoc.MeterTotalsVE to VAssoc.Meter;
+--     -> cannot create association VAssoc.BadRef: VAssoc.MeterTotalsVE is a view
+--        entity - Mendix does not allow a plain association to or from one
+--        (CE6771). ... select t.ID as BadRef, ...
+--     Refused at check AND exec time. The check existed before but SKIPPED an
+--     endpoint the same script creates, which is the ordinary shape and so the
+--     shape that got through; exec had no guard at all, so --no-check wrote it.
+--
+--   ... select m.ID as meter, ...        -- beside an entity called Meter
+--     -> select alias 'meter' cannot be used: module 'VAssoc' already has an
+--        entity of that name ... (case-insensitively). The alias IS the
+--        association's name, so rename the alias - e.g. 'meterRef'
+--     Mendix's own message is "Duplicate name 'Meter' in module 'VAssoc'.
+--     Entities, associations and enumerations cannot share names."
+--     ("found the hard way", FINDINGS §1.)
+
+create module VAssoc;
+
+create entity VAssoc.Meter (
+  MeterCode: String(50),
+  Region: String(50)
+);
+
+create entity VAssoc.Reading (
+  Kwh: Decimal
+);
+
+create association VAssoc.Reading_Meter from VAssoc.Reading to VAssoc.Meter;
+
+-- One attribute declared, TWO select columns. `m.ID as MeterRef` is the
+-- association; `sum(r.Kwh) as TotalKwh` is the attribute. The association-path
+-- join is how the target entity is reached, and the alias it binds (`m`) is what
+-- makes `m.ID` resolvable.
+create view entity VAssoc.MeterTotalsVE (
+  TotalKwh: Decimal
+) as (
+  from VAssoc.Reading as r
+  join r/VAssoc.Reading_Meter/VAssoc.Meter as m
+  group by m.ID
+  select m.ID as MeterRef, sum(r.Kwh) as TotalKwh
+);
+
+-- Control: the same id, taken as a STRING ATTRIBUTE instead. This is not an
+-- association and must not become one — it is a different and often better
+-- design (one SQL statement instead of two, no objects materialised in the
+-- client), and the id is still there to look the real object up with.
+create view entity VAssoc.MeterTotalsFlatVE (
+  MeterId: String(200),
+  TotalKwh: Decimal
+) as (
+  from VAssoc.Reading as r
+  join r/VAssoc.Reading_Meter/VAssoc.Meter as m
+  group by m.ID
+  select cast(m.ID as string) as MeterId, sum(r.Kwh) as TotalKwh
+);

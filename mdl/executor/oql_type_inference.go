@@ -32,15 +32,18 @@ func inferOQLTypes(ctx *ExecContext, oqlQuery string, declaredAttrs []ast.ViewAt
 	// Extract SELECT clause
 	selectClause := extractSelectClause(oqlQuery)
 	if selectClause == "" {
-		warnings = append(warnings, "could not parse select clause from OQL query")
+		warnings = append(warnings,
+			"could not parse select clause from OQL query, so no column was type-checked")
 		return columns, warnings
 	}
 
 	// Extract FROM clause and build alias map
 	aliasMap := extractAliasMap(oqlQuery)
 
-	// Parse column expressions
-	columnExprs := parseSelectColumns(selectClause)
+	// An `<alias>.ID` column declares an ASSOCIATION, not an attribute, so it has
+	// no declared attribute to line up with. Dropping it here is what makes the
+	// remaining columns correspond one-to-one — see attributeSelectColumns.
+	columnExprs := attributeSelectColumns(oqlQuery, parseSelectColumns(selectClause))
 	if len(columnExprs) != len(declaredAttrs) {
 		warnings = append(warnings, fmt.Sprintf(
 			"OQL select has %d columns but %d attributes declared",
@@ -77,14 +80,40 @@ func extractAliasMap(oql string) map[string]string {
 	aliasMap := make(map[string]string)
 
 	// Match FROM Entity AS alias or FROM Entity alias patterns
-	// Also handles JOIN clauses
-	fromPattern := regexp.MustCompile(`(?i)\b(?:from|join)\s+([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*)\s+(?:as\s+)?([A-Za-z_][A-Za-z0-9_]*)`)
+	// Also handles JOIN clauses.
+	//
+	// Either half of the qualified name may be QUOTED, and that is not exotic:
+	// an OQL reserved word has to be quoted to survive MxBuild (CE0174), so
+	// `from Mappings."Order" as o` is the only way to write a source entity
+	// called Order. Matching bare names only left `o` unresolved — no type
+	// inference for its columns, and `o.ID` unrecognisable as an association
+	// column, which is exactly the reported example (FINDINGS §1).
+	fromPattern := regexp.MustCompile(`(?i)\b(?:from|join)\s+(` + oqlIdent + `\.` + oqlIdent + `)\s+(?:as\s+)?([A-Za-z_][A-Za-z0-9_]*)`)
 	matches := fromPattern.FindAllStringSubmatch(oql, -1)
 	for _, match := range matches {
 		if len(match) >= 3 {
-			entityName := match[1]
+			entityName := unquoteQualifiedOQLName(match[1])
 			alias := match[2]
 			aliasMap[alias] = entityName
+		}
+	}
+
+	// An ASSOCIATION-PATH join — `join r/Mod.Reading_Meter/Mod.Meter as m` —
+	// binds its alias to the entity at the END of the path. The pattern above
+	// cannot see it, because what follows the keyword is a path rather than a
+	// qualified name, so `m` resolved to nothing: no type inference for any of
+	// its columns, and `m.ID` unrecognisable as an association column. That join
+	// form is the ordinary way to reach a related entity in Mendix OQL.
+	pathPattern := regexp.MustCompile(
+		`(?i)\b(?:from|join)\s+[A-Za-z_]\w*(?:/` + oqlIdent + `\.` + oqlIdent + `)+\s+(?:as\s+)?([A-Za-z_]\w*)`)
+	lastEntity := regexp.MustCompile(`(` + oqlIdent + `\.` + oqlIdent + `)\s*$`)
+	for _, match := range pathPattern.FindAllStringSubmatch(oql, -1) {
+		alias := match[1]
+		// The path is everything between the keyword and the alias.
+		path := strings.TrimSuffix(strings.TrimSpace(match[0]), alias)
+		path = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(path), "as"))
+		if seg := lastEntity.FindStringSubmatch(path); seg != nil {
+			aliasMap[alias] = unquoteQualifiedOQLName(seg[1])
 		}
 	}
 
@@ -105,6 +134,18 @@ const oqlIdent = `(?:"[^"\r\n]*"|` + "`[^`\r\n]*`" + `|\w+)`
 // alias captured. Built once from oqlIdent so the five places that strip or read
 // an alias cannot disagree about what an alias looks like.
 var oqlAliasSuffixRe = regexp.MustCompile(`(?i)\s+as\s+(` + oqlIdent + `)\s*$`)
+
+// unquoteQualifiedOQLName strips quoting from each half of a Module.Entity name,
+// so `Mappings."Order"` and `Mappings.Order` resolve to the same entity. The
+// STORED query keeps its quotes — MxBuild needs them — but the name the alias
+// denotes is the bare one.
+func unquoteQualifiedOQLName(qn string) string {
+	parts := strings.SplitN(qn, ".", 2)
+	if len(parts) != 2 {
+		return unquoteOQLIdent(qn)
+	}
+	return unquoteOQLIdent(parts[0]) + "." + unquoteOQLIdent(parts[1])
+}
 
 // unquoteOQLIdent strips the quoting from an OQL identifier, so an alias can be
 // compared against a declared attribute name. The stored QUERY keeps its quotes
@@ -141,7 +182,9 @@ func ValidateOQLTypes(oql string, attrs []ast.ViewAttribute) []linter.Violation 
 		return violations
 	}
 
-	columnExprs := parseSelectColumns(selectClause)
+	// Same skip as inferOQLTypes: an association column has no declared
+	// attribute, and leaving it in shifts every attribute onto its neighbour.
+	columnExprs := attributeSelectColumns(oql, parseSelectColumns(selectClause))
 
 	for i, expr := range columnExprs {
 		if i >= len(attrs) {
@@ -451,65 +494,151 @@ func validateViewEntityTypes(ctx *ExecContext, stmt *ast.CreateViewEntityStmt) [
 	return errors
 }
 
-// extractSelectClause extracts the SELECT clause from an OQL query.
-// Handles subqueries by tracking parenthesis depth to find the main FROM clause.
+// Mendix OQL has TWO clause orders and the MDL grammar accepts both
+// (`oqlQueryTerm`, MDLCatalog.g4):
+//
+//	SELECT … FROM … GROUP BY …        -- select first; FROM ends the list
+//	FROM … GROUP BY … SELECT …        -- Mendix's own canonical spelling
+//
+// The second is not exotic: it is what Studio Pro stores, so it is what
+// `DESCRIBE ENTITY` hands back, and describe → check → exec goes through it
+// every time.
+//
+// The two take DIFFERENT terminator sets, and deliberately so. In the
+// select-first order FROM ends the list and ORDER/LIMIT cannot — they sit past
+// the FROM — so admitting them there would cut `select o.Limit as Limit from …`
+// in half and report the remaining columns against the wrong attributes. Only
+// the from-first order needs the wider set, because there the list runs to the
+// end of the query.
+var (
+	selectFirstTerminators = []string{"FROM", "UNION"}
+	fromFirstTerminators   = []string{"UNION", "ORDER BY", "LIMIT", "OFFSET"}
+)
+
+// extractSelectClause extracts the SELECT clause from an OQL query, in either
+// clause order. Empty string means the query has no readable select list —
+// callers MUST treat that as "could not read", never as "nothing to check":
+// every column-level rule hangs off this one string, so a silent "" turns the
+// whole view-entity checker off. ValidateOQLSyntax reports it for that reason.
 func extractSelectClause(oql string) string {
+	clause, _ := extractSelectClauseOK(oql)
+	return clause
+}
+
+// extractSelectClauseOK is extractSelectClause plus whether a top-level SELECT
+// was found at all. The two outcomes need separating because they call for
+// different things: no SELECT is a query the grammar would already have
+// rejected, while a SELECT whose list could not be read is a checker that has
+// quietly stopped checking.
+func extractSelectClauseOK(oql string) (string, bool) {
 	// Normalize whitespace
 	oql = strings.TrimSpace(oql)
 	upperOql := strings.ToUpper(oql)
 
-	// Find SELECT keyword. Compare uppercase-to-uppercase: upperOql is already
-	// upper-cased, so the needle must be too (a lowercase needle never matches).
-	selectIdx := strings.Index(upperOql, "SELECT")
-	if selectIdx == -1 {
-		return ""
+	// Find the top-level SELECT. Depth- and quote-aware, so a subquery's SELECT
+	// in a from-first query (`from (select …) as t select …`) is not mistaken
+	// for the outer one.
+	selectIdx := topLevelKeywordIndex(oql, upperOql, 0, "SELECT")
+	if selectIdx < 0 {
+		return "", false
+	}
+	startIdx := selectIdx + len("SELECT")
+
+	// Which clause order this is, is decided by what comes FIRST, not by what
+	// is present: a select-first query has a FROM too.
+	terminators := selectFirstTerminators
+	if fromIdx := topLevelKeywordIndex(oql, upperOql, 0, "FROM"); fromIdx >= 0 && fromIdx < selectIdx {
+		terminators = fromFirstTerminators
 	}
 
-	// Start after SELECT keyword
-	startIdx := selectIdx + 6 // len("SELECT")
+	endIdx := topLevelKeywordIndex(oql, upperOql, startIdx, terminators...)
+	if endIdx < 0 {
+		// No terminator: the list runs to the end of the query. That is the
+		// ordinary shape of a from-first query (`from … select a as A`), and
+		// for a select-first one it means a FROM-less query, whose column list
+		// is likewise the rest — either way there is something to check, and
+		// reporting "unreadable" here would be a checker refusing its own input.
+		endIdx = len(oql)
+	}
+	return strings.TrimSpace(oql[startIdx:endIdx]), true
+}
 
-	// Find the main FROM clause or UNION (not inside subqueries). Slice from
-	// upperOql (same byte offsets as oql for ASCII) so keyword comparisons are
-	// case-consistent — comparing strings.ToUpper(...) to a lowercase literal
-	// could never match and made this function always return "" (bug 9b).
+// topLevelKeywordIndex returns the byte offset of the first of words appearing
+// at parenthesis depth 0, on a word boundary, at or after start — or -1.
+//
+// upperOql must be strings.ToUpper(oql) and words must already be upper-case:
+// the comparison is uppercase-to-uppercase, because a lowercase needle against
+// an upper-cased haystack never matches and made this whole family return ""
+// for every query once already (bug 9b).
+//
+// Quoted runs are skipped. OQL takes double-quoted identifiers exactly as SQL
+// does, and mxcli passes them through so a reserved word survives MxBuild —
+// so `select s."Order" as OrderValue` is a query a user really writes, and
+// matching the ORDER inside those quotes would cut the select list in half.
+//
+// A word containing a space is a PHRASE, and the space matches any run of
+// whitespace: "ORDER BY" must be spelled that way rather than as "ORDER",
+// because a bare ORDER also occurs as an ordinary name.
+func topLevelKeywordIndex(oql, upperOql string, start int, words ...string) int {
 	depth := 0
-	for i := startIdx; i < len(oql); i++ {
-		ch := oql[i]
-		switch ch {
+	for i := start; i < len(oql); i++ {
+		switch c := oql[i]; c {
 		case '(':
 			depth++
+			continue
 		case ')':
 			depth--
-		default:
-			if depth == 0 {
-				// Check for FROM keyword at depth 0
-				if i+4 <= len(oql) {
-					word := upperOql[i : i+4]
-					if word == "FROM" {
-						// Make sure it's a word boundary (not part of another identifier)
-						prevOk := i == startIdx || !isIdentChar(oql[i-1])
-						nextOk := i+4 >= len(oql) || !isIdentChar(oql[i+4])
-						if prevOk && nextOk {
-							return strings.TrimSpace(oql[startIdx:i])
-						}
-					}
-				}
-				// Check for UNION keyword at depth 0 (ends current query term)
-				if i+5 <= len(oql) {
-					word := upperOql[i : i+5]
-					if word == "UNION" {
-						prevOk := i == startIdx || !isIdentChar(oql[i-1])
-						nextOk := i+5 >= len(oql) || !isIdentChar(oql[i+5])
-						if prevOk && nextOk {
-							return strings.TrimSpace(oql[startIdx:i])
-						}
-					}
-				}
+			continue
+		case '\'', '"', '`':
+			// Skip to the closing quote. A doubled quote (OQL's own escape,
+			// 'it''s') reads as two adjacent runs, which lands in the same place.
+			for i++; i < len(oql) && oql[i] != c; i++ {
+			}
+			continue
+		}
+		if depth != 0 {
+			continue
+		}
+		for _, w := range words {
+			end, ok := matchPhraseAt(oql, upperOql, i, w)
+			if !ok {
+				continue
+			}
+			prevOk := i == 0 || !isIdentChar(oql[i-1])
+			nextOk := end >= len(oql) || !isIdentChar(oql[end])
+			if prevOk && nextOk {
+				return i
 			}
 		}
 	}
+	return -1
+}
 
-	return ""
+// matchPhraseAt reports whether phrase matches oql at offset i, and the offset
+// just past the match. A space in phrase matches one or more whitespace
+// characters; every other character is compared upper-case against upperOql.
+func matchPhraseAt(oql, upperOql string, i int, phrase string) (int, bool) {
+	for p := 0; p < len(phrase); p++ {
+		if phrase[p] == ' ' {
+			start := i
+			for i < len(oql) && isOQLSpace(oql[i]) {
+				i++
+			}
+			if i == start {
+				return 0, false
+			}
+			continue
+		}
+		if i >= len(oql) || upperOql[i] != phrase[p] {
+			return 0, false
+		}
+		i++
+	}
+	return i, true
+}
+
+func isOQLSpace(ch byte) bool {
+	return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r'
 }
 
 // isIdentChar returns true if ch is a valid identifier character.
@@ -1029,8 +1158,27 @@ func ValidateOQLSyntax(oql string) []linter.Violation {
 		}
 	}
 
-	// Check that all top-level SELECT columns have explicit AS aliases
-	selectClause := extractSelectClause(oql)
+	// Check that all top-level SELECT columns have explicit AS aliases.
+	//
+	// An unreadable select list is reported rather than skipped. Every rule
+	// below hangs off this one string, so returning "" used to switch the
+	// column checks off without saying so — which is how the FROM-first clause
+	// order went unnoticed: the only visible symptom was ONE bogus error from
+	// inferOQLTypes, while MDL030 and MDL072 quietly stopped running. A checker
+	// that cannot read its input has to say so.
+	selectClause, hasSelect := extractSelectClauseOK(oql)
+	if hasSelect && selectClause == "" {
+		violations = append(violations, linter.Violation{
+			RuleID:   "MDL030",
+			Severity: linter.SeverityError,
+			Message: "the OQL has a select clause but its column list could not be read, " +
+				"so no column was checked (alias, type and length rules all skipped)",
+			Location: linter.Location{DocumentType: "viewentity"},
+			Suggestion: "Both clause orders are supported — `select … from …` and Mendix's own " +
+				"`from … group by … select …`. If the query is one of those and still " +
+				"lands here, it is an mxcli gap: please report it with the query.",
+		})
+	}
 	if selectClause != "" {
 		columns := parseSelectColumns(selectClause)
 		aliasPattern := oqlAliasSuffixRe

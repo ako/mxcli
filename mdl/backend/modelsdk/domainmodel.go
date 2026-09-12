@@ -602,6 +602,15 @@ func assocFromGen(a *genDm.Association) *domainmodel.Association {
 		out.UpdatableFromParent = src.UpdatableFromParent()
 		out.UpdatableFromChild = src.UpdatableFromChild()
 	}
+	// A view entity's association to a persistent entity. Same reasoning as the
+	// OData source above and then some: an unread Source is written back as null,
+	// which is exactly the CE6771 + CE6770 pair the field exists to avoid — so a
+	// project that built yesterday stops building after any rewrite of its domain
+	// model, with no statement having mentioned the association.
+	if src, ok := a.Source().(*genDm.OqlViewAssociationSource); ok && src != nil {
+		out.Source = domainmodel.OqlViewAssociationSource
+		out.ViewSourceReference = src.Reference()
+	}
 	return out
 }
 
@@ -627,6 +636,10 @@ func crossAssocFromGen(ca *genDm.CrossAssociation) *domainmodel.CrossModuleAssoc
 			// not start (CapTrackV2 §1).
 			ErrorMessage: deleteErrorMessageFromGen(db.ChildErrorMessage()),
 		}
+	}
+	if src, ok := ca.Source().(*genDm.OqlViewAssociationSource); ok && src != nil {
+		out.Source = domainmodel.OqlViewAssociationSource
+		out.ViewSourceReference = src.Reference()
 	}
 	return out
 }

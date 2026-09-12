@@ -1,0 +1,96 @@
+-- Bug: a widget written in a pluggable widget's body that the widget has
+-- nowhere to put was BUILT AND THROWN AWAY, with no diagnostic from `check`
+-- and no error from `exec`. `DESCRIBE PAGE` afterwards showing the widget gone
+-- was the only way to find out.
+--
+-- Reported by ako/view-entity-examples FINDINGS §2, as a Data Grid 2 filter.
+-- The form that vanished is the one `mxcli syntax page widgets` documented:
+--
+--   DATAGRID dg (...) { COLUMN c (Attribute: A) FILTER f { TEXTFILTER tf (...) } }
+--
+-- Two things are wrong with it, and only together do they hide:
+--   1. `FILTER` is the GALLERY keyword for the filters placeholder. DataGrid 2
+--      spells the same property `controlbar` (widgetSlotKeywordOverrides).
+--   2. `widgetV3` is `type name props? body?`, so `COLUMN c (…) FILTER f { … }`
+--      is a COLUMN WITH NO BODY followed by a SIBLING filter widget — nothing
+--      binds the second to the first. The sibling landed among the grid's own
+--      children, matched no container, and was dropped.
+--
+-- Root cause: the four passes that place a pluggable widget's children
+--   (applyChildSlots, applyObjectLists, and two auto-discovery passes) each
+--   `continue` past a child they do not recognise, and applyChildSlots parks
+--   the leftovers in `defaultWidgets` — which is assigned only if the widget
+--   declares a `template` slot. A Gallery has one; DataGrid 2 does not, so its
+--   leftovers were discarded. Not datagrid-specific: one `continue` per pass,
+--   shared by every pluggable widget.
+--
+-- Fix: MDL-WIDGET30 at check time and a refusal in buildPluggable at exec time,
+--   both from unroutedPluggableChildren() so they cannot disagree. The message
+--   names the spelling THIS widget uses for the same slot, since an author who
+--   copied a gallery example needs `controlbar`, not a list to search.
+--
+-- This repro is a plain .mdl, not .fail.mdl, on purpose: MDL-WIDGET30 needs the
+-- parent widget's DEFINITION, which comes from the project's installed .mpk, and
+-- `make check-mdl` runs `check` with no project (see the Makefile's note on
+-- #891/#892). The refusal is covered by widget_unrouted_children_test.go; this
+-- file records the working spellings so they stay working.
+--
+-- Reading the definition from the project's .mpk is also what keeps the rule
+-- current: Data Widgets ships DataGrid 2 in every Mendix 11 app, and upgrading
+-- that module from the Marketplace changes what mxcli sees with no mxcli release.
+--
+-- Measured end to end on Mendix 11.13.0, DataGrid 2 (Data Widgets) 3.4.0, with
+-- the guard stubbed as the control:
+--   guard stubbed, `exec --no-check` the FILTER form
+--     → "Created page", exit 0 … and `describe page` shows
+--       `column MeterCode (Attribute: MeterCode, Caption: 'Meter')` with NO
+--       filter. That is the reported defect: a success that lost the widget.
+--   guard in place, same script  → refused, exit 1, naming `controlbar`
+--   guard in place, THIS file    → "Replaced page", and `describe page` shows
+--                                  `column … { textfilter tf }` — it persisted
+--   mx check on the result       → 0 errors
+
+create module VFilterDrop;
+
+create entity VFilterDrop.Meter (
+  MeterCode: String(50),
+  Readings: Integer,
+  LastSeen: DateTime
+);
+
+create page VFilterDrop.Meters (
+  title: 'Meters',
+  layout: Atlas_Core.Atlas_Default
+) {
+  datagrid dgMeters (datasource: database VFilterDrop.Meter) {
+    -- The working form: the filter goes INSIDE the column's own braces, and
+    -- must match the column attribute's type.
+    column colCode (attribute: MeterCode, caption: 'Meter') {
+      textfilter fCode (attribute: MeterCode)
+    }
+    column colReadings (attribute: Readings, caption: 'Readings') {
+      numberfilter fReadings (attribute: Readings)
+    }
+    column colSeen (attribute: LastSeen, caption: 'Last seen') {
+      datefilter fSeen (attribute: LastSeen)
+    }
+  }
+}
+
+-- Control: on a GALLERY the very same `filter { … }` block is correct — it is
+-- that widget's own keyword for the filters placeholder. A rule that simply
+-- banned the keyword would have broken this page, which is why the fix asks
+-- the parent's definition rather than matching on the word.
+create page VFilterDrop.MeterGallery (
+  title: 'Meter gallery',
+  layout: Atlas_Core.Atlas_Default
+) {
+  gallery galMeters (datasource: database VFilterDrop.Meter, desktopcolumns: 3) {
+    filter galFilter {
+      textfilter fGalCode (attribute: MeterCode)
+    }
+    template galTemplate {
+      dynamictext txtCode (content: '{1}', contentparams: [{1} = MeterCode])
+    }
+  }
+}

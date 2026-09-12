@@ -799,8 +799,20 @@ func externalAssociationSourceToGen(a *domainmodel.Association) element.Element 
 		src := genRest.NewODataPrimitiveCollectionAssociationSource()
 		assignID(src)
 		return src
+	case domainmodel.OqlViewAssociationSource:
+		return oqlViewAssociationSourceToGen(a.ViewSourceReference)
 	}
 	return nil
+}
+
+// oqlViewAssociationSourceToGen builds it. `Reference` is the OQL select alias;
+// gen binds that exact storage name (checked against initOqlViewAssociationSource
+// and against a real document), so no STORAGE-NAME OVERRIDE is needed here.
+func oqlViewAssociationSourceToGen(reference string) element.Element {
+	src := genDm.NewOqlViewAssociationSource()
+	src.SetReference(reference)
+	assignID(src)
+	return src
 }
 
 // assignEntityIDs gives the entity, its generalization, and each attribute

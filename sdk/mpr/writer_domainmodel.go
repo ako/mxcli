@@ -1207,6 +1207,8 @@ func serializeAssociation(a *domainmodel.Association) bson.D {
 			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
 			{Key: "$Type", Value: "Rest$ODataPrimitiveCollectionAssociationSource"},
 		}
+	case domainmodel.OqlViewAssociationSource:
+		source = oqlViewAssociationSourceDoc(a.ViewSourceReference)
 	default:
 		source = nil
 	}
@@ -1250,9 +1252,30 @@ func serializeCrossAssociation(ca *domainmodel.CrossModuleAssociation) bson.D {
 		{Key: "Type", Value: string(ca.Type)},
 		{Key: "Owner", Value: string(ca.Owner)},
 		{Key: "StorageFormat", Value: storageFormat},
-		{Key: "Source", Value: nil},
+		{Key: "Source", Value: crossAssociationSource(ca)},
 		{Key: "DeleteBehavior", Value: serializeDeleteBehavior(ca.ParentDeleteBehavior, ca.ChildDeleteBehavior)},
 	}
+}
+
+// oqlViewAssociationSourceDoc builds that subdocument. Three keys and no more —
+// the shape is pinned against a Studio Pro document (ako/TestApp, 11.14) and
+// re-measured here on 11.13.0.
+func oqlViewAssociationSourceDoc(reference string) bson.D {
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+		{Key: "$Type", Value: domainmodel.OqlViewAssociationSource},
+		{Key: "Reference", Value: reference},
+	}
+}
+
+func crossAssociationSource(ca *domainmodel.CrossModuleAssociation) any {
+	if ca.Source == domainmodel.OqlViewAssociationSource {
+		return oqlViewAssociationSourceDoc(ca.ViewSourceReference)
+	}
+	// A CrossAssociation has never carried an OData source — those live between
+	// external entities, which are not cross-module — so nil stays the default
+	// rather than being widened speculatively.
+	return nil
 }
 
 func serializeDeleteBehavior(parentBehavior, childBehavior *domainmodel.DeleteBehavior) bson.D {

@@ -64,11 +64,14 @@ func TestExtractSelectClause(t *testing.T) {
 			want: "a",
 		},
 		{
-			// OQL always requires a FROM; a FROM-less query is malformed, so
-			// returning "" (→ "could not parse select clause") is acceptable here.
-			name: "no from clause returns empty",
+			// Was "": the scanner needed a FROM to know where the list ended,
+			// so a FROM-less query read as unreadable. The list is simply the
+			// rest of the query, and saying so matters now that an unreadable
+			// clause is REPORTED rather than skipped — "" here would refuse a
+			// query over a column the checker can perfectly well check.
+			name: "no from clause reads to the end of the query",
 			oql:  "select 1",
-			want: "",
+			want: "1",
 		},
 		{
 			name: "from inside subquery is not the main FROM",

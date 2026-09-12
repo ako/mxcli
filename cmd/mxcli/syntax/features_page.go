@@ -124,7 +124,16 @@ CREATE PAGE Sales.Detail (Title: 'Detail', Layout: Atlas_Core.Atlas_Default) {
 		},
 		Syntax: "-- Containers\nLAYOUTGRID name { ROW r { COLUMN c (DesktopWidth: 6) { ... } } }\nCONTAINER name (Class: 'cls') { ... }\nCONTAINER name (OnClick: MICROFLOW Module.MF) { ... }   -- clickable container\nCUSTOMCONTAINER name (Class: 'cls') { ... }\nGROUPBOX name (Caption: 'C') { ... }\nTABCONTAINER name { TABPAGE tp (Caption: 'One') { ... } TABPAGE tp2 (Caption: 'Two') { ... } }\n\n" +
 			"-- Data widgets\nDATAVIEW name (DataSource: $Param) { ... FOOTER f { ... } }\nDATAGRID name (DataSource: DATABASE Module.Entity) { COLUMN c (Attribute: A) }\nGALLERY name (DataSource: DATABASE Module.Entity, DesktopColumns: 3) { ... }\nLISTVIEW name (DataSource: DATABASE Module.Entity) { ... }\nLISTVIEW name (...) { ... TEMPLATE FOR Module.Specialization { ... } }\n\n" +
-			"-- Data grid filters and sort (inside a DATAGRID's FILTER block)\nDATAGRID dg (...) { COLUMN c (Attribute: A) FILTER f { TEXTFILTER tf (Attribute: A) } }\nTEXTFILTER | NUMBERFILTER | DATEFILTER | DROPDOWNFILTER | DROPDOWNSORT\n\n" +
+			"-- Data grid 2 column filters go INSIDE the column's own braces\nDATAGRID dg (...) { COLUMN c (Attribute: A) { TEXTFILTER tf (Attribute: A) } }\nTEXTFILTER | NUMBERFILTER | DATEFILTER | DROPDOWNFILTER | DROPDOWNSORT\n" +
+			"--   Match the filter to the column's type, or MxBuild refuses it: String ->\n" +
+			"--   TEXTFILTER, Integer/Long/Decimal -> NUMBERFILTER, Date and time -> DATEFILTER,\n" +
+			"--   Enumeration -> DROPDOWNFILTER. A Boolean column takes no filter at all.\n" +
+			"--   The grid-wide filter bar is CONTROLBAR; a GALLERY spells that same slot\n" +
+			"--   FILTER, so `FILTER f { ... }` belongs to a gallery and not to a datagrid:\n" +
+			"GALLERY g (...) { FILTER f { TEXTFILTER tf (Attribute: A) } }\n" +
+			"--   A FILTER block written on a DATAGRID is not a column filter and not a\n" +
+			"--   container the grid declares — it used to be dropped on write with no\n" +
+			"--   diagnostic, and is now refused (MDL-WIDGET30).\n\n" +
 			"-- Inputs\nTEXTBOX name (Label: 'L', Attribute: Attr)\nTEXTAREA | DATEPICKER | COMBOBOX | CHECKBOX | RADIOBUTTONS\n\n" +
 			"-- Actions\nACTIONBUTTON name (Caption: 'C', Action: SAVE_CHANGES, ButtonStyle: Primary)\nLINKBUTTON name (Caption: 'C', Action: ...)\n\n" +
 			"-- Display\nDYNAMICTEXT name (Content: 'Hello, {1}!', ContentParams: [{1} = Name])\nTITLE name (Content: 'Heading')\nIMAGE name (Image: 'Module.Collection.ImageName')\nIMAGE name (ImageType: imageUrl, ImageUrl: 'https://…')\n" +
@@ -145,7 +154,7 @@ CREATE PAGE Sales.Detail (Title: 'Detail', Layout: Atlas_Core.Atlas_Default) {
 			"--   DROPDOWN       -> COMBOBOX\n" +
 			"-- And three the executor refuses on BOTH engines, each with its own message:\n" +
 			"--   STATICTEXT         (writes Forms$Text, a type Mendix no longer has — the\n" +
-			"--                       project could not be OPENED afterwards; MDL-WIDGET29.\n" +
+			"--                       project could not be OPENED afterwards; MDL-WIDGET30.\n" +
 			"--                       Use DYNAMICTEXT with a literal Content.)\n" +
 			"--   REFERENCESELECTOR  (unsupported widget type)\n" +
 			"--   LEGACYDATAGRID     (use DATAGRID for the pluggable equivalent on Mendix 11+)",

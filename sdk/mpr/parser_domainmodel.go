@@ -475,6 +475,13 @@ func parseAssociation(raw map[string]any) *domainmodel.Association {
 			assoc.Navigability2 = extractString(sourceMap["Navigability2"])
 		case "Rest$ODataPrimitiveCollectionAssociationSource":
 			assoc.Source = "Rest$ODataPrimitiveCollectionAssociationSource"
+		case "DomainModels$OqlViewAssociationSource":
+			// A view entity's association to a persistent entity. Reading it is
+			// not a convenience: an unread Source is written back as null on the
+			// next rewrite of this domain model, which turns a working project
+			// into CE6771 + CE6770 with no statement having asked for that.
+			assoc.Source = "DomainModels$OqlViewAssociationSource"
+			assoc.ViewSourceReference = extractString(sourceMap["Reference"])
 		}
 	}
 
@@ -510,6 +517,15 @@ func parseCrossAssociation(raw map[string]any) *domainmodel.CrossModuleAssociati
 				Type:         domainmodel.DeleteBehaviorType(childType),
 				ErrorMessage: deleteBehaviorErrorMessage(deleteBehaviorRaw["ChildErrorMessage"]),
 			}
+		}
+	}
+
+	// A view entity pointing at an entity in ANOTHER module lands here rather
+	// than in parseAssociation, so the Source has to be read in both places.
+	if sourceMap, ok := raw["Source"].(map[string]any); ok {
+		if extractString(sourceMap["$Type"]) == "DomainModels$OqlViewAssociationSource" {
+			ca.Source = "DomainModels$OqlViewAssociationSource"
+			ca.ViewSourceReference = extractString(sourceMap["Reference"])
 		}
 	}
 
