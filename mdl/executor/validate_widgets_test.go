@@ -312,29 +312,48 @@ func TestValidateConsecutiveDynamicText(t *testing.T) {
 		return &ast.WidgetV3{Type: "dynamictext", Name: name, Properties: map[string]any{"RenderMode": rm}}
 	}
 	tb := func(name string) *ast.WidgetV3 { return &ast.WidgetV3{Type: "textbox", Name: name} }
+	flexParent := func(props map[string]any) *ast.WidgetV3 {
+		return &ast.WidgetV3{Type: "container", Name: "row", Properties: props}
+	}
 	cases := []struct {
 		name     string
 		siblings []*ast.WidgetV3
+		parent   *ast.WidgetV3
 		want     bool
 	}{
-		{"two adjacent dynamictexts", []*ast.WidgetV3{dt("a"), dt("b")}, true},
-		{"three adjacent (warns once)", []*ast.WidgetV3{dt("a"), dt("b"), dt("c")}, true},
-		{"explicit Text render mode", []*ast.WidgetV3{dtRM("a", "Text"), dtRM("b", "Text")}, true},
-		{"separated by another widget", []*ast.WidgetV3{dt("a"), tb("x"), dt("b")}, false},
-		{"single dynamictext", []*ast.WidgetV3{dt("a")}, false},
-		{"no dynamictext", []*ast.WidgetV3{tb("x"), tb("y")}, false},
+		{"two adjacent dynamictexts", []*ast.WidgetV3{dt("a"), dt("b")}, nil, true},
+		{"three adjacent (warns once)", []*ast.WidgetV3{dt("a"), dt("b"), dt("c")}, nil, true},
+		{"explicit Text render mode", []*ast.WidgetV3{dtRM("a", "Text"), dtRM("b", "Text")}, nil, true},
+		{"separated by another widget", []*ast.WidgetV3{dt("a"), tb("x"), dt("b")}, nil, false},
+		{"single dynamictext", []*ast.WidgetV3{dt("a")}, nil, false},
+		{"no dynamictext", []*ast.WidgetV3{tb("x"), tb("y")}, nil, false},
 		// Only headings (H1–H6) are block-level. Paragraph renders inline (<span>)
 		// and fuses, so it IS flagged (#29 corrected treating it as block-level).
-		{"two paragraphs fuse", []*ast.WidgetV3{dtRM("p1", "Paragraph"), dtRM("p2", "Paragraph")}, true},
-		{"paragraph then text fuse", []*ast.WidgetV3{dtRM("p", "Paragraph"), dt("t")}, true},
+		{"two paragraphs fuse", []*ast.WidgetV3{dtRM("p1", "Paragraph"), dtRM("p2", "Paragraph")}, nil, true},
+		{"paragraph then text fuse", []*ast.WidgetV3{dtRM("p", "Paragraph"), dt("t")}, nil, true},
 		// Headings render block-level, so a heading + subtitle does not concatenate.
-		{"heading then subtitle", []*ast.WidgetV3{dtRM("h", "H2"), dt("sub")}, false},
-		{"two headings", []*ast.WidgetV3{dtRM("h1", "H2"), dtRM("h2", "H3")}, false},
-		{"heading breaks a run of inlines", []*ast.WidgetV3{dt("a"), dtRM("h", "H2"), dt("b")}, false},
+		{"heading then subtitle", []*ast.WidgetV3{dtRM("h", "H2"), dt("sub")}, nil, false},
+		{"two headings", []*ast.WidgetV3{dtRM("h1", "H2"), dtRM("h2", "H3")}, nil, false},
+		{"heading breaks a run of inlines", []*ast.WidgetV3{dt("a"), dtRM("h", "H2"), dt("b")}, nil, false},
+		// A parent that lays each child out as its own box is the false positive
+		// this rule produced 8 times in one project (mxcli-ledger Phase 36): the
+		// spans sat in flex tracks 16px apart and nothing concatenated. Both flex
+		// directions qualify — a row gives each child its own track, a column
+		// stacks them.
+		{"flex row parent, by design property", []*ast.WidgetV3{dt("a"), dt("b")},
+			flexParent(map[string]any{"DesignProperties": []ast.DesignPropertyEntryV3{{Key: "Flex container", Value: "Horizontal (row)"}}}), false},
+		{"flex column parent, by design property", []*ast.WidgetV3{dt("a"), dt("b")},
+			flexParent(map[string]any{"DesignProperties": []ast.DesignPropertyEntryV3{{Key: "Flex container", Value: "Vertical (column)"}}}), false},
+		{"flex parent, by the class Atlas emits", []*ast.WidgetV3{dt("a"), dt("b")},
+			flexParent(map[string]any{"Class": "card flex-row spacing-inner"}), false},
+		// A parent with an unrelated class is still reported: the rule cannot see
+		// the project's stylesheet, so it hedges the claim rather than dropping it.
+		{"parent with an unrelated class", []*ast.WidgetV3{dt("a"), dt("b")},
+			flexParent(map[string]any{"Class": "ledger-tx-row"}), true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := len(validateConsecutiveDynamicText(c.siblings, "page X")) > 0
+			got := len(validateConsecutiveDynamicText(c.siblings, c.parent, "page X")) > 0
 			if got != c.want {
 				t.Errorf("MDL-WIDGET15 present = %v, want %v", got, c.want)
 			}

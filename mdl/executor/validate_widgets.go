@@ -192,7 +192,9 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 			out = append(out, validateWidgetTreeIn(w.Children, registry, locationPrefix, objectListMappingSet(def), w, childContextVar, childContextKnown)...)
 		}
 	}
-	out = append(out, validateConsecutiveDynamicText(widgets, locationPrefix)...)
+	// `parent` is what decides whether the run actually concatenates: a flex or
+	// grid parent gives each child its own box. See the rule's own comment.
+	out = append(out, validateConsecutiveDynamicText(widgets, parent, locationPrefix)...)
 	return out
 }
 
@@ -264,13 +266,51 @@ func inlineDynamicText(w *ast.WidgetV3) bool {
 	return !headingRenderModeRe.MatchString(w.GetRenderMode())
 }
 
+// flexContainerClassRe matches the classes Atlas' "Flex container" design
+// property emits, which an author can equally write by hand.
+var flexContainerClassRe = regexp.MustCompile(`(?i)(^|\s)flex-(row|column)(\s|$)`)
+
+// laysOutChildrenAsFlexItems reports whether a parent puts each child in its own
+// flex track, which is decidable from the MDL alone.
+//
+// Both options qualify: a row gives each child its own track side by side, a
+// column stacks them. Either way two spans are separate boxes and nothing
+// concatenates.
+func laysOutChildrenAsFlexItems(parent *ast.WidgetV3) bool {
+	if parent == nil {
+		return false
+	}
+	for _, dp := range parent.GetDesignProperties() {
+		if strings.EqualFold(dp.Key, "Flex container") && dp.Value != "" {
+			return true
+		}
+	}
+	return flexContainerClassRe.MatchString(parent.GetClass())
+}
+
 // validateConsecutiveDynamicText emits an advisory (MDL-WIDGET15) when two or
 // more INLINE dynamictext widgets are direct siblings: Mendix renders a Text- or
-// Paragraph-mode DynamicText inline (a `<span>`), so adjacent ones concatenate
-// with no separator (`€ 310` + `7/24/2026` → `€ 3107/24/2026`). Only a heading
-// render mode (H1–H6) is block-level and breaks the run. Info severity — it does
-// not fail the build, it warns the author about a layout surprise. (ledger #27/#29)
-func validateConsecutiveDynamicText(siblings []*ast.WidgetV3, locationPrefix string) []linter.Violation {
+// Paragraph-mode DynamicText inline (a `<span>`), so adjacent ones can run
+// together with no separator (`€ 310` + `7/24/2026` → `€ 3107/24/2026`). Only a
+// heading render mode (H1–H6) is block-level and breaks the run on its own.
+// Info severity — it does not fail the build, it warns the author about a
+// layout surprise. (ledger #27/#29)
+//
+// What the rule may and may not claim was settled by a false positive
+// (mxcli-ledger FINDINGS Phase 36, 8 occurrences): the message asserted "so
+// their text concatenates" as fact, and in that project it did not — the pairs
+// sat in flex tracks 16px apart, because their parent carried a project class
+// the project's own SCSS styles as a flex row. "These two are adjacent spans"
+// is checkable; "so their text concatenates" depends on computed layout a
+// static checker cannot see. So the rule now does both halves of what it can:
+// it stays SILENT where the MDL itself says the parent lays children out as
+// flex items, and where it cannot tell, it says the two widgets run together
+// UNLESS their parent lays them out — a conditional the reader can settle by
+// looking at one stylesheet.
+func validateConsecutiveDynamicText(siblings []*ast.WidgetV3, parent *ast.WidgetV3, locationPrefix string) []linter.Violation {
+	if laysOutChildrenAsFlexItems(parent) {
+		return nil
+	}
 	run := 0
 	for _, w := range siblings {
 		if inlineDynamicText(w) {
@@ -285,8 +325,9 @@ func validateConsecutiveDynamicText(siblings []*ast.WidgetV3, locationPrefix str
 				RuleID:   "MDL-WIDGET15",
 				Severity: linter.SeverityInfo,
 				Message: fmt.Sprintf(
-					"%s: adjacent inline dynamictext widgets (RenderMode Text or Paragraph, both <span>) render with no separator, so their text concatenates. Merge them into one dynamictext with multiple content params, wrap each in its own container, or use a heading RenderMode (H1–H6, which is block-level). Note: Paragraph does NOT fix this — it also renders inline.",
+					"%s: adjacent inline dynamictext widgets (RenderMode Text or Paragraph, both <span>) render with no separator between them, so their text runs together unless their parent lays each child out as its own box (a flex or grid container). Merge them into one dynamictext with multiple content params, wrap each in its own container, or use a heading RenderMode (H1–H6, which is block-level). Note: Paragraph does NOT fix this — it also renders inline.",
 					locationPrefix),
+				Suggestion: "If the parent is already a flex row in your stylesheet, this is a false alarm and saying so in MDL silences it: `DesignProperties: ['Flex container': 'Horizontal (row)']`, or the `flex-row` / `flex-column` class Atlas emits for it.",
 			}}
 		}
 	}
