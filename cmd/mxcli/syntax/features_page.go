@@ -331,6 +331,7 @@ CREATE PAGE Sales.Detail (Title: 'Detail', Layout: Atlas_Core.Atlas_Default) {
 		Keywords: []string{
 			"layout", "layouts", "create layout", "scrollcontainer", "region",
 			"placeholder", "navigationtree", "topbar", "sidebar", "frame",
+			"togglemode", "collapse", "collapsible sidebar", "shrink content",
 		},
 		Syntax: "CREATE [OR REPLACE] LAYOUT Module.Name (\n" +
 			"  layouttype: 'Responsive' | 'Phone' | 'Tablet' | 'ModalPopup'   -- web\n" +
@@ -340,7 +341,11 @@ CREATE PAGE Sales.Detail (Title: 'Detail', Layout: Atlas_Core.Atlas_Default) {
 			") {\n" +
 			"  SCROLLCONTAINER name {\n" +
 			"    REGION top | right | bottom | left | center\n" +
-			"      [( Size: 60, SizeMode: 'Fixed' | 'Pixels' | 'Auto', Class: '…' )] {\n" +
+			"      [( Size: 60, SizeMode: 'Fixed' | 'Pixels' | 'Auto',\n" +
+			"         ToggleMode: 'None' | 'PushContentAside' | 'SlideOverContent'\n" +
+			"                   | 'ShrinkContentInitiallyOpen'\n" +
+			"                   | 'ShrinkContentInitiallyClosed',\n" +
+			"         Class: '…' )] {\n" +
 			"      -- widgets, plus:\n" +
 			"      NAVIGATIONTREE name (Profile: 'Responsive')   -- vertical, for a sidebar\n" +
 			"      MENUBAR name (Profile: 'Responsive')          -- horizontal, for a topbar\n" +
@@ -363,7 +368,19 @@ CREATE PAGE Sales.Detail (Title: 'Detail', Layout: Atlas_Core.Atlas_Default) {
 			"    REGION top (Size: 60, SizeMode: 'Fixed', Class: 'region-topbar') {\n" +
 			"      SNIPPETCALL topbar (Snippet: MyModule.SNIPPET_TopBar)\n" +
 			"    }\n" +
-			"    REGION left (Size: 232, SizeMode: 'Pixels', Class: 'region-sidebar') {\n" +
+			"    -- ToggleMode is what makes a sidebar a sidebar rather than a fixed\n" +
+			"    -- strip of chrome: without one the region keeps its full width at\n" +
+			"    -- every viewport, which on a phone is most of the screen. Atlas sets\n" +
+			"    -- it on every layout that has a sidebar (Atlas_Default\n" +
+			"    -- ShrinkContentInitiallyClosed, Atlas_TopBar SlideOverContent).\n" +
+			"    -- These are the stored members, not Studio Pro's captions — its\n" +
+			"    -- \"Shrink content (initially closed)\" is ShrinkContentInitiallyClosed,\n" +
+			"    -- and a caption is refused (MDL-WIDGET29) rather than written, since\n" +
+			"    -- Mendix drops an unknown member on load and the layout would build\n" +
+			"    -- at 0 errors with no toggle behaviour at all.\n" +
+			"    REGION left (Size: 232, SizeMode: 'Pixels',\n" +
+			"                 ToggleMode: 'ShrinkContentInitiallyClosed',\n" +
+			"                 Class: 'region-sidebar') {\n" +
 			"      NAVIGATIONTREE navMenu (Profile: 'Responsive')\n" +
 			"    }\n" +
 			"    REGION center (Class: 'region-content') {\n" +

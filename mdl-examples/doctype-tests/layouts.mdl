@@ -62,6 +62,56 @@ create or replace layout LayoutTest.App_Default (
 }
 
 -- ----------------------------------------------------------------------------
+-- A sidebar that collapses.
+--
+-- TOGGLEMODE is what makes a region a sidebar rather than a fixed strip of
+-- chrome, and it is the only property that decides it: without one the region
+-- keeps its full width at every viewport, which on a phone is most of the
+-- screen. Atlas sets it on every layout that has a sidebar, to four different
+-- values — Atlas_Default ShrinkContentInitiallyClosed, Atlas_SideBar
+-- ShrinkContentInitiallyOpen, Atlas_TopBar SlideOverContent, Phone_Sidebar
+-- PushContentAside.
+--
+--   None                          the region never collapses (the default)
+--   PushContentAside              opening it pushes the content over
+--   SlideOverContent              it slides over the content
+--   ShrinkContentInitiallyOpen    it shrinks the content; starts open
+--   ShrinkContentInitiallyClosed  the same, starting at the icon rail
+--
+-- These are the members Mendix stores, not Studio Pro's captions: its "Shrink
+-- content (initially closed)" is ShrinkContentInitiallyClosed. A value outside
+-- the list is refused (MDL-WIDGET29) rather than written, because Mendix drops
+-- an unknown member on load — the layout would build at 0 errors and render
+-- with no toggle behaviour at all.
+--
+-- An InitiallyClosed sidebar needs something that opens it. Atlas uses a
+-- Forms$SidebarToggleButton, which MDL cannot author yet; the route that works
+-- here is a button calling a nanoflow that toggles a class.
+-- ----------------------------------------------------------------------------
+
+create or replace layout LayoutTest.CollapsingSidebar (
+  layouttype: 'Responsive',
+  class: 'layout-atlas layout-atlas-responsive-default'
+) {
+  scrollcontainer layoutContainer {
+    region top (size: 60, sizemode: 'Fixed', class: 'region-topbar') {
+      menubar mainMenu (profile: 'Responsive')
+    }
+    region left (
+      size: 232,
+      sizemode: 'Pixels',
+      togglemode: 'ShrinkContentInitiallyOpen',
+      class: 'region-sidebar'
+    ) {
+      navigationtree navMenu (profile: 'Responsive')
+    }
+    region center (class: 'region-content') {
+      placeholder Main
+    }
+  }
+}
+
+-- ----------------------------------------------------------------------------
 -- More than one placeholder. A page binds to each by name — the name is API,
 -- so renaming one unbinds every page that used it.
 --

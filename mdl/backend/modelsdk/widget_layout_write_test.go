@@ -76,6 +76,44 @@ func TestScrollContainerToGen_FillsTheNamedSlots(t *testing.T) {
 	}
 }
 
+// ToggleMode is the property that decides whether a region collapses, and
+// leaving it unwritten is what made a copied Atlas layout render a sidebar
+// pinned open at 232px on a phone. Studio Pro writes the key on every region —
+// 3 of 3 in Atlas_Default, including the two set to None — so it is written
+// unconditionally here, like Size and SizeMode beside it.
+func TestScrollRegionToGen_CarriesTheToggleMode(t *testing.T) {
+	sc := &pages.ScrollContainer{
+		BaseWidget: pages.BaseWidget{Name: "layoutContainer"},
+		Regions: []*pages.ScrollContainerRegion{
+			{Slot: pages.ScrollSlotLeft, Class: "region-sidebar", Size: 232, SizeMode: "Pixels",
+				ToggleMode: "ShrinkContentInitiallyClosed"},
+			{Slot: pages.ScrollSlotCenter, Class: "region-content"},
+		},
+	}
+	g, err := widgetToGen(sc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := encodeToMap(t, g)
+
+	left, ok := doc["Left"].(map[string]any)
+	if !ok {
+		t.Fatalf("Left = %T, want a region document", doc["Left"])
+	}
+	if left["ToggleMode"] != "ShrinkContentInitiallyClosed" {
+		t.Errorf("left ToggleMode = %v, want ShrinkContentInitiallyClosed", left["ToggleMode"])
+	}
+	// The untouched region is the control: it must carry the key at Mendix's
+	// own default rather than carry nothing, which is what it did before.
+	center, ok := doc["CenterRegion"].(map[string]any)
+	if !ok {
+		t.Fatalf("CenterRegion = %T, want a region document", doc["CenterRegion"])
+	}
+	if center["ToggleMode"] != "None" {
+		t.Errorf("centre ToggleMode = %v, want None", center["ToggleMode"])
+	}
+}
+
 func TestScrollContainerToGen_RejectsAnUnknownSlot(t *testing.T) {
 	sc := &pages.ScrollContainer{
 		BaseWidget: pages.BaseWidget{Name: "sc"},

@@ -110,7 +110,35 @@ Main, not by a property)
 |----------|--------|-------|
 | `size` | integer | Unset is Studio Pro's `200` |
 | `sizemode` | `Fixed`, `Pixels`, `Auto` | Unset is `Auto` |
+| `togglemode` | `None`, `PushContentAside`, `SlideOverContent`, `ShrinkContentInitiallyOpen`, `ShrinkContentInitiallyClosed` | Whether the region collapses. Unset is `None` |
 | `class` | CSS class | e.g. `region-topbar`, `region-content` |
+
+### `togglemode` — what makes a sidebar a sidebar
+
+Without one, the region keeps its full width at every viewport. On a 414px
+phone a 232px sidebar leaves 182px for the app, and nothing reports it: the
+layout builds at 0 errors, because a region that never collapses is valid.
+
+Atlas sets it on every layout that has a sidebar, and the value is the whole
+difference between them:
+
+| Atlas layout | sidebar `togglemode` |
+|--------------|----------------------|
+| `Atlas_Default` | `ShrinkContentInitiallyClosed` |
+| `Atlas_SideBar` | `ShrinkContentInitiallyOpen` |
+| `Atlas_TopBar` | `SlideOverContent` |
+| `Phone_Sidebar` | `PushContentAside` |
+
+These are the members Mendix stores, not the captions Studio Pro's dropdown
+shows — its *"Shrink content (initially closed)"* is `ShrinkContentInitiallyClosed`.
+A caption is **refused** (`MDL-WIDGET29`) rather than written, because Mendix
+drops a member it does not recognise when the document loads: the layout would
+exec clean, build clean, and render as if the property had never been set.
+
+An `InitiallyClosed` sidebar needs something that opens it. Atlas uses a
+`Forms$SidebarToggleButton`, which MDL cannot author yet — `describe layout`
+emits it as a comment ending `NOT re-executable`. A button calling a nanoflow
+that toggles a class is the route that works today.
 
 ## The four elements only a layout has
 
@@ -154,7 +182,12 @@ CREATE LAYOUT MyModule.App_Sidebar
 )
 {
     SCROLLCONTAINER layoutContainer {
-        REGION left (size: 232, sizemode: 'Pixels', class: 'region-sidebar') {
+        REGION left (
+            size: 232,
+            sizemode: 'Pixels',
+            togglemode: 'ShrinkContentInitiallyOpen',
+            class: 'region-sidebar'
+        ) {
             NAVIGATIONTREE navMenu (profile: 'Responsive')
         }
         REGION center (class: 'region-content') {

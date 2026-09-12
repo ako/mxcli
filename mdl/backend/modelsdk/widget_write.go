@@ -1681,6 +1681,12 @@ func scrollRegionToGen(r *pages.ScrollContainerRegion) (element.Element, error) 
 	}
 	g.SetSize(int32(size))
 	g.SetSizeMode(orDefaultStr(r.SizeMode, "Auto"))
+	// Written unconditionally, like Size and SizeMode above: Studio Pro carries
+	// the key on every region including the ones set to None (3 of 3 in
+	// Atlas_Default). Omitting it is what dropped Atlas' sidebar behaviour on a
+	// describe → exec copy — the region came back as a fixed 232px strip at
+	// every viewport, which on a 414px phone is 56% of the screen (ledger §142).
+	g.SetToggleMode(orDefaultStr(r.ToggleMode, "None"))
 	for _, w := range r.Widgets {
 		wg, err := widgetToGen(w)
 		if err != nil {

@@ -1,0 +1,94 @@
+-- mxcli-ledger FINDINGS §142 (third loss) — a scroll-container region's
+-- collapse behaviour was not carried, and a wrong value for it was not caught.
+--
+-- NEGATIVE test (.fail.mdl): this script must FAIL `mxcli check`. It can be a
+-- .fail.mdl because MDL-WIDGET29 needs no project — the fault is the value's
+-- shape, settled by the parse alone, and `make check-mdl` runs check without
+-- one.
+--
+-- REPORTED SYMPTOM
+--
+--   A layout copied out of Atlas the documented way — `describe layout`, rename,
+--   re-exec — rendered a sidebar pinned open at its full width. Measured at a
+--   414x896 phone profile on a real 11.14.0 app:
+--
+--     Ledger.App_Default  (mxcli's copy of Atlas)   sidebar 232px  content 182px
+--     Atlas_Core.Atlas_Default  (untouched)         sidebar  52px  content 362px
+--
+--   Both carry the identical inline --sidebar-size: 232px, so the width was not
+--   the difference. 56% of the screen was chrome, and four browser passes at
+--   1400x900 had seen nothing wrong.
+--
+-- WHY IT HAPPENED
+--
+--   Forms$ScrollContainerRegion.ToggleMode was absent from mxcli's semantic
+--   model, so nothing read it, nothing wrote it, and describe said nothing
+--   about it. Atlas sets it on every layout that has a sidebar, to four
+--   different values:
+--
+--     Atlas_Default   ShrinkContentInitiallyClosed      copy: (key absent)
+--     Atlas_SideBar   ShrinkContentInitiallyOpen        copy: (key absent)
+--     Atlas_TopBar    SlideOverContent                  copy: (key absent)
+--     Phone_Sidebar   PushContentAside                  copy: (key absent)
+--
+--   Four behaviours, one outcome. Unlike the sidebar toggle BUTTON, which
+--   describe already flags as "NOT re-executable", this loss left no trace: the
+--   copy execs clean and `mx check` reports 0 errors, because a region that
+--   never collapses is perfectly valid Mendix.
+--
+-- WHAT THIS FILE TESTS
+--
+--   The other half of the fix. Once the property is authorable, the way to
+--   spend an afternoon on it is to type what Studio Pro's dropdown displays —
+--   Mendix drops an unrecognised member on load, so the layout would build at
+--   0 errors and render with no toggle behaviour, which is the same silence in
+--   a new place. Each region below is refused by MDL-WIDGET29; the corrected
+--   spelling is in the comment above it.
+
+create module RegionToggleFail;
+
+create or replace layout RegionToggleFail.CaptionNotMember (
+  layouttype: 'Responsive'
+) {
+  scrollcontainer layoutContainer {
+    -- Studio Pro's caption. Correct: togglemode: 'ShrinkContentInitiallyClosed'
+    region left (
+      size: 232,
+      sizemode: 'Pixels',
+      togglemode: 'Shrink content (initially closed)',
+      class: 'region-sidebar'
+    ) {
+      navigationtree navMenu (profile: 'Responsive')
+    }
+    region center (class: 'region-content') {
+      placeholder Main
+    }
+  }
+}
+
+create or replace layout RegionToggleFail.Abbreviated (
+  layouttype: 'Responsive'
+) {
+  scrollcontainer layoutContainer {
+    -- A plausible shortening. Correct: togglemode: 'SlideOverContent'
+    region left (togglemode: 'SlideOver', class: 'region-sidebar') {
+      navigationtree navMenu (profile: 'Responsive')
+    }
+    region center (class: 'region-content') {
+      placeholder Main
+    }
+  }
+}
+
+-- A page carries scroll containers too, and the same value is just as silent
+-- there. Correct: togglemode: 'PushContentAside'
+create or replace page RegionToggleFail.Home (title: 'Home') {
+  scrollcontainer sc {
+    region left (togglemode: 'push', class: 'region-sidebar') {
+      dynamictext lbl (content: 'nav')
+    }
+    region center (class: 'region-content') {
+      dynamictext body (content: 'content')
+    }
+  }
+}

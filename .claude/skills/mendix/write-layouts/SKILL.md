@@ -101,7 +101,12 @@ create [or replace] layout MyModule.App_Default (
     region top (size: 60, sizemode: 'Fixed', class: 'region-topbar') {
       snippetcall topbar (snippet: MyModule.SNIPPET_TopBar)
     }
-    region left (size: 232, sizemode: 'Pixels', class: 'region-sidebar') {
+    region left (
+      size: 232,
+      sizemode: 'Pixels',
+      togglemode: 'ShrinkContentInitiallyClosed',
+      class: 'region-sidebar'
+    ) {
       navigationtree navMenu (profile: 'Responsive')
     }
     region center (class: 'region-content') {
@@ -130,7 +135,40 @@ create page MyModule.Home (title: 'Home', layout: MyModule.App_Default) {
 | Menu bar | `menubar name (profile: 'Responsive')` | The topbar menu — horizontal. Same stored shape as a navigation tree |
 
 Region properties: `size` (integer), `sizemode` (`Fixed` / `Pixels` / `Auto`),
-`class`. Unset is Studio Pro's `200` / `Auto`.
+`togglemode`, `class`. Unset is Studio Pro's `200` / `Auto` / `None`.
+
+## `togglemode` — a sidebar that never collapses is a phone with no app on it
+
+`togglemode` is the only property that decides whether a region collapses, and
+it is invisible on a desktop. Without one the region keeps its full width at
+every viewport: a 232px sidebar on a 414px phone leaves 182px for the app, and
+nothing reports it, because a region that never collapses is valid Mendix and
+builds at 0 errors.
+
+| Value | Behaviour |
+|-------|-----------|
+| `None` | never collapses (the default) |
+| `PushContentAside` | opening it pushes the content over |
+| `SlideOverContent` | it slides over the content |
+| `ShrinkContentInitiallyOpen` | it shrinks the content; starts open |
+| `ShrinkContentInitiallyClosed` | the same, starting at the icon rail |
+
+Atlas sets it on every layout that has a sidebar, to a different value each
+time — `Atlas_Default` `ShrinkContentInitiallyClosed`, `Atlas_SideBar`
+`ShrinkContentInitiallyOpen`, `Atlas_TopBar` `SlideOverContent`,
+`Phone_Sidebar` `PushContentAside` — so it is what distinguishes those layouts
+rather than a detail of them.
+
+These are the **members Mendix stores, not Studio Pro's captions**: its *"Shrink
+content (initially closed)"* is `ShrinkContentInitiallyClosed`. A caption is
+refused (**MDL-WIDGET29**) rather than written, because an unrecognised member
+is dropped when the document loads — the layout would exec clean, build clean
+and render with no toggle behaviour at all.
+
+An `InitiallyClosed` sidebar needs something that opens it. Atlas uses a
+`Forms$SidebarToggleButton`, which MDL cannot author yet — `describe layout`
+emits it as a comment ending `NOT re-executable`. A button calling a nanoflow
+that toggles a class is the route that works today.
 
 ## Layout type, and why there is no `native:` flag
 

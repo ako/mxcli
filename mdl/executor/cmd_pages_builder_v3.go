@@ -2484,6 +2484,27 @@ func flowArgsToParameterMappings(args []ast.FlowArgV3) []*pages.MicroflowParamet
 	return out
 }
 
+// canonicalToggleMode resolves a region's authored ToggleMode to the member
+// Mendix stores, case-insensitively, and refuses anything else.
+//
+// Refusing rather than passing the string through is the point. A ToggleMode
+// Mendix does not recognise is dropped when the document loads, so the layout
+// execs clean, builds clean at 0 errors, and renders exactly as if the property
+// had never been written — the silent shape of failure this property already
+// cost one project a phone-sized sidebar for (ledger §142).
+func canonicalToggleMode(raw string) (string, error) {
+	if raw == "" {
+		return "", nil
+	}
+	for _, mode := range pages.ScrollContainerToggleModes {
+		if strings.EqualFold(raw, mode) {
+			return mode, nil
+		}
+	}
+	return "", fmt.Errorf("unknown ToggleMode %q (want %s) — Studio Pro's captions are not the stored names; its \"Shrink content (initially closed)\" is ShrinkContentInitiallyClosed",
+		raw, strings.Join(pages.ScrollContainerToggleModes, ", "))
+}
+
 // buildScrollContainerV3 builds a scroll container from its five named regions.
 //
 // `region top { … }` rather than a bare `top { … }`: every other widget in MDL
@@ -2523,12 +2544,19 @@ func (pb *pageBuilder) buildScrollContainerV3(w *ast.WidgetV3) (pages.Widget, er
 		}
 		seen[slot] = true
 
+		toggleMode, err := canonicalToggleMode(child.GetStringProp("ToggleMode"))
+		if err != nil {
+			return nil, mdlerrors.NewValidation(fmt.Sprintf(
+				"scrollcontainer %q, region %q: %s", w.Name, slot, err.Error()))
+		}
+
 		region := &pages.ScrollContainerRegion{
 			BaseElement: model.BaseElement{ID: model.ID(types.GenerateID()), TypeName: "Forms$ScrollContainerRegion"},
 			Slot:        slot,
 			Class:       child.GetStringProp("Class"),
 			SizeMode:    child.GetStringProp("SizeMode"),
 			Size:        child.GetIntProp("Size"),
+			ToggleMode:  toggleMode,
 		}
 		for _, gc := range child.Children {
 			cw, err := pb.buildWidgetV3(gc)

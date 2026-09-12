@@ -258,6 +258,13 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		if w.RegionSizeMode != "" && w.RegionSizeMode != "Auto" {
 			props = append(props, fmt.Sprintf("SizeMode: %s", mdlQuote(w.RegionSizeMode)))
 		}
+		// None is the untouched default and every region carries it, so emitting
+		// it would put a line in every describe. Anything else is the region's
+		// collapse behaviour and has to be said: it is the whole difference
+		// between Atlas_Default's sidebar and Atlas_TopBar's.
+		if w.RegionToggleMode != "" && w.RegionToggleMode != "None" {
+			props = append(props, fmt.Sprintf("ToggleMode: %s", mdlQuote(w.RegionToggleMode)))
+		}
 		props = appendAppearanceProps(props, w)
 		if len(w.Children) > 0 {
 			formatWidgetProps(ctx.Output, prefix, header, props, " {\n")

@@ -619,6 +619,12 @@ var staticWidgetKnownProps = func() map[string]bool {
 		"ImageUrl", "LabelPosition", "PageSize", "Pagination", "PagingPosition",
 		"PhoneColumns", "ReadOnlyStyle", "Resizable", "Responsive", "ShowPagingButtons",
 		"Size", "Sortable", "TabletColumns", "WidthUnit", "WrapText", "Name",
+		// scroll-container region properties. Size was already here because a
+		// datagrid column uses the name too; its two neighbours were not, so a
+		// page with a sized or collapsing region warned that the property would
+		// be "silently dropped on write" — which for ToggleMode was true until
+		// the writer learned it, and for SizeMode never was.
+		"SizeMode", "ToggleMode",
 		// button icon-collection reference (issue #602)
 		"Icon",
 		// fragment / building-block sentinel-internal keys (USE_FRAGMENT /

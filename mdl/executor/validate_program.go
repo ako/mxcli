@@ -219,6 +219,12 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 	// `mxcli check page.mdl` would stay silent on a mistake it can see.
 	violations = append(violations, ValidateWidgetParamPaths(prog)...)
 
+	// Flag a scroll-container region whose ToggleMode is not a member Mendix
+	// stores. The value's shape is the fault and the parse settles it, so it
+	// runs here — and a region's silence is total: an unrecognised mode is
+	// dropped on load and the layout builds at 0 errors (ledger §142).
+	violations = append(violations, ValidateRegionToggleMode(prog)...)
+
 	// Flag a CREATE whose target name has no module. `exec` refuses it and
 	// `check` passed it, so a script stopped partway through with the earlier
 	// statements already applied (mendixlabs/mxcli#1050).

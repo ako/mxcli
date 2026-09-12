@@ -93,13 +93,35 @@ type ScrollContainer struct {
 // the BSON, so which slot it occupies is its identity. The BSON key for the
 // centre slot is "CenterRegion" while the other four are bare positions —
 // ScrollContainerSlot spells the MDL names and the codec maps them.
+// ToggleMode is what makes a sidebar a sidebar rather than a fixed strip of
+// chrome: it is the only region property that decides whether the region
+// collapses, and every Atlas layout with a sidebar sets it — to four different
+// values (Atlas_Default ShrinkContentInitiallyClosed, Atlas_SideBar
+// ShrinkContentInitiallyOpen, Atlas_TopBar SlideOverContent, Phone_Sidebar
+// PushContentAside). Leaving it out of this struct is what made a copied layout
+// render a 232px sidebar at every viewport (ledger §142's third loss).
 type ScrollContainerRegion struct {
 	model.BaseElement
-	Slot     ScrollContainerSlot `json:"slot"`
-	Size     int                 `json:"size,omitempty"`
-	SizeMode string              `json:"sizeMode,omitempty"`
-	Class    string              `json:"class,omitempty"`
-	Widgets  []Widget            `json:"widgets,omitempty"`
+	Slot       ScrollContainerSlot `json:"slot"`
+	Size       int                 `json:"size,omitempty"`
+	SizeMode   string              `json:"sizeMode,omitempty"`
+	ToggleMode string              `json:"toggleMode,omitempty"`
+	Class      string              `json:"class,omitempty"`
+	Widgets    []Widget            `json:"widgets,omitempty"`
+}
+
+// ScrollContainerToggleModes are the five members Mendix stores for a region's
+// ToggleMode, in the metamodel's own spelling — not the captions Studio Pro's
+// dropdown shows ("Shrink content (initially closed)"). A caption is refused
+// rather than written, for the reason the offline SYNC modes are: a value
+// Mendix does not know is dropped on load, so the layout would build clean and
+// render as if the property had never been set.
+var ScrollContainerToggleModes = []string{
+	"None",
+	"PushContentAside",
+	"SlideOverContent",
+	"ShrinkContentInitiallyOpen",
+	"ShrinkContentInitiallyClosed",
 }
 
 // ScrollContainerSlot names one of the five regions.

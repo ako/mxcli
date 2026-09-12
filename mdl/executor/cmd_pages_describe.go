@@ -646,8 +646,9 @@ type rawWidget struct {
 	// Scroll-container region properties, set only on the synthetic wrappers
 	// the region walk emits (the slot name goes in Name). Same shape as
 	// TabCaption: a nameless container whose identity DESCRIBE has to put back.
-	RegionSize     int
-	RegionSizeMode string
+	RegionSize       int
+	RegionSizeMode   string
+	RegionToggleMode string
 	// NavigationProfile is a Forms$NavigationTree's profile, which the document
 	// keeps one level down in MenuSource rather than on the tree.
 	NavigationProfile string

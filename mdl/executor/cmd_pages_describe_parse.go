@@ -122,6 +122,14 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 			if sm, ok := region["SizeMode"].(string); ok {
 				child.RegionSizeMode = sm
 			}
+			// ToggleMode decides whether the region collapses. Not reading it
+			// is what made describe → exec of an Atlas layout silently return a
+			// sidebar that never shrinks (ledger §142's third loss): unlike the
+			// sidebar toggle BUTTON, which describe flags as not re-executable,
+			// this one left no trace in the output at all.
+			if tm, ok := region["ToggleMode"].(string); ok {
+				child.RegionToggleMode = tm
+			}
 			child.RegionSize = bsonInt(region["Size"])
 			for _, c := range getBsonArrayElements(region["Widgets"]) {
 				if cMap, ok := c.(map[string]any); ok {
