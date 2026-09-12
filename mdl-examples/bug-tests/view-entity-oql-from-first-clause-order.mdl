@@ -1,0 +1,87 @@
+-- Bug: Mendix OQL has two clause orders, and mxcli's view-entity checker could
+-- read only one of them.
+--
+--   select … from … group by …     -- what the skills teach; worked
+--   from … group by … select …     -- what STUDIO PRO STORES; did not
+--
+-- The second is not an exotic spelling. It is the canonical Mendix form, so it
+-- is what a `DESCRIBE ENTITY` of any Studio-Pro-authored view hands back —
+-- which made describe → edit → check → exec, the obvious loop, the one loop
+-- that broke. Feeding a describe straight back reported:
+--
+--   statement 1: view entity 'X' has type mismatches:
+--   - could not parse select clause from OQL query
+--
+-- Reported by ako/view-entity-examples FINDINGS §3.
+--
+-- Root cause: `extractSelectClause` found SELECT and then scanned FORWARD for
+--   FROM to end the column list. In the from-first order the FROM is BEHIND the
+--   SELECT, so the scan ran off the end and returned "". That empty string did
+--   two things, and only the first was visible:
+--     1. inferOQLTypes reported "could not parse select clause" — one bogus error;
+--     2. every column rule sits behind `if selectClause != ""`, so MDL030
+--        (missing alias) and MDL072 (quoted alias) SILENTLY STOPPED RUNNING.
+--   The grammar had accepted both orders all along (`oqlQueryTerm` in
+--   MDLCatalog.g4) — only the hand-written scanner had not caught up.
+--
+--   This is a recurrence at the same function: bug 9b was a case-comparison
+--   slip that made it return "" for EVERY query, with the same two symptoms.
+--   An unreadable select clause is now REPORTED rather than skipped, so a
+--   third clause shape cannot switch the checker off in silence again.
+--
+-- Verify:
+--   ./bin/mxcli check mdl-examples/bug-tests/view-entity-oql-from-first-clause-order.mdl
+--     → clean (before the fix: "could not parse select clause" with a project)
+--   Its sibling proves the rules really run on this order:
+--   ./bin/mxcli check mdl-examples/bug-tests/view-entity-oql-from-first-alias.fail.mdl
+--     → MDL030 on the column with no alias (before the fix: silence)
+
+create module VClauseOrder;
+
+create entity VClauseOrder.Reading (
+  MeterCode: String(50),
+  Kwh: Decimal
+);
+
+-- The from-first order, with every clause it can carry before the select list.
+create view entity VClauseOrder.MeterTotals (
+  MeterCode: String(50),
+  Readings: Integer,
+  TotalKwh: Decimal
+) as (
+  from VClauseOrder.Reading as r
+  where r.Kwh > 0
+  group by r.MeterCode
+  select r.MeterCode as MeterCode,
+         count(r.Kwh) as Readings,
+         sum(r.Kwh) as TotalKwh
+);
+
+-- Control: the same view in the select-first order. Both must check clean and
+-- be read identically — if only one does, the blind spot has just moved.
+create view entity VClauseOrder.MeterTotalsSelectFirst (
+  MeterCode: String(50),
+  Readings: Integer,
+  TotalKwh: Decimal
+) as (
+  select r.MeterCode as MeterCode,
+         count(r.Kwh) as Readings,
+         sum(r.Kwh) as TotalKwh
+  from VClauseOrder.Reading as r
+  where r.Kwh > 0
+  group by r.MeterCode
+);
+
+-- Control: ORDER BY and LIMIT end a from-first select list, and they are also
+-- ordinary names. Widening the terminator set has to not cut a real query in
+-- half — `o.Order` here is an attribute, not a clause.
+create view entity VClauseOrder.TopMeters (
+  MeterCode: String(50),
+  TotalKwh: Decimal
+) as (
+  from VClauseOrder.Reading as r
+  group by r.MeterCode
+  select r.MeterCode as MeterCode, sum(r.Kwh) as TotalKwh
+  order by r.MeterCode asc
+  limit 10
+);

@@ -214,6 +214,28 @@ column colStatus (attribute: "Status")  { dropdownfilter f4 }  -- Enumeration
 -- Boolean columns: omit the filter entirely
 ```
 
+**The filter goes inside the column's own braces.** A `filter { … }` block is
+the GALLERY spelling of a different thing — the widget-wide filter bar, which a
+data grid calls `controlbar`:
+
+```sql
+-- ✅ data grid: per-column filter, inside the column
+datagrid dg (...) { column colName (attribute: Name) { textfilter f1 } }
+
+-- ✅ gallery: the widget-wide filter bar, which the gallery calls `filter`
+gallery g (...) { filter f { textfilter f1 } }
+
+-- ❌ the gallery form on a data grid — MDL-WIDGET29
+datagrid dg (...) { column colName (attribute: Name) filter f { textfilter f1 } }
+```
+
+That last line is worth reading twice: it is not a column with a filter block.
+A widget is `type name (props) { body }`, so with the `filter` *outside* the
+column's braces it parses as a column with **no body** followed by a separate
+`filter` widget — which the grid has nowhere to put. It used to be dropped on
+write with no diagnostic, so `DESCRIBE PAGE` showing a filterless column was the
+only symptom; it is now refused at check and exec time.
+
 ## NewEdit Page Template
 
 Form for creating or editing a single entity. **Requires a page parameter** to receive the object.

@@ -1,0 +1,31 @@
+-- Negative half of view-entity-oql-from-first-clause-order.mdl.
+--
+-- The reported symptom of the from-first blind spot was one bogus error. The
+-- unreported half was worse: with the select clause unreadable, every column
+-- rule stopped running, so a from-first query got NO checking at all.
+--
+-- This file is that proof. A select column with no `as` alias is MDL030's
+-- reason for existing — MxBuild rejects the view (CE0174) — and in the
+-- from-first order it used to pass `check` in silence.
+--
+-- Expected: `mxcli check` FAILS with MDL030 "select column 1 has no as alias".
+-- Before the fix: exit 0, no diagnostic.
+--
+-- The working forms are in the sibling file.
+
+create module VClauseOrderFail;
+
+create entity VClauseOrderFail.Reading (
+  MeterCode: String(50),
+  Kwh: Decimal
+);
+
+create view entity VClauseOrderFail.MeterTotals (
+  MeterCode: String(50),
+  Readings: Integer
+) as (
+  from VClauseOrderFail.Reading as r
+  group by r.MeterCode
+  select r.MeterCode,
+         count(r.Kwh) as Readings
+);

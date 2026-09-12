@@ -83,6 +83,29 @@ writers → both readers → describe.
 that `check` rejected outright; a validator that no pass calls reports no
 violations and reads exactly like a clean project.
 
+**The sharper version: a check can be switched off by its own input.** Where a
+family of rules hangs off one parsed fragment — a select clause, a resolved
+definition, a decoded sub-document — a parse that yields nothing does not report
+"I could not read this"; it reports nothing at all, which is the same output as
+a clean file. The view-entity OQL scanner did this twice, two months apart and
+in the same function: once because it compared cases wrongly, once because
+Mendix's other clause order put the terminator behind the keyword it scanned
+forward from. Both times a single visible false positive was the only hint,
+while three real rules stopped running behind it. The durable fix is not the
+next input shape, it is making *unreadable* a reported outcome distinct from
+*nothing to report* — after which a third shape costs a diagnostic rather than a
+blind spot.
+
+**Children drop the same way properties do.** A widget's body is distributed by
+several passes that each skip what they do not recognise, so a child matching no
+container, no slot and no catch-all is built and discarded exactly as an
+unrouted property is. The compounding factor is that the *same slot* wears
+different keywords on different widgets — the filters placeholder is `filter` on
+a Gallery and `controlbar` on a Data Grid — so a form copied between two widgets
+is both plausible and inert. That table is also the fix: because the engine
+already maps keyword to property per widget, the diagnostic can name the
+spelling *this* widget uses instead of listing everything it declares.
+
 ## See also
 
 - [fix-issue findings](../../.claude/skills/fix-issue/findings/) — the individual

@@ -156,6 +156,12 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		// widgets get the stricter def.json check (MDL-WIDGET01) above, and
 		// object-list items are validated by the object-list engine.
 		def := lookupWidgetDef(w, registry)
+		// #2 from the view-entity-examples findings: a child the parent has
+		// nowhere to put. MDL-WIDGET26 above covers a container KEYWORD in that
+		// position; this covers a real widget, which resolves fine on its own and
+		// so gets past every other rule. Needs the parent's definition, and stays
+		// quiet without one for the same reason MDL-WIDGET26 does.
+		out = append(out, validateUnroutedChildren(w, def, locationPrefix)...)
 		// A generic widget type that resolved to nothing is already reported as
 		// MDL-WIDGET25 (the kind is wrong). Validating its properties on top of
 		// that says the kind is fine and the property is not, which points at

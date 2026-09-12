@@ -396,6 +396,14 @@ func (e *PluggableWidgetEngine) Build(def *WidgetDefinition, w *ast.WidgetV3) (*
 		}
 	}
 
+	// 4.0 Refuse a child none of the passes below can place. Each of them skips
+	// what it does not recognise, so without this the child is built and thrown
+	// away — a page that writes, builds and renders without the widget the
+	// author put there. See widget_unrouted_children.go.
+	if err := refuseUnroutedChildren(def, w); err != nil {
+		return nil, err
+	}
+
 	// 4.1 Apply child slots (.def.json) — skip children whose keyword belongs
 	// to an objectLists mapping (handled by applyObjectLists below).
 	objectListContainers := make(map[string]bool, len(def.ObjectLists))

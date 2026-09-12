@@ -349,6 +349,31 @@ create view entity Module.ViewName (
 );
 ```
 
+### Step 1b: Know the two clause orders
+
+Mendix OQL accepts the select list in either position, and mxcli reads both:
+
+```sql
+-- Select-first. Write new views this way; the rest of this skill assumes it.
+select c.Name as Name, count(o.ID) as Orders
+from Shop.Customer as c
+group by c.Name
+
+-- From-first. Same query. This is what STUDIO PRO STORES, so it is what
+-- `describe entity` gives you back — copy it, edit it, exec it unchanged.
+from Shop.Customer as c
+group by c.Name
+select c.Name as Name, count(o.ID) as Orders
+```
+
+Note where `group by` sits: in the from-first order every clause except
+`order by` / `limit` comes **before** the select list, and the grammar enforces
+that. `from … select … group by …` is a parse error, not a variant.
+
+Do not rewrite a described view into select-first just to make it look
+familiar — the stored text is what MxBuild validates against, and a needless
+rewrite is a diff for nothing.
+
 ### Step 2: Write SELECT Clause
 - Use **lowercase** aggregate functions: `sum()`, `avg()`, `count()`
 - Use `count(entity.ID)` not `count(*)`
