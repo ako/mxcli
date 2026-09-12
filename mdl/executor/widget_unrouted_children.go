@@ -144,7 +144,7 @@ func sameSlotUnderAnotherName(def *WidgetDefinition, keyword string) string {
 	return ""
 }
 
-// validateUnroutedChildren is the check-time half (MDL-WIDGET29). It sits beside
+// validateUnroutedChildren is the check-time half (MDL-WIDGET30). It sits beside
 // MDL-WIDGET26, which covers the neighbouring case: a container KEYWORD (`group`,
 // `series` — words that are not widgets at all) under a parent that does not
 // declare it. This one covers a real WIDGET in the same position, which
@@ -153,7 +153,7 @@ func validateUnroutedChildren(w *ast.WidgetV3, def *WidgetDefinition, locationPr
 	var out []linter.Violation
 	for _, child := range unroutedPluggableChildren(def, w) {
 		out = append(out, linter.Violation{
-			RuleID:     "MDL-WIDGET29",
+			RuleID:     "MDL-WIDGET30",
 			Severity:   linter.SeverityError,
 			Message:    fmt.Sprintf("%s: %s", locationPrefix, unroutedChildMessage(def, child)),
 			Suggestion: "move it into one of the parent's containers, or out of the widget's body",

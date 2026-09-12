@@ -225,7 +225,7 @@ datagrid dg (...) { column colName (attribute: Name) { textfilter f1 } }
 -- ✅ gallery: the widget-wide filter bar, which the gallery calls `filter`
 gallery g (...) { filter f { textfilter f1 } }
 
--- ❌ the gallery form on a data grid — MDL-WIDGET29
+-- ❌ the gallery form on a data grid — MDL-WIDGET30
 datagrid dg (...) { column colName (attribute: Name) filter f { textfilter f1 } }
 ```
 

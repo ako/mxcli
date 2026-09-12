@@ -24,12 +24,12 @@
 --   leftovers were discarded. Not datagrid-specific: one `continue` per pass,
 --   shared by every pluggable widget.
 --
--- Fix: MDL-WIDGET29 at check time and a refusal in buildPluggable at exec time,
+-- Fix: MDL-WIDGET30 at check time and a refusal in buildPluggable at exec time,
 --   both from unroutedPluggableChildren() so they cannot disagree. The message
 --   names the spelling THIS widget uses for the same slot, since an author who
 --   copied a gallery example needs `controlbar`, not a list to search.
 --
--- This repro is a plain .mdl, not .fail.mdl, on purpose: MDL-WIDGET29 needs the
+-- This repro is a plain .mdl, not .fail.mdl, on purpose: MDL-WIDGET30 needs the
 -- parent widget's DEFINITION, which comes from the project's installed .mpk, and
 -- `make check-mdl` runs `check` with no project (see the Makefile's note on
 -- #891/#892). The refusal is covered by widget_unrouted_children_test.go; this

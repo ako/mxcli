@@ -207,8 +207,8 @@ func TestUnroutedViolationIsAnError(t *testing.T) {
 	if len(v) != 1 {
 		t.Fatalf("got %d violations, want 1", len(v))
 	}
-	if v[0].RuleID != "MDL-WIDGET29" {
-		t.Errorf("RuleID = %s, want MDL-WIDGET29", v[0].RuleID)
+	if v[0].RuleID != "MDL-WIDGET30" {
+		t.Errorf("RuleID = %s, want MDL-WIDGET30", v[0].RuleID)
 	}
 	if v[0].Severity != linter.SeverityError {
 		t.Errorf("Severity = %s, want error — a dropped widget is not a style note", v[0].Severity)

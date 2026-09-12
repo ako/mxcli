@@ -133,7 +133,7 @@ CREATE PAGE Sales.Detail (Title: 'Detail', Layout: Atlas_Core.Atlas_Default) {
 			"GALLERY g (...) { FILTER f { TEXTFILTER tf (Attribute: A) } }\n" +
 			"--   A FILTER block written on a DATAGRID is not a column filter and not a\n" +
 			"--   container the grid declares — it used to be dropped on write with no\n" +
-			"--   diagnostic, and is now refused (MDL-WIDGET29).\n\n" +
+			"--   diagnostic, and is now refused (MDL-WIDGET30).\n\n" +
 			"-- Inputs\nTEXTBOX name (Label: 'L', Attribute: Attr)\nTEXTAREA | DATEPICKER | COMBOBOX | CHECKBOX | RADIOBUTTONS\n\n" +
 			"-- Actions\nACTIONBUTTON name (Caption: 'C', Action: SAVE_CHANGES, ButtonStyle: Primary)\nLINKBUTTON name (Caption: 'C', Action: ...)\n\n" +
 			"-- Display\nDYNAMICTEXT name (Content: 'Hello, {1}!', ContentParams: [{1} = Name])\nTITLE name (Content: 'Heading')\nIMAGE name (Image: 'Module.Collection.ImageName')\nIMAGE name (ImageType: imageUrl, ImageUrl: 'https://…')\n" +
@@ -154,7 +154,7 @@ CREATE PAGE Sales.Detail (Title: 'Detail', Layout: Atlas_Core.Atlas_Default) {
 			"--   DROPDOWN       -> COMBOBOX\n" +
 			"-- And three the executor refuses on BOTH engines, each with its own message:\n" +
 			"--   STATICTEXT         (writes Forms$Text, a type Mendix no longer has — the\n" +
-			"--                       project could not be OPENED afterwards; MDL-WIDGET29.\n" +
+			"--                       project could not be OPENED afterwards; MDL-WIDGET30.\n" +
 			"--                       Use DYNAMICTEXT with a literal Content.)\n" +
 			"--   REFERENCESELECTOR  (unsupported widget type)\n" +
 			"--   LEGACYDATAGRID     (use DATAGRID for the pluggable equivalent on Mendix 11+)",
