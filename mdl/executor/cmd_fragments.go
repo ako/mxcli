@@ -260,6 +260,8 @@ func formatDataSourceV3(ds *ast.DataSourceV3) string {
 
 func formatActionV3(a *ast.ActionV3) string {
 	switch a.Type {
+	case "none":
+		return "nothing"
 	case "save":
 		if a.ClosePage {
 			return "save_changes close_page"

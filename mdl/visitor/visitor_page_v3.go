@@ -1016,6 +1016,13 @@ func buildActionV3(ctx parser.IActionExprV3Context) *ast.ActionV3 {
 		// $handler — a fragment action parameter; resolved at expansion.
 		action.Type = "param"
 		action.Target = strings.TrimPrefix(v.GetText(), "$")
+	} else if actCtx.NOTHING() != nil {
+		// An explicitly inert widget. Byte-identical to what the scalar
+		// fall-through already produced (Forms$NoAction) — what changes is that
+		// the slot now holds an *ast.ActionV3, so a scalar left in it means the
+		// action expression failed to parse rather than "the author wrote
+		// NOTHING". See MDL-WIDGET28 (mendixlabs/mxcli#1062).
+		action.Type = "none"
 	} else if actCtx.SAVE_CHANGES() != nil {
 		action.Type = "save"
 		action.ClosePage = actCtx.CLOSE_PAGE() != nil

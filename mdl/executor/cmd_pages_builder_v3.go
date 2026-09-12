@@ -1283,6 +1283,20 @@ func (pb *pageBuilder) getNanoflowReturnEntityName(qualifiedName string) string 
 // buildClientActionV3 converts a V3 Action AST to a pages.ClientAction.
 func (pb *pageBuilder) buildClientActionV3(action *ast.ActionV3) (pages.ClientAction, error) {
 	switch action.Type {
+	case "none":
+		// `Action: NOTHING` — deliberately inert. The same Forms$NoAction the
+		// default branch of serializeClientAction has always produced for this
+		// spelling; what is new is that it arrives as an action rather than as a
+		// string the grammar failed to parse. Without this case the promotion in
+		// actionExprV3 would turn a documented, working spelling into
+		// "unsupported action type" at exec (mendixlabs/mxcli#1062).
+		return &pages.NoClientAction{
+			BaseElement: model.BaseElement{
+				ID:       model.ID(types.GenerateID()),
+				TypeName: "Forms$NoAction",
+			},
+		}, nil
+
 	case "save":
 		return &pages.SaveChangesClientAction{
 			BaseElement: model.BaseElement{
