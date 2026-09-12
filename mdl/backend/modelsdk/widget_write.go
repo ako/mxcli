@@ -82,6 +82,17 @@ func init() {
 		NullFields: []string{"Icon", "ConditionalVisibilitySettings", "NativeAccessibilitySettings"},
 	})
 	codec.RegisterListMarker("Forms$ActionButton", 2)
+	// SidebarToggleButton: the key set measured on Atlas_Core.Atlas_Default
+	// (11.14.0) is $ID, $Type, Appearance, ButtonStyle, CaptionTemplate,
+	// ConditionalVisibilitySettings, Icon, Name, RenderType, TabIndex, Tooltip —
+	// so ConditionalVisibilitySettings is a null slot and there is NO
+	// accessibility node, which is where it differs from ActionButton. Marker 2
+	// as a widget, and it matters: Atlas' button is the first item of its
+	// container's Widgets list.
+	codec.RegisterTypeDefaults("Forms$SidebarToggleButton", codec.TypeDefaults{
+		NullFields: []string{"Icon", "ConditionalVisibilitySettings"},
+	})
+	codec.RegisterListMarker("Forms$SidebarToggleButton", 2)
 	// Title: null visibility/accessibility slots; marker 2 as a widget.
 	codec.RegisterTypeDefaults("Forms$Title", codec.TypeDefaults{
 		NullFields: []string{"ConditionalVisibilitySettings", "NativeAccessibilitySettings"},
@@ -438,6 +449,25 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 			return nil, err
 		}
 		g.SetAction(act)
+		return g, nil
+
+	case *pages.SidebarToggleButton:
+		g := genPg.NewSidebarToggleButton()
+		applyWidgetBase(g, &x.BaseWidget)
+		g.SetRenderType(orDefaultStr(string(x.RenderMode), "Button"))
+		g.SetButtonStyle(orDefaultStr(string(x.ButtonStyle), "Default"))
+		g.SetCaption(textAsClientTemplate(x.Caption))
+		// Tooltip is a Texts$Text, not a ClientTemplate — same asymmetry as
+		// ActionButton above.
+		g.SetTooltip(captionToGen(x.Tooltip))
+		if x.Icon != nil {
+			g.SetIcon(iconToGen(x.Icon))
+		}
+		// Region is deliberately not written. gen declares it, and no Atlas
+		// button carries it — a layout has one togglable region, so which one is
+		// toggled is not a stored fact. Writing a key Studio Pro never writes is
+		// the failure mode where mxbuild reports 0 errors and Studio Pro cannot
+		// open the document.
 		return g, nil
 
 	case *pages.CheckBox:

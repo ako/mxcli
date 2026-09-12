@@ -34,10 +34,11 @@ copy operation. There is no `COPY DOCUMENT` verb and none is needed.
 
 **A copy is only as good as what MDL can spell.** A widget describe cannot render
 comes out as a comment ending `-- NOT re-executable`, and re-running the script
-drops it. Measured on `Atlas_Core.Atlas_SideBar`: its two
-`Forms$SidebarToggleButton` widgets do not survive the round trip, and an
+drops it. Measured on `Atlas_Core.Atlas_SideBar`: an
 `image` widget copied this way loses its image reference (CE0463 until
-`mxcli fix widgets`, then "No image selected"). **Read the describe output
+`mxcli fix widgets`, then "No image selected"). Its two
+`Forms$SidebarToggleButton` widgets used to be in that list and now round-trip
+as `sidebartoggle`. **Read the describe output
 before running it** — the comments name exactly what will be lost. To change a
 layout without that risk, use `ALTER LAYOUT`, which edits the stored document in
 place and leaves everything it was not asked to touch alone.
@@ -133,6 +134,7 @@ create page MyModule.Home (title: 'Home', layout: MyModule.App_Default) {
 | Placeholder | `placeholder Main` | The hole a page's content goes into. No properties, no body |
 | Navigation tree | `navigationtree name (profile: 'Responsive')` | The sidebar menu — vertical. The profile is a navigation profile name |
 | Menu bar | `menubar name (profile: 'Responsive')` | The topbar menu — horizontal. Same stored shape as a navigation tree |
+| Sidebar toggle | `sidebartoggle name (icon: '…')` | Opens and closes the togglable region. **Required** by mxbuild wherever one exists (CE0611). Takes no `action` |
 
 Region properties: `size` (integer), `sizemode` (`Fixed` / `Pixels` / `Auto`),
 `togglemode`, `class`. Unset is Studio Pro's `200` / `Auto` / `None`.
@@ -165,10 +167,22 @@ refused (**MDL-WIDGET29**) rather than written, because an unrecognised member
 is dropped when the document loads — the layout would exec clean, build clean
 and render with no toggle behaviour at all.
 
-An `InitiallyClosed` sidebar needs something that opens it. Atlas uses a
-`Forms$SidebarToggleButton`, which MDL cannot author yet — `describe layout`
-emits it as a comment ending `NOT re-executable`. A button calling a nanoflow
-that toggles a class is the route that works today.
+A togglable region **requires** a `sidebartoggle` somewhere in the layout —
+mxbuild refuses the layout without one (**CE0611**, "A sidebar toggle button is
+required if a region can toggle"), so the two are written together or neither
+is:
+
+```sql
+sidebartoggle sidebarToggle (
+  buttonstyle: Primary,
+  icon: 'Atlas_Core.Atlas_Filled.navigation-menu',
+  class: 'toggle-btn'
+)
+```
+
+It takes no `action`: what it toggles is the layout's togglable region, and
+there is only ever one, which is why Mendix gives it a widget type of its own
+rather than making it a button with a fixed action.
 
 ## Layout type, and why there is no `native:` flag
 
@@ -220,10 +234,12 @@ section.
   builds and cannot be opened.
 - **A layout must declare at least one placeholder.** Otherwise no page can use
   it. Refused at write time.
-- **The sidebar toggle, the menu bar's logo and Atlas's `Forms$Header` are not
-  authorable.** A topbar layout that needs a collapsible sidebar therefore has to
-  keep Atlas's, or do without the toggle — which is why `mxcli new` scaffolds a
-  topbar-navigation layout with no sidebar rather than an always-open one.
+- **The menu bar's logo and Atlas's `Forms$Header` are not authorable.** The
+  sidebar toggle was in this list until `sidebartoggle` existed; a collapsible
+  sidebar is now writable end to end (`togglemode` on the region plus the
+  button mxbuild requires beside it). `mxcli new` still scaffolds a
+  topbar-navigation layout with no sidebar, which is a default rather than a
+  limit.
 - **Authoring is modelsdk-only.** The legacy writer cannot produce the `Content`
   wrapper the widget tree hangs off; it refuses rather than writing a layout with
   no tree.

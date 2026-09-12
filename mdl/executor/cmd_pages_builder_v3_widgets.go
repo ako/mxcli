@@ -966,6 +966,77 @@ func (pb *pageBuilder) buildButtonV3(w *ast.WidgetV3) (*pages.ActionButton, erro
 	return btn, nil
 }
 
+// buildSidebarToggleV3 creates the button that opens and closes a togglable
+// scroll-container region.
+//
+// It is a widget of its own rather than a configured action button because
+// Mendix stores it as one and, more to the point, because mxbuild REQUIRES it:
+// a region with any ToggleMode but None and no toggle button in the layout is
+// CE0611. Until this existed, a faithful copy of any Atlas sidebar layout could
+// not be built — which is why the region property and this widget landed in the
+// same change (ledger §142).
+//
+// No Action property: what it toggles is the layout's togglable region, and
+// there is only ever one. A caption is optional and usually absent — Atlas' own
+// button carries an icon and an empty caption.
+func (pb *pageBuilder) buildSidebarToggleV3(w *ast.WidgetV3) (*pages.SidebarToggleButton, error) {
+	if action := w.GetAction(); action != nil {
+		return nil, mdlerrors.NewValidationf(
+			"sidebartoggle %q: it takes no Action — it toggles the layout's togglable region, which is why Mendix gives it its own widget type; use an actionbutton if you want a button that does something else",
+			w.Name)
+	}
+
+	btn := &pages.SidebarToggleButton{
+		BaseWidget: pages.BaseWidget{
+			BaseElement: model.BaseElement{
+				ID:       model.ID(types.GenerateID()),
+				TypeName: "Forms$SidebarToggleButton",
+			},
+			Name: w.Name,
+		},
+		ButtonStyle: pages.ButtonStyleDefault,
+		RenderMode:  pages.ButtonRenderModeButton,
+	}
+
+	if caption := w.GetCaption(); caption != "" {
+		btn.Caption = &model.Text{
+			BaseElement: model.BaseElement{
+				ID:       model.ID(types.GenerateID()),
+				TypeName: "Texts$Text",
+			},
+			Translations: map[string]string{pb.textLang(): caption},
+		}
+	}
+
+	if style := w.GetButtonStyle(); style != "" {
+		canonical, ok := pages.CanonicalButtonStyle(style)
+		if !ok {
+			return nil, mdlerrors.NewValidationf(
+				"sidebartoggle %q: unknown button style %q — valid styles are %s",
+				w.Name, style, strings.Join(pages.ValidButtonStyleList(), ", "),
+			)
+		}
+		btn.ButtonStyle = canonical
+	}
+
+	if iconRef := strings.Trim(strings.TrimSpace(w.GetStringProp("icon")), "'\""); iconRef != "" {
+		btn.Icon = &pages.Icon{
+			BaseElement: model.BaseElement{
+				ID:       model.ID(types.GenerateID()),
+				TypeName: "Forms$IconCollectionIcon",
+			},
+			Type:  pages.IconTypeIconCollection,
+			Image: iconRef,
+		}
+	}
+
+	if err := pb.registerWidgetName(w.Name, btn.ID); err != nil {
+		return nil, err
+	}
+
+	return btn, nil
+}
+
 // buildNavigationListV3 creates a NavigationList widget from V3 syntax.
 func (pb *pageBuilder) buildNavigationListV3(w *ast.WidgetV3) (*pages.NavigationList, error) {
 	navList := &pages.NavigationList{

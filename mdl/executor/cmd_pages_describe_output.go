@@ -442,6 +442,21 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		props = appendAppearanceProps(props, w)
 		formatWidgetProps(ctx.Output, prefix, header, props, "\n")
 
+	case "Forms$SidebarToggleButton", "Pages$SidebarToggleButton":
+		header := fmt.Sprintf("sidebartoggle %s", mdlIdent(w.Name))
+		props := []string{}
+		if w.Caption != "" {
+			props = append(props, fmt.Sprintf("Caption: %s", mdlQuote(w.Caption)))
+		}
+		if w.ButtonStyle != "" && w.ButtonStyle != "Default" {
+			props = append(props, fmt.Sprintf("ButtonStyle: %s", w.ButtonStyle))
+		}
+		if w.Icon != "" {
+			props = append(props, fmt.Sprintf("Icon: %s", mdlQuote(w.Icon)))
+		}
+		props = appendAppearanceProps(props, w)
+		formatWidgetProps(ctx.Output, prefix, header, props, "\n")
+
 	case "Forms$Text", "Pages$Text":
 		props := []string{}
 		if w.Content != "" {

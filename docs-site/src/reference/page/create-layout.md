@@ -59,8 +59,9 @@ mxcli exec mine.mdl -p app.mpr
 
 Read the describe output before running it. A widget MDL cannot express is
 emitted as a comment ending `-- NOT re-executable`, naming exactly what a
-re-run would drop (`Atlas_Core.Atlas_SideBar`, for instance, loses both of its
-`Forms$SidebarToggleButton` widgets).
+re-run would drop. The sidebar toggle button is no longer one of them — it
+describes as `sidebartoggle`, and has to, since mxbuild requires one in any
+layout whose region can toggle (CE0611).
 
 ## Parameters
 
@@ -135,10 +136,20 @@ A caption is **refused** (`MDL-WIDGET29`) rather than written, because Mendix
 drops a member it does not recognise when the document loads: the layout would
 exec clean, build clean, and render as if the property had never been set.
 
-An `InitiallyClosed` sidebar needs something that opens it. Atlas uses a
-`Forms$SidebarToggleButton`, which MDL cannot author yet — `describe layout`
-emits it as a comment ending `NOT re-executable`. A button calling a nanoflow
-that toggles a class is the route that works today.
+A togglable region **requires** a `sidebartoggle` somewhere in the layout:
+mxbuild refuses the layout without one (**CE0611**, "A sidebar toggle button is
+required if a region can toggle"), so the two are written together or neither
+is. The button takes no `Action` — what it toggles is the layout's togglable
+region, and there is only ever one, which is why Mendix gives it a widget type
+of its own:
+
+```sql
+SIDEBARTOGGLE sidebarToggle (
+    buttonstyle: Primary,
+    icon: 'Atlas_Core.Atlas_Filled.navigation-menu',
+    class: 'toggle-btn'
+)
+```
 
 ## The four elements only a layout has
 
@@ -149,6 +160,7 @@ that toggles a class is the route that works today.
 | Placeholder | `PLACEHOLDER Main` | The hole a page's content goes into. No properties, no body |
 | Navigation tree | `NAVIGATIONTREE name (profile: 'Responsive')` | The sidebar menu — vertical |
 | Menu bar | `MENUBAR name (profile: 'Responsive')` | The topbar menu — horizontal |
+| Sidebar toggle | `SIDEBARTOGGLE name (icon: '…')` | Opens and closes the togglable region. **Required** by mxbuild wherever one exists (CE0611). Takes no action |
 
 ## Examples
 

@@ -1383,6 +1383,7 @@ MDL uses explicit property declarations for pages:
 | Placeholder | `placeholder Main` | The slot a page's content goes into. The name is API — a page binds as `Module.Layout.<Name>`. Name one `Main`: that is how Mendix picks the main placeholder (`Forms$Layout` has no property for it). At least one is required |
 | Navigation tree | `navigationtree name (profile: 'Responsive')` | The sidebar menu (vertical); the profile is a navigation profile name |
 | Menu bar | `menubar name (profile: 'Responsive')` | The topbar menu (horizontal); same stored shape as a navigation tree |
+| Sidebar toggle | `sidebartoggle name (buttonstyle: Primary, icon: 'Atlas_Core.Atlas_Filled.navigation-menu')` | Opens and closes the layout's togglable region. mxbuild **requires** one wherever a region can toggle (CE0611), so it is written together with `togglemode` or not at all. Takes no `Action` — there is only ever one togglable region, which is why Mendix gives it a widget type of its own |
 | Region as ALTER target | `<scrollContainerName>.<slot>` | A region has no name — its slot is its identity. `INSERT INTO layoutContainer.top { … }`. Only `INSERT INTO`; use a widget name for `BEFORE`/`AFTER` |
 
 **Snippets & Building Blocks (read-only discovery):**

@@ -348,6 +348,7 @@ CREATE PAGE Sales.Detail (Title: 'Detail', Layout: Atlas_Core.Atlas_Default) {
 			"         Class: '…' )] {\n" +
 			"      -- widgets, plus:\n" +
 			"      NAVIGATIONTREE name (Profile: 'Responsive')   -- vertical, for a sidebar\n" +
+			"      SIDEBARTOGGLE name (Icon: '…')                -- required if a region toggles\n" +
 			"      MENUBAR name (Profile: 'Responsive')          -- horizontal, for a topbar\n" +
 			"      PLACEHOLDER Main\n" +
 			"    }\n" +
@@ -383,6 +384,9 @@ CREATE PAGE Sales.Detail (Title: 'Detail', Layout: Atlas_Core.Atlas_Default) {
 			"                 Class: 'region-sidebar') {\n" +
 			"      NAVIGATIONTREE navMenu (Profile: 'Responsive')\n" +
 			"    }\n" +
+			"    -- mxbuild REQUIRES a toggle button wherever a region can toggle\n" +
+			"    -- (CE0611), so the two are written together or neither is. It takes\n" +
+			"    -- no Action: what it toggles is the layout's togglable region.\n" +
 			"    REGION center (Class: 'region-content') {\n" +
 			"      PLACEHOLDER Main\n" +
 			"    }\n" +

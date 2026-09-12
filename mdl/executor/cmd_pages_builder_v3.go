@@ -369,6 +369,8 @@ func (pb *pageBuilder) buildWidgetV3(w *ast.WidgetV3) (pages.Widget, error) {
 		widget, err = pb.buildTitleV3(w)
 	case "button", "actionbutton", "linkbutton":
 		widget, err = pb.buildButtonV3(w)
+	case "sidebartoggle":
+		widget, err = pb.buildSidebarToggleV3(w)
 	case "tabcontainer":
 		widget, err = pb.buildTabContainerV3(w)
 	case "tabpage":

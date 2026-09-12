@@ -22,6 +22,30 @@ type ActionButton struct {
 	Action          ClientAction     `json:"action,omitempty"`
 }
 
+// SidebarToggleButton opens and closes a scroll-container region that can
+// toggle.
+//
+// It is not an ActionButton with a fixed action: Mendix gives it its own type
+// and mxbuild REQUIRES one — a region with any ToggleMode but None and no
+// toggle button anywhere in the layout is **CE0611** ("A sidebar toggle button
+// is required if a region can toggle"), measured on mxbuild 11.12.0. So the two
+// are authorable together or neither is: carrying a region's toggle behaviour
+// without this widget would turn every copy of an Atlas sidebar layout into a
+// build failure.
+//
+// The stored document is the eleven keys Studio Pro writes, pinned to
+// Atlas_Core.Atlas_Default on 11.14.0 — notably NO Region (gen offers one; no
+// Atlas button carries it, and which region is toggled is not stored) and no
+// accessibility node, which is where it differs from ActionButton.
+type SidebarToggleButton struct {
+	BaseWidget
+	Caption     *model.Text      `json:"caption,omitempty"`
+	Tooltip     *model.Text      `json:"tooltip,omitempty"`
+	Icon        *Icon            `json:"icon,omitempty"`
+	ButtonStyle ButtonStyle      `json:"buttonStyle,omitempty"`
+	RenderMode  ButtonRenderMode `json:"renderMode,omitempty"`
+}
+
 // ButtonStyle represents the style of a button.
 type ButtonStyle string
 

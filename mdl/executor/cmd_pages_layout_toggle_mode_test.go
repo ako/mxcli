@@ -209,3 +209,87 @@ func TestLayoutRegion_DescribeOutputRebuildsTheSameToggleMode(t *testing.T) {
 			r.ToggleMode, r.Size, r.SizeMode)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// The toggle button, which mxbuild requires wherever a region can toggle
+// ---------------------------------------------------------------------------
+
+// CE0611 — "A sidebar toggle button is required if a region can toggle" — is
+// what makes this widget part of the same change rather than a follow-up.
+// Measured on mxbuild 11.12.0: a layout with ShrinkContentInitiallyOpen and no
+// toggle button takes a clean project to 1 error. Without the widget, carrying
+// the region property would have turned every copy of an Atlas sidebar layout
+// into a build failure.
+func TestBuildSidebarToggleV3_BuildsTheWidget(t *testing.T) {
+	w := &ast.WidgetV3{
+		Type: "sidebartoggle", Name: "sidebarToggle",
+		Properties: map[string]any{
+			"buttonstyle": "Primary",
+			"icon":        "Atlas_Core.Atlas_Filled.navigation-menu",
+			"class":       "toggle-btn",
+		},
+	}
+	// Through buildWidgetV3, not the builder directly: the keyword routing and
+	// the central appearance pass are both part of what is being asserted.
+	built, err := newPopupPageBuilder().buildWidgetV3(w)
+	if err != nil {
+		t.Fatalf("buildWidgetV3: %v", err)
+	}
+	btn, ok := built.(*pages.SidebarToggleButton)
+	if !ok {
+		t.Fatalf("widget = %T, want *pages.SidebarToggleButton", built)
+	}
+	if btn.TypeName != "Forms$SidebarToggleButton" {
+		t.Errorf("TypeName = %q", btn.TypeName)
+	}
+	if btn.ButtonStyle != pages.ButtonStylePrimary {
+		t.Errorf("ButtonStyle = %q, want Primary", btn.ButtonStyle)
+	}
+	if btn.Icon == nil || btn.Icon.Image != "Atlas_Core.Atlas_Filled.navigation-menu" {
+		t.Errorf("Icon = %+v", btn.Icon)
+	}
+	if btn.Class != "toggle-btn" {
+		t.Errorf("Class = %q", btn.Class)
+	}
+}
+
+// It toggles the layout's togglable region — there is only ever one, which is
+// why Mendix gives it its own type instead of an action. Accepting an Action
+// would write a button that ignores it.
+func TestBuildSidebarToggleV3_RefusesAnAction(t *testing.T) {
+	w := &ast.WidgetV3{
+		Type: "sidebartoggle", Name: "sbToggle",
+		Properties: map[string]any{"Action": &ast.ActionV3{Type: "microflow", Target: "M.Flow"}},
+	}
+	_, err := newPopupPageBuilder().buildSidebarToggleV3(w)
+	if err == nil {
+		t.Fatal("an Action on a sidebartoggle was accepted; want a refusal")
+	}
+	if !strings.Contains(err.Error(), "actionbutton") {
+		t.Errorf("error %q does not name the widget to use instead", err.Error())
+	}
+}
+
+// Before this, describe emitted the button as a comment ending "NOT
+// re-executable" — honest, and it meant a copied Atlas layout could not have a
+// collapsing sidebar at all.
+func TestOutputWidgetMDLV3_SidebarToggleIsReExecutable(t *testing.T) {
+	var buf bytes.Buffer
+	ctx := &ExecContext{Output: &buf}
+
+	outputWidgetMDLV3(ctx, rawWidget{
+		Type: "Forms$SidebarToggleButton", Name: "sidebarToggle3",
+		ButtonStyle: "Primary", Icon: "Atlas_Core.Atlas_Filled.navigation-menu",
+		Class: "toggle-btn",
+	}, 0)
+
+	out := buf.String()
+	if strings.Contains(out, "NOT re-executable") {
+		t.Fatalf("the button is still emitted as a dropped widget:\n%s", out)
+	}
+	for _, want := range []string{"sidebartoggle sidebarToggle3", "ButtonStyle: Primary", "Atlas_Core.Atlas_Filled.navigation-menu"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("describe output missing %q:\n%s", want, out)
+		}
+	}
+}

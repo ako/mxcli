@@ -310,6 +310,16 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 		widget.Icon = extractIconRef(w)
 		return []rawWidget{widget}
 
+	case "Forms$SidebarToggleButton", "Pages$SidebarToggleButton":
+		// Same shape as an action button minus the action — what it toggles is
+		// the layout's togglable region, so there is nothing to store. Read at
+		// all because it used to come out as a `NOT re-executable` comment, and
+		// mxbuild requires one in any layout whose region can toggle (CE0611).
+		widget.Caption = extractButtonCaption(ctx, w)
+		widget.ButtonStyle = extractButtonStyle(ctx, w)
+		widget.Icon = extractIconRef(w)
+		return []rawWidget{widget}
+
 	case "Forms$Text", "Pages$Text":
 		widget.Content = extractTextCaption(ctx, w)
 		if rm, ok := w["RenderMode"].(string); ok {

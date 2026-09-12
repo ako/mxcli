@@ -65,6 +65,13 @@ var knownWrongKeys = []keyMismatch{
 	// ScrollContainer.Center→CenterRegion likewise, for Stage 1 of the
 	// authorable-layouts work.
 	//
+	// SidebarToggleButton.Caption→CaptionTemplate became live when the widget
+	// became authorable (the region-ToggleMode change: mxbuild requires a toggle
+	// button in any layout whose region can toggle, CE0611). Confirmed against a
+	// Studio Pro document — Atlas_Core.Atlas_Default on 11.14.0 — which is
+	// stronger evidence than the GroupBox entry above, and the unpatched writer
+	// was measured emitting a "Caption" key no Mendix document carries.
+	//
 	// The rest are listed, not patched: nothing in mxcli constructs these types
 	// — they are the Mendix 7-era DataGrid/Table family — so patching them would
 	// be a change with no evidence behind it and no symptom to verify against.
@@ -94,7 +101,6 @@ var knownWrongKeys = []keyMismatch{
 	{"Forms$ReferenceSetSelector", "XPathConstraint", "SelectableXPathConstraint"},
 	{"Forms$SearchBar", "Items", "NewButtons"},
 	{"Forms$SelectButton", "Caption", "CaptionTemplate"},
-	{"Forms$SidebarToggleButton", "Caption", "CaptionTemplate"},
 	{"Forms$Table", "Columns", "ColumnWidths"},
 	{"Forms$TableColumn", "Width", "Value"},
 

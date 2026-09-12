@@ -84,9 +84,12 @@ create or replace layout LayoutTest.App_Default (
 -- an unknown member on load — the layout would build at 0 errors and render
 -- with no toggle behaviour at all.
 --
--- An InitiallyClosed sidebar needs something that opens it. Atlas uses a
--- Forms$SidebarToggleButton, which MDL cannot author yet; the route that works
--- here is a button calling a nanoflow that toggles a class.
+-- A togglable region REQUIRES a sidebartoggle somewhere in the layout. mxbuild
+-- rejects the layout without one — CE0611, "A sidebar toggle button is required
+-- if a region can toggle" — so the two are written together or neither is. The
+-- button takes no Action: what it toggles is the layout's togglable region, and
+-- there is only ever one, which is why Mendix gives it a widget type of its own
+-- instead of an action.
 -- ----------------------------------------------------------------------------
 
 create or replace layout LayoutTest.CollapsingSidebar (
@@ -95,6 +98,11 @@ create or replace layout LayoutTest.CollapsingSidebar (
 ) {
   scrollcontainer layoutContainer {
     region top (size: 60, sizemode: 'Fixed', class: 'region-topbar') {
+      sidebartoggle sidebarToggle (
+        buttonstyle: Primary,
+        icon: 'Atlas_Core.Atlas_Filled.navigation-menu',
+        class: 'toggle-btn'
+      )
       menubar mainMenu (profile: 'Responsive')
     }
     region left (
@@ -203,6 +211,12 @@ alter layout LayoutTest.App_Default {
 -- Read the output before running it: a widget describe cannot render comes out
 -- as a comment ending "NOT re-executable", and the copy drops it. ALTER LAYOUT
 -- is the way to change a layout without that risk.
+--
+-- Atlas' own layouts are the reason the two elements above exist: a copy of
+-- Atlas_Default carries its sidebar's ShrinkContentInitiallyClosed and its
+-- sidebartoggle, which together are the collapsing sidebar. Before they were
+-- authorable the copy silently lost both and rendered 232px of chrome on a
+-- phone.
 -- ----------------------------------------------------------------------------
 
 show layouts in LayoutTest;
