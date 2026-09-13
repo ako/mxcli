@@ -402,6 +402,60 @@ Two deviations from the plan above, both deliberate:
   best-practices grade; the model here is valid and builds cleanly, so docking a
   project's score for an mxcli limitation would be wrong.
 
+### Phase E — error-handler rejoins
+
+The third caveat above is a separate population with its own phasing, because the
+detector cannot reach it and the failure mode is worse than the one Phase 0
+addresses. Where an irreducible split describes to MDL that is *unfaithful but
+visible* (the reader can see the structure was flattened), an error rejoin
+describes to MDL that is **wrong and indistinguishable from correct**.
+
+**The measurement.** Take `FeedbackModule.SUB_Feedback_SendToServer` and repoint
+its error edge from the tail merge to the merge just before the `AppId` split —
+i.e. from "on error, return empty" to "on error, re-enter the split". Two graphs,
+different behaviour. `DESCRIBE` emits **the same MDL for both**, differing only in
+a `@merge(230, 160)` layout annotation, with no warning; and executing that MDL
+produces the first graph in both cases. So the upstream rejoin is silently
+rewritten into a tail return, `mxcli check` is clean, the project opens and
+mxbuild is green. (The unmutated microflow round-trips correctly — error → merge →
+the same end event as the `else` branch — but by luck: the empty handler falls
+through to the enclosing branch's continuation, which happens to be that end
+event. That is also why #450's post-pass was enough to make it *buildable*.)
+
+- **E0 — detect and warn (independently shippable).** Ask, of each custom error
+  handler, whether the node it reaches is reachable from the start over normal
+  edges only. If it is, the handler cannot be spelled: emit the `-- WARNING:` line
+  beside the #923 one, and a lint finding. The reachability query is on a graph
+  the describer already has in hand — `collectErrorHandlerStatements` computes
+  `firstReachableErrorHandlerMerge` today and then silently returns an empty
+  block. This turns a silent rewrite into a named refusal, the same move Phase 0
+  made for irreducible splits, and it is worth doing whether or not Mode 2 ships.
+- **E1 — spell it, as part of Mode 2's Phase 1.** `join <label>` inside an
+  `on error … { }` block, resolving to a `merge <label>` in the enclosing flow.
+  This needs no new syntax — only the scoping statement that the label namespace
+  is per-microflow rather than per-block, which the Mode 2 section should say
+  explicitly. Builder side, `newErrorHandlerFlow` already creates the edge; the
+  change is that its destination comes from label resolution instead of the
+  branch-continuation heuristic. Describe side, emit `join` when the handler's
+  first node is reachable from the start, and declare the merge at its stored
+  position.
+- **E2 — the round-trip test, on the mutated graph.** Describe → exec → describe
+  must be a fixed point *and* must preserve the error edge's destination. The
+  control is the experiment above: against E0/E1-less code the second describe
+  differs from the first in behaviour while matching it in text, which is exactly
+  what no existing test catches. `mergeOverConnectedEndEvents()` (#450) stays as
+  the safety net for hand-written MDL, but becomes a no-op on described output,
+  since a labelled join lands on a named merge and never over-connects.
+
+**What not to do:** include error edges in `successors()`. Post-dominance there
+treats every successor as a branch of a split's condition, which an error edge is
+not; folding them in would move the 5.8 % by reclassifying graphs, not by
+discovering any. Rejoin detection is a separate query over the same graph.
+
+**Recommendation:** do E0 now — it is small and closes a silent-behaviour-change
+class — and fold E1 into Mode 2's Phase 1 rather than scheduling it as its own
+feature.
+
 ## Version Compatibility
 
 **No Mendix version gate.** `ExclusiveMerge` and arbitrary sequence flows exist in
