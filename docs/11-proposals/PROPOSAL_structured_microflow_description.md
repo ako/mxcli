@@ -325,7 +325,7 @@ render as ordinary nested `if`s. So **Mode 3 earns its cost**, and Mode 2 is the
 honest fallback for the ~20 % that stay crossed. Scheduling is still a separate
 call; what is settled is that Mode 3 is not speculative work.
 
-Two caveats that matter more than the percentages:
+Three caveats that matter more than the percentages:
 
 - **The shipped lint rule never sees this corpus.** `LintContext.Microflows()`
   filters through `notPlatformModule`, so `mxcli lint` deliberately skips
@@ -339,6 +339,25 @@ Two caveats that matter more than the percentages:
   `RULE`-typed flows (and the 39 nanoflows) in this project, so the rule skips
   them silently. A rule is "a special kind of microflow" and can branch, so this
   is a real gap in the detector's reach, not just in this measurement.
+- **Error-handler rejoins are excluded by construction, and are a separate
+  population needing the same syntax.** `successors()` in
+  `mdl/microflowgraph/structure.go` skips every flow with `IsErrorHandler` before
+  the graph is built, so an error path that rejoins the normal one contributes
+  **zero** to the 5.8 % — not because it is rare, but because the detector cannot
+  see it. Measured across three whole projects (ako/TestApp, CapTrack, RestLab —
+  235 microflows, so **user-written modules included**, unlike the table above):
+  7 microflows carry a true error-handler flow, and **1 of them rejoins the
+  normal path** — `FeedbackModule.SUB_Feedback_SendToServer`, in 3 of 3 projects,
+  always landing on a `Microflows$ExclusiveMerge`. That single microflow is what
+  DESCRIBE flattens into an empty `on error … { }` block, and what produced the
+  CE0709 over-connected end event fixed in #450. The control that the scan
+  discriminates rather than flagging every handler: the other 6 — including one
+  in an app module — terminate on their own end event and are not flagged, and
+  the same scan over the *mxcli-rewritten* copy of one project reports the rejoin
+  landing on an `EndEvent` instead of a merge, which is the #450 defect showing
+  up in the measurement. So the fix here is not "detect more": the syntax an
+  error rejoin needs is Mode 2's `merge`/`join` labels, reached by a different
+  route.
 
 Method and control, since a rule that never runs and a rule that finds nothing
 look identical: the scan was instrumented to report what it actually examined —
