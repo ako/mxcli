@@ -1172,12 +1172,25 @@ const sourceSettleWindow = 2
 // returns as soon as the source has been quiet for sourceSettleWindow polls, so
 // an ordinary single-file save costs one extra poll.
 func settleSource(projectPath string, seen time.Time, poll time.Duration, sigCh <-chan os.Signal) time.Time {
+	return settleSourceWith(projectPath, seen, sigCh, func() <-chan time.Time { return time.After(poll) })
+}
+
+// settleSourceWith is settleSource with the poll timer injected, so a test can
+// assert how many polls a quiet source costs rather than how long it took.
+//
+// The distinction is not cosmetic. `tick` is a LOWER bound — time.After
+// guarantees at least the duration and says nothing about the upper one — so a
+// test that bounds elapsed wall-clock as a multiple of it fails on a loaded CI
+// runner with no defect present, which is what this seam exists to stop.
+// Each call must return a freshly-armed channel: the window is "quiet for N
+// consecutive polls", so reusing one channel would collapse the wait.
+func settleSourceWith(projectPath string, seen time.Time, sigCh <-chan os.Signal, tick func() <-chan time.Time) time.Time {
 	quiet := 0
 	for {
 		select {
 		case <-sigCh:
 			return time.Time{}
-		case <-time.After(poll):
+		case <-tick():
 		}
 		now := sourceMTime(projectPath)
 		if now.After(seen) {
