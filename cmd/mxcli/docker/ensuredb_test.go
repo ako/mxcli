@@ -160,7 +160,30 @@ func newStubPATH(t *testing.T) (dir, logPath string) {
 	dir = t.TempDir()
 	t.Setenv("PATH", dir)
 	t.Setenv("HOME", t.TempDir())
+	// A stubbed PATH is only hermetic if the server-binary lookup is stubbed
+	// too: this host really does have /usr/lib/postgresql/*/bin, so a test that
+	// asserts "the tools are missing" would otherwise run a real initdb.
+	withServerBinGlobs(t)
+	// Pin the privilege level as well, so the same attempts are made whether the
+	// suite runs as root in a container or as a user on a laptop.
+	withEUID(t, 0)
 	return dir, filepath.Join(dir, "calls")
+}
+
+// withServerBinGlobs points the server-binary search at dirs (none by default).
+func withServerBinGlobs(t *testing.T, dirs ...string) {
+	t.Helper()
+	old := postgresServerBinGlobs
+	postgresServerBinGlobs = dirs
+	t.Cleanup(func() { postgresServerBinGlobs = old })
+}
+
+// withEUID forces the effective user id the start path branches on.
+func withEUID(t *testing.T, uid int) {
+	t.Helper()
+	old := currentEUID
+	currentEUID = func() int { return uid }
+	t.Cleanup(func() { currentEUID = old })
 }
 
 func writeStub(t *testing.T, dir, name, body string) {
@@ -228,7 +251,7 @@ func TestStartLocalPostgres_ServicePaths(t *testing.T) {
 		writeStub(t, dir, "initdb", initdbStub(logPath))
 		writeStub(t, dir, "pg_ctl", pgctlStub(logPath, 3, 0))
 
-		if err := startLocalPostgres("127.0.0.1", "5432", io.Discard); err != nil {
+		if _, err := startLocalPostgres("127.0.0.1", "5432", io.Discard); err != nil {
 			t.Fatal(err)
 		}
 		calls := readCalls(t, logPath)
@@ -248,7 +271,7 @@ func TestStartLocalPostgres_ServicePaths(t *testing.T) {
 		writeStub(t, dir, "initdb", initdbStub(logPath))
 		writeStub(t, dir, "pg_ctl", pgctlStub(logPath, 3, 0))
 
-		if err := startLocalPostgres("127.0.0.1", port, io.Discard); err != nil {
+		if _, err := startLocalPostgres("127.0.0.1", port, io.Discard); err != nil {
 			t.Fatal(err)
 		}
 		calls := readCalls(t, logPath)
@@ -281,7 +304,7 @@ func TestStartLocalPostgres_OccupiedPortSkipsFallback(t *testing.T) {
 	writeStub(t, dir, "initdb", initdbStub(logPath))
 	writeStub(t, dir, "pg_ctl", pgctlStub(logPath, 3, 0))
 
-	if err := startLocalPostgres("127.0.0.1", port, io.Discard); err != nil {
+	if _, err := startLocalPostgres("127.0.0.1", port, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	calls := readCalls(t, logPath)
@@ -322,7 +345,7 @@ func TestStartLocalPostgres_Fallback(t *testing.T) {
 				writeStub(t, dir, "pg_ctl", pgctlStub(logPath, tt.statusCode, tt.startCode))
 			}
 
-			err := startLocalPostgres("127.0.0.1", port, io.Discard)
+			_, err := startLocalPostgres("127.0.0.1", port, io.Discard)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -505,7 +528,7 @@ func TestStartLocalPostgres_NeverRunsPgCtlCluster(t *testing.T) {
 	writeStub(t, dir, "initdb", initdbStub(logPath))
 	writeStub(t, dir, "pg_ctl", pgctlStub(logPath, 3, 0))
 
-	if err := startLocalPostgres("127.0.0.1", port, io.Discard); err != nil {
+	if _, err := startLocalPostgres("127.0.0.1", port, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	calls := readCalls(t, logPath)
@@ -529,7 +552,7 @@ func TestStartLocalPostgres_SurfacesServiceOutput(t *testing.T) {
 	writeStub(t, dir, "pg_isready", "exit 1")
 	// No initdb/pg_ctl on PATH, so the fallback fails — the error should still
 	// carry the service manager's message.
-	err := startLocalPostgres("127.0.0.1", port, io.Discard)
+	_, err := startLocalPostgres("127.0.0.1", port, io.Discard)
 	if err == nil {
 		t.Fatal("expected an error when neither a service nor the portable tools work")
 	}
@@ -547,7 +570,7 @@ func TestStartUserCluster_InitdbAuthArgs(t *testing.T) {
 	writeStub(t, dir, "initdb", `echo "$@" >> "`+argsPath+`"; `+initdbStub(logPath))
 	writeStub(t, dir, "pg_ctl", pgctlStub(logPath, 3, 0))
 
-	if err := startLocalPostgres("127.0.0.1", port, io.Discard); err != nil {
+	if _, err := startLocalPostgres("127.0.0.1", port, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	args := readCalls(t, argsPath)
@@ -713,7 +736,7 @@ func TestStartUserCluster_RunningPortGuard(t *testing.T) {
 		writePostmasterPID(t, dataDir, port)
 		writeStub(t, dir, "pg_ctl", pgctlStub(logPath, 0, 0)) // status=0 => running
 
-		if err := startLocalPostgres("127.0.0.1", port, io.Discard); err != nil {
+		if _, err := startLocalPostgres("127.0.0.1", port, io.Discard); err != nil {
 			t.Fatal(err)
 		}
 		if calls := readCalls(t, logPath); strings.Contains(calls, "pg_ctl_start") {
@@ -738,7 +761,7 @@ func TestStartUserCluster_RunningPortGuard(t *testing.T) {
 		}
 		writeStub(t, dir, "pg_ctl", pgctlStub(logPath, 0, 0)) // status=0 => running
 
-		err = startLocalPostgres("127.0.0.1", port, io.Discard)
+		_, err = startLocalPostgres("127.0.0.1", port, io.Discard)
 		if err == nil {
 			t.Fatal("expected an error when a cluster runs on a different port")
 		}
@@ -795,11 +818,198 @@ func TestStartUserCluster_StartErrorNamesLog(t *testing.T) {
 	initClusterDir(t)
 	writeStub(t, dir, "pg_ctl", pgctlStub(logPath, 3, 1)) // not running, start fails
 
-	err := startLocalPostgres("127.0.0.1", port, io.Discard)
+	_, err := startLocalPostgres("127.0.0.1", port, io.Discard)
 	if err == nil {
 		t.Fatal("expected a start failure")
 	}
 	if !strings.Contains(err.Error(), "server.log") {
 		t.Fatalf("start error should name the server log: %v", err)
+	}
+}
+
+// --- #984: --ensure-db in a non-root devcontainer ---
+
+// withTimeouts shrinks both readiness waits so a test need not sit them out.
+func withTimeouts(t *testing.T, d time.Duration) {
+	t.Helper()
+	oldService, oldReady := serviceReadyTimeout, readyTimeout
+	serviceReadyTimeout, readyTimeout = d, d
+	t.Cleanup(func() { serviceReadyTimeout, readyTimeout = oldService, oldReady })
+}
+
+// Debian's /etc/init.d/postgresql runs under `set -e` and calls
+// create_socket_directory before it looks at any cluster; that chmod of
+// /var/run/postgresql is refused for a non-root user, so the script aborts
+// having started nothing. The elevated attempt must therefore come first — and
+// must never be able to block on a password prompt.
+func TestStartLocalPostgres_ElevatesServiceStartWhenNotRoot(t *testing.T) {
+	dir, logPath := newStubPATH(t)
+	withEUID(t, 1000)
+	withTimeouts(t, 20*time.Millisecond)
+	port := unusedTCPPort(t)
+	writeStub(t, dir, "sudo", `echo "sudo $@" >> "`+logPath+`"`)
+	writeStub(t, dir, "service", `echo "service $@" >> "`+logPath+`"`)
+	writeStub(t, dir, "pg_isready", "exit 1")
+	writeStub(t, dir, "initdb", initdbStub(logPath))
+	writeStub(t, dir, "pg_ctl", pgctlStub(logPath, 3, 0))
+
+	if _, err := startLocalPostgres("127.0.0.1", port, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	calls := readCalls(t, logPath)
+	first := strings.SplitN(strings.TrimSpace(calls), "\n", 2)[0]
+	if !strings.HasPrefix(first, "sudo ") {
+		t.Fatalf("the elevated start must be attempted FIRST, calls:\n%s", calls)
+	}
+	if !strings.Contains(first, "-n") {
+		t.Fatalf("sudo must be non-interactive, or an unattended run hangs on a "+
+			"password prompt: %s", first)
+	}
+	for _, want := range []string{"service", "postgresql", "start"} {
+		if !strings.Contains(first, want) {
+			t.Fatalf("elevated attempt missing %q: %s", want, first)
+		}
+	}
+	// The unprivileged form still runs, so nothing that worked before regresses.
+	if !strings.Contains(calls, "\nservice postgresql start") {
+		t.Fatalf("the unprivileged attempt must still run:\n%s", calls)
+	}
+}
+
+// Running as root, there is nothing to elevate and sudo must not be involved.
+func TestStartLocalPostgres_RootStartsServiceDirectly(t *testing.T) {
+	dir, logPath := newStubPATH(t) // pins euid 0
+	withTimeouts(t, 20*time.Millisecond)
+	port := unusedTCPPort(t)
+	writeStub(t, dir, "sudo", `echo "sudo $@" >> "`+logPath+`"`)
+	writeStub(t, dir, "service", `echo "service $@" >> "`+logPath+`"`)
+	writeStub(t, dir, "pg_isready", "exit 1")
+	writeStub(t, dir, "initdb", initdbStub(logPath))
+	writeStub(t, dir, "pg_ctl", pgctlStub(logPath, 3, 0))
+
+	if _, err := startLocalPostgres("127.0.0.1", port, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if calls := readCalls(t, logPath); strings.Contains(calls, "sudo") {
+		t.Fatalf("root must not shell out to sudo:\n%s", calls)
+	}
+}
+
+// Debian and Ubuntu wrap only the CLIENT tools into PATH; initdb and pg_ctl live
+// in /usr/lib/postgresql/<major>/bin. Without looking there the user-owned
+// cluster fallback cannot run at all on the commonest devcontainer base.
+func TestStartUserCluster_FindsServerBinariesOutsidePATH(t *testing.T) {
+	dir, logPath := newStubPATH(t)
+	withTimeouts(t, 20*time.Millisecond)
+	port := unusedTCPPort(t)
+	writeStub(t, dir, "pg_isready", "exit 1") // a client tool, on PATH
+
+	// Two majors installed side by side, as a long-lived box really has.
+	libDir := t.TempDir()
+	for _, major := range []string{"9", "16"} {
+		binDir := filepath.Join(libDir, major, "bin")
+		if err := os.MkdirAll(binDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeStub(t, binDir, "initdb", `echo "initdb-major-`+major+`" >> "`+logPath+`"
+`+initdbStub(logPath))
+		writeStub(t, binDir, "pg_ctl", `echo "pg_ctl-major-`+major+`" >> "`+logPath+`"
+`+pgctlStub(logPath, 3, 0))
+	}
+	withServerBinGlobs(t, filepath.Join(libDir, "*", "bin"))
+
+	if _, err := startLocalPostgres("127.0.0.1", port, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	calls := readCalls(t, logPath)
+	for _, want := range []string{"initdb", "pg_ctl_start"} {
+		if !strings.Contains(calls, want) {
+			t.Fatalf("%s was not run from the versioned bin directory:\n%s", want, calls)
+		}
+	}
+	// Newest major wins. A lexical sort would rank "9" above "16" and pick the
+	// wrong installation — and initdb and pg_ctl must agree, since a data
+	// directory made by one major cannot be started by another.
+	if !strings.Contains(calls, "initdb-major-16") || !strings.Contains(calls, "pg_ctl_start") {
+		t.Fatalf("expected the newest major (16) to be used:\n%s", calls)
+	}
+	if strings.Contains(calls, "-major-9") {
+		t.Fatalf("major 9 must not be preferred over 16:\n%s", calls)
+	}
+}
+
+// mcr.microsoft.com/devcontainers/base grants its non-root user sudo to root
+// ONLY (`vscode ALL=(root) NOPASSWD:ALL`), so `sudo -u postgres` is refused
+// there. Root may target any account, so the nested form still reaches postgres.
+func TestResolveSuperuser_FallsBackToSudoViaRoot(t *testing.T) {
+	dir, logPath := newStubPATH(t)
+	writeStub(t, dir, "psql", "exit 1") // no direct superuser connection
+	writeStub(t, dir, "sudo", `echo "sudo $@" >> "`+logPath+`"
+case " $* " in
+  *" -n -- sudo "*) exit 0 ;;
+  *" -n -u postgres "*) echo "sudo: a password is required" >&2; exit 1 ;;
+esac
+exit 1`)
+
+	su, err := resolveSuperuser("127.0.0.1", "5432")
+	if err != nil {
+		t.Fatalf("a root-only sudoers policy must still reach postgres: %v", err)
+	}
+	if !su.sudo || !su.viaRoot {
+		t.Fatalf("expected the via-root superuser, got %+v", su)
+	}
+	calls := readCalls(t, logPath)
+	directAt := strings.Index(calls, "sudo -n -u postgres")
+	nestedAt := strings.Index(calls, "sudo -n -- sudo")
+	if directAt < 0 || nestedAt < 0 || directAt > nestedAt {
+		t.Fatalf("the direct form must be tried before nesting through root:\n%s", calls)
+	}
+}
+
+func TestSuperuserPSQL_ViaRootNestsAndNeverPrompts(t *testing.T) {
+	cmd := (superuser{host: "127.0.0.1", port: "5544", sudo: true, viaRoot: true}).
+		psql("-tAc", "select 1")
+	want := []string{
+		"sudo", "-n", "--", "sudo", "-n", "-u", "postgres", "--", "psql",
+		"-X", "-v", "ON_ERROR_STOP=1", "-w",
+		"-p", "5544", "-U", "postgres", "-d", "postgres",
+		"-tAc", "select 1",
+	}
+	if !reflect.DeepEqual(cmd.Args, want) {
+		t.Fatalf("via-root psql args = %#v, want %#v", cmd.Args, want)
+	}
+}
+
+// The reported symptom: a permission denial this package already has in hand is
+// reported to the user as a bare readiness timeout. A guard that names the wrong
+// cause costs the reader more than no guard at all.
+func TestEnsureDatabase_ReadinessTimeoutCarriesServiceDiagnostics(t *testing.T) {
+	dir, _ := newStubPATH(t)
+	withEUID(t, 1000)
+	withTimeouts(t, 50*time.Millisecond)
+	port := unusedTCPPort(t)
+	writeStub(t, dir, "psql", "exit 1")
+	writeStub(t, dir, "sudo", `echo "sudo: a password is required" >&2; exit 1`)
+	writeStub(t, dir, "service",
+		`echo "chmod: changing permissions of '/var/run/postgresql': Operation not permitted" >&2
+exit 1`)
+	writeStub(t, dir, "pg_isready", "exit 1") // never becomes ready
+	writeStub(t, dir, "initdb", initdbStub(filepath.Join(dir, "calls")))
+	writeStub(t, dir, "pg_ctl", pgctlStub(filepath.Join(dir, "calls"), 3, 0))
+
+	db := DBConfig{
+		Type: "PostgreSQL", Host: net.JoinHostPort("127.0.0.1", port),
+		Name: "app", User: "mendix", Password: "secret",
+	}
+	err := EnsureDatabase(&db, io.Discard)
+	if err == nil {
+		t.Fatal("expected a readiness failure")
+	}
+	if !strings.Contains(err.Error(), "did not become ready") {
+		t.Fatalf("expected the readiness timeout, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "Operation not permitted") {
+		t.Fatalf("the readiness timeout must carry what the service manager "+
+			"actually said, got:\n%v", err)
 	}
 }

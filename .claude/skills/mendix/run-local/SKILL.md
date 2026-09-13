@@ -57,8 +57,14 @@ association catalog only at startup; behavioural changes are hot-reloaded.
   - **`--ensure-db`** provisions it for a fresh session: starts local Postgres if the
     port is down and creates the role + database if missing. It uses a service
     manager, or a user-owned `initdb`/`pg_ctl` cluster under `~/.mxcli/postgres`
-    when no service becomes ready (e.g. Arch) — needing no `postgres` OS account or `sudo`.
-    Remote hosts are only checked, not provisioned.
+    when no service becomes ready (e.g. Arch) — the latter needing no `postgres`
+    OS account or `sudo`. Remote hosts are only checked, not provisioned.
+    In a **non-root devcontainer** the service start is elevated with `sudo -n`
+    (Debian's init script aborts on a permission denial before it reaches any
+    cluster), and the superuser is reached through root where the sudoers policy
+    permits only that target — the devcontainer default. Both are non-interactive,
+    so a run never blocks on a password prompt; where sudo is unavailable the
+    user-owned cluster still carries it.
     The user-owned cluster persists across sessions; its server log is
     `~/.mxcli/postgres/server.log`. Stop it with
     `pg_ctl -D "$HOME/.mxcli/postgres/data" stop`. To remove it, stop it first and
