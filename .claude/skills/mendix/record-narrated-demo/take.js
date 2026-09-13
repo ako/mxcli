@@ -11,7 +11,11 @@
 // Usage, from the per-project walkthrough script:
 //
 //   const { openTake } = require('./take.js');
+//   const narrate = require('./narrate.js');
 //   const take = await openTake(browser, { url: 'http://127.0.0.1:8080/', zoom: 1.68 });
+//   narrate.configure({ zoom: 1.68 });        // THE SAME ZOOM — see narrate.js:
+//                                             // every overlay number is in video
+//                                             // pixels and divided by this one.
 //   await take.goto();                       // navigates, settles, starts the clock
 //   take.mark('home');
 //   await take.click('.sd-key >> nth=0');    // paced, dialog-guarded
