@@ -36,6 +36,120 @@ var pgIdent = regexp.MustCompile(`^[a-z_][a-z0-9_]*$`)
 // so tests can shrink it further.
 var serviceReadyTimeout = 3 * time.Second
 
+// readyTimeout is that single authoritative wait. A variable so tests need not
+// sit out the full deadline.
+var readyTimeout = 20 * time.Second
+
+// currentEUID reports the effective user id. A variable so a test can exercise
+// the unprivileged path on a root CI runner, and the root path on a laptop.
+var currentEUID = os.Geteuid
+
+// postgresServerBinGlobs are the directories a distribution may keep the
+// PostgreSQL *server* tools in when they are not on PATH. Debian and Ubuntu ship
+// initdb, pg_ctl and postgres under /usr/lib/postgresql/<major>/bin and wrap only
+// the client tools (psql, pg_isready, pg_ctlcluster) into /usr/bin. The
+// user-owned cluster below needs initdb and pg_ctl, so without this the whole
+// fallback is inert on the commonest devcontainer base — the safety net for a
+// failed service start could never deploy on the platform that needs it most
+// (#984). A variable so a stubbed PATH also gets a hermetic tool lookup.
+var postgresServerBinGlobs = []string{"/usr/lib/postgresql/*/bin"}
+
+// onPath reports whether a command is resolvable through PATH.
+func onPath(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
+}
+
+// isExecutableFile reports whether path is a regular file with an execute bit.
+func isExecutableFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir() && info.Mode().Perm()&0o111 != 0
+}
+
+// postgresServerBinDir returns the directory to take initdb and pg_ctl from, or
+// "" to resolve them through PATH. Both must come from the SAME installation: a
+// data directory initialized by one major version cannot be started by another,
+// so a directory is only a candidate when it carries both tools.
+func postgresServerBinDir() string {
+	if onPath("initdb") && onPath("pg_ctl") {
+		return ""
+	}
+	best, bestMajor := "", -1
+	for _, glob := range postgresServerBinGlobs {
+		matches, err := filepath.Glob(glob)
+		if err != nil {
+			continue
+		}
+		for _, dir := range matches {
+			if !isExecutableFile(filepath.Join(dir, "initdb")) ||
+				!isExecutableFile(filepath.Join(dir, "pg_ctl")) {
+				continue
+			}
+			// Prefer the newest major. Comparing the paths as strings would rank
+			// "9" above "16", so read the version component as a number.
+			major, err := strconv.Atoi(filepath.Base(filepath.Dir(dir)))
+			if err != nil {
+				major = -1
+			}
+			if best == "" || major > bestMajor {
+				best, bestMajor = dir, major
+			}
+		}
+	}
+	return best
+}
+
+// postgresTool resolves a PostgreSQL server binary by name. It returns the bare
+// name when nothing is found, so a genuinely missing tool still fails with the
+// familiar "executable file not found in $PATH".
+func postgresTool(name string) string {
+	if dir := postgresServerBinDir(); dir != "" {
+		return filepath.Join(dir, name)
+	}
+	return name
+}
+
+// serviceAttempt is one service-manager invocation, with a label for diagnostics
+// (the elevated and unprivileged forms of the same command must not report
+// themselves identically).
+type serviceAttempt struct {
+	label string
+	argv  []string
+}
+
+// serviceStartAttempts lists the service-manager invocations to try, in order.
+//
+// Debian's /etc/init.d/postgresql runs under `set -e` and calls
+// create_socket_directory first, which chmods (or chowns) /var/run/postgresql —
+// so as a non-root user the script aborts on a permission denial before it looks
+// at a single cluster (#984). Every devcontainer mxcli itself generates is in
+// exactly that position: the image runs as "vscode" with passwordless sudo. Try
+// the elevated form first; `sudo -n` never prompts, so where sudo is absent or
+// unauthorised it fails in milliseconds and the unprivileged attempt still runs.
+func serviceStartAttempts() []serviceAttempt {
+	plain := []string{"service", "postgresql", "start"}
+	unprivileged := serviceAttempt{label: "service", argv: plain}
+	if currentEUID() == 0 || !onPath("sudo") {
+		return []serviceAttempt{unprivileged}
+	}
+	return []serviceAttempt{
+		{label: "sudo service", argv: append([]string{"sudo", "-n", "--"}, plain...)},
+		unprivileged,
+	}
+}
+
+// withServiceDiag appends what the service manager said to a later failure.
+// Without it the caller sees a bare readiness timeout for a permission denial
+// this package already has in hand — a guard naming the wrong cause, which costs
+// the reader more than no guard at all.
+func withServiceDiag(err error, diag []string) error {
+	if len(diag) == 0 {
+		return err
+	}
+	return fmt.Errorf("%w\n(a service manager ran first but Postgres did not "+
+		"become ready:\n%s)", err, strings.Join(diag, "\n"))
+}
+
 // splitHostPort splits a PostgreSQL endpoint into host and port, defaulting the
 // port to 5432 when absent. net.SplitHostPort handles the canonical bracketed
 // IPv6 form; the compatibility branch keeps accepting the historical
@@ -145,11 +259,12 @@ func EnsureDatabase(db *DBConfig, w io.Writer) error {
 	// Port down: start the local Postgres service (best-effort).
 	if err := pingTCP(db.Host, 2*time.Second); err != nil {
 		fmt.Fprintln(w, "  Starting local PostgreSQL...")
-		if err := startLocalPostgres(host, port, w); err != nil {
+		serviceDiag, err := startLocalPostgres(host, port, w)
+		if err != nil {
 			return fmt.Errorf("starting local PostgreSQL: %w", err)
 		}
-		if err := waitPGReady(host, port, 20*time.Second); err != nil {
-			return err
+		if err := waitPGReady(host, port, readyTimeout); err != nil {
+			return withServiceDiag(err, serviceDiag)
 		}
 	}
 
@@ -186,34 +301,32 @@ func canConnectDB(db DBConfig) bool {
 // service managers in turn. When none is present — e.g. on Arch — or they do
 // not produce a ready server, it falls back to a user-owned cluster started with
 // the portable initdb/pg_ctl tools (#823).
-func startLocalPostgres(host, port string, w io.Writer) error {
-	var err error
-	port, err = normalizePostgresPort(port)
+// It returns whatever the service managers reported, so a caller whose own
+// readiness wait then fails can say what this package already saw.
+func startLocalPostgres(host, port string, w io.Writer) ([]string, error) {
+	port, err := normalizePostgresPort(port)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// Only real, portable service managers belong here. The old
 	// {"pg_ctlcluster", "--", "start"} entry was a placeholder whose args could
 	// never start a cluster, so it only ever burned a readiness timeout before
 	// the fallback — dropped (#823 review).
-	attempts := [][]string{
-		{"service", "postgresql", "start"},
-	}
 	var serviceDiag []string
-	for _, a := range attempts {
-		if _, err := exec.LookPath(a[0]); err != nil {
+	for _, a := range serviceStartAttempts() {
+		if _, err := exec.LookPath(a.argv[0]); err != nil {
 			continue
 		}
 		// The command may exit non-zero yet still bring Postgres up, so a short
 		// readiness probe decides — not the exit code. The probe is intentionally
-		// short: the single authoritative 20s wait is in EnsureDatabase, so a
+		// short: the single authoritative wait is in EnsureDatabase, so a
 		// slow-but-working manager is honoured there rather than paid for here.
-		out, _ := exec.Command(a[0], a[1:]...).CombinedOutput()
+		out, _ := exec.Command(a.argv[0], a.argv[1:]...).CombinedOutput()
 		if waitPGReady(host, port, serviceReadyTimeout) == nil {
-			return nil
+			return serviceDiag, nil
 		}
 		if d := strings.TrimSpace(string(out)); d != "" {
-			serviceDiag = append(serviceDiag, a[0]+": "+d)
+			serviceDiag = append(serviceDiag, a.label+": "+d)
 		}
 	}
 
@@ -223,21 +336,17 @@ func startLocalPostgres(host, port string, w io.Writer) error {
 	// This guard also covers a process that won the port between the caller's
 	// initial reachability check and this fallback.
 	if pingTCP(net.JoinHostPort(host, port), time.Second) == nil {
-		return nil
+		return serviceDiag, nil
 	}
 
 	// No service manager made PostgreSQL ready: start a user-owned cluster with
 	// the portable tools. This needs neither a `postgres` OS account nor sudo.
 	if err := startUserCluster(host, port, w); err != nil {
-		if len(serviceDiag) > 0 {
-			// Surface what the service manager said; otherwise the user sees only
-			// an initdb/pg_ctl error from two steps later.
-			return fmt.Errorf("%w\n(a service manager ran first but Postgres did not "+
-				"become ready:\n%s)", err, strings.Join(serviceDiag, "\n"))
-		}
-		return err
+		// Surface what the service manager said; otherwise the user sees only
+		// an initdb/pg_ctl error from two steps later.
+		return serviceDiag, withServiceDiag(err, serviceDiag)
 	}
-	return nil
+	return serviceDiag, nil
 }
 
 // userClusterDirs returns the state, data, and socket directories for the
@@ -375,7 +484,7 @@ func rejectLegacyHostTrust(dataDir string) error {
 // readable, its TCP port and Unix-socket directory from postmaster.pid.
 // `pg_ctl status` alone only proves that some server runs from this data directory.
 func clusterStatus(dataDir string) (running bool, port, sockDir string) {
-	if exec.Command("pg_ctl", "-D", dataDir, "status").Run() != nil {
+	if exec.Command(postgresTool("pg_ctl"), "-D", dataDir, "status").Run() != nil {
 		return false, "", ""
 	}
 	data, err := os.ReadFile(filepath.Join(dataDir, "postmaster.pid"))
@@ -426,7 +535,7 @@ func startUserCluster(host, port string, w io.Writer) error {
 		// our own provisioning password-free, but loopback TCP is scram-sha-256:
 		// binding 127.0.0.1 is not an access control on a multi-user host, so trust
 		// there would let any local account act as the postgres superuser.
-		init := exec.Command("initdb", "-D", dataDir, "-U", "postgres",
+		init := exec.Command(postgresTool("initdb"), "-D", dataDir, "-U", "postgres",
 			"--auth-local=trust", "--auth-host=scram-sha-256", "--encoding=UTF8")
 		if out, err := init.CombinedOutput(); err != nil {
 			return fmt.Errorf("initializing PostgreSQL cluster in %s: %w\n%s",
@@ -474,7 +583,7 @@ func startUserCluster(host, port string, w io.Writer) error {
 
 	fmt.Fprintln(w, "  Starting user-owned PostgreSQL cluster...")
 	logPath := filepath.Join(stateDir, "server.log")
-	start := exec.Command("pg_ctl", "-D", dataDir, "-w",
+	start := exec.Command(postgresTool("pg_ctl"), "-D", dataDir, "-w",
 		"-t", "30", "-l", logPath, "start")
 	if out, err := start.CombinedOutput(); err != nil {
 		return fmt.Errorf("starting PostgreSQL cluster in %s: %w\n%s\n  (see the server "+
@@ -520,6 +629,12 @@ type superuser struct {
 	host, port string
 	sock       string // Unix-socket dir for the user-owned cluster; preferred over TCP
 	sudo       bool
+	// viaRoot reaches the postgres account through root instead of directly.
+	// Devcontainers built from mcr.microsoft.com/devcontainers/base grant their
+	// non-root user sudo to root ONLY (`vscode ALL=(root) NOPASSWD:ALL`), so
+	// `sudo -u postgres` is refused there even though the user is effectively an
+	// administrator — while root may in turn target any account (#984).
+	viaRoot bool
 }
 
 // withoutPostgresTargetEnv prevents inherited libpq settings from overriding a
@@ -566,6 +681,9 @@ func (s superuser) psql(args ...string) *exec.Cmd {
 		// system cluster's peer-authenticated Unix socket, but pass the requested
 		// port so a non-default cluster cannot fall through to port 5432.
 		sudoBase := []string{"-n", "-u", "postgres", "--", "psql"}
+		if s.viaRoot {
+			sudoBase = append([]string{"-n", "--", "sudo"}, sudoBase...)
+		}
 		cmd := exec.Command("sudo", append(sudoBase, append(base, args...)...)...)
 		cmd.Env = withoutPostgresTargetEnv(os.Environ())
 		return cmd
@@ -593,14 +711,18 @@ func resolveSuperuser(host, port string) (superuser, error) {
 		}
 	}
 	if _, err := exec.LookPath("sudo"); err == nil {
-		sudo := superuser{host: host, port: port, sudo: true}
-		if sudo.psql("-tAc", "select 1").Run() == nil {
-			return sudo, nil
+		// Direct first; through root only if the sudoers policy refuses to target
+		// the postgres account, which is the devcontainer default.
+		for _, viaRoot := range []bool{false, true} {
+			sudo := superuser{host: host, port: port, sudo: true, viaRoot: viaRoot}
+			if sudo.psql("-tAc", "select 1").Run() == nil {
+				return sudo, nil
+			}
 		}
 	}
 	return superuser{}, fmt.Errorf("no local PostgreSQL superuser available to create the " +
 		"role/database (tried a direct 'psql -U postgres' connection over the cluster socket " +
-		"and TCP, and non-interactive 'sudo -u postgres')")
+		"and TCP, and non-interactive 'sudo -u postgres' both directly and via root)")
 }
 
 // ensureRole creates the app login role if it does not already exist.
