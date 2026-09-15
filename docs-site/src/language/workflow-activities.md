@@ -217,6 +217,56 @@ Pause the workflow until an external notification resumes it:
 WAIT FOR NOTIFICATION;
 ```
 
+## Notification
+
+An intermediate notification event (Mendix 11.11+): the point a `NOTIFY WORKFLOW` action targets by name.
+
+```sql
+NOTIFICATION [<name>] [COMMENT '<caption>'];
+```
+
+A **notification boundary event** attaches the same trigger to a user task, call microflow or wait. It takes a name instead of a timer delay:
+
+```sql
+USER TASK Review 'Review'
+  PAGE HR.ReviewPage
+  OUTCOMES 'Approve' { } 'Reject' { }
+  BOUNDARY EVENT INTERRUPTING NOTIFICATION Withdrawn 'Request withdrawn' {
+    END WORKFLOW;
+  };
+```
+
+An activity may carry only one interrupting boundary event (CE6697). `ALTER WORKFLOW … INSERT BOUNDARY EVENT` cannot add a notification boundary event yet.
+
+## Event Sub-Processes
+
+A flow outside the main flow, started by its own start event while the workflow runs. Written after the main body, before `END WORKFLOW`:
+
+```sql
+EVENT SUBPROCESS <name> ['<caption>']
+  ON (INTERRUPTING | NON INTERRUPTING) NOTIFICATION [<start>] ['<start caption>']
+  { <activities> };
+
+EVENT SUBPROCESS <name> ['<caption>']
+  ON (INTERRUPTING | NON INTERRUPTING) TIMER '<first-execution-time>' [AS <start>] [COMMENT '<start caption>']
+  { <activities> };
+```
+
+Example:
+
+```sql
+EVENT SUBPROCESS ESP_Cancel 'Cancel request'
+  ON INTERRUPTING NOTIFICATION espCancelStart 'Cancel received' {
+  CALL MICROFLOW HR.ACT_LogCancel;
+};
+```
+
+- **Interrupting** cancels every active path before the sub-process runs; **non-interrupting** runs alongside the main flow.
+- The body's End is implicit, as in the main flow. A body that already ends (in `END WORKFLOW`, a `JUMP TO`, or branches that all end) gets none.
+- A `JUMP TO` must stay inside its own sub-process (CE6682).
+- A timer start needs its expression (CE0126).
+- Versions: notification starts need Mendix 11.8+, timer starts 11.13+.
+
 ## End
 
 Terminate the current workflow path:
@@ -240,6 +290,8 @@ Typically used inside an outcome block to stop the workflow after a rejection or
 | `JUMP TO` | Go to named activity | No |
 | `WAIT FOR TIMER` | Delay execution | Yes |
 | `WAIT FOR NOTIFICATION` | Wait for external signal | Yes |
+| `NOTIFICATION` | Intermediate notification event (11.11+) | Yes |
+| `EVENT SUBPROCESS` | Flow started by a notification or timer (11.8+) | No (runs beside or replaces the main flow) |
 | `END` | Terminate path | N/A |
 
 ## See Also

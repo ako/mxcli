@@ -5,6 +5,7 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/backend"
@@ -39,6 +40,9 @@ func (b *Backend) CreateWorkflow(wf *workflows.Workflow) error {
 		return err
 	}
 	if err := b.applyMoreThanHalfFallbacks(moduleName+"."+wf.Name, wf); err != nil {
+		return err
+	}
+	if err := b.applyUserTaskBoundaryEvents(moduleName+"."+wf.Name, wf); err != nil {
 		return err
 	}
 	if contextShape {
@@ -80,6 +84,13 @@ func (b *Backend) UpdateWorkflow(wf *workflows.Workflow) error {
 	qn := mod.Name + "." + wf.Name
 
 	flowVal, err := b.mapWorkflowFlow(wf.Flow)
+	if err != nil {
+		return err
+	}
+	if err := markNotificationEventsInSplits(flowVal, false); err != nil {
+		return err
+	}
+	esps, err := mapEventSubProcesses(wf.EventSubProcesses)
 	if err != nil {
 		return err
 	}
@@ -126,6 +137,21 @@ func (b *Backend) UpdateWorkflow(wf *workflows.Workflow) error {
 		ops = append(ops, pedOpEntry{Path: "/onWorkflowEvent", Operation: pedOperation{Type: "add", Value: h}})
 	}
 
+	// Event sub-processes: replaced whole, like the handlers — the rewrite guard
+	// has already refused a statement declaring fewer than are stored. Removing a
+	// container (not its start event) is the one-call form Studio Pro's
+	// workflow-update skill allows.
+	if storedESPs, err := b.workflowListCount(qn, "/eventSubProcesses"); err != nil {
+		return err
+	} else {
+		for i := storedESPs - 1; i >= 0; i-- {
+			ops = append(ops, removeAtOp("/eventSubProcesses", i))
+		}
+	}
+	for _, e := range esps {
+		ops = append(ops, pedOpEntry{Path: "/eventSubProcesses", Operation: pedOperation{Type: "add", Value: e}})
+	}
+
 	title := wf.WorkflowName
 	if title == "" {
 		title = wf.Name
@@ -146,6 +172,9 @@ func (b *Backend) UpdateWorkflow(wf *workflows.Workflow) error {
 		return err
 	}
 	if err := b.applyMoreThanHalfFallbacks(qn, wf); err != nil {
+		return err
+	}
+	if err := b.applyUserTaskBoundaryEvents(qn, wf); err != nil {
 		return err
 	}
 	b.markDirty(mod.Name)
@@ -350,6 +379,231 @@ func (b *Backend) mapWorkflowContent(wf *workflows.Workflow, contextShape bool) 
 	if err != nil {
 		return nil, err
 	}
+	if err := markNotificationEventsInSplits(flow, false); err != nil {
+		return nil, err
+	}
+	esps, err := mapEventSubProcesses(wf.EventSubProcesses)
+	if err != nil {
+		return nil, err
+	}
+	content, err := b.mapWorkflowContentShape(wf, flow, contextShape)
+	if err != nil {
+		return nil, err
+	}
+	if esps != nil {
+		content["eventSubProcesses"] = esps
+	}
+	return content, nil
+}
+
+// mapEventSubProcesses maps the workflow's event sub-processes onto the
+// constructor's `eventSubProcesses` (ped_get_schema, Studio Pro 11.14). Each flow
+// is sent whole — its start event first — and nil for none so the key is omitted.
+func mapEventSubProcesses(esps []*workflows.EventSubProcess) ([]any, error) {
+	if len(esps) == 0 {
+		return nil, nil
+	}
+	out := make([]any, 0, len(esps))
+	for _, esp := range esps {
+		fm, err := mapWorkflowFlowValue(esp.Flow)
+		if err != nil {
+			return nil, err
+		}
+		if fm == nil {
+			fm = map[string]any{"$Type": "Workflows$Flow", "activities": []any{}}
+		}
+		if err := markNotificationEventsInSplits(fm, false); err != nil {
+			return nil, err
+		}
+		out = append(out, map[string]any{
+			"$Type":   "Workflows$EventSubProcess",
+			"name":    esp.Name,
+			"caption": esp.Caption,
+			"flow":    fm,
+		})
+	}
+	return out, nil
+}
+
+// markNotificationEventsInSplits sets `isInsideOfParallelSplit`, which PED's
+// interrupting notification boundary event constructor requires, on every such
+// event in a mapped flow: true when it sits under a parallel split at any depth.
+//
+// It also refuses a notification boundary path the constructor would rewrite. Its
+// schema says, and Studio Pro 11.14 does, that an interrupting event's path is
+// forced to end in an End — or in a jump inside a split — by removing the other
+// terminator and appending its own; a non-interrupting path must end in the
+// end-of-path marker. Measured: a `jump to` outside a split is stored as an End,
+// and a path ending in the marker gets a second terminator appended and is
+// refused. mxbuild builds all of these, so the rules are Studio Pro's; each shape
+// is refused here with the remedy rather than rewritten or rejected after sending.
+func markNotificationEventsInSplits(v any, inSplit bool) error {
+	switch t := v.(type) {
+	case map[string]any:
+		typ, _ := t["$Type"].(string)
+		switch typ {
+		case "Workflows$InterruptingNotificationBoundaryEvent":
+			t["isInsideOfParallelSplit"] = inSplit
+			switch last := mappedFlowLastType(t["flow"]); {
+			case inSplit && last != "Workflows$JumpToActivity":
+				return fmt.Errorf("boundary event %v: over MCP, Studio Pro requires an interrupting notification boundary event inside a "+
+					"parallel split to end its path with `jump to <activity>` — its constructor appends a jump with no target otherwise", t["name"])
+			case !inSplit && last != "Workflows$EndWorkflowActivity":
+				return fmt.Errorf("boundary event %v: over MCP, Studio Pro requires an interrupting notification boundary event outside a "+
+					"parallel split to end its path with `end workflow;` — its constructor replaces a jump with an End, and refuses a path ending otherwise", t["name"])
+			}
+		case "Workflows$NonInterruptingNotificationBoundaryEvent":
+			if last := mappedFlowLastType(t["flow"]); last != "Workflows$EndOfBoundaryEventPathActivity" {
+				return fmt.Errorf("boundary event %v: over MCP, Studio Pro requires a non-interrupting notification boundary event's path "+
+					"to run to its end — remove the final `jump to`", t["name"])
+			}
+		}
+		childInSplit := inSplit || typ == "Workflows$ParallelSplitActivity"
+		keys := make([]string, 0, len(t))
+		for k := range t {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			if err := markNotificationEventsInSplits(t[k], childInSplit); err != nil {
+				return err
+			}
+		}
+	case []any:
+		for _, e := range t {
+			if err := markNotificationEventsInSplits(e, inSplit); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// mappedFlowLastType returns the $Type of a mapped flow's last activity, "" for none.
+func mappedFlowLastType(flow any) string {
+	f, _ := flow.(map[string]any)
+	acts, _ := f["activities"].([]any)
+	if len(acts) == 0 {
+		return ""
+	}
+	last, _ := acts[len(acts)-1].(map[string]any)
+	typ, _ := last["$Type"].(string)
+	return typ
+}
+
+// taskBoundaryEvents is a single user task's boundary events, found at a PED path.
+type taskBoundaryEvents struct {
+	events  []*workflows.BoundaryEvent
+	inSplit bool
+}
+
+// singleUserTaskBoundaryEvents collects, by PED path, every single user task that
+// carries boundary events, at any depth of a flow.
+func singleUserTaskBoundaryEvents(flow *workflows.Flow, base string, inSplit bool, out map[string]taskBoundaryEvents) {
+	if flow == nil {
+		return
+	}
+	for i, a := range flow.Activities {
+		path := fmt.Sprintf("%s/%d", base, i)
+		boundary := func(events []*workflows.BoundaryEvent) {
+			for j, be := range events {
+				if be != nil {
+					singleUserTaskBoundaryEvents(be.Flow, fmt.Sprintf("%s/boundaryEvents/%d/flow/activities", path, j), inSplit, out)
+				}
+			}
+		}
+		conditions := func(outcomes []workflows.ConditionOutcome) {
+			for j, o := range outcomes {
+				if o != nil {
+					singleUserTaskBoundaryEvents(o.GetFlow(), fmt.Sprintf("%s/outcomes/%d/flow/activities", path, j), inSplit, out)
+				}
+			}
+		}
+		switch t := a.(type) {
+		case *workflows.UserTask:
+			var notification []*workflows.BoundaryEvent
+			for _, be := range t.BoundaryEvents {
+				if be != nil && be.IsNotification() {
+					notification = append(notification, be)
+				}
+			}
+			if !t.IsMulti && len(notification) > 0 {
+				out[path] = taskBoundaryEvents{events: notification, inSplit: inSplit}
+			}
+			for j, o := range t.Outcomes {
+				if o != nil {
+					singleUserTaskBoundaryEvents(o.Flow, fmt.Sprintf("%s/outcomes/%d/flow/activities", path, j), inSplit, out)
+				}
+			}
+			boundary(t.BoundaryEvents)
+		case *workflows.CallMicroflowTask:
+			conditions(t.Outcomes)
+			boundary(t.BoundaryEvents)
+		case *workflows.ExclusiveSplitActivity:
+			conditions(t.Outcomes)
+		case *workflows.ParallelSplitActivity:
+			for j, o := range t.Outcomes {
+				if o != nil {
+					singleUserTaskBoundaryEvents(o.Flow, fmt.Sprintf("%s/outcomes/%d/flow/activities", path, j), true, out)
+				}
+			}
+		case *workflows.CallWorkflowActivity:
+			boundary(t.BoundaryEvents)
+		case *workflows.WaitForNotificationActivity:
+			boundary(t.BoundaryEvents)
+		}
+	}
+}
+
+// applyUserTaskBoundaryEvents adds the notification boundary events Studio Pro
+// dropped from single user tasks. Measured on Studio Pro 11.14: the single user
+// task constructor drops `boundaryEvents` — timer and notification alike, at
+// create and when an update adds the task — and reports no error; a multi-user
+// task keeps them, and a notification event added afterwards at the task's
+// `boundaryEvents` is stored. Timer events are not re-added: the timer
+// constructor has no firstExecutionTime and rewrites the path's terminator, so a
+// re-add would fail on those instead. Only an empty stored list is filled, so a
+// server that keeps them gets nothing added twice.
+func (b *Backend) applyUserTaskBoundaryEvents(qn string, wf *workflows.Workflow) error {
+	found := map[string]taskBoundaryEvents{}
+	singleUserTaskBoundaryEvents(wf.Flow, "/flow/activities", false, found)
+	for i, esp := range wf.EventSubProcesses {
+		if esp != nil {
+			singleUserTaskBoundaryEvents(esp.Flow, fmt.Sprintf("/eventSubProcesses/%d/flow/activities", i), false, found)
+		}
+	}
+	paths := make([]string, 0, len(found))
+	for p := range found {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths) // a task before anything nested in its own events
+	for _, path := range paths {
+		stored, err := b.workflowListCount(qn, path+"/boundaryEvents")
+		if err != nil {
+			return err
+		}
+		if stored > 0 {
+			continue
+		}
+		mapped, err := mapBoundaryEvents(found[path].events)
+		if err != nil {
+			return err
+		}
+		ops := make([]pedOpEntry, 0, len(mapped))
+		for _, e := range mapped {
+			if err := markNotificationEventsInSplits(e, found[path].inSplit); err != nil {
+				return err
+			}
+			ops = append(ops, pedOpEntry{Path: path + "/boundaryEvents", Operation: pedOperation{Type: "add", Value: e}})
+		}
+		if err := b.pedUpdateDoc(workflowDocType, qn, ops...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (b *Backend) mapWorkflowContentShape(wf *workflows.Workflow, flow map[string]any, contextShape bool) (map[string]any, error) {
 	if contextShape {
 		title := wf.WorkflowName
 		if title == "" {
@@ -439,6 +693,14 @@ func mapWorkflowActivity(a workflows.WorkflowActivity) (map[string]any, error) {
 		return map[string]any{"$Type": "Workflows$EndOfParallelSplitPathActivity", "name": act.Name, "caption": act.Caption}, nil
 	case *workflows.EndOfBoundaryEventPathActivity:
 		return map[string]any{"$Type": "Workflows$EndOfBoundaryEventPathActivity", "name": act.Name, "caption": act.Caption}, nil
+	case *workflows.NotificationActivity:
+		return map[string]any{"$Type": "Workflows$NotificationActivity", "name": act.Name, "caption": act.Caption}, nil
+	case *workflows.EventSubProcessStartActivity:
+		m := map[string]any{"$Type": act.StorageType(), "name": act.Name, "caption": act.Caption}
+		if act.Timer {
+			m["firstExecutionTime"] = act.FirstExecutionTime
+		}
+		return m, nil
 	case *workflows.CallMicroflowTask:
 		outcomes, err := mapConditionOutcomes(act.Outcomes)
 		if err != nil {
@@ -864,7 +1126,10 @@ func mapBoundaryEvents(events []*workflows.BoundaryEvent) ([]any, error) {
 	}
 	out := make([]any, 0, len(events))
 	for _, be := range events {
-		el := boundaryEventElement(be.EventType, be.TimerDelay)
+		el, err := boundaryEventElement(be)
+		if err != nil {
+			return nil, err
+		}
 		if be.Flow != nil {
 			fm, err := mapWorkflowFlowValue(be.Flow)
 			if err != nil {
@@ -1386,7 +1651,15 @@ func (m *mcpWorkflowMutator) InsertBoundaryEvent(activityRef string, atPos int, 
 		return ""
 	}).Activities
 	wfnames.Dedup(activities, loc.taken)
-	el := boundaryEventElement(eventType, delay)
+	be := &workflows.BoundaryEvent{EventType: eventType, TimerDelay: delay}
+	if be.IsNotification() {
+		// The op carries no name, and a notification event is reached by its name.
+		return fmt.Errorf("insert boundary event: %q boundary events cannot be inserted by ALTER WORKFLOW", eventType)
+	}
+	el, err := boundaryEventElement(be)
+	if err != nil {
+		return err
+	}
 	if err := attachSubFlow(el, activities); err != nil {
 		return err
 	}
@@ -1540,22 +1813,29 @@ func branchOutcomeElement(condition string) map[string]any {
 	}
 }
 
-// boundaryEventElement builds a timer boundary event (mirrors the MPR backend's
-// type mapping; PED auto-assigns $ID/PersistentId).
-func boundaryEventElement(eventType, delay string) map[string]any {
-	typeName := "Workflows$InterruptingTimerBoundaryEvent"
-	switch eventType {
-	case "NonInterruptingTimer":
-		typeName = "Workflows$NonInterruptingTimerBoundaryEvent"
-	case "Timer":
-		typeName = "Workflows$TimerBoundaryEvent"
+// boundaryEventElement builds a boundary event (the MPR backend's type mapping,
+// workflows.BoundaryEventStorageType; PED auto-assigns $ID/PersistentId). A
+// notification event's constructor takes a name and caption (ped_get_schema,
+// Studio Pro 11.14); the interrupting one's isInsideOfParallelSplit is set by
+// markNotificationEventsInSplits once the whole flow is mapped.
+func boundaryEventElement(be *workflows.BoundaryEvent) (map[string]any, error) {
+	typeName, ok := workflows.BoundaryEventStorageType(be.EventType)
+	if !ok {
+		return nil, fmt.Errorf("boundary event kind %q is not supported by the MCP backend", be.EventType)
+	}
+	if be.IsNotification() {
+		el := map[string]any{"$Type": typeName, "name": be.Name, "caption": be.Caption}
+		if !be.IsNonInterrupting() {
+			el["isInsideOfParallelSplit"] = false
+		}
+		return el, nil
 	}
 	el := map[string]any{"$Type": typeName, "caption": ""}
-	if delay != "" {
-		el["firstExecutionTime"] = delay
+	if be.TimerDelay != "" {
+		el["firstExecutionTime"] = be.TimerDelay
 	}
 	if typeName == "Workflows$NonInterruptingTimerBoundaryEvent" {
 		el["recurrence"] = nil
 	}
-	return el
+	return el, nil
 }

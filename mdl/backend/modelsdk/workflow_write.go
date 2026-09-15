@@ -29,15 +29,24 @@ func init() {
 		"Workflows$UserTaskOutcome", "Workflows$BooleanConditionOutcome",
 		"Workflows$EnumerationValueConditionOutcome", "Workflows$VoidConditionOutcome",
 		"Workflows$ParallelSplitOutcome",
+		// Measured on ako/TestApp (11.14.0): a notification activity leads a flow
+		// like any other, and a start activity leads every event sub-process flow.
+		"Workflows$NotificationActivity",
+		"Workflows$InterruptingNotificationEventSubProcessStartActivity",
+		"Workflows$NonInterruptingNotificationEventSubProcessStartActivity",
+		"Workflows$InterruptingTimerEventSubProcessStartActivity",
+		"Workflows$NonInterruptingTimerEventSubProcessStartActivity",
 	} {
 		codec.RegisterListMarker(t, 3)
 	}
-	// BoundaryEvents and ParameterMappings serialize with marker 2.
+	// BoundaryEvents, ParameterMappings and EventSubProcesses serialize with marker 2.
 	for _, t := range []string{
 		"Workflows$TimerBoundaryEvent", "Workflows$InterruptingTimerBoundaryEvent",
 		"Workflows$NonInterruptingTimerBoundaryEvent",
+		"Workflows$InterruptingNotificationBoundaryEvent", "Workflows$NonInterruptingNotificationBoundaryEvent",
 		"Workflows$MicroflowCallParameterMapping", "Workflows$WorkflowCallParameterMapping",
 		"Workflows$WorkflowEventHandler",
+		"Workflows$EventSubProcess",
 	} {
 		codec.RegisterListMarker(t, 2)
 	}
@@ -86,6 +95,13 @@ func init() {
 		"Workflows$JumpToActivity", "Workflows$WaitForTimerActivity",
 		"Workflows$StartWorkflowActivity", "Workflows$EndWorkflowActivity",
 		"Workflows$EndOfParallelSplitPathActivity", "Workflows$EndOfBoundaryEventPathActivity",
+		// Each stores Annotation: null (ako/TestApp, 11.14.0).
+		"Workflows$NotificationActivity", "Workflows$EventSubProcess",
+		"Workflows$InterruptingNotificationEventSubProcessStartActivity",
+		"Workflows$NonInterruptingNotificationEventSubProcessStartActivity",
+		"Workflows$InterruptingTimerEventSubProcessStartActivity",
+		"Workflows$NonInterruptingTimerEventSubProcessStartActivity",
+		"Workflows$InterruptingNotificationBoundaryEvent", "Workflows$NonInterruptingNotificationBoundaryEvent",
 	} {
 		codec.RegisterTypeDefaults(t, codec.TypeDefaults{NullFields: []string{"Annotation"}})
 	}
@@ -192,6 +208,15 @@ func workflowToGen(wf *workflows.Workflow) element.Element {
 	}
 	addStr(g, "Documentation", wf.Documentation)
 	addStr(g, "DueDate", wf.DueDate)
+	// EventSubProcesses: a marker-2 list. Studio Pro 11.14 writes it empty too,
+	// but the property only exists from 11.8, so an empty one is not invented.
+	if len(wf.EventSubProcesses) > 0 {
+		esps := make([]element.Element, 0, len(wf.EventSubProcesses))
+		for _, esp := range wf.EventSubProcesses {
+			esps = append(esps, eventSubProcessToGen(esp))
+		}
+		addPartList(g, "EventSubProcesses", esps)
+	}
 	addBool(g, "Excluded", wf.Excluded)
 	addStr(g, "ExportLevel", "Hidden")
 	flow := wf.Flow
@@ -291,9 +316,38 @@ func activityToGen(act workflows.WorkflowActivity) element.Element {
 		return simpleActivityToGen("Workflows$EndOfBoundaryEventPathActivity", &a.BaseWorkflowActivity)
 	case *workflows.WorkflowAnnotationActivity:
 		return annotationActivityToGen(a)
+	case *workflows.NotificationActivity:
+		return simpleActivityToGen("Workflows$NotificationActivity", &a.BaseWorkflowActivity)
+	case *workflows.EventSubProcessStartActivity:
+		g := newElem(a.StorageType(), activityID(&a.BaseWorkflowActivity))
+		addActivityBaseFields(g, a.Annotation)
+		addStr(g, "Caption", a.Caption)
+		if a.Timer {
+			addStr(g, "FirstExecutionTime", a.FirstExecutionTime)
+		}
+		addStr(g, "Name", a.Name)
+		return g
 	default:
 		return nil
 	}
+}
+
+// eventSubProcessToGen builds a Workflows$EventSubProcess in the key order
+// ako/TestApp (11.14.0) stores: Annotation, Caption, Flow, Name, PersistentId.
+func eventSubProcessToGen(esp *workflows.EventSubProcess) element.Element {
+	g := newElem("Workflows$EventSubProcess", activityIDOrFresh(string(esp.ID)))
+	if esp.Annotation != "" {
+		addPart(g, "Annotation", annotationElem(esp.Annotation))
+	}
+	addStr(g, "Caption", esp.Caption)
+	flow := esp.Flow
+	if flow == nil {
+		flow = &workflows.Flow{}
+	}
+	addPart(g, "Flow", flowToGen(flow))
+	addStr(g, "Name", esp.Name)
+	addFreshPersistentID(g)
+	return g
 }
 
 func userTaskToGen(a *workflows.UserTask) element.Element {
@@ -616,20 +670,22 @@ func conditionOutcomeToGen(outcome workflows.ConditionOutcome) element.Element {
 func boundaryEventsToGen(events []*workflows.BoundaryEvent) []element.Element {
 	out := make([]element.Element, 0, len(events))
 	for _, ev := range events {
-		typeName := "Workflows$InterruptingTimerBoundaryEvent"
-		switch ev.EventType {
-		case "NonInterruptingTimer":
-			typeName = "Workflows$NonInterruptingTimerBoundaryEvent"
-		case "Timer":
-			typeName = "Workflows$TimerBoundaryEvent"
+		typeName, ok := workflows.BoundaryEventStorageType(ev.EventType)
+		if !ok {
+			// The reader and the builder only produce known kinds; writing an
+			// unknown one as some other kind would mistype it silently.
+			continue
 		}
 		g := newElem(typeName, activityIDOrFresh(string(ev.ID)))
 		addStr(g, "Caption", ev.Caption)
-		if ev.TimerDelay != "" {
+		if ev.TimerDelay != "" && !ev.IsNotification() {
 			addStr(g, "FirstExecutionTime", ev.TimerDelay)
 		}
 		if ev.Flow != nil {
 			addPart(g, "Flow", flowToGen(ev.Flow))
+		}
+		if ev.IsNotification() {
+			addStr(g, "Name", ev.Name)
 		}
 		addFreshPersistentID(g)
 		// Recurrence: null on NonInterrupting (via NullFields).

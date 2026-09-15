@@ -11,6 +11,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/model"
+	"github.com/mendixlabs/mxcli/sdk/workflows"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -27,8 +28,9 @@ import (
 //
 // Boundary events ARE authorable (`boundary event interrupting timer '…' { … }`),
 // so a script that restates them is allowed straight through — that is the normal
-// way to edit a workflow that has one. Event sub-processes are not authorable in
-// MDL at all, so any stored one refuses the rewrite outright.
+// way to edit a workflow that has one. So are event sub-processes and
+// notification activities now; only a sub-process with no start event, which MDL
+// has no way to state, refuses the rewrite outright.
 //
 // The stored side is read from the raw unit rather than through the semantic
 // model deliberately: the reader is what was blind here in the first place, and a
@@ -49,8 +51,8 @@ func checkNoDroppedWorkflowConstructs(ctx *ExecContext, workflowID model.ID, qua
 	// Constructs MDL cannot express at all — a rewrite would lose them without a
 	// word. Refused outright, and every reason is listed at once.
 	var cannotExpress []string
-	if n := countEventSubProcesses(raw); n > 0 {
-		cannotExpress = append(cannotExpress, fmt.Sprintf("%d event sub-process(es), which it would delete", n))
+	if n := rawEventSubProcessesWithoutStart(raw); n > 0 {
+		cannotExpress = append(cannotExpress, fmt.Sprintf("%d event sub-process(es) with no start event, which it would delete", n))
 	}
 	cannotExpress = append(cannotExpress, studioProOnlyWorkflowState(raw)...)
 	if len(cannotExpress) > 0 {
@@ -59,6 +61,30 @@ func checkNoDroppedWorkflowConstructs(ctx *ExecContext, workflowID model.ID, qua
 				"  Edit the workflow in Studio Pro, or use ALTER WORKFLOW to change one activity at a time — ALTER edits "+
 				"the stored document and keeps what it does not touch.",
 			qualifiedName, strings.Join(cannotExpress, "\n  - ")))
+	}
+
+	// Every counter below walks the event sub-process bodies as well as the main
+	// body: the raw side counts the whole document.
+	authoredActs := workflowStatementActivities(stmt)
+
+	// Event sub-processes and notification activities MDL can now state. Before
+	// it could, describe printed a notification activity as a comment and left
+	// the sub-processes out, so a rewrite from that output would delete them.
+	if stored := countEventSubProcesses(raw); stored > len(stmt.EventSubProcesses) {
+		return mdlerrors.NewUnsupported(fmt.Sprintf(
+			"workflow %s has %d stored event sub-process(es) but this statement declares %d — rewriting it would "+
+				"delete the difference, along with each one's flow.\n"+
+				"  Restate them (`event subprocess <name> on interrupting notification <start> { … };`), which "+
+				"`describe workflow %s` now emits, or use ALTER WORKFLOW to change one activity at a time.",
+			qualifiedName, stored, len(stmt.EventSubProcesses), qualifiedName))
+	}
+	if stored, authored := countRawWorkflowNodesExact(raw, "Workflows$NotificationActivity"), countAuthoredNotificationActivities(authoredActs); stored > authored {
+		return mdlerrors.NewUnsupported(fmt.Sprintf(
+			"workflow %s has %d stored notification activit(ies) but this statement declares %d — rewriting it would "+
+				"delete the difference, and a notify action targeting one would target nothing.\n"+
+				"  Restate them (`notification <name> comment '…';`), which `describe workflow %s` now emits, or use "+
+				"ALTER WORKFLOW to change one activity at a time.",
+			qualifiedName, stored, authored, qualifiedName))
 	}
 
 	// Handlers MDL can now state, but a statement written before it could (or
@@ -74,7 +100,7 @@ func checkNoDroppedWorkflowConstructs(ctx *ExecContext, workflowID model.ID, qua
 				"or use ALTER WORKFLOW to change one activity at a time.",
 			qualifiedName, len(stored), len(stmt.EventHandlers), strings.Join(stored, "\n  - "), qualifiedName))
 	}
-	if stored, authored := rawOnCreatedMicroflows(raw), countAuthoredOnCreated(stmt.Activities); len(stored) > authored {
+	if stored, authored := rawOnCreatedMicroflows(raw), countAuthoredOnCreated(authoredActs); len(stored) > authored {
 		return mdlerrors.NewUnsupported(fmt.Sprintf(
 			"workflow %s has %d user task(s) with an on-created microflow but this statement declares %d — rewriting "+
 				"it would reset the difference to none:\n  - %s\n"+
@@ -83,7 +109,7 @@ func checkNoDroppedWorkflowConstructs(ctx *ExecContext, workflowID model.ID, qua
 			qualifiedName, len(stored), authored, strings.Join(stored, "\n  - "), qualifiedName))
 	}
 
-	if stored, authored := rawAgentTasks(raw), countAuthoredAgentTasks(stmt.Activities); len(stored) > authored {
+	if stored, authored := rawAgentTasks(raw), countAuthoredAgentTasks(authoredActs); len(stored) > authored {
 		return mdlerrors.NewUnsupported(fmt.Sprintf(
 			"workflow %s has %d AI agent task(s) but this statement declares %d — rewriting it would delete the "+
 				"difference, along with each one's outcome flows:\n  - %s\n"+
@@ -99,7 +125,7 @@ func checkNoDroppedWorkflowConstructs(ctx *ExecContext, workflowID model.ID, qua
 	// a statement that does not restate stored values resets them. Participants
 	// and await were not guarded at all before; a rewrite reset both silently.
 	storedRules, storedParticipants, storedAwait := rawMultiUserTaskSettings(raw)
-	authoredRules, authoredParticipants, authoredAwait := countAuthoredMultiUserSettings(stmt.Activities)
+	authoredRules, authoredParticipants, authoredAwait := countAuthoredMultiUserSettings(authoredActs)
 	for _, g := range []struct {
 		stored   []string
 		authored int
@@ -123,8 +149,9 @@ func checkNoDroppedWorkflowConstructs(ctx *ExecContext, workflowID model.ID, qua
 	// delete every one — and a branch that ended the workflow would silently
 	// fall through into the main flow instead. The main flow's own End is not
 	// counted: the builder always writes it.
-	if storedEnds := countRawWorkflowNodesExact(raw, "Workflows$EndWorkflowActivity") - 1; storedEnds > 0 {
-		if authored := countAuthoredEnds(stmt.Activities); authored < storedEnds {
+	// An event sub-process's closing End is implicit too, like the main flow's.
+	if storedEnds := countRawWorkflowNodesExact(raw, "Workflows$EndWorkflowActivity") - 1 - rawImplicitSubProcessEnds(raw); storedEnds > 0 {
+		if authored := countAuthoredEnds(authoredActs); authored < storedEnds {
 			return mdlerrors.NewUnsupported(fmt.Sprintf(
 				"workflow %s has %d stored `end workflow` inside its branches but this statement declares %d — "+
 					"rewriting it would delete the difference, and each branch that ended the workflow would fall "+
@@ -139,7 +166,7 @@ func checkNoDroppedWorkflowConstructs(ctx *ExecContext, workflowID model.ID, qua
 	if storedBE == 0 {
 		return nil
 	}
-	authored := countAuthoredBoundaryEvents(stmt.Activities)
+	authored := countAuthoredBoundaryEvents(authoredActs)
 	if authored >= storedBE {
 		return nil
 	}
@@ -584,6 +611,71 @@ func orUnnamed(s string) string {
 		return "(unnamed)"
 	}
 	return s
+}
+
+// countAuthoredNotificationActivities counts the `notification` statements.
+func countAuthoredNotificationActivities(activities []ast.WorkflowActivityNode) int {
+	n := 0
+	walkWorkflowActivities(activities, func(act ast.WorkflowActivityNode) {
+		if _, ok := act.(*ast.WorkflowNotificationNode); ok {
+			n++
+		}
+	})
+	return n
+}
+
+// rawSubProcessActivities returns the top-level activities of each stored event
+// sub-process, in stored order.
+func rawSubProcessActivities(raw map[string]any) [][]map[string]any {
+	var out [][]map[string]any
+	for _, e := range rawList(raw["EventSubProcesses"]) {
+		esp, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		flow, _ := esp["Flow"].(map[string]any)
+		var acts []map[string]any
+		for _, a := range rawList(flow["Activities"]) {
+			if am, ok := a.(map[string]any); ok {
+				acts = append(acts, am)
+			}
+		}
+		out = append(out, acts)
+	}
+	return out
+}
+
+// rawEventSubProcessesWithoutStart counts stored event sub-processes whose flow
+// does not begin with a start event: MDL states a sub-process by its start, so
+// one without cannot be restated.
+func rawEventSubProcessesWithoutStart(raw map[string]any) int {
+	n := 0
+	for _, acts := range rawSubProcessActivities(raw) {
+		if len(acts) == 0 {
+			n++
+			continue
+		}
+		t, _ := acts[0]["$Type"].(string)
+		if _, _, ok := workflows.EventSubProcessStartFromStorageType(t); !ok {
+			n++
+		}
+	}
+	return n
+}
+
+// rawImplicitSubProcessEnds counts stored event sub-processes whose flow closes
+// with an End — the End a statement does not write, because the builder adds it.
+func rawImplicitSubProcessEnds(raw map[string]any) int {
+	n := 0
+	for _, acts := range rawSubProcessActivities(raw) {
+		if len(acts) == 0 {
+			continue
+		}
+		if t, _ := acts[len(acts)-1]["$Type"].(string); t == "Workflows$EndWorkflowActivity" {
+			n++
+		}
+	}
+	return n
 }
 
 // countEventSubProcesses counts a workflow's event sub-processes. The substring

@@ -677,7 +677,11 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 - `jump to <activity-name>;`
 - `wait for timer [<name>] ['<expr>'];`
 - `wait for notification [<name>];`
+- `notification [<name>] [comment '<caption>'];` — an intermediate notification event (Mendix 11.11+)
 - `end workflow [comment '<caption>'];` — only inside a `{ }` block; ends the whole workflow
+- Boundary events, after `outcomes`: `boundary event [non] interrupting timer '<expr>' { … }` or `boundary event [non] interrupting notification <name> ['<caption>'] { … }` (11.11+). One interrupting event per activity (CE6697, MDL-WF15).
+
+**Event sub-processes**, after the main body: `event subprocess <name> ['<caption>'] on [non] interrupting notification [<start>] ['<caption>'] { … };` (11.8+) or `… on [non] interrupting timer '<first-execution-time>' [as <start>] [comment '<caption>'] { … };` (11.13+). The body's End is implicit; a `jump to` stays in its own sub-process (CE6682, MDL-WF05); a timer needs its expression (CE0126, MDL-WF14).
 
 **Workflow event handlers.** `on workflow events (UserTaskStarted, UserTaskEnded)
 microflow Mod.MF as 'Task audit'` in the header runs the microflow for each listed

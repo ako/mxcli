@@ -107,6 +107,9 @@ func (b *Builder) ExitCreateWorkflowStatement(ctx *parser.CreateWorkflowStatemen
 	if body := ctx.WorkflowMainBody(); body != nil {
 		stmt.Activities = buildWorkflowMainBody(body)
 	}
+	for _, espCtx := range ctx.AllWorkflowEventSubProcess() {
+		stmt.EventSubProcesses = append(stmt.EventSubProcesses, buildWorkflowEventSubProcess(espCtx))
+	}
 
 	b.statements = append(b.statements, stmt)
 }
@@ -490,6 +493,9 @@ func buildWorkflowActivityStmt(ctx parser.IWorkflowActivityStmtContext) ast.Work
 	}
 	if wn := actCtx.WorkflowWaitForNotificationStmt(); wn != nil {
 		return buildWorkflowWaitForNotification(wn)
+	}
+	if n := actCtx.WorkflowNotificationStmt(); n != nil {
+		return buildWorkflowNotification(n)
 	}
 	if ann := actCtx.WorkflowAnnotationStmt(); ann != nil {
 		return buildWorkflowAnnotation(ann)
@@ -880,20 +886,78 @@ func buildWorkflowWaitForNotification(ctx parser.IWorkflowWaitForNotificationStm
 func buildBoundaryEventNode(beCtx parser.IWorkflowBoundaryEventClauseContext) ast.WorkflowBoundaryEventNode {
 	beCtx2 := beCtx.(*parser.WorkflowBoundaryEventClauseContext)
 	be := ast.WorkflowBoundaryEventNode{}
-	if beCtx2.NON() != nil {
+	notification := beCtx2.NOTIFICATION() != nil
+	switch {
+	case notification && beCtx2.NON() != nil:
+		be.EventType = "NonInterruptingNotification"
+	case notification:
+		be.EventType = "InterruptingNotification"
+	case beCtx2.NON() != nil:
 		be.EventType = "NonInterruptingTimer"
-	} else if beCtx2.INTERRUPTING() != nil {
+	case beCtx2.INTERRUPTING() != nil:
 		be.EventType = "InterruptingTimer"
-	} else {
+	default:
 		be.EventType = "Timer"
 	}
-	if beCtx2.STRING_LITERAL() != nil {
-		be.Delay = unquoteString(beCtx2.STRING_LITERAL().GetText())
+	// A timer's string is its delay; a notification event's is its caption.
+	if s := beCtx2.STRING_LITERAL(); s != nil {
+		if notification {
+			be.Caption = unquoteString(s.GetText())
+		} else {
+			be.Delay = unquoteString(s.GetText())
+		}
+	}
+	if notification {
+		be.Name = workflowActivityNameText(beCtx2.WorkflowActivityName())
 	}
 	if body := beCtx2.WorkflowBody(); body != nil {
 		be.Activities = buildWorkflowBody(body)
 	}
 	return be
+}
+
+// buildWorkflowNotification builds `notification [<name>] [comment '<caption>']`.
+func buildWorkflowNotification(ctx parser.IWorkflowNotificationStmtContext) *ast.WorkflowNotificationNode {
+	c := ctx.(*parser.WorkflowNotificationStmtContext)
+	node := &ast.WorkflowNotificationNode{Name: workflowActivityNameText(c.WorkflowActivityName())}
+	if c.COMMENT() != nil && c.STRING_LITERAL() != nil {
+		node.Caption = unquoteString(c.STRING_LITERAL().GetText())
+	}
+	return node
+}
+
+// buildWorkflowEventSubProcess builds `event subprocess <name> ['<caption>'] on
+// [non] interrupting notification [<start>] ['<caption>'] { … }` and its timer
+// form, `… timer '<first execution time>' [as <start>] [comment '<caption>']`.
+func buildWorkflowEventSubProcess(ctx parser.IWorkflowEventSubProcessContext) ast.WorkflowEventSubProcessNode {
+	c := ctx.(*parser.WorkflowEventSubProcessContext)
+	node := ast.WorkflowEventSubProcessNode{
+		Name:         workflowActivityNameText(c.WorkflowActivityName()),
+		Interrupting: c.NON() == nil,
+	}
+	if s := c.STRING_LITERAL(); s != nil {
+		node.Caption = unquoteString(s.GetText())
+	}
+	if t, ok := c.WorkflowEventSubProcessTrigger().(*parser.WorkflowEventSubProcessTriggerContext); ok && t != nil {
+		node.Timer = t.TIMER() != nil
+		node.StartName = workflowActivityNameText(t.WorkflowActivityName())
+		strs := t.AllSTRING_LITERAL()
+		switch {
+		case node.Timer:
+			if len(strs) > 0 {
+				node.FirstExecutionTime = unquoteString(strs[0].GetText())
+			}
+			if t.COMMENT() != nil && len(strs) > 1 {
+				node.StartCaption = unquoteString(strs[1].GetText())
+			}
+		case len(strs) > 0:
+			node.StartCaption = unquoteString(strs[0].GetText())
+		}
+	}
+	if body := c.WorkflowBody(); body != nil {
+		node.Activities = buildWorkflowBody(body)
+	}
+	return node
 }
 
 // buildWorkflowAnnotation builds a WorkflowAnnotationActivityNode from the grammar context.

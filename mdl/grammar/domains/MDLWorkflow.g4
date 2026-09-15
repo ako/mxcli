@@ -22,7 +22,33 @@ createWorkflowStatement
       (OVERVIEW PAGE qualifiedName)?
       (DUE DATE_TYPE dueDate=STRING_LITERAL)?
       workflowEventHandlerClause*
-      BEGIN workflowMainBody END WORKFLOW SEMICOLON? SLASH?
+      BEGIN workflowMainBody workflowEventSubProcess* END WORKFLOW SEMICOLON? SLASH?
+    ;
+
+/**
+ * An event sub-process: a flow outside the main flow that its own start event
+ * triggers while the workflow runs — a `notify workflow … target <start>`, or a
+ * timer. Interrupting cancels every active path first; non-interrupting runs
+ * alongside. Written after the main body, because Studio Pro stores them in the
+ * workflow's EventSubProcesses list, not in its flow.
+ *
+ * The body's End is implicit, as in the main flow: the builder appends one when
+ * the body does not already end (in an End, a jump, or branches that all end).
+ */
+workflowEventSubProcess
+    : EVENT SUBPROCESS workflowActivityName STRING_LITERAL?
+      ON (INTERRUPTING | NON INTERRUPTING) workflowEventSubProcessTrigger
+      LBRACE workflowBody RBRACE SEMICOLON
+    ;
+
+/**
+ * The start event. A notification start is what `notify workflow … target`
+ * names; a timer start takes the first-execution-time expression, which Mendix
+ * requires (CE0126).
+ */
+workflowEventSubProcessTrigger
+    : NOTIFICATION workflowActivityName? STRING_LITERAL?
+    | TIMER STRING_LITERAL (AS workflowActivityName)? (COMMENT STRING_LITERAL)?
     ;
 
 /**
@@ -81,6 +107,7 @@ workflowActivityStmt
     | workflowJumpToStmt SEMICOLON
     | workflowWaitForTimerStmt SEMICOLON
     | workflowWaitForNotificationStmt SEMICOLON
+    | workflowNotificationStmt SEMICOLON
     | workflowAnnotationStmt SEMICOLON
     ;
 
@@ -162,6 +189,10 @@ workflowBoundaryEventClause
     : INTERRUPTING TIMER STRING_LITERAL? (LBRACE workflowBody RBRACE)?
     | NON INTERRUPTING TIMER STRING_LITERAL? (LBRACE workflowBody RBRACE)?
     | TIMER STRING_LITERAL? (LBRACE workflowBody RBRACE)?
+    // A notification boundary event is triggered by `notify workflow … target
+    // <name>`, so its name is what matters; the string is its caption.
+    | INTERRUPTING NOTIFICATION workflowActivityName? STRING_LITERAL? (LBRACE workflowBody RBRACE)?
+    | NON INTERRUPTING NOTIFICATION workflowActivityName? STRING_LITERAL? (LBRACE workflowBody RBRACE)?
     ;
 
 workflowUserTaskOutcome
@@ -219,6 +250,14 @@ workflowWaitForTimerStmt
 workflowWaitForNotificationStmt
     : WAIT FOR NOTIFICATION workflowActivityName? (COMMENT STRING_LITERAL)?
       (BOUNDARY EVENT workflowBoundaryEventClause ((BOUNDARY EVENT)? workflowBoundaryEventClause)*)?
+    ;
+
+/**
+ * An intermediate notification event on a flow (Workflows$NotificationActivity):
+ * the point a `notify workflow … target <name>` reaches.
+ */
+workflowNotificationStmt
+    : NOTIFICATION workflowActivityName? (COMMENT STRING_LITERAL)?
     ;
 
 workflowAnnotationStmt

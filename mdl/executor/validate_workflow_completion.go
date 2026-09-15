@@ -28,7 +28,7 @@ import (
 
 // ValidateWorkflowCompletionRules applies MDL-WF13 to a CREATE WORKFLOW body.
 func ValidateWorkflowCompletionRules(stmt *ast.CreateWorkflowStmt) []linter.Violation {
-	return completionRuleViolations(stmt.Activities, workflowLocation(stmt.Name))
+	return completionRuleViolations(workflowStatementActivities(stmt), workflowLocation(stmt.Name))
 }
 
 // completionRuleViolations reports MDL-WF13 for every multi-user task, at any

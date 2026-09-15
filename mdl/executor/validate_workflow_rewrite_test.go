@@ -396,7 +396,7 @@ func TestWorkflowRewrite_CountsAnEventSubProcessOnce(t *testing.T) {
 		}},
 	}
 	err := checkNoDroppedWorkflowConstructs(rawWorkflowCtx(t, raw), "wf1", "M.W", parseWorkflowStmt(t, wfRewriteTwoTasks))
-	if err == nil || !strings.Contains(err.Error(), "1 event sub-process") {
+	if err == nil || !strings.Contains(err.Error(), "has 1 stored event sub-process") {
 		t.Fatalf("expected one event sub-process to be reported, got %v", err)
 	}
 }

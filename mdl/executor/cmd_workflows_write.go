@@ -68,6 +68,9 @@ func execCreateWorkflow(ctx *ExecContext, s *ast.CreateWorkflowStmt) error {
 	if vs := ValidateWorkflowCompletionRules(s); len(vs) > 0 {
 		return mdlerrors.NewValidationf("%s\n  → %s", vs[0].Message, vs[0].Suggestion)
 	}
+	if vs := ValidateWorkflowEventSubProcesses(s); len(vs) > 0 {
+		return mdlerrors.NewValidationf("%s\n  → %s", vs[0].Message, vs[0].Suggestion)
+	}
 	if vs := ValidateWorkflowEventTypes(s); len(vs) > 0 {
 		return mdlerrors.NewValidationf("%s\n  → %s", vs[0].Message, vs[0].Suggestion)
 	}
@@ -77,11 +80,14 @@ func execCreateWorkflow(ctx *ExecContext, s *ast.CreateWorkflowStmt) error {
 			return err
 		}
 	}
-	if workflowUsesAgentTask(s.Activities) {
+	if workflowUsesAgentTask(workflowStatementActivities(s)) {
 		if err := checkFeature(ctx, "workflows", "ai_agent_task", "call agent microflow",
 			"AI agent tasks need Mendix 11.9 or later — use `call microflow` on older projects"); err != nil {
 			return err
 		}
+	}
+	if err := checkEventSubProcessFeatures(ctx, s); err != nil {
+		return err
 	}
 
 	if refErrors := validateWorkflowStatementRefs(ctx, s, nil); len(refErrors) > 0 {
@@ -203,11 +209,21 @@ func execCreateWorkflow(ctx *ExecContext, s *ast.CreateWorkflowStmt) error {
 	// Auto-bind microflow/workflow parameters and sanitize names
 	autoBindWorkflowParameters(ctx, userActivities, s.ParameterVar)
 
+	// Event sub-processes. Their activities share the workflow's one namespace —
+	// a start event named like a main-flow activity is CE0495 — so they are
+	// deduplicated together with the main flow's.
+	wf.EventSubProcesses = buildEventSubProcesses(s.EventSubProcesses)
+	named := append([]workflows.WorkflowActivity{}, userActivities...)
+	for _, esp := range wf.EventSubProcesses {
+		autoBindWorkflowParameters(ctx, esp.Flow.Activities, s.ParameterVar)
+		named = append(named, esp.Flow.Activities...)
+	}
+
 	// Deduplicate activity names to avoid CE0495
 	// The implicit Start and End take part: an `end workflow` inside a branch is
 	// named after its caption, "End" by default, and colliding with the main
 	// flow's End is CE0495 "Duplicate name 'End'".
-	deduplicateActivityNames(userActivities, startAct.Name, endAct.Name)
+	deduplicateActivityNames(named, startAct.Name, endAct.Name)
 
 	// Compose: start + user activities + end
 	flow.Activities = make([]workflows.WorkflowActivity, 0, len(userActivities)+2)
@@ -293,6 +309,18 @@ func buildBoundaryEvents(nodes []ast.WorkflowBoundaryEventNode) []*workflows.Bou
 		event := &workflows.BoundaryEvent{
 			EventType:  be.EventType,
 			TimerDelay: be.Delay,
+			Name:       be.Name,
+			Caption:    be.Caption,
+		}
+		if event.IsNotification() {
+			// Mendix requires both: the name is what a notify action targets
+			// (unique in the workflow, made so by deduplicateActivityNames).
+			if event.Name == "" {
+				event.Name = "NotificationEvent"
+			}
+			if event.Caption == "" {
+				event.Caption = event.Name
+			}
 		}
 		event.ID = model.ID(generateWorkflowUUID())
 		if len(be.Activities) > 0 {
@@ -330,6 +358,8 @@ func buildWorkflowActivity(node ast.WorkflowActivityNode) workflows.WorkflowActi
 		return buildWaitForTimer(n)
 	case *ast.WorkflowWaitForNotificationNode:
 		return buildWaitForNotification(n)
+	case *ast.WorkflowNotificationNode:
+		return buildNotificationActivity(n)
 	case *ast.WorkflowEndNode:
 		return buildEndWorkflow(n)
 	case *ast.WorkflowAnnotationActivityNode:
@@ -751,6 +781,64 @@ func buildWaitForNotification(n *ast.WorkflowWaitForNotificationNode) *workflows
 	return act
 }
 
+// buildNotificationActivity builds an intermediate notification event. Mendix
+// requires a name (CE0725).
+func buildNotificationActivity(n *ast.WorkflowNotificationNode) *workflows.NotificationActivity {
+	act := &workflows.NotificationActivity{}
+	act.ID = model.ID(generateWorkflowUUID())
+	act.Name = n.Name
+	if act.Name == "" {
+		act.Name = "Notification"
+	}
+	act.Caption = n.Caption
+	if act.Caption == "" {
+		act.Caption = act.Name
+	}
+	return act
+}
+
+// buildEventSubProcesses builds each event sub-process's flow: its start event,
+// the body, and — as in the main flow — an implicit End when the body does not
+// already end. Measured on mxbuild 11.13.0: a flow with no end is CE0105, and one
+// that ends in a jump, or in branches that all end, takes no End after it
+// (CE6689 otherwise).
+func buildEventSubProcesses(nodes []ast.WorkflowEventSubProcessNode) []*workflows.EventSubProcess {
+	var out []*workflows.EventSubProcess
+	for _, n := range nodes {
+		esp := &workflows.EventSubProcess{Name: n.Name, Caption: n.Caption}
+		esp.ID = model.ID(generateWorkflowUUID())
+
+		start := &workflows.EventSubProcessStartActivity{
+			Interrupting:       n.Interrupting,
+			Timer:              n.Timer,
+			FirstExecutionTime: n.FirstExecutionTime,
+		}
+		start.ID = model.ID(generateWorkflowUUID())
+		start.Name = n.StartName
+		if start.Name == "" {
+			start.Name = n.Name + "Start"
+		}
+		start.Caption = n.StartCaption
+		if start.Caption == "" {
+			start.Caption = start.Name
+		}
+
+		flow := &workflows.Flow{}
+		flow.ID = model.ID(generateWorkflowUUID())
+		flow.Activities = append([]workflows.WorkflowActivity{start}, buildWorkflowActivities(n.Activities)...)
+		if !flowEnds(n.Activities) {
+			end := &workflows.EndWorkflowActivity{}
+			end.ID = model.ID(generateWorkflowUUID())
+			end.Caption = "End"
+			end.Name = "End"
+			flow.Activities = append(flow.Activities, end)
+		}
+		esp.Flow = flow
+		out = append(out, esp)
+	}
+	return out
+}
+
 func buildEndWorkflow(n *ast.WorkflowEndNode) *workflows.EndWorkflowActivity {
 	act := &workflows.EndWorkflowActivity{}
 	act.ID = model.ID(generateWorkflowUUID())
@@ -801,6 +889,7 @@ func deduplicateActivityNamesInFlow(activities []workflows.WorkflowActivity, nam
 			*workflows.ExclusiveSplitActivity, *workflows.ParallelSplitActivity,
 			*workflows.WaitForTimerActivity, *workflows.WaitForNotificationActivity,
 			*workflows.EndWorkflowActivity,
+			*workflows.NotificationActivity, *workflows.EventSubProcessStartActivity,
 			// The end-of-path markers carry names too, and Mendix holds them to the
 			// same uniqueness rule: every path of every split used to be written as
 			// "EndOfParallelSplitPath", which mxbuild refuses as CE0495.
@@ -808,6 +897,17 @@ func deduplicateActivityNamesInFlow(activities []workflows.WorkflowActivity, nam
 			if !jumpPass {
 				act.SetName(uniqueName(act.GetName(), nameCount))
 			}
+		}
+		// A notification boundary event's name is unique in the workflow too — it
+		// is what a notify action targets.
+		if !jumpPass {
+			for _, be := range activityBoundaryEvents(act) {
+				if be != nil && be.IsNotification() {
+					be.Name = uniqueName(be.Name, nameCount)
+				}
+			}
+		}
+		switch act.(type) {
 		case *workflows.JumpToActivity:
 			if jumpPass {
 				act.SetName(uniqueName(act.GetName(), nameCount))
@@ -858,6 +958,21 @@ func sanitizeActivityName(name string) string {
 		return "activity"
 	}
 	return result
+}
+
+// activityBoundaryEvents returns the boundary events an activity carries.
+func activityBoundaryEvents(act workflows.WorkflowActivity) []*workflows.BoundaryEvent {
+	switch a := act.(type) {
+	case *workflows.UserTask:
+		return a.BoundaryEvents
+	case *workflows.CallMicroflowTask:
+		return a.BoundaryEvents
+	case *workflows.CallWorkflowActivity:
+		return a.BoundaryEvents
+	case *workflows.WaitForNotificationActivity:
+		return a.BoundaryEvents
+	}
+	return nil
 }
 
 // nestedFlows returns every flow nested inside a workflow activity: condition

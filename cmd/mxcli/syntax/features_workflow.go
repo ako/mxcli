@@ -378,10 +378,60 @@ func init() {
 		// 'Workflows$TimerBoundaryEvent' could not be found"). This entry showed
 		// the bare form, with 'P3D' — not a valid timer expression — as its delay.
 		// ako/view-entity-examples FINDINGS §7.
-		Syntax:     "-- inline, as a clause of a USER TASK (after OUTCOMES):\nBOUNDARY EVENT (INTERRUPTING | NON INTERRUPTING) TIMER '<datetime-expression>' { <activities> }\n\n-- or add one to an existing task:\nALTER WORKFLOW <wf> INSERT BOUNDARY EVENT ON <task> (INTERRUPTING | NON INTERRUPTING) TIMER '<datetime-expression>' { <activities> }\n\n-- Name the kind: a bare TIMER is refused on Mendix 11 (MDL-WF07) — it writes a\n-- type the runtime cannot load. The delay is an expression that yields a\n-- DateTime, e.g. 'addDays([%CurrentDateTime%], 3)'. mxcli ends every boundary\n-- path with Mendix's end-of-path marker, so a path may end in a call; use\n-- JUMP TO to return to the task instead.",
+		Syntax:     "-- inline, as a clause of a USER TASK (after OUTCOMES):\nBOUNDARY EVENT (INTERRUPTING | NON INTERRUPTING) TIMER '<datetime-expression>' { <activities> }\nBOUNDARY EVENT (INTERRUPTING | NON INTERRUPTING) NOTIFICATION <name> ['<caption>'] { <activities> }\n\n-- A notification boundary event (Mendix 11.11+) is triggered by `notify workflow`\n-- targeting its name, so the name is unique in the workflow. ALTER cannot insert\n-- one yet; restate the workflow instead.\n\n-- or add a timer to an existing task:\nALTER WORKFLOW <wf> INSERT BOUNDARY EVENT ON <task> (INTERRUPTING | NON INTERRUPTING) TIMER '<datetime-expression>' { <activities> }\n\n-- Name the kind: a bare TIMER is refused on Mendix 11 (MDL-WF07) — it writes a\n-- type the runtime cannot load. The delay is an expression that yields a\n-- DateTime, e.g. 'addDays([%CurrentDateTime%], 3)'. mxcli ends every boundary\n-- path with Mendix's end-of-path marker, so a path may end in a call; use\n-- JUMP TO to return to the task instead.",
 		Example:    "user task ReviewTask 'Review'\n  page Module.WF_Review\n  outcomes 'Done' { }\n  boundary event interrupting timer 'addDays([%CurrentDateTime%], 3)' {\n    call microflow Module.WF_Escalate;\n  };",
 		MinVersion: "10.6.0",
-		SeeAlso:    []string{"workflow.user-task"},
+		SeeAlso:    []string{"workflow.user-task", "workflow.notification", "workflow.event-subprocess"},
+	})
+
+	Register(SyntaxFeature{
+		Path:    "workflow.event-subprocess",
+		Summary: "Event sub-processes — flows a notification or timer starts while the workflow runs",
+		Keywords: []string{
+			"event subprocess", "event sub-process", "esp", "cancel workflow",
+			"interrupting", "non interrupting", "notification start", "timer start",
+		},
+		Syntax: "-- after the main body, before END WORKFLOW:\n" +
+			"EVENT SUBPROCESS <name> ['<caption>']\n" +
+			"  ON (INTERRUPTING | NON INTERRUPTING) NOTIFICATION [<start>] ['<start caption>']\n" +
+			"  { <activities> };\n" +
+			"EVENT SUBPROCESS <name> ['<caption>']\n" +
+			"  ON (INTERRUPTING | NON INTERRUPTING) TIMER '<first-execution-time>' [AS <start>] [COMMENT '<start caption>']\n" +
+			"  { <activities> };\n\n" +
+			"-- Interrupting cancels every active path first; non-interrupting runs alongside.\n" +
+			"-- A notification start is what `notify workflow` targets. The body's End is\n" +
+			"-- implicit, as in the main flow; `jump to` stays inside its own sub-process\n" +
+			"-- (CE6682, MDL-WF05). A timer needs its expression (CE0126, MDL-WF14).\n" +
+			"-- Mendix 11.8+ for notification starts, 11.13+ for timer starts.",
+		Example: "create workflow HR.Leave parameter $Ctx: HR.Request\n" +
+			"begin\n" +
+			"  user task Review 'Review' page HR.ReviewPage outcomes 'Approve' { } 'Reject' { };\n" +
+			"  event subprocess ESP_Cancel 'Cancel request'\n" +
+			"    on interrupting notification espCancelStart 'Cancel received' {\n" +
+			"    call microflow HR.ACT_LogCancel;\n" +
+			"  };\n" +
+			"  event subprocess ESP_Reminder 'Daily reminder'\n" +
+			"    on non interrupting timer 'addDays([%CurrentDateTime%], 1)' as espReminderStart {\n" +
+			"    call microflow HR.ACT_Remind;\n" +
+			"  };\n" +
+			"end workflow;",
+		MinVersion: "11.8.0",
+		SeeAlso:    []string{"workflow.notification", "workflow.boundary-event", "workflow.create"},
+	})
+
+	Register(SyntaxFeature{
+		Path:    "workflow.notification",
+		Summary: "Notification activity — an intermediate notification event on a flow",
+		Keywords: []string{
+			"notification", "notification activity", "intermediate event", "notify",
+		},
+		Syntax: "NOTIFICATION [<name>] [COMMENT '<caption>'];\n\n" +
+			"-- The point a `notify workflow` action reaches (Workflows$NotificationActivity,\n" +
+			"-- Mendix 11.11+). `wait for notification` is the older activity for the same\n" +
+			"-- purpose and works on every version.",
+		Example:    "notification DocumentsReceived comment 'Documents received';",
+		MinVersion: "11.11.0",
+		SeeAlso:    []string{"workflow.event-subprocess", "workflow.boundary-event"},
 	})
 
 	Register(SyntaxFeature{

@@ -1,6 +1,6 @@
 # Proposal: Workflow constructs only Studio Pro could author
 
-**Status:** Phases 1–3 implemented; phase 4 designed, reference documents captured
+**Status:** Phases 1–3 and 4a (event sub-processes, notification events) implemented; 4b (`notify workflow … target`) designed
 **Date:** 2026-09-14
 
 ## Problem Statement
@@ -17,7 +17,7 @@ the team's workflows reference them:
 | 1 | workflow event handlers | `Workflow.OnWorkflowEvent` → `Workflows$WorkflowEventHandler` | ako/TestApp `workflow.Workflow1` |
 | 2 | AI agent task | `Workflows$AIAgentTaskActivity` | ako/TestApp `workflow.Workflow1` |
 | 3 | multi-user completion rules (majority, threshold, veto, microflow) | `CompletionCriteria` variants | **needed** |
-| 4 | event sub-processes, and `notify workflow` targeting one | `Workflow.EventSubProcesses`, `NotifyWorkflowAction.NotifyTarget` | partial (TestApp has one interrupting notification sub-process) |
+| 4 | event sub-processes, notification events, and `notify workflow` targeting one | `Workflow.EventSubProcesses`, `Workflows$NotificationActivity`, `Workflows$*NotificationBoundaryEvent`, `NotifyWorkflowAction.NotifyTarget` | ako/TestApp `workflow.ZzMxcliExample_EventSubProcesses`, `workflow.ZzMxcliExample_Notify` |
 
 ## Phase 1 — handlers (implemented)
 
@@ -280,15 +280,115 @@ both measured: PED's default is consensus with **no** fallback (CE1866), so mxcl
 always sends one; and the constructor **drops the fallback of a more-than-half
 majority**, so the backend reads the outcome's `$ID` afterwards and sets it.
 
-## Phase 4 — event sub-processes and notify targets
+## Phase 4a — event sub-processes and notification events (implemented)
 
-`Workflow.EventSubProcesses` (11.8.0) holds `Workflows$EventSubProcess` with a
-`Caption`, `Name` and `Flow` whose first activity is an
-`(Non)InterruptingNotificationEventSubProcessStartActivity`. Timer starts appear in
-11.13's event types but have no gen type yet. `NotifyWorkflowAction.notifyTarget`
-(11.7.0) is how a microflow notifies a sub-process start; the MDL `notify workflow`
-statement has no target today. **Needed:** a Studio Pro example with a
-non-interrupting and a timer sub-process, and a microflow that notifies one.
+### Reference documents (ako/TestApp, Studio Pro 11.14.0, built over MCP and saved)
+
+`workflow.ZzMxcliExample_EventSubProcesses` holds one sub-process per start kind,
+a notification activity, and both notification boundary events on a user task:
+
+| Construct | Stored as |
+|---|---|
+| sub-process | `EventSubProcesses` (marker 2) → `Workflows$EventSubProcess{Annotation, Caption, Flow, Name, PersistentId}` |
+| its start | the flow's first activity: `Workflows$(Non)Interrupting(Notification\|Timer)EventSubProcessStartActivity`; a timer adds `FirstExecutionTime` |
+| its end | a closing `Workflows$EndWorkflowActivity`, as in the main flow |
+| notification activity | `Workflows$NotificationActivity{Annotation, Caption, Name, PersistentId, RelativeMiddlePoint, Size}` |
+| notification boundary event | `Workflows$(Non)InterruptingNotificationBoundaryEvent{Annotation, Caption, Flow, Name, PersistentId}` |
+
+gen has no type for the timer starts, the notification activity or the
+notification boundary events; the reader takes them off the raw document, and the
+saved document is its fixture.
+
+### MDL syntax
+
+```sql
+begin
+  notification DocumentsReceived comment 'Documents received';
+  user task Review 'Review' page HR.ReviewPage outcomes 'Approve' { } 'Reject' { }
+    boundary event interrupting notification Withdrawn 'Withdrawn' { end workflow; };
+
+  event subprocess ESP_Cancel 'Cancel request'
+    on interrupting notification espCancelStart 'Cancel received' { … };
+  event subprocess ESP_Reminder 'Daily reminder'
+    on non interrupting timer 'addDays([%CurrentDateTime%], 1)' as espReminderStart { … };
+end workflow;
+```
+
+Sub-processes follow the main body because they are stored beside the flow, not in
+it. The body's End is implicit, like the main flow's.
+
+### Measured (mxbuild 11.13.0, Studio Pro-saved shapes, one construct per workflow)
+
+| Shape | Verdict |
+|---|---|
+| each of the four starts, body ending in End | 0 errors |
+| body with activities; body ending in a jump within the sub-process (also to its start) | 0 errors |
+| body with no end | **CE0105** — the builder appends the End |
+| jump into another sub-process, or between one and the main flow | **CE6682** — MDL-WF05 |
+| timer start with no first execution time | **CE0126** — MDL-WF14 |
+| start event named like another activity | **CE0495** — names deduplicated across flows |
+| boundary-path end marker inside a sub-process | CE6692 (not authorable) |
+| notification boundary event on a user task, multi-user task, call microflow, wait for notification or wait for timer | 0 errors |
+| interrupting notification path ending in the end-of-path marker | 0 errors |
+| interrupting notification path with no end | **CE0105** — the builder appends the marker |
+| two interrupting boundary events on one activity | **CE6697** — MDL-WF15 |
+
+### Versions (each construct loaded alone into a blank project)
+
+| | 11.10 | 11.11 | 11.12 | 11.13 | Gate |
+|---|---|---|---|---|---|
+| notification-started sub-process | loads | loads | loads | loads | `event_subprocesses` 11.8 (gen) |
+| notification activity / boundary events | unknown type | loads | loads | loads | `notification_events` 11.11 |
+| timer-started sub-process | unknown type | unknown type | unknown type | loads | `timer_event_subprocesses` 11.13 |
+
+### Guard
+
+Event sub-processes and notification activities are restate-or-refuse, like
+boundary events; only a sub-process with no start event is refused outright. Every
+counter walks the sub-process bodies, and a sub-process's closing End is not
+counted as a stored `end workflow`. A rewrite from an older describe used to
+delete notification activities silently — measured, 1 → 0 with the previous build.
+`alter workflow … insert boundary event` refuses the notification kinds: the op
+carries no name.
+
+### MCP
+
+The workflow constructor takes `eventSubProcesses`, each flow sent whole. The
+interrupting notification boundary event's constructor requires
+`isInsideOfParallelSplit`, set from the event's position. A rewrite removes the
+stored sub-processes and adds the statement's.
+
+Measured live against Studio Pro 11.14 (`mxcli exec --mcp`, then `ped_check_errors`
+and `ped_read_document`):
+
+| Shape | Result |
+|---|---|
+| notification and timer sub-processes, a jump inside one, a notification activity, an interrupting notification event on a wait ending in `end workflow` | stored as sent, "No errors found." |
+| boundary events on a **single** user task — timer or notification — at create, and at an `add` of the task in an update | **dropped**, "No errors found." (a multi-user task keeps them) |
+| a notification event added afterwards at `<task>/boundaryEvents` | stored |
+| interrupting notification event inside a parallel split, path ending in `jump to` | stored as sent |
+| the same path ending in the end-of-path marker | refused: the constructor appends a jump with no target after it |
+| interrupting **timer** event, path ending in the marker / `end workflow` / `jump to` | End appended after the marker (refused) / stored / **jump replaced by an End**; every one "Missing value for parameter 'Timer'" |
+
+The interrupting constructors normalize the path's terminator — End outside a
+split, jump inside one, removing the other — and the interrupting timer
+constructor has no `firstExecutionTime` at all. mxbuild 11.13 builds every one of
+these paths, so the rules are Studio Pro's. For notification events the MCP
+backend refuses each shape the constructor would rewrite, naming the ending it
+needs, and re-adds a single user task's notification events after every create
+and update. The timer-event losses predate this phase and are tracked separately.
+
+## Phase 4b — notify targets
+
+`NotifyWorkflowAction.NotifyTarget` (11.7.0) names what a microflow notifies:
+`Workflows$(Non)InterruptingNotificationEventSubProcessStartActivityTarget`,
+`NotifyNotificationActivityTarget`, `NotifyWaitForNotificationActivityTarget`
+(each `Activity: "Module.Workflow.name"`) and `NotifyNotificationBoundaryEventTarget`
+(`BoundaryEvent: …`). Reference: ako/TestApp `workflow.ZzMxcliExample_Notify`.
+Syntax: `$Notified = notify workflow $Workflow target HR.Leave.espCancelStart;`.
+Two bugs to fix with it: the reader takes the output variable from gen's
+`VariableName` key where Studio Pro stores `OutputVariableName`, and a rewrite drops
+the target.
 
 ## Test plan (phase 1)
 

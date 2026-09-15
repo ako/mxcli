@@ -115,6 +115,10 @@ begin
   -- Wait for an external notification (e.g. an event)
   wait for notification waitForNotification1;
 
+  -- An intermediate notification event (Mendix 11.11+): what `notify workflow`
+  -- targets by name
+  notification DocumentsReceived comment 'Documents received';
+
   -- Loop back, or stop the whole workflow, from inside an outcome. A `jump to`
   -- and an `end workflow` must each END their path, so neither can close the
   -- main flow itself (CE6679 / CE6671).
@@ -166,6 +170,48 @@ end workflow;
   an interrupting path is **CE0105** at build, and a non-interrupting one builds
   cleanly and then stops the runtime from starting ("Expected the flow to end with
   an end event"). Use `jump to <task>` when the path should return to the task.
+- **A notification boundary event** (Mendix 11.11+) fires when `notify workflow`
+  targets it, so it takes a **name** instead of a delay:
+  `boundary event interrupting notification Withdrawn 'Request withdrawn' { end workflow; }`.
+  The name is unique in the workflow. Only one interrupting boundary event per
+  activity, of either kind (CE6697, MDL-WF15). `alter workflow … insert boundary
+  event` cannot add one yet — restate the workflow.
+- **Over MCP (`--mcp`), Studio Pro dictates how a notification path ends**, which
+  mxbuild does not: an interrupting one ends in `end workflow;` (in `jump to` inside
+  a parallel split), a non-interrupting one runs to its end. mxcli refuses the
+  other shapes with that remedy, because Studio Pro's constructor would rewrite or
+  reject them.
+
+**Event sub-processes** are flows outside the main flow, written after the main body.
+A notification (11.8+) or a timer (11.13+) starts one while the workflow runs;
+`interrupting` cancels every active path first, `non interrupting` runs alongside:
+
+```sql
+create or modify workflow HR.Leave
+  parameter $Context: HR.Request
+begin
+  user task Review 'Review' page HR.ReviewPage outcomes 'Approve' { } 'Reject' { };
+
+  event subprocess ESP_Cancel 'Cancel request'
+    on interrupting notification espCancelStart 'Cancel received' {
+    call microflow HR.ACT_LogCancel;
+  };
+  event subprocess ESP_Reminder 'Daily reminder'
+    on non interrupting timer 'addDays([%CurrentDateTime%], 1)' as espReminderStart {
+    call microflow HR.ACT_Remind;
+  };
+end workflow;
+```
+
+- **The End is implicit**, as in the main flow: mxcli appends one unless the body
+  already ends (`end workflow`, a `jump to`, or branches that all end). A body with
+  no end is CE0105.
+- **`jump to` stays inside its sub-process** — a jump to its own activities or its
+  start event builds; into another sub-process, or between one and the main flow,
+  is CE6682 (MDL-WF05).
+- **A timer start needs its expression** (CE0126, MDL-WF14).
+- **Names are shared with the main flow**: a start event named like an activity is
+  CE0495, so mxcli makes it unique.
 
 ## DROP WORKFLOW
 
@@ -223,10 +269,8 @@ describing a Studio-Pro-authored workflow, and `describe → drop → exec`
 reproduces a workflow that builds. (The implicit start/end activities are
 omitted, as they are re-synthesised on create.)
 
-**What DESCRIBE still cannot see: event sub-processes.** mxcli has no model for
-them at all, so they do not appear in the output and cannot be written from MDL.
-A workflow that has one can only be edited in Studio Pro or through
-`ALTER WORKFLOW` (below) — never with `CREATE OR REPLACE`.
+Event sub-processes come back as `event subprocess … on …` blocks after the main
+body, and notification activities and notification boundary events as statements.
 
 ## Activity names, and why `jump to` depends on them
 
@@ -259,8 +303,9 @@ workflow that simply no longer does what it did.
 
 mxcli refuses the two cases where that would lose something:
 
-- a stored **event sub-process** — MDL cannot express one, so the rewrite is
-  refused outright;
+- **more stored event sub-processes or notification activities than the statement
+  declares** — restate them; a sub-process with no start event, which MDL cannot
+  state, is refused outright;
 - **more stored boundary events than the statement declares** — restate them and
   the rewrite proceeds, which is what `describe workflow` now emits for you;
 - **more stored workflow event handlers, or user tasks with an on-created

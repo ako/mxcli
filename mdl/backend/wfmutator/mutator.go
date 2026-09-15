@@ -503,12 +503,11 @@ func (m *Mutator) InsertBoundaryEvent(activityRef string, atPos int, eventType s
 		return err
 	}
 
-	typeName := "Workflows$InterruptingTimerBoundaryEvent"
-	switch eventType {
-	case "NonInterruptingTimer":
-		typeName = "Workflows$NonInterruptingTimerBoundaryEvent"
-	case "Timer":
-		typeName = "Workflows$TimerBoundaryEvent"
+	// Unknown kinds used to fall through to an interrupting timer. A notification
+	// event needs a name this op does not carry, so it is refused too.
+	typeName, ok := workflows.BoundaryEventStorageType(eventType)
+	if !ok || (&workflows.BoundaryEvent{EventType: eventType}).IsNotification() {
+		return fmt.Errorf("insert boundary event: %q boundary events cannot be inserted by ALTER WORKFLOW", eventType)
 	}
 
 	eventDoc := bson.D{

@@ -607,6 +607,7 @@ var mdlGeneratedKeywords = []protocol.CompletionItem{
 	{Label: "BOUNDARY", Kind: protocol.CompletionItemKindKeyword, Detail: "Keyword"},
 	{Label: "INTERRUPTING", Kind: protocol.CompletionItemKindKeyword, Detail: "Keyword"},
 	{Label: "NON", Kind: protocol.CompletionItemKindKeyword, Detail: "Keyword"},
+	{Label: "SUBPROCESS", Kind: protocol.CompletionItemKindKeyword, Detail: "Keyword"},
 	{Label: "MULTI", Kind: protocol.CompletionItemKindKeyword, Detail: "Keyword"},
 	{Label: "BY", Kind: protocol.CompletionItemKindKeyword, Detail: "Keyword"},
 	{Label: "READ", Kind: protocol.CompletionItemKindKeyword, Detail: "Keyword"},

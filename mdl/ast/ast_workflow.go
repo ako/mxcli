@@ -28,6 +28,23 @@ type CreateWorkflowStmt struct {
 
 	// Activities
 	Activities []WorkflowActivityNode
+
+	// Event sub-processes, written after the main body.
+	EventSubProcesses []WorkflowEventSubProcessNode
+}
+
+// WorkflowEventSubProcessNode is `event subprocess <name> ['<caption>'] on
+// [non] interrupting notification|timer … { … };`.
+type WorkflowEventSubProcessNode struct {
+	Name         string
+	Caption      string
+	Interrupting bool
+	Timer        bool   // a timer start; otherwise a notification start
+	StartName    string // the start event's name; "" = derived from Name
+	StartCaption string
+	// FirstExecutionTime is a timer start's expression.
+	FirstExecutionTime string
+	Activities         []WorkflowActivityNode
 }
 
 // WorkflowEventHandlerNode is one `on workflow events (…) microflow M as '…'` or
@@ -187,6 +204,15 @@ type WorkflowWaitForNotificationNode struct {
 
 func (n *WorkflowWaitForNotificationNode) workflowActivityNode() {}
 
+// WorkflowNotificationNode is `notification [<name>] [comment '<caption>']`, an
+// intermediate notification event.
+type WorkflowNotificationNode struct {
+	Name    string
+	Caption string
+}
+
+func (n *WorkflowNotificationNode) workflowActivityNode() {}
+
 // WorkflowEndNode is `end workflow [comment '<caption>']` inside a branch: it
 // ends the whole workflow there. The main flow's End is not a node — the body's
 // closing `end workflow` is it.
@@ -207,8 +233,12 @@ func (n *WorkflowReturnNode) workflowActivityNode() {}
 // WorkflowBoundaryEventNode represents a BOUNDARY EVENT clause on a user task.
 // Issue #7
 type WorkflowBoundaryEventNode struct {
-	EventType  string                 // "InterruptingTimer", "NonInterruptingTimer", "Timer"
+	// EventType is "InterruptingTimer", "NonInterruptingTimer", "Timer",
+	// "InterruptingNotification" or "NonInterruptingNotification".
+	EventType  string
 	Delay      string                 // ISO duration expression e.g. "${PT1H}"
+	Name       string                 // notification events: what `notify workflow … target` names
+	Caption    string                 // notification events
 	Activities []WorkflowActivityNode // Sub-flow activities inside the boundary event
 }
 

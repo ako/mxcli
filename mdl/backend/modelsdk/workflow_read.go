@@ -4,6 +4,7 @@ package modelsdkbackend
 
 import (
 	"github.com/mendixlabs/mxcli/model"
+	"github.com/mendixlabs/mxcli/modelsdk/codec"
 	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genMf "github.com/mendixlabs/mxcli/modelsdk/gen/microflows"
 	genWf "github.com/mendixlabs/mxcli/modelsdk/gen/workflows"
@@ -66,7 +67,29 @@ func workflowFromGen(g *genWf.Workflow, containerID model.ID) *workflows.Workflo
 		w.Flow = workflowFlowFromGen(f)
 	}
 	w.EventHandlers = workflowEventHandlersFromGen(g.OnWorkflowEventItems())
+	w.EventSubProcesses = eventSubProcessesFromGen(g.EventSubProcessesItems())
 	return w
+}
+
+// eventSubProcessesFromGen converts a workflow's event sub-processes. Each flow
+// is read like any other, so its start event arrives as an
+// EventSubProcessStartActivity (workflowSimpleActivityFromGen) — read from the
+// raw document, since gen has no type for the two timer starts.
+func eventSubProcessesFromGen(items []element.Element) []*workflows.EventSubProcess {
+	var out []*workflows.EventSubProcess
+	for _, el := range items {
+		e, ok := el.(*genWf.EventSubProcess)
+		if !ok {
+			continue
+		}
+		esp := &workflows.EventSubProcess{Name: e.Name(), Caption: e.Caption(), Annotation: annotationText(e.Annotation())}
+		esp.ID = model.ID(e.ID())
+		if f, ok := e.Flow().(*genWf.Flow); ok && f != nil {
+			esp.Flow = workflowFlowFromGen(f)
+		}
+		out = append(out, esp)
+	}
+	return out
 }
 
 // workflowEventHandlersFromGen converts a workflow's OnWorkflowEvent handlers.
@@ -314,7 +337,21 @@ func workflowSimpleActivityFromGen(el element.Element) workflows.WorkflowActivit
 		a := &workflows.WaitForNotificationActivity{}
 		setBase(&a.BaseWorkflowActivity)
 		return a
+	// Neither has a gen type that exposes its fields (NotificationActivity and the
+	// timer starts have no gen type at all), so both are read off the raw document.
+	case "Workflows$NotificationActivity":
+		a := &workflows.NotificationActivity{}
+		setBase(&a.BaseWorkflowActivity)
+		return a
 	default:
+		if interrupting, timer, ok := workflows.EventSubProcessStartFromStorageType(typeName); ok {
+			a := &workflows.EventSubProcessStartActivity{Interrupting: interrupting, Timer: timer}
+			setBase(&a.BaseWorkflowActivity)
+			if timer {
+				a.FirstExecutionTime = genWf.RawFieldString(raw, "FirstExecutionTime")
+			}
+			return a
+		}
 		t := &workflows.GenericWorkflowActivity{TypeString: typeName}
 		t.ID = model.ID(el.ID())
 		t.TypeName = typeName
@@ -488,6 +525,22 @@ func boundaryEventsFromGen(items []element.Element) []*workflows.BoundaryEvent {
 }
 
 func boundaryEventFromGen(el element.Element) *workflows.BoundaryEvent {
+	// Notification boundary events have no gen type: the element is a raw Base,
+	// so its fields — and its flow — are read off the stored document.
+	if eventType, ok := workflows.BoundaryEventTypeFromStorage(el.TypeName()); ok {
+		if be := (&workflows.BoundaryEvent{EventType: eventType}); be.IsNotification() {
+			raw := el.Raw()
+			be.ID = model.ID(el.ID())
+			be.Name = genWf.RawFieldString(raw, "Name")
+			be.Caption = genWf.RawFieldString(raw, "Caption")
+			if child, err := codec.DecodeChild(raw, "Flow"); err == nil {
+				if f, ok := child.(*genWf.Flow); ok && f != nil {
+					be.Flow = workflowFlowFromGen(f)
+				}
+			}
+			return be
+		}
+	}
 	// The three timer variants differ only in $Type, and gen gives each its own
 	// concrete type, so the shared shape is read through a small interface rather
 	// than repeated three times.

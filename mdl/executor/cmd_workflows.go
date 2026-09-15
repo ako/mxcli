@@ -230,6 +230,7 @@ func describeWorkflowToString(ctx *ExecContext, name ast.QualifiedName) (string,
 		actLines := formatMainFlowActivities(targetWf.Flow, "  ")
 		lines = append(lines, actLines...)
 	}
+	lines = append(lines, formatEventSubProcesses(targetWf.EventSubProcesses, "  ")...)
 
 	lines = append(lines, "end workflow")
 	lines = append(lines, "/")
@@ -290,6 +291,10 @@ func boundaryEventKeyword(eventType string) string {
 		return "boundary event interrupting timer"
 	case "NonInterruptingTimer":
 		return "boundary event non interrupting timer"
+	case "InterruptingNotification":
+		return "boundary event interrupting notification"
+	case "NonInterruptingNotification":
+		return "boundary event non interrupting notification"
 	default:
 		return "boundary event timer"
 	}
@@ -304,7 +309,18 @@ func formatBoundaryEvents(events []*workflows.BoundaryEvent, indent string) []st
 	var lines []string
 	for _, event := range events {
 		keyword := boundaryEventKeyword(event.EventType)
-		if event.TimerDelay != "" {
+		if event.IsNotification() {
+			// Its name is what `notify workflow … target` names, so it is always
+			// emitted; the string is the caption.
+			header := indent + keyword
+			if event.Name != "" {
+				header += " " + mdlIdent(event.Name)
+			}
+			if event.Caption != "" {
+				header += " " + mdlQuoted(event.Caption)
+			}
+			lines = append(lines, header)
+		} else if event.TimerDelay != "" {
 			lines = append(lines, fmt.Sprintf("%s%s %s", indent, keyword, mdlQuoted(event.TimerDelay)))
 		} else {
 			lines = append(lines, fmt.Sprintf("%s%s", indent, keyword))
@@ -317,6 +333,53 @@ func formatBoundaryEvents(events []*workflows.BoundaryEvent, indent string) []st
 		}
 	}
 
+	return lines
+}
+
+// formatEventSubProcesses emits each event sub-process as a block after the main
+// body. Its flow's End is implicit, like the main flow's — the builder appends
+// one when the body does not already end — so it is formatted as a main flow.
+func formatEventSubProcesses(esps []*workflows.EventSubProcess, indent string) []string {
+	var lines []string
+	for _, esp := range esps {
+		start := esp.Start()
+		if start == nil {
+			// Nothing MDL can state starts it; the rewrite guard refuses to drop it.
+			lines = append(lines, fmt.Sprintf("%s-- event subprocess %s has no start event, which MDL cannot state", indent, esp.Name), "")
+			continue
+		}
+		header := indent + "event subprocess " + mdlIdent(esp.Name)
+		if esp.Caption != "" {
+			header += " " + mdlQuoted(esp.Caption)
+		}
+		trigger := "non interrupting"
+		if start.Interrupting {
+			trigger = "interrupting"
+		}
+		if start.Timer {
+			header += fmt.Sprintf(" on %s timer %s", trigger, mdlQuoted(start.FirstExecutionTime))
+			if start.Name != "" {
+				header += " as " + mdlIdent(start.Name)
+			}
+			if start.Caption != "" {
+				header += " comment " + mdlQuoted(start.Caption)
+			}
+		} else {
+			header += fmt.Sprintf(" on %s notification", trigger)
+			if start.Name != "" {
+				header += " " + mdlIdent(start.Name)
+			}
+			if start.Caption != "" {
+				header += " " + mdlQuoted(start.Caption)
+			}
+		}
+		if esp.Annotation != "" {
+			lines = append(lines, formatAnnotation(esp.Annotation, indent))
+		}
+		lines = append(lines, header+" {")
+		lines = append(lines, formatMainFlowActivities(esp.Flow, indent+"  ")...)
+		lines = append(lines, indent+"};", "")
+	}
 	return lines
 }
 
@@ -400,8 +463,23 @@ func formatFlowActivities(flow *workflows.Flow, indent string, mainFlow bool) []
 				workflowActivityNameClause(a.Name, caption), caption))
 			// BoundaryEvents
 			actLines = append(actLines, formatBoundaryEvents(a.BoundaryEvents, indent+"  ")...)
+		case *workflows.NotificationActivity:
+			if a.Annotation != "" {
+				actLines = append(actLines, formatAnnotation(a.Annotation, indent))
+			}
+			line := indent + "notification"
+			if a.Name != "" {
+				line += " " + mdlIdent(a.Name)
+			}
+			if a.Caption != "" {
+				line += " comment " + mdlQuoted(a.Caption)
+			}
+			actLines = append(actLines, line)
 		case *workflows.StartWorkflowActivity:
 			// Skip start activities - they are implicit
+			continue
+		case *workflows.EventSubProcessStartActivity:
+			// Stated in the `event subprocess … on …` header.
 			continue
 		case *workflows.EndWorkflowActivity:
 			if mainFlow {
