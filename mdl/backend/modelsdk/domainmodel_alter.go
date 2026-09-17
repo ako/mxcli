@@ -145,6 +145,22 @@ func (b *Backend) UpdateEntity(domainModelID model.ID, entity *domainmodel.Entit
 		ge.SetRaw(raw)
 	}
 
+	// The same carry, one level down, for the entity's GUID-bearing CHILDREN.
+	// #657 closed this for the entity element and noted that siblings survive via
+	// the list-rebuild raw passthrough — but the target's own children do not:
+	// entityToGen rebuilds every attribute and index from the semantic model, so
+	// each arrives raw==nil and the codec's EmitGUID default writes GUID = $ID.
+	//
+	// For an attribute that GUID is the database's identity, not a cross-reference:
+	// the runtime keys mendixsystem$attribute.id on it, so re-minting it makes the
+	// synchroniser treat every column as deleted-and-re-added and DROP it on the
+	// next deploy. Measured on a real project: one ALTER, 0 of 28 GUIDs surviving,
+	// all 607 rows' attribute values gone (issue #1119). Nothing caught it — the
+	// model stays valid, mx check is clean, and because the new GUID is derived
+	// from a now-stable $ID the damage is idempotent, so a second run is elided
+	// and reports "Unchanged".
+	carryChildIdentity(ge, orig, entity)
+
 	// When an update empties a child list, the fresh (empty) list on ge is "clean"
 	// — entityToGen appended nothing to it — so the codec passes the STORED raw
 	// bytes through unchanged and the removal silently does not happen. Touching

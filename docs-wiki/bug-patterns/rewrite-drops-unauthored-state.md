@@ -85,6 +85,35 @@ survived, values gone. Nothing in the model was wrong. This is the same concern
 as `GUID` preservation and the reason `canon.Reconcile` exists; a codec that
 mints fresh identities on rebuild is a data-loss bug wearing a clean `mx check`.
 
+**Fixing the rewritten element does not fix its children.** The carry that saves
+an ALTER target's own identity reaches the element and its untouched siblings —
+siblings pass through as stored bytes, so they were never at risk — and stops
+there. Everything the rebuild constructs *inside* the target arrives fresh, and
+the identity default fires on each one. So the same defect returns one level
+down, and the second time it is the attributes, which is where the database's
+identity actually lives.
+
+**An identity derived from another identity is invisible to every same-vs-same
+check.** A fresh random value makes a document differ from itself, which elision
+notices and a churn test catches. A value computed from a property that is itself
+held stable does not: the first write corrupts, and the second produces
+byte-identical bytes, so the write is elided and the run reports *Unchanged*. The
+damage is a one-shot, and every diagnostic after it — re-running the script
+included — agrees that nothing is wrong. The question that separates the two is
+not "does this write change anything?" but "does it change the same thing twice?",
+and only the first write answers it. Compare against a copy taken before any
+write, never against the previous run.
+
+**A carry keyed on structure is not the same tool as a carry keyed on identity.**
+The pairing behind `$ID` transplantation is deliberately tolerant, because a
+wrong match there only makes a diff larger. Reusing it to carry a database
+identity converts that tolerance into data loss of the opposite kind: instead of
+a dropped column, a new member silently adopts a removed one's data under a name
+and type that no longer describe it. Carry a database identity only on the
+identity the caller itself tracked through the statement; where no such identity
+is in hand, refuse the write rather than guessing, and keep the repair in the
+layer that knows which element is which.
+
 **Delete-then-create defeats every protection.** One replace path removed the
 stored document before writing the new one, so nothing was left for identity
 preservation or elision to reconcile against, and translated captions in every
