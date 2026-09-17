@@ -104,6 +104,15 @@ not "does this write change anything?" but "does it change the same thing twice?
 and only the first write answers it. Compare against a copy taken before any
 write, never against the previous run.
 
+**Restored data can be the default, not the data.** Where the platform recreates
+a store rather than altering it, a column, field or setting that carries a default
+comes back filled with that default. Counting non-empty values therefore reports
+the loss as no loss, and the reconstructed value is plausible enough that nobody
+looks again — a boolean with `default true` read back as fully populated on every
+row, and only a run seeded entirely with the non-default value showed it had been
+overwritten. A destructive-rewrite test has to compare values that could not have
+been guessed, not presence.
+
 **A carry keyed on structure is not the same tool as a carry keyed on identity.**
 The pairing behind `$ID` transplantation is deliberately tolerant, because a
 wrong match there only makes a diff larger. Reusing it to carry a database

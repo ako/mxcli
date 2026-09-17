@@ -312,6 +312,21 @@ same attributes — makes the runtime treat it as a different entity and **destr
 its rows**. An unchanged reboot is the control, and preserves them. See
 [PROPOSAL_marketplace_module_upgrade.md §8](docs/11-proposals/PROPOSAL_marketplace_module_upgrade.md).
 
+Re-measured for an **attribute** on 11.13.0 + PostgreSQL 16 while fixing #1119,
+and one result changes how you test for this: changing only the attribute `GUID`s
+of a 607-row entity made the runtime drop and recreate their columns
+(`ConnectionBus: Executing 14 database synchronization command(s)`), and
+**a recreated column with a model default is silently backfilled with that
+default.** A `Boolean default true` read back as 607 non-null `true` and looked
+untouched — until the run was repeated with every row seeded `false`, which came
+back `true`. So the loss can arrive wearing plausible data, not empty cells:
+`count(col)` proves nothing, **seed a non-default value and compare values**. The
+column order in `\d` also shifts, which is the cheap tell that a column was
+dropped and re-added rather than altered. Note too that an entity **mxcli
+created** is immune — its `GUID` equals its `$ID` from birth, so a rewrite
+reproduces the same value — which is precisely how this survives testing against
+anything but a Studio Pro-authored entity.
+
 Consequences for any write path:
 
 1. **Preserve the stored `GUID` when rewriting an existing element.** A codec that
