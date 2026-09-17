@@ -314,6 +314,12 @@ type MockBackend struct {
 	// when unset, because most tests do not care about the distinction.
 	UpdateRawUnitOwningTranslationsFunc func(unitID string, contents []byte) error
 
+	// UpdateRawUnitOwningStorageGUIDsFunc stubs the write path that deliberately
+	// transplants storage GUIDs (the marketplace module update). Separate from
+	// UpdateRawUnitFunc so a test cannot satisfy it by accident: a write that
+	// moves a GUID without meaning to is the #1119 data-loss defect.
+	UpdateRawUnitOwningStorageGUIDsFunc func(unitID string, contents []byte) error
+
 	// MetadataBackend
 	ListAllUnitIDsFunc   func() ([]string, error)
 	ListUnitsFunc        func() ([]*types.UnitInfo, error)

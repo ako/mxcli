@@ -1322,6 +1322,11 @@ func (unsupportedBackend) UpdateRawUnit(_ string, _ []uint8) (err0 error) {
 	return
 }
 
+func (unsupportedBackend) UpdateRawUnitOwningStorageGUIDs(_ string, _ []uint8) (err0 error) {
+	err0 = errUnsupported("UpdateRawUnitOwningStorageGUIDs")
+	return
+}
+
 func (unsupportedBackend) UpdateRawUnitOwningTranslations(_ string, _ []uint8) (err0 error) {
 	err0 = errUnsupported("UpdateRawUnitOwningTranslations")
 	return

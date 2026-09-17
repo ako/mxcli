@@ -191,7 +191,10 @@ func (wt *WriteTransaction) WriteUnit(unitID string, contents []byte) error {
 	// same storage (codec.Store.SaveUnit / FlushUnits reach it), so leaving it
 	// out would mean the codec engine's own document writes kept churning while
 	// UpdateRawUnit's stopped — a difference no caller could reason about.
-	contents, unchanged := wt.writer.reconcileWithStored(unitID, contents)
+	contents, unchanged, err := wt.writer.reconcileWithStored(unitID, contents)
+	if err != nil {
+		return err
+	}
 	if unchanged {
 		return nil
 	}
@@ -231,7 +234,7 @@ func (wt *WriteTransaction) WriteUnit(unitID string, contents []byte) error {
 	}
 
 	// V1: Update in database directly
-	_, err := wt.tx.Exec(`
+	_, err = wt.tx.Exec(`
 		UPDATE Unit SET Contents = ? WHERE UnitID = ?
 	`, contents, unitIDBlob)
 	return err
@@ -587,7 +590,10 @@ func (w *Writer) updateUnit(unitID string, contents []byte, opts ...canon.Option
 		return w.sessionBuf(unitID, contents)
 	}
 
-	contents, unchanged := w.reconcileWithStored(unitID, contents, opts...)
+	contents, unchanged, err := w.reconcileWithStored(unitID, contents, opts...)
+	if err != nil {
+		return err
+	}
 	if unchanged {
 		return nil
 	}
@@ -634,7 +640,7 @@ func (w *Writer) updateUnit(unitID string, contents []byte, opts ...canon.Option
 	}
 
 	// MPR v1: Update in database
-	_, err := w.reader.db.Exec(`
+	_, err = w.reader.db.Exec(`
 		UPDATE Unit SET Contents = ? WHERE UnitID = ?
 	`, contents, unitIDBlob)
 	return err
@@ -642,18 +648,40 @@ func (w *Writer) updateUnit(unitID string, contents []byte, opts ...canon.Option
 
 // reconcileWithStored applies the shared no-op-elision policy (canon.Reconcile,
 // ADR-0008 decision 1) to a write against this project.
-func (w *Writer) reconcileWithStored(unitID string, contents []byte, opts ...canon.Option) (out []byte, unchanged bool) {
+func (w *Writer) reconcileWithStored(unitID string, contents []byte, opts ...canon.Option) (out []byte, unchanged bool, err error) {
 	w.writesOffered++
-	stored, err := w.reader.GetRawUnitBytes(unitID)
-	if err != nil {
+	stored, readErr := w.reader.GetRawUnitBytes(unitID)
+	if readErr != nil {
 		w.writesLanded++
-		return contents, false // new unit, or unreadable — write it
+		return contents, false, nil // new unit, or unreadable — write it
 	}
 	out, unchanged = canon.Reconcile(contents, stored, opts...)
+
+	// The storage-GUID guard runs here, on the reconciled bytes, because it is
+	// the transplant inside Reconcile that establishes which written element is
+	// which stored one: before it, every rebuilt element carries a freshly minted
+	// $ID that matches nothing. An element that came out of Reconcile sharing an
+	// $ID with a stored element but carrying a different GUID is a rewrite that
+	// dropped the database's identity for it (#1119) — refuse rather than write.
+	//
+	// Placed in reconcileWithStored rather than beside the duplicate-$ID guard in
+	// updateUnit so that BOTH choke points get it: WriteTransaction.WriteUnit is
+	// how codec.Store reaches storage, and a guard on only one of them is the
+	// inconsistency CLAUDE.md's "adding a write path means wiring it to
+	// canon.Reconcile" exists to prevent.
+	//
+	// A deliberate identity transplant (the marketplace module update) is the one
+	// write whose purpose is to move GUIDs, and it says so.
+	if !canon.OwnsStorageGUIDs(opts...) {
+		if guardErr := canon.StorageGUIDError(unitID, out, stored); guardErr != nil {
+			return nil, false, guardErr
+		}
+	}
+
 	if !unchanged {
 		w.writesLanded++
 	}
-	return out, unchanged
+	return out, unchanged, nil
 }
 
 // UpdateRawUnit saves raw BSON bytes for a unit, bypassing deserialization.
@@ -673,6 +701,19 @@ func (w *Writer) UpdateRawUnit(unitID string, contents []byte) error {
 // reported removing 22 translations and every one was silently restored.
 func (w *Writer) UpdateRawUnitOwningTranslations(unitID string, contents []byte) error {
 	return w.updateUnit(unitID, contents, canon.ContentsOwnTranslations())
+}
+
+// UpdateRawUnitOwningStorageGUIDs is UpdateRawUnit for a write that deliberately
+// transplants storage GUIDs onto elements that keep their $ID — the marketplace
+// module update, which carries a module's existing GUIDs onto the documents
+// replacing it so the next deploy does not destroy that module's data.
+//
+// That is the exact pattern the #1119 guard refuses, and rightly: for every other
+// write it means the database's identity for an element was dropped. Only a
+// caller that captured those GUIDs from the stored model and is putting them back
+// may use this. See canon.ContentsOwnStorageGUIDs.
+func (w *Writer) UpdateRawUnitOwningStorageGUIDs(unitID string, contents []byte) error {
+	return w.updateUnit(unitID, contents, canon.ContentsOwnStorageGUIDs())
 }
 
 // InsertUnit creates a new unit in the project database.

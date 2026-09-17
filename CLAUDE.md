@@ -319,6 +319,30 @@ Consequences for any write path:
    on the next deploy — a failure that no `mx check` and no build will catch,
    because the model is perfectly valid. This is the same class as the identity
    properties in `canon.identityFields` and belongs in that decision.
+
+   **The write path now refuses it** (`canon.StorageGUIDError`, called from
+   `reconcileWithStored` so both choke points get it): an element that comes out
+   of `canon.Reconcile` sharing an `$ID` with a stored element but carrying a
+   different `GUID` is refused, naming the element. It runs *after* the
+   transplant, which is what makes it exact — before it, a rebuilt element's
+   freshly minted `$ID` matches nothing. It does not repair, because carrying a
+   `GUID` on the transplant's structural pairing would trade a dropped column for
+   a new member adopting a removed one's data; the carry belongs where the write
+   knows which element is which (`carryChildIdentity`, keyed on the `$ID` the
+   executor tracked). The one deliberate GUID transplant — the marketplace module
+   update, which is why an update does not destroy a module's data — opts out by
+   name via `UpdateRawUnitOwningStorageGUIDs`. Passing that because "the guard was
+   in the way" is how #1119 ships again.
+
+   #1119 is the cautionary case and the reason the guard exists: #657 fixed this
+   for the entity element, nobody carried the raw onto its **children**, and every
+   ALTER — `SET DOCUMENTATION` included — reset all 28 of an entity's attribute
+   GUIDs and emptied 607 rows on the next deploy. Note why no existing guard fired:
+   the new GUID is derived from an `$ID` the transplant holds stable, so the second
+   identical write is byte-identical and elided. **A corruption that does not repeat
+   is invisible to every same-vs-same check**, including a re-run of the same
+   script — compare against a copy taken before the first write, never against the
+   previous run.
 2. **`$ID` renumbering is irrelevant to data safety** — the inverse of the natural
    assumption. Studio Pro renumbers every `$ID` in a module on update (94 of 94)
    and preserves every `GUID` (9 of 9), which is exactly why its update does not

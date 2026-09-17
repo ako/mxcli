@@ -255,7 +255,13 @@ func ApplyIdentities(mprPath, moduleName string, ids Identities) (applied int, m
 	}
 	defer writer.Disconnect()
 	for _, w := range writes {
-		if err := writer.UpdateRawUnit(w.id, w.contents); err != nil {
+		// OwningStorageGUIDs, not the plain UpdateRawUnit: moving a GUID onto an
+		// element that kept its $ID is the pattern the write path refuses by
+		// default, because everywhere else it means an element's database identity
+		// was dropped and the next deploy will drop its column (#1119). Here it is
+		// the entire point of the write — these GUIDs were captured from the stored
+		// model and are being put back.
+		if err := writer.UpdateRawUnitOwningStorageGUIDs(w.id, w.contents); err != nil {
 			return 0, nil, fmt.Errorf("write identities into unit %s: %w", w.id, err)
 		}
 	}

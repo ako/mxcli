@@ -1180,6 +1180,10 @@ func (unimplemented) UpdateRawUnit(_ string, _ []uint8) error {
 	return errUnimplemented("UpdateRawUnit")
 }
 
+func (unimplemented) UpdateRawUnitOwningStorageGUIDs(_ string, _ []uint8) error {
+	return errUnimplemented("UpdateRawUnitOwningStorageGUIDs")
+}
+
 func (unimplemented) UpdateRawUnitOwningTranslations(_ string, _ []uint8) error {
 	return errUnimplemented("UpdateRawUnitOwningTranslations")
 }
