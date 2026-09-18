@@ -1,0 +1,58 @@
+-- @version: 11.0+
+-- ============================================================================
+-- ako/mxcli#527 — ALTER PAGE could not set Documentation:
+--   "unsupported page-level property: Documentation
+--    (supported: Title, Url, PopupWidth, ... Class, Style)"
+--
+-- So documenting an existing page meant re-running its CREATE — the `/** */`
+-- doc comment on the create statement was the only source. For a real page that
+-- means re-emitting its whole widget tree through a describe → exec round trip
+-- that is only as complete as what MDL can spell, so the workaround could
+-- silently lose widgets.
+--
+-- The field was otherwise fully understood: pageToGen has always written it on
+-- CREATE, gen binds it as a plain top-level string, the grammar already parsed
+-- the statement and the executor has no allowlist. One missing mutator case.
+--
+-- EXPECTED: `mx check` reports 0 errors, and the documentation set by ALTER
+-- below replaces what the CREATE doc comment wrote.
+-- ============================================================================
+
+create module Issue527;
+
+@position(100, 100)
+create persistent entity Issue527.ServiceRequest (
+  Description: string(500)
+);
+
+/**
+ * Written by the doc comment on CREATE — the only route before this fix.
+ */
+create or replace page Issue527.ServiceRequest_Triage (
+  title: 'Triage',
+  params: { $Request: Issue527.ServiceRequest }
+)
+{
+  dataview dvMain (datasource: $Request) {
+    text txtDescription (content: 'Triage this request.')
+  }
+}
+
+-- The statement that was refused. It replaces the doc comment's text in place,
+-- with no need to restate the page.
+alter page Issue527.ServiceRequest_Triage {
+  set Documentation = 'Coordinator triage step: set priority, then accept or reject.';
+}
+
+-- An empty string clears it — removing a doc comment from a script has to be
+-- expressible, and the property is a bare string with no unset value.
+alter page Issue527.ServiceRequest_Triage {
+  set Documentation = '';
+}
+
+-- Back to a real value, so the file leaves the page documented.
+alter page Issue527.ServiceRequest_Triage {
+  set Documentation = 'Coordinator triage step: set priority, then accept or reject.';
+}
+
+describe page Issue527.ServiceRequest_Triage;

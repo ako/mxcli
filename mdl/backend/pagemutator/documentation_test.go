@@ -90,3 +90,33 @@ func TestSetPageLevel_UnsupportedMessageNamesDocumentation(t *testing.T) {
 		t.Errorf("the supported-property list does not mention Documentation: %v", err)
 	}
 }
+
+// ALTER PAGE, ALTER LAYOUT and ALTER SNIPPET share alterPageOperation and all
+// three reach applyPageLevelSetMut through the one OpenPageForMutation, so a
+// property added for pages is silently offered to the other two. That is the
+// shape that ships silent drops, so run them rather than reasoning about them.
+//
+// Documentation is safe on all three on the evidence that matters — the key is
+// one of the ten measured on Atlas_Core.Atlas_Default at 11.13.0 (see
+// layoutToGen), and snippetToGen writes it too. It is NOT safe merely because
+// gen declares it: gen also offers Layout.MainPlaceholderName and six siblings
+// that no Atlas layout carries, and writing one gives a document mxbuild
+// accepts at 0 errors and Studio Pro cannot open.
+func TestSetPageLevel_Documentation_LayoutAndSnippet(t *testing.T) {
+	for _, typeName := range []string{"Forms$Layout", "Forms$Snippet"} {
+		t.Run(typeName, func(t *testing.T) {
+			raw := append(bson.D{{Key: "$Type", Value: typeName}}, makeRawPage()...)
+			m := &Mutator{rawData: raw, widgetFinder: findBsonWidget}
+
+			if err := m.SetWidgetProperty("", "Documentation", "shared frame"); err != nil {
+				t.Fatalf("SET Documentation on %s failed: %v", typeName, err)
+			}
+			if got := bsonnav.DGet(m.rawData, "Documentation"); got != "shared frame" {
+				t.Errorf("%s Documentation = %v, want %q", typeName, got, "shared frame")
+			}
+			if got := bsonnav.DGetString(m.rawData, "$Type"); got != typeName {
+				t.Errorf("$Type changed to %q", got)
+			}
+		})
+	}
+}
