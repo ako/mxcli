@@ -424,8 +424,12 @@ func execGrantEntityAccess(ctx *ExecContext, s *ast.GrantEntityAccessStmt) error
 		} else if readMemberSet[mem.Name] {
 			rights = "ReadOnly"
 		}
-		// Calculated attributes cannot have write rights (CE6592)
-		if mem.IsCalculated && (rights == "ReadWrite" || rights == "WriteOnly") {
+		// Neither a calculated attribute nor an autonumber may carry write
+		// rights — both are CE6592. The autonumber half was missing, so
+		// `grant write *` on an entity with one wrote ReadWrite and failed the
+		// build (ako/mxcli#524).
+		if types.WriteRightsForbidden(mem.IsCalculated, mem.IsAutoNumber) &&
+			(rights == "ReadWrite" || rights == "WriteOnly") {
 			rights = "ReadOnly"
 		}
 		grantedMembers[mem.Name] = true

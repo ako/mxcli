@@ -335,9 +335,12 @@ func sameStringSet(a, b []string) bool {
 // into sync with its entity's current members: it adds a MemberAccess for each
 // attribute, each FROM-side association (regular + cross), and each implicit
 // system association (System.owner / System.changedBy); removes stale entries
-// for members that no longer exist; and downgrades write rights on calculated
-// attributes (CE6592). It mirrors the legacy writer's reconcile and is invoked
-// by the executor's finalize step after every program run.
+// for members that no longer exist; and downgrades write rights on the members
+// that may not carry them — calculated attributes AND autonumbers, both CE6592.
+// It mirrors the legacy writer's reconcile and is invoked by the executor's
+// finalize step after every program run, which is why the autonumber half
+// mattered here as much as at the GRANT: a correct grant was re-broken by the
+// next write touching the module (ako/mxcli#524).
 //
 // Rules with no MemberAccesses yet (a fresh, empty rule) are left untouched —
 // matching legacy; those are populated at create time by the inline sync in
@@ -404,13 +407,16 @@ func (b *Backend) ReconcileMemberAccesses(unitID model.ID, moduleName string) (i
 		// dropped the attribute — is still preserved rather than removed; that is
 		// the opposite direction from this defect and #1047's own control reports
 		// "+1 added, -0 removed".
+		// noWrite folds the two CE6592 causes — calculated and autonumber —
+		// into the one question the downgrades below ask. Keeping them apart
+		// here is what let the autonumber half go missing (ako/mxcli#524).
 		type attrInfo struct {
-			qn   string
-			calc bool
+			qn      string
+			noWrite bool
 		}
 		var attrs []attrInfo
 		attrSet := map[string]bool{}
-		calcSet := map[string]bool{}
+		noWriteSet := map[string]bool{}
 		claimed := map[string]bool{}
 		collectAttrs := func(owner *genDm.Entity, ownerName string) {
 			for _, ae := range owner.AttributesItems() {
@@ -424,10 +430,12 @@ func (b *Backend) ReconcileMemberAccesses(unitID model.ID, moduleName string) (i
 				claimed[a.Name()] = true
 				qn := moduleName + "." + ownerName + "." + a.Name()
 				_, isCalc := a.Value().(*genDm.CalculatedValue)
-				attrs = append(attrs, attrInfo{qn, isCalc})
+				_, isAuto := a.Type().(*genDm.AutoNumberAttributeType)
+				noWrite := types.WriteRightsForbidden(isCalc, isAuto)
+				attrs = append(attrs, attrInfo{qn, noWrite})
 				attrSet[qn] = true
-				if isCalc {
-					calcSet[qn] = true
+				if noWrite {
+					noWriteSet[qn] = true
 				}
 			}
 		}
@@ -523,7 +531,7 @@ func (b *Backend) ReconcileMemberAccesses(unitID model.ID, moduleName string) (i
 					switch {
 					case attrSet[attrRef]:
 						covAttr[attrRef] = true
-						if calcSet[attrRef] {
+						if noWriteSet[attrRef] {
 							if r := ma.AccessRights(); r == "ReadWrite" || r == "WriteOnly" {
 								ma.SetAccessRights("ReadOnly")
 								changed = true
@@ -577,7 +585,7 @@ func (b *Backend) ReconcileMemberAccesses(unitID model.ID, moduleName string) (i
 					continue
 				}
 				rights := defRights
-				if ai.calc && (rights == "ReadWrite" || rights == "WriteOnly") {
+				if ai.noWrite && (rights == "ReadWrite" || rights == "WriteOnly") {
 					rights = "ReadOnly"
 				}
 				rule.AddMemberAccesses(newMemberAccess(rights, ai.qn, true))
