@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/mendixlabs/mxcli/mdl/linter"
-	"github.com/mendixlabs/mxcli/mdl/linter/rules"
 	"github.com/mendixlabs/mxcli/mdl/visitor"
 	"github.com/spf13/cobra"
 )
@@ -88,52 +87,21 @@ Examples:
 		ctx := linter.NewLintContext(cat, exec.Backend())
 		ctx.SetExcludedModules(excludeModules)
 
-		// Create linter and register all rules
-		lint := linter.New(ctx)
-
-		// Built-in Go rules
-		lint.AddRule(rules.NewNamingConventionRule())
-		lint.AddRule(rules.NewEmptyMicroflowRule())
-		lint.AddRule(rules.NewDomainModelSizeRule())
-		lint.AddRule(rules.NewValidationFeedbackRule())
-		lint.AddRule(rules.NewImageSourceRule())
-		lint.AddRule(rules.NewEmptyContainerRule())
-		lint.AddRule(rules.NewGallerySelectionListenerRule())
-		lint.AddRule(rules.NewDataViewLayoutGridRule())
-		lint.AddRule(rules.NewPageNavigationSecurityRule())
-		lint.AddRule(rules.NewNoEntityAccessRulesRule())
-		lint.AddRule(rules.NewWeakPasswordPolicyRule())
-		lint.AddRule(rules.NewDemoUsersActiveRule())
-
-		// MPR008 - requires BSON inspection
-		lint.AddRule(rules.NewOverlappingActivitiesRule())
-		lint.AddRule(rules.NewLoopChildContainmentRule())
-
-		// Convention rules (CONV011-CONV014)
-		lint.AddRule(rules.NewNoCommitInLoopRule())
-		lint.AddRule(rules.NewExclusiveSplitCaptionRule())
-		lint.AddRule(rules.NewErrorHandlingOnCallsRule())
-		lint.AddRule(rules.NewNoContinueErrorHandlingRule())
-
-		// Load Starlark rules (includes CONV001-010, CONV015-017).
-		//
-		// Searched upward from the project, like `mxcli lint` — this command had
-		// the same .mpr-relative lookup, and it emits a *score*, so a silently
-		// reduced rule set produced a falsely high one (#904).
+		// The rule set and the config come from the same two helpers `mxcli
+		// lint` uses. This command used to build both itself: its inline copy of
+		// the built-in list had fallen a rule behind (MDL-FLOW01), and it never
+		// read lint-config.yaml at all — so a rule a team had deliberately
+		// accepted and disabled still scored against them, and the score could
+		// not be moved by any configuration (ako/mxcli#525). A score computed
+		// from a different rule set than the listing that explains it is worse
+		// than no score.
 		projectDir := filepath.Dir(projectPath)
-		lintRulesDir := linter.FindLintRulesDir(projectDir)
-		starlarkRules, loadFailures, err := linter.LoadStarlarkRulesFromDir(lintRulesDir)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: could not read %s: %v\n", lintRulesDir, err)
-		}
-		for _, f := range loadFailures {
-			fmt.Fprintf(os.Stderr, "Warning: rule file skipped: %s: %s\n", f.Path, f.Reason)
-		}
-		if len(loadFailures) > 0 {
-			fmt.Fprintf(os.Stderr, "Warning: %d rule file(s) skipped — the score below does not include them.\n", len(loadFailures))
-		}
-		for _, rule := range starlarkRules {
+		lint := linter.New(ctx)
+		for _, rule := range projectLintRules(projectDir, os.Stderr) {
 			lint.AddRule(rule)
+		}
+		if cfg, _ := applyLintConfig(lint, projectDir, os.Stderr); cfg != nil && len(cfg.ExcludeModules) > 0 {
+			ctx.SetExcludedModules(append(excludeModules, cfg.ExcludeModules...))
 		}
 
 		// Run all rules

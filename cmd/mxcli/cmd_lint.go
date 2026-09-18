@@ -125,25 +125,8 @@ Examples:
 		// so we can compute the catalog depth they need BEFORE building it. A rule
 		// that needs the refs (full) or graph_* (communities) tables then gets them
 		// automatically instead of silently returning empty results (issue #721).
-		lintRules := builtinLintRules()
-		// Search upward from the project for .claude/lint-rules/, so one
-		// directory at the repo root serves an app in a subfolder (#904).
+		lintRules := projectLintRules(projectDir, os.Stderr)
 		lintRulesDir := linter.FindLintRulesDir(projectDir)
-		starlarkRules, loadFailures, err := linter.LoadStarlarkRulesFromDir(lintRulesDir)
-		if err != nil {
-			// Previously discarded, which made an unreadable directory look
-			// exactly like a project with no custom rules.
-			fmt.Fprintf(os.Stderr, "Warning: could not read %s: %v\n", lintRulesDir, err)
-		}
-		for _, f := range loadFailures {
-			fmt.Fprintf(os.Stderr, "Warning: rule file skipped: %s: %s\n", f.Path, f.Reason)
-		}
-		if len(loadFailures) > 0 {
-			fmt.Fprintf(os.Stderr, "Warning: %d rule file(s) skipped — those rules did not run.\n", len(loadFailures))
-		}
-		for _, rule := range starlarkRules {
-			lintRules = append(lintRules, rule)
-		}
 
 		// Build catalog at the depth the rules need (fast / full / communities).
 		catalogMode := linter.RequiredCatalogMode(lintRules)
@@ -184,8 +167,7 @@ Examples:
 
 		// Load lint config file and apply (excludedModules, rule severity/enabled overrides).
 		// Config ExcludeModules merges with --exclude flag values.
-		configPath := linter.FindConfigFile(projectDir)
-		if cfg, err := linter.LoadConfig(configPath); err == nil {
+		if cfg, configPath := applyLintConfig(lint, projectDir, os.Stderr); cfg != nil {
 			if len(cfg.ExcludeModules) > 0 {
 				merged := append(excludeModules, cfg.ExcludeModules...)
 				ctx.SetExcludedModules(merged)
@@ -204,9 +186,6 @@ Examples:
 						pluralItThem(len(shadowed)))
 				}
 			}
-			cfg.ApplyConfig(lint)
-		} else {
-			fmt.Fprintf(os.Stderr, "Warning: failed to load lint config: %v\n", err)
 		}
 
 		// If --rules is specified, disable every rule not in the allowlist.
