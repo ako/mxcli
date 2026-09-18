@@ -1582,6 +1582,7 @@ Modify an existing page or snippet's widget tree in-place without full `create o
 | Set property | `set caption = 'New' on widgetName` | Single property on a widget |
 | Set multiple | `set (caption = 'Save', buttonstyle = success) on btn` | Multiple properties at once |
 | Page-level set | `set Title = 'New title'` | No ON clause; page-level names are case-sensitive |
+| Documentation | `set Documentation = 'What this page is for.'` | Page-level. Same property the `/** … */` doc comment on `CREATE PAGE` writes, so an existing page can be documented without restating it. `''` clears it |
 | Pop-up dimensions | `set PopupWidth = 800` / `set PopupHeight = 480` / `set PopupResizable = true` | Page-level; apply when the page opens in a pop-up |
 | Page CSS class / style | `set Class = 'css-class'` / `set Style = 'css: rule'` | Page-level (no ON clause); sets the page's Appearance |
 | Widget dynamic classes | `set DynamicClasses = 'expr' on widgetName` | Runtime-computed classes on a widget — the surgical alternative to a bulk `update widgets` |
@@ -1599,7 +1600,7 @@ Modify an existing page or snippet's widget tree in-place without full `create o
 | Set layout | `set layout = Module.LayoutName` | Change page layout, auto-maps placeholders |
 | Set layout + map | `set layout = Module.Layout map (Old as New)` | Explicit placeholder mapping |
 
-**Supported SET properties:** Caption, Label, ButtonStyle, Class, Style, DynamicClasses, Editable, Visible, Name, Title (page-level), Layout (page-level), PopupWidth / PopupHeight / PopupResizable (page-level), and quoted pluggable widget properties.
+**Supported SET properties:** Caption, Label, ButtonStyle, Class, Style, DynamicClasses, Editable, Visible, Name, Title (page-level), Documentation (page-level), Layout (page-level), PopupWidth / PopupHeight / PopupResizable (page-level), and quoted pluggable widget properties.
 
 **Example:**
 ```sql

@@ -117,6 +117,7 @@ set Title = 'New Page Title'
 set PopupWidth = 800
 set PopupHeight = 480
 set PopupResizable = true
+set Documentation = 'What this page is for.'
 
 -- Retarget a button's on-click action. Any form `create page` accepts works
 -- here, including the combined ones.
@@ -154,6 +155,7 @@ so a silent write would build cleanly and then fail to open.
 | `visible` | Any widget | String or Boolean | `set visible = false on txtHidden` |
 | `Name` | Any widget | String | `set Name = 'newName' on oldName` |
 | `Title` | Page-level only (case-sensitive) | String | `set Title = 'Edit Customer'` |
+| `Documentation` | Page-level only (case-sensitive) | String (`''` clears) | `set Documentation = 'Coordinator triage step.'` |
 | `layout` | Page-level only | Qualified name | `set layout = Atlas_Core.Atlas_Default` |
 | `PopupWidth` | Page-level only (case-sensitive) | Positive integer (pixels) | `set PopupWidth = 800` |
 | `PopupHeight` | Page-level only (case-sensitive) | Positive integer (pixels) | `set PopupHeight = 480` |
@@ -491,7 +493,7 @@ adds. Both still fail at exec if they are genuinely wrong.
 
 | Mistake | Fix |
 |---------|-----|
-| Missing `on widgetName` for widget SET | Add `on widgetName` (only page-level properties — `Title`, `PopupWidth`, `PopupHeight`, `PopupResizable`, `Class`, `Style` — omit ON) |
+| Missing `on widgetName` for widget SET | Add `on widgetName` (only page-level properties — `Title`, `Documentation`, `PopupWidth`, `PopupHeight`, `PopupResizable`, `Class`, `Style` — omit ON) |
 | `unsupported page-level property: title` | Page-level property names are case-sensitive — use `Title`, `PopupWidth`, `PopupHeight`, `PopupResizable`, `Class`, `Style` |
 | Using unquoted pluggable property names | Quote pluggable props: `set 'showLabel' = false on cb` |
 | `pluggable property "X" not found` | The widget does not declare it — casing is not the problem (any casing resolves). The error lists the keys it does declare; `describe widget <type>` or `describe page` shows them in context. Run `mxcli check … --references` to get this before the script runs |

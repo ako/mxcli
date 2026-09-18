@@ -2321,6 +2321,25 @@ func applyPageLevelSetMut(rawData bson.D, prop string, value any) (bson.D, error
 	case "Url":
 		strVal, _ := value.(string)
 		rawData = dSetOrAppend(rawData, "Url", strVal)
+	case "Documentation":
+		// A plain top-level string, the same shape as Url, and declared on
+		// Page, Layout and Snippet alike — all three reach this function
+		// through SetWidgetProperty(""), so one case covers them.
+		//
+		// Without it, documenting an existing page meant re-running its CREATE
+		// (the doc comment is the only other source), which for a real page
+		// means re-emitting its whole widget tree through a describe → exec
+		// round trip that is only as complete as what MDL can spell
+		// (ako/mxcli#527).
+		//
+		// An empty string is stored rather than rejected: removing a doc
+		// comment from a script has to be expressible, and the property is a
+		// bare string with no unset value.
+		strVal, ok := value.(string)
+		if !ok {
+			return rawData, fmt.Errorf("Documentation value must be a string")
+		}
+		rawData = dSetOrAppend(rawData, "Documentation", strVal)
 	case "PopupWidth", "PopupHeight":
 		// Pop-up dimensions live at the top level of the Forms$Page document and
 		// are stored as int64 (matching what Studio Pro and the legacy writer
@@ -2359,7 +2378,8 @@ func applyPageLevelSetMut(rawData bson.D, prop string, value any) (bson.D, error
 		}
 	default:
 		return rawData, fmt.Errorf("unsupported page-level property: %s "+
-			"(supported: Title, Url, PopupWidth, PopupHeight, PopupResizable, PopupCloseAction, Class, Style)", prop)
+			"(supported: Title, Url, Documentation, PopupWidth, PopupHeight, PopupResizable, "+
+			"PopupCloseAction, Class, Style)", prop)
 	}
 	return rawData, nil
 }
