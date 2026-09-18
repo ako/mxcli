@@ -131,13 +131,17 @@ func init() {
 
 	Register(SyntaxFeature{
 		Path:    "security.project-security",
-		Summary: "Set project security level, demo user and guest access toggles",
+		Summary: "Set project security level, strict mode, demo user and guest access toggles",
 		Keywords: []string{
 			"project security", "security level", "prototype",
-			"production", "off",
+			"production", "off", "strict mode", "SEC005",
 		},
-		Syntax:  "ALTER PROJECT SECURITY LEVEL OFF|PROTOTYPE|PRODUCTION;\nALTER PROJECT SECURITY DEMO USERS ON|OFF;",
-		Example: "ALTER PROJECT SECURITY LEVEL PRODUCTION;\nALTER PROJECT SECURITY DEMO USERS OFF;",
+		Syntax: "ALTER PROJECT SECURITY LEVEL OFF|PROTOTYPE|PRODUCTION;\n" +
+			"ALTER PROJECT SECURITY DEMO USERS ON|OFF;\n" +
+			"ALTER PROJECT SECURITY STRICT MODE ON|OFF;   -- clears lint rule SEC005",
+		Example: "ALTER PROJECT SECURITY LEVEL PRODUCTION;\n" +
+			"ALTER PROJECT SECURITY DEMO USERS OFF;\n" +
+			"ALTER PROJECT SECURITY STRICT MODE ON;",
 		SeeAlso: []string{"security.demo-user", "security.guest-access"},
 	})
 

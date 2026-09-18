@@ -688,7 +688,12 @@ keyword
     | ACCESS | APPLY | AUTH | AUTHENTICATION | BASIC | DEMO
     | DESCRIPTION | GRANT | GUEST | LEVEL | MANAGE | MATRIX
     | OFF | OWNER | PASSWORD | PRODUCTION | PROTOTYPE
-    | REVOKE | ROLE | ROLES | SECURITY | SESSION | USER | USERNAME | USERS
+    | REVOKE | ROLE | ROLES | SECURITY | SESSION | STRICT | USER | USERNAME | USERS
+    // MODE is listed here rather than left reserved because `mode` is an
+    // entirely plausible attribute or widget-property name, and a new keyword
+    // that is not in this rule silently breaks every model that already uses
+    // the word.
+    | MODE
 
     // Validation
     | CONSTRAINT | FEEDBACK | PATTERN | RANGE | REGEX | RULE | VALIDATION | WITHOUT

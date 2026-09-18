@@ -201,6 +201,10 @@ type AlterProjectSecurityStmt struct {
 	// ROLE clause on GUEST ACCESS ON. Empty means "keep whatever is stored" —
 	// never "clear it"; the executor refuses ON when nothing is stored either.
 	GuestUserRole string
+	// StrictModeEnabled is set for ALTER PROJECT SECURITY STRICT MODE ON/OFF.
+	// A pointer, so "the statement said nothing about it" is distinguishable
+	// from "the statement asked for off".
+	StrictModeEnabled *bool
 }
 
 func (s *AlterProjectSecurityStmt) isStatement() {}

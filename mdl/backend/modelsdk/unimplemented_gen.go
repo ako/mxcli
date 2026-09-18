@@ -1026,6 +1026,10 @@ func (unimplemented) SetProjectSecurityLevel(_ model.ID, _ string) error {
 	return errUnimplemented("SetProjectSecurityLevel")
 }
 
+func (unimplemented) SetProjectStrictMode(_ model.ID, _ bool) error {
+	return errUnimplemented("SetProjectStrictMode")
+}
+
 func (unimplemented) UpdateAgentEditorAgent(_ *agenteditor.Agent) error {
 	return errUnimplemented("UpdateAgentEditorAgent")
 }

@@ -1174,6 +1174,17 @@ func execAlterProjectSecurity(ctx *ExecContext, s *ast.AlterProjectSecurityStmt)
 		}
 	}
 
+	if s.StrictModeEnabled != nil {
+		if err := ctx.Backend.SetProjectStrictMode(ps.ID, *s.StrictModeEnabled); err != nil {
+			return mdlerrors.NewBackend("set strict mode", err)
+		}
+		state := "disabled"
+		if *s.StrictModeEnabled {
+			state = "enabled"
+		}
+		fmt.Fprintf(ctx.Output, "Strict mode %s\n", state)
+	}
+
 	return nil
 }
 

@@ -542,6 +542,24 @@ alter project security demo users on;
 show demo users;
 /
 
+-- ============================================================================
+-- Level 7.3: Strict Mode
+-- ============================================================================
+
+/**
+ * Strict mode tightens XPath constraint enforcement at runtime (lint rule
+ * SEC005, which reports it as relevant to CVE-2023-23835). It is only
+ * MEANINGFUL at PRODUCTION security level — the rule deliberately stays quiet
+ * below that — but the setting is stored independently of the level, so it can
+ * be turned on before the level is raised.
+ */
+alter project security strict mode on;
+/
+
+-- And back off, so this script leaves the fixture as it found it.
+alter project security strict mode off;
+/
+
 
 -- ############################################################################
 -- PART 8: DEMO USERS (CREATE/DROP)
