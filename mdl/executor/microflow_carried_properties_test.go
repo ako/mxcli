@@ -112,16 +112,19 @@ func TestCreateOrModifyMicroflow_PreservesExportLevel(t *testing.T) {
 	}
 }
 
-// TestDescribeMicroflow_ReportsUnauthorableProperties covers the read side of
-// both carries. Neither the deep link nor a non-default export level has an MDL
-// spelling, so DESCRIBE cannot emit them as re-executable text — but a
-// describe -> rename -> exec COPY has nothing to preserve from, so staying
-// silent would hand the reader output that looks complete and is not.
+// TestDescribeMicroflow_EmitsAuthoredProperties is the round-trip half.
 //
-// The export-level line is conditional on purpose: every document in every
-// module measured stores "Hidden", so emitting it unconditionally would add a
-// comment to every describe in order to say nothing.
-func TestDescribeMicroflow_ReportsUnauthorableProperties(t *testing.T) {
+// This test used to assert the OPPOSITE: while the deep link and export level
+// had no MDL spelling, DESCRIBE emitted them as `-- URL:` / `-- Export level:`
+// comments so its output did not look complete when it was not. They are real
+// clauses now, which is what makes describe -> rename -> exec a faithful copy
+// rather than an approximate one — the hole preservation alone could not close,
+// because a copy is a new document with nothing to preserve from.
+//
+// Still conditional: every document in every marketplace module measured stores
+// Hidden and allows concurrent execution, so emitting the defaults would add
+// three lines to every describe in order to say nothing.
+func TestDescribeMicroflow_EmitsAuthoredProperties(t *testing.T) {
 	ctx, _ := newMockCtx(t)
 	name := ast.QualifiedName{Module: "MyModule", Name: "ACT_Item"}
 
@@ -129,101 +132,63 @@ func TestDescribeMicroflow_ReportsUnauthorableProperties(t *testing.T) {
 		return renderMicroflowMDL(ctx, "microflow", mf, name, nil, nil, nil)
 	}
 
-	got := render(&microflows.Microflow{Name: "ACT_Item", URL: "item/{Key}", ExportLevel: "API"})
-	if !strings.Contains(got, "-- URL: item/{Key}") {
-		t.Errorf("describe omitted the deep link; the output reads as complete:\n%s", got)
-	}
-	if !strings.Contains(got, "-- Export level: API") {
-		t.Errorf("describe omitted a non-default export level:\n%s", got)
-	}
-
-	// The control: an ordinary microflow gets neither line. Without this the
-	// test would pass against a describer that comments on every microflow.
-	plain := render(&microflows.Microflow{Name: "ACT_Item", ExportLevel: "Hidden"})
-	if strings.Contains(plain, "-- URL:") || strings.Contains(plain, "-- Export level:") {
-		t.Errorf("describe commented on defaults:\n%s", plain)
-	}
-}
-
-// TestCreateOrModifyMicroflow_PreservesConcurrencySettings is the executor half,
-// and the one that was actually reachable by a user: the backend already read
-// AllowConcurrentExecution and MarkAsUsed back, but the rebuild in
-// buildMicroflowFromStmt overwrote both with its own literals before the backend
-// ever saw them.
-//
-// The direction is why this went unreported. The rebuild wrote `true`, so a
-// microflow that DISALLOWED concurrent execution came back allowing it — the
-// running app's concurrency protection removed. CE4899 fires on
-// disallow-without-a-message, never on allow, so no checker says anything; the
-// error message and its translations go at the same time.
-func TestCreateOrModifyMicroflow_PreservesConcurrencySettings(t *testing.T) {
-	const moduleID = model.ID("module-1")
-	stored := []*microflows.Microflow{{
-		BaseElement:              model.BaseElement{ID: "mf-serial"},
-		ContainerID:              moduleID,
-		Name:                     "ACT_Serial",
+	got := render(&microflows.Microflow{
+		Name:                     "ACT_Item",
+		URL:                      "item/{Key}",
+		URLSearchParameters:      []string{"MyModule.ACT_Item.Filter"},
+		ExportLevel:              "API",
 		AllowConcurrentExecution: false,
-		MarkAsUsed:               true,
-		ConcurrencyErrorMessage: &model.Text{Translations: map[string]string{
-			"en_US": "Already running",
-			"nl_NL": "Wordt al uitgevoerd",
-		}},
-		ConcurrencyErrorMicroflow: "MyModule.ACT_OnBusy",
-	}}
-	ctx, written := microflowWriteProbe(t, stored, moduleID)
+		ConcurrencyErrorMessage:  &model.Text{Translations: map[string]string{"en_US": "Busy"}},
+	})
+	for _, want := range []string{
+		"url 'item/{Key}'",
+		"url search parameters ($Filter)",
+		"export level api",
+		"disallow concurrent execution error message 'Busy'",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("describe omitted %q:\n%s", want, got)
+		}
+	}
+	// The clause names the PARAMETER, not the stored qualified name: that is
+	// what the reader has in front of them, and it is what re-executing needs.
+	if strings.Contains(got, "MyModule.ACT_Item.Filter") {
+		t.Errorf("search parameter emitted as a qualified name:\n%s", got)
+	}
 
-	stmt := &ast.CreateMicroflowStmt{
-		Name:           ast.QualifiedName{Module: "MyModule", Name: "ACT_Serial"},
-		CreateOrModify: true,
-	}
-	if err := execCreateMicroflow(ctx, stmt); err != nil {
-		t.Fatalf("CREATE OR MODIFY MICROFLOW failed: %v", err)
-	}
-	if *written == nil {
-		t.Fatal("no microflow was written")
-	}
-	if (*written).AllowConcurrentExecution {
-		t.Error("rewrite re-allowed concurrent execution; the app's concurrency " +
-			"protection is gone and no checker reports it")
-	}
-	if !(*written).MarkAsUsed {
-		t.Error("rewrite cleared MarkAsUsed; the document is reported unused again")
-	}
-	if got := (*written).ConcurrencyErrorMicroflow; got != "MyModule.ACT_OnBusy" {
-		t.Errorf("rewrite dropped the concurrency error microflow: %q", got)
-	}
-	msg := (*written).ConcurrencyErrorMessage
-	if msg == nil || len(msg.Translations) != 2 {
-		t.Fatalf("rewrite dropped the concurrency error message (or its translations): %#v", msg)
+	// The control: an ordinary microflow gets none of these lines. Without it
+	// the test would pass against a describer that emits them unconditionally.
+	plain := render(&microflows.Microflow{
+		Name: "ACT_Item", ExportLevel: "Hidden", AllowConcurrentExecution: true,
+	})
+	for _, unwanted := range []string{"url ", "export level", "concurrent execution"} {
+		if strings.Contains(plain, unwanted) {
+			t.Errorf("describe emitted %q for a default microflow:\n%s", unwanted, plain)
+		}
 	}
 }
 
-// TestCreateMicroflow_ConcurrencyDefaults is the control: a NEW microflow still
-// gets Mendix's defaults. Carrying is only ever from a stored document, so the
-// fix must not change what a create produces — allow concurrency, not marked as
-// used, no error handling.
-func TestCreateMicroflow_ConcurrencyDefaults(t *testing.T) {
-	const moduleID = model.ID("module-1")
-	ctx, written := microflowWriteProbe(t, nil, moduleID)
+// TestDescribeMicroflow_FlagsUntranslatableMessage: a concurrency error message
+// is a Texts$Text and MDL states ONE language, so a translated message cannot
+// round-trip through the clause. DESCRIBE emits it anyway — omitting it would
+// describe a microflow that fails CE4899 — and names the languages a replay
+// would not carry, the same honesty rule it applies to a range bounded by
+// another attribute.
+//
+// Note this is about a COPY. Rewriting the same microflow keeps every language,
+// because canon.CarryTranslations pairs the texts and carries them (measured:
+// restating the English text left the Dutch one untouched).
+func TestDescribeMicroflow_FlagsUntranslatableMessage(t *testing.T) {
+	ctx, _ := newMockCtx(t)
+	got := renderMicroflowMDL(ctx, "microflow", &microflows.Microflow{
+		Name:                     "ACT_Item",
+		AllowConcurrentExecution: false,
+		ConcurrencyErrorMessage: &model.Text{Translations: map[string]string{
+			"en_US": "Busy", "nl_NL": "Bezet",
+		}},
+	}, ast.QualifiedName{Module: "MyModule", Name: "ACT_Item"}, nil, nil, nil)
 
-	stmt := &ast.CreateMicroflowStmt{
-		Name: ast.QualifiedName{Module: "MyModule", Name: "ACT_Fresh"},
-	}
-	if err := execCreateMicroflow(ctx, stmt); err != nil {
-		t.Fatalf("CREATE MICROFLOW failed: %v", err)
-	}
-	got := *written
-	if got == nil {
-		t.Fatal("no microflow was written")
-	}
-	if !got.AllowConcurrentExecution {
-		t.Error("a new microflow must default to allowing concurrent execution")
-	}
-	if got.MarkAsUsed {
-		t.Error("a new microflow must not be marked as used")
-	}
-	if got.ConcurrencyErrorMessage != nil || got.ConcurrencyErrorMicroflow != "" {
-		t.Errorf("a new microflow acquired concurrency error handling: %#v / %q",
-			got.ConcurrencyErrorMessage, got.ConcurrencyErrorMicroflow)
+	if !strings.Contains(got, "also translated into nl_NL") {
+		t.Errorf("describe did not flag the language a replay would drop:\n%s", got)
 	}
 }

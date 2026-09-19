@@ -143,8 +143,13 @@ func fileExists(path string) bool {
 }
 
 // Connected returns true if a project is connected via the Backend.
+//
+// Nil-safe on the receiver, which makes checkFeature's documented contract
+// ("safe to call when not connected") true for a nil ctx as well. Every
+// version-gated command reaches this through checkFeature, so without the guard
+// each one panics rather than skipping when exercised without a context.
 func (ctx *ExecContext) Connected() bool {
-	return ctx.Backend != nil && ctx.Backend.IsConnected()
+	return ctx != nil && ctx.Backend != nil && ctx.Backend.IsConnected()
 }
 
 // ConnectedForWrite returns true if a project is connected and the backend

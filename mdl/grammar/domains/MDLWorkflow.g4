@@ -18,7 +18,12 @@ createWorkflowStatement
       (PARAMETER VARIABLE COLON qualifiedName)?
       (DISPLAY display=STRING_LITERAL)?
       (DESCRIPTION description=STRING_LITERAL)?
-      (EXPORT LEVEL (IDENTIFIER | API))?
+      // HIDDEN_KW is listed beside IDENTIFIER because `Hidden` used to lex as an
+      // identifier and stopped when the microflow clauses made it a keyword.
+      // Anything matching a bare IDENTIFIER here is one token away from the same
+      // break — the hazard `identifierOrKeyword` exists to absorb, which this
+      // rule bypasses by taking IDENTIFIER directly.
+      (EXPORT LEVEL (IDENTIFIER | API | HIDDEN_KW))?
       (OVERVIEW PAGE qualifiedName)?
       (DUE DATE_TYPE dueDate=STRING_LITERAL)?
       workflowEventHandlerClause*
@@ -287,7 +292,7 @@ alterWorkflowAction
 workflowSetProperty
     : DISPLAY STRING_LITERAL
     | DESCRIPTION STRING_LITERAL
-    | EXPORT LEVEL (IDENTIFIER | API)
+    | EXPORT LEVEL (IDENTIFIER | API | HIDDEN_KW)
     | DUE DATE_TYPE STRING_LITERAL
     | OVERVIEW PAGE qualifiedName
     | PARAMETER VARIABLE COLON qualifiedName

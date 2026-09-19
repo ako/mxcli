@@ -673,6 +673,9 @@ keyword
     | PHONEWIDTH | TABLETWIDTH | READONLY | RENDERMODE | REQUIRED | NULLABLE
     | SELECTION | STYLE | STYLING | TABINDEX | TITLE | TOOLTIP
     | URL | POSITION | VISIBLE | WIDTH | HEIGHT | WIDGETTYPE
+    // Microflow document properties — keywords only inside a microflow header,
+    // so they must stay usable as element names everywhere else.
+    | HIDDEN_KW | ALLOW | DISALLOW | CONCURRENT | EXECUTION
     | VARIABLES_KW
 
     // Button actions

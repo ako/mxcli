@@ -43,6 +43,10 @@ features:
     basic:
       min_version: "10.0.0"
       mdl: "CREATE MICROFLOW Module.Name (...) BEGIN ... END"
+    deep_link_url:
+      min_version: "10.6.0"
+      mdl: "URL 'item/{Key}' / URL SEARCH PARAMETERS ($Filter) / DROP URL"
+      notes: "Microflow deep links. A path parameter may not also be a search parameter (CE5612)."
     synchronize:
       min_version: "10.0.0"
       mdl: "SYNCHRONIZE ALL | $Var[, $Var...]  (nanoflow only)"

@@ -47,11 +47,19 @@ func (b *Builder) ExitCreateWorkflowStatement(ctx *parser.CreateWorkflowStatemen
 		stmt.Description = unquoteString(tok.GetText())
 	}
 
-	// EXPORT LEVEL (Identifier | API)
+	// EXPORT LEVEL (Identifier | API | Hidden)
+	//
+	// HIDDEN_KW is read alongside IDENTIFIER because `Hidden` was an ordinary
+	// identifier here until the microflow header clauses made it a keyword — at
+	// which point this read silently produced "" and three tests caught it. Any
+	// rule taking a bare IDENTIFIER for a fixed vocabulary has the same fragility.
 	if ctx.EXPORT() != nil && ctx.LEVEL() != nil {
-		if ctx.IDENTIFIER() != nil {
+		switch {
+		case ctx.IDENTIFIER() != nil:
 			stmt.ExportLevel = ctx.IDENTIFIER().GetText()
-		} else if ctx.API() != nil {
+		case ctx.HIDDEN_KW() != nil:
+			stmt.ExportLevel = ctx.HIDDEN_KW().GetText()
+		case ctx.API() != nil:
 			stmt.ExportLevel = "API"
 		}
 	}
@@ -337,10 +345,14 @@ func buildWorkflowSetPropertyOp(ctx *parser.WorkflowSetPropertyContext) *ast.Set
 		op.Value = unquoteString(ctx.STRING_LITERAL().GetText())
 	} else if ctx.EXPORT() != nil {
 		op.Property = "export_level"
-		if ctx.API() != nil {
+		// HIDDEN_KW alongside IDENTIFIER — see the CREATE side above.
+		switch {
+		case ctx.API() != nil:
 			op.Value = "API"
-		} else if ctx.IDENTIFIER() != nil {
+		case ctx.IDENTIFIER() != nil:
 			op.Value = ctx.IDENTIFIER().GetText()
+		case ctx.HIDDEN_KW() != nil:
+			op.Value = ctx.HIDDEN_KW().GetText()
 		}
 	} else if ctx.DUE() != nil {
 		op.Property = "due_date"

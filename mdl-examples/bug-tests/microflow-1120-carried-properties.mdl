@@ -37,25 +37,24 @@
 -- parameter used in the URL PATH may not also be a URL SEARCH parameter. The
 -- two sets are disjoint and mxbuild rejects the overlap with CE5612.
 --
--- WHAT THIS FIXTURE PINS is only the syntax half — that a body-only rewrite of
--- a microflow is valid MDL and stays accepted. It CANNOT pin the preservation
--- itself: MDL cannot set these properties, so a script cannot establish the
--- precondition, and cannot read them back to assert on either. That half is
--- guarded in Go (mdl/backend/modelsdk/microflow_roundtrip_flags_test.go and
--- mdl/executor/microflow_carried_properties_test.go, each with the fix reverted
--- as a control) and end to end by the procedure recorded in
--- .claude/skills/fix-issue/findings/mdl-backend.jsonl.
+-- THREE OF THE SIX ARE NOW AUTHORABLE. The URL, the export level and the
+-- concurrency settings have header clauses of their own — see
+-- doctype-tests/microflow-document-properties.mdl — and DESCRIBE emits them, so
+-- describe -> rename -> exec copies them faithfully. That is what preservation
+-- alone could never fix: a copy is a NEW document with nothing to preserve from.
 --
--- DESCRIBE surfaces what it cannot re-emit, as comments:
+-- The preservation rule is unchanged and is what the clauses are layered on: an
+-- OMITTED clause still means "the script does not say", so the rewrite below
+-- keeps everything. Clearing is explicit (DROP URL / EXPORT LEVEL HIDDEN /
+-- ALLOW CONCURRENT EXECUTION), and `Mark as used` still has no clause at all.
 --
---   -- URL: item/{Key}  (deep link; MDL cannot author one. Kept when this
---      microflow is rewritten, NOT copied to a new one — set it in Studio Pro.)
---   -- Export level: API  (…)
---
--- which is the honest signal that describe -> rename -> exec COPIES the body
--- but not these properties: a copy is a new document, with nothing to preserve
--- from. The same applies to DROP followed by CREATE. Use CREATE OR MODIFY to
--- edit a microflow that carries any of them.
+-- WHAT THIS FIXTURE PINS is the syntax half — that a body-only rewrite is valid
+-- MDL and stays accepted. It cannot pin the preservation itself: `check` runs
+-- without a project, so there is no stored document to preserve from. That half
+-- is guarded in Go (mdl/backend/modelsdk/microflow_roundtrip_flags_test.go,
+-- mdl/executor/microflow_carried_properties_test.go and
+-- microflow_authored_properties_test.go, each with the fix reverted as a
+-- control) and end to end by the procedure recorded in the findings.
 
 CREATE OR MODIFY MICROFLOW Bug1120.ACT_Item ($Key: String, $Filter: String)
 RETURNS String AS $Result

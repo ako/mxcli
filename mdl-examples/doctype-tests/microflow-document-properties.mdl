@@ -1,0 +1,68 @@
+-- ============================================================================
+-- Microflow document properties — URL, export level, concurrent execution
+-- ============================================================================
+--
+-- Four properties that live in the microflow HEADER rather than its body. All
+-- were unauthorable until mendixlabs/mxcli#1120 made them survive a rewrite;
+-- the clauses are what let a script set them deliberately, and what make
+-- describe -> rename -> exec a faithful copy instead of an approximate one.
+--
+-- An OMITTED clause PRESERVES what is stored, so clearing is always explicit:
+-- DROP URL, EXPORT LEVEL HIDDEN, ALLOW CONCURRENT EXECUTION.
+
+CREATE OR MODIFY ENTITY Deeplink.Order (
+  OrderNumber: String(20)
+);
+
+-- Everything at once. $Order is the PATH parameter, $Tab the query argument —
+-- they must be different parameters (CE5612 / MDL-MF02).
+CREATE OR MODIFY MICROFLOW Deeplink.ACT_ShowOrder ($Order: Deeplink.Order, $Tab: String)
+URL 'order/{Order}'
+URL SEARCH PARAMETERS ($Tab)
+EXPORT LEVEL API
+DISALLOW CONCURRENT EXECUTION ERROR MESSAGE 'This order is already being processed'
+BEGIN
+  LOG INFO $Tab;
+END;
+
+-- The error handler can be a microflow instead of a message.
+CREATE OR MODIFY MICROFLOW Deeplink.ACT_OnBusy ()
+BEGIN
+  LOG WARNING 'busy';
+END;
+
+CREATE OR MODIFY MICROFLOW Deeplink.ACT_Import ()
+DISALLOW CONCURRENT EXECUTION ERROR MICROFLOW Deeplink.ACT_OnBusy
+BEGIN
+  LOG INFO 'importing';
+END;
+
+-- A segment may carry an attribute path: {Order/OrderNumber} binds the ORDER
+-- parameter by one of its attributes, so the leading identifier is what has to
+-- name a parameter.
+CREATE OR MODIFY MICROFLOW Deeplink.ACT_ShowByNumber ($Order: Deeplink.Order)
+URL 'order/by-number/{Order/OrderNumber}'
+BEGIN
+  LOG INFO 'by number';
+END;
+
+-- Re-running a statement that mentions NONE of the clauses must leave all four
+-- alone. This is the #1120 rule, and the reason every clause is optional.
+CREATE OR MODIFY MICROFLOW Deeplink.ACT_ShowOrder ($Order: Deeplink.Order, $Tab: String)
+BEGIN
+  LOG INFO 'body changed, header untouched';
+END;
+
+-- Clearing is explicit and each clause has its own form.
+CREATE OR MODIFY MICROFLOW Deeplink.ACT_Import ()
+EXPORT LEVEL HIDDEN
+ALLOW CONCURRENT EXECUTION
+BEGIN
+  LOG INFO 'importing';
+END;
+
+CREATE OR MODIFY MICROFLOW Deeplink.ACT_ShowByNumber ($Order: Deeplink.Order)
+DROP URL
+BEGIN
+  LOG INFO 'no longer deep-linked';
+END;

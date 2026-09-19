@@ -63,6 +63,9 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 		// script passed check AND exec and failed a build later
 		// (mendixlabs/mxcli#1063).
 		violations = append(violations, validateLayoutPlaceholders(stmt)...)
+		// A microflow's URL / export level / concurrency clauses, against the
+		// same rules the writer applies (MDL-MF01..MF04).
+		violations = append(violations, validateMicroflowDocumentProperties(stmt)...)
 		// A page with parameters and a Url must name each parameter in it (CE5601).
 		if pageStmt, ok := stmt.(*ast.CreatePageStmtV3); ok {
 			violations = append(violations, ValidatePageURLParameters(pageStmt)...)

@@ -246,6 +246,16 @@ func buildMicroflowFromStmt(ctx *ExecContext, s *ast.CreateMicroflowStmt, opts b
 		URL:                       existingURL,
 		URLSearchParameters:       existingURLSearchParams,
 	}
+	// The header clauses overlay the STORED values seeded above, so a clause the
+	// statement omits keeps what is there. Checked first: the rules are shared
+	// with `mxcli check`, and a write refused here would otherwise have already
+	// passed check, which is the drift these two calls exist to prevent.
+	if err := checkMicroflowDocumentProperties(s); err != nil {
+		return nil, err
+	}
+	if err := applyMicroflowDocumentProperties(ctx, mf, s); err != nil {
+		return nil, err
+	}
 	if preserveDocumentation {
 		mf.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existingDocumentation)
 	}

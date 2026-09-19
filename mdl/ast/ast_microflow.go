@@ -78,6 +78,39 @@ type CreateMicroflowStmt struct {
 	// entries — one for the microflow editor, one for the workflow editor — so
 	// there can be one of each.
 	Expose []ExposeActionClause
+
+	// URL is the deep link (Mendix 10.6+), e.g. `item/{Key}`. A POINTER for the
+	// same reason as ApplyEntityAccess: absent means "the script does not say",
+	// which preserves what is stored, while DROP URL sets an explicit empty.
+	URL *string
+	// URLSearchParameters are the parameter names named by `URL SEARCH
+	// PARAMETERS (...)`, without the `$`. Nil means the clause was absent;
+	// non-nil and empty means it was stated with an empty list, which clears.
+	URLSearchParameters *[]string
+	// ExportLevel is "API" or "Hidden"; nil preserves.
+	ExportLevel *string
+	// Concurrency is the DISALLOW/ALLOW CONCURRENT EXECUTION clause; nil
+	// preserves what is stored.
+	Concurrency *ConcurrencyClause
+}
+
+// ConcurrencyClause is one DISALLOW/ALLOW CONCURRENT EXECUTION clause.
+//
+// Mendix requires an error message or an error microflow when execution is
+// disallowed (CE4899). The grammar accepts the bare DISALLOW so that the
+// omission is reported by name rather than as a parse error; the check is
+// types.CheckMicroflowConcurrency.
+type ConcurrencyClause struct {
+	// Allow is true for ALLOW CONCURRENT EXECUTION.
+	Allow bool
+	// ErrorMessage is the text shown to the second caller. Only one of
+	// ErrorMessage / ErrorMicroflow is set.
+	ErrorMessage string
+	// ErrorMessageSet distinguishes an omitted message from an empty one, so a
+	// stored message with translations is not silently replaced by "".
+	ErrorMessageSet bool
+	// ErrorMicroflow is the qualified name of the microflow that handles it.
+	ErrorMicroflow string
 }
 
 // ExposeActionClause is one EXPOSED AS <kind> ACTION clause, or its NOT form.

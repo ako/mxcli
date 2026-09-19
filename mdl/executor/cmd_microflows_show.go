@@ -11,6 +11,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/mdl/microflowgraph"
+	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/javaactions"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
@@ -306,6 +307,13 @@ func describeMicroflowMode(ctx *ExecContext, name ast.QualifiedName, normalized 
 	}
 
 	lines = append(lines, exposeClauseLines(targetMf)...)
+	// Shared with renderMicroflowMDL rather than restated. This function is a
+	// SECOND copy of the microflow header renderer, and the URL clauses were
+	// added to the other one first — so `describe microflow` printed none of
+	// them while `diff-local` printed all three. That is duplicate-resolver
+	// drift in one file; every header property added from here on has to go
+	// through a shared helper, or the next one diverges the same way.
+	lines = append(lines, microflowDocumentPropertyLines(targetMf)...)
 
 	// BEGIN block
 	lines = append(lines, "begin")
@@ -622,24 +630,6 @@ func renderMicroflowMDL(
 	if mf.ApplyEntityAccess && flowType == "microflow" {
 		lines = append(lines, "@applyentityaccess")
 	}
-	// Studio Pro's "Export level". Only worth a line when it is NOT the default
-	// — every document in every module measured stores "Hidden", so emitting it
-	// unconditionally would add a comment to every describe to say nothing.
-	if mf.ExportLevel != "" && mf.ExportLevel != "Hidden" && flowType == "microflow" {
-		lines = append(lines, fmt.Sprintf(
-			"-- Export level: %s  (MDL cannot author one. Kept when this microflow "+
-				"is rewritten, NOT copied to a new one — set it in Studio Pro.)", mf.ExportLevel))
-	}
-	// The deep link (Mendix 10.6+) has no MDL spelling at all, so it cannot be
-	// emitted as re-executable text. A rewrite preserves it (#1120), but a
-	// describe -> rename -> exec COPY has nothing to preserve from — same gap
-	// the annotation above notes, one step further along. Say so rather than
-	// producing output that silently omits it.
-	if mf.URL != "" && flowType == "microflow" {
-		lines = append(lines, fmt.Sprintf(
-			"-- URL: %s  (deep link; MDL cannot author one. Kept when this "+
-				"microflow is rewritten, NOT copied to a new one — set it in Studio Pro.)", mf.URL))
-	}
 
 	qualifiedName := name.Module + "." + name.Name
 	if len(mf.Parameters) > 0 {
@@ -665,6 +655,9 @@ func renderMicroflowMDL(
 	}
 
 	lines = append(lines, exposeClauseLines(mf)...)
+	if flowType == "microflow" {
+		lines = append(lines, microflowDocumentPropertyLines(mf)...)
+	}
 
 	lines = append(lines, "begin")
 	headerLineCount := len(lines)
@@ -1699,4 +1692,72 @@ func microflowBodyWarnings(
 	out = append(out, irreducibleGraphWarnings(mf.ObjectCollection, declaredCrossed)...)
 	out = append(out, droppedMergeWarnings(ctx, mf.ObjectCollection, labels)...)
 	return out
+}
+
+// microflowDocumentPropertyLines emits the URL / EXPORT LEVEL / concurrency
+// header clauses.
+//
+// These were `-- URL:` and `-- Export level:` comments while MDL could not
+// author them: a rewrite preserved the properties, but a describe -> rename ->
+// exec COPY had nothing to preserve from, so the comment was there to stop the
+// output looking complete when it was not. They are real clauses now, which is
+// what makes describe a faithful copy operation rather than an approximate one.
+//
+// Emitted only when NOT the default, for the reason the export-level comment
+// gave: every document in every marketplace module measured stores "Hidden" and
+// allows concurrent execution, so emitting them unconditionally would add three
+// lines to every describe in order to say nothing.
+func microflowDocumentPropertyLines(mf *microflows.Microflow) []string {
+	var lines []string
+	if mf.URL != "" {
+		lines = append(lines, fmt.Sprintf("url '%s'", escapeMDLString(mf.URL)))
+	}
+	if len(mf.URLSearchParameters) > 0 {
+		names := make([]string, 0, len(mf.URLSearchParameters))
+		for _, qn := range mf.URLSearchParameters {
+			// Stored as Module.Microflow.Parameter; the clause names the
+			// parameter, because that is what the reader has in front of them.
+			parts := strings.Split(qn, ".")
+			names = append(names, "$"+parts[len(parts)-1])
+		}
+		lines = append(lines, fmt.Sprintf("url search parameters (%s)", strings.Join(names, ", ")))
+	}
+	if mf.ExportLevel == types.ExportLevelAPI {
+		lines = append(lines, "export level api")
+	}
+	if !mf.AllowConcurrentExecution {
+		line := "disallow concurrent execution"
+		switch {
+		case mf.ConcurrencyErrorMicroflow != "":
+			line += " error microflow " + mf.ConcurrencyErrorMicroflow
+		case mf.ConcurrencyErrorMessage != nil && len(mf.ConcurrencyErrorMessage.Translations) > 0:
+			// The message is a Texts$Text and MDL states one language, so a
+			// multi-language message cannot round-trip. Emit the clause anyway —
+			// dropping it would describe a microflow that fails CE4899 — and
+			// flag the languages a replay would not carry, the same honesty rule
+			// DESCRIBE applies to a range bounded by another attribute.
+			text, langs := describableMessage(mf.ConcurrencyErrorMessage)
+			line += fmt.Sprintf(" error message '%s'", escapeMDLString(text))
+			if len(langs) > 0 {
+				line += fmt.Sprintf("  -- also translated into %s; replaying this line keeps only the one shown",
+					strings.Join(langs, ", "))
+			}
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+// describableMessage returns the text DESCRIBE prints and the other languages
+// the stored message carries, sorted.
+func describableMessage(t *model.Text) (string, []string) {
+	var langs []string
+	for lang := range t.Translations {
+		langs = append(langs, lang)
+	}
+	sort.Strings(langs)
+	if len(langs) == 0 {
+		return "", nil
+	}
+	return t.Translations[langs[0]], langs[1:]
 }

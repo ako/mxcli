@@ -155,6 +155,64 @@ microflowOptions
 microflowOption
     : FOLDER STRING_LITERAL
     | microflowExposedClause
+    | microflowUrlClause
+    | microflowExportLevelClause
+    | microflowConcurrencyClause
+    ;
+
+// URL 'item/{Key}'                    — the deep link (Mendix 10.6+)
+// URL SEARCH PARAMETERS ($Filter)     — parameters supplied as query arguments
+// DROP URL                            — remove the deep link and its search params
+//
+// The {Name} placeholders are Mendix's own spelling, kept verbatim inside the
+// string rather than given a parallel MDL syntax. Each must name a parameter of
+// this microflow, and a parameter used in the PATH may not also be a SEARCH
+// parameter — mxbuild rejects that overlap with CE5612. Both are checked by
+// types.CheckMicroflowURL, which `mxcli check` and the executor share.
+//
+// As with EXPOSED AS, an ABSENT clause preserves what is stored; DROP URL is how
+// a script asks for the deep link to go away — the same spelling as DROP ICON.
+microflowUrlClause
+    : URL STRING_LITERAL
+    | URL SEARCH PARAMETERS LPAREN microflowUrlSearchParams? RPAREN
+    | DROP URL
+    ;
+
+microflowUrlSearchParams
+    : VARIABLE (COMMA VARIABLE)* COMMA?
+    ;
+
+// EXPORT LEVEL API | HIDDEN — whether the microflow is part of the module's
+// public surface when the module is exported as a package.
+//
+// The members are keywords, not a quoted string, although image collections
+// spell their own export level `EXPORT LEVEL 'Public'`: "Public" is not a member
+// of either enum (both are API | Hidden), so that quoted form let a value the
+// metamodel does not declare into the grammar's own documentation. A keyword
+// makes the same mistake a parse error.
+microflowExportLevelClause
+    : EXPORT LEVEL (API | HIDDEN_KW)
+    ;
+
+// DISALLOW CONCURRENT EXECUTION ERROR MESSAGE 'Already running'
+// DISALLOW CONCURRENT EXECUTION ERROR MICROFLOW Module.Name
+// ALLOW CONCURRENT EXECUTION
+//
+// Mendix REQUIRES an error message or an error microflow when concurrent
+// execution is disallowed (CE4899), so the grammar accepts the bare DISALLOW and
+// types.CheckMicroflowConcurrency refuses it with that CE number — a check with
+// an explanation rather than a parse error reading "expecting ERROR".
+microflowConcurrencyClause
+    : DISALLOW CONCURRENT EXECUTION microflowConcurrencyError?
+    | ALLOW CONCURRENT EXECUTION
+    ;
+
+// ERROR_MESSAGE is one token, not ERROR + MESSAGE — it already exists for an
+// association's delete behaviour, and re-splitting it here would make the lexer
+// ambiguous. It accepts `error message`, `error_message` and `errormessage`.
+microflowConcurrencyError
+    : ERROR_MESSAGE STRING_LITERAL
+    | ERROR MICROFLOW qualifiedName
     ;
 
 // EXPOSED AS MICROFLOW ACTION 'Caption' IN 'Category'

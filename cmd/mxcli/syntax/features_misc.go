@@ -34,8 +34,10 @@ func init() {
 			"-- mxbuild all pass and only Studio Pro shows what went missing.\n" +
 			"--\n" +
 			"-- DROP followed by CREATE is a NEW document and keeps none of it, and so\n" +
-			"-- is a DESCRIBE -> rename -> exec copy. DESCRIBE flags what it cannot\n" +
-			"-- re-emit as a comment, so the gap is visible in its output.",
+			"-- is a DESCRIBE -> rename -> exec copy. Where a property HAS a spelling,\n" +
+			"-- DESCRIBE emits it and the copy is faithful (see microflow.create);\n" +
+			"-- where it does not, DESCRIBE flags the gap as a comment rather than\n" +
+			"-- producing output that looks complete.",
 		Example: "CREATE OR REPLACE MICROFLOW MyModule.ACT_Recalculate ()\nBEGIN\n  RETURN;\nEND;\n\nCREATE OR MODIFY PERSISTENT ENTITY MyModule.Customer (\n  Name: String(200)\n);",
 		SeeAlso: []string{"microflow", "domain-model.entity", "page", "document-folder"},
 	})

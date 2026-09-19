@@ -37,16 +37,24 @@ func init() {
 			"toolbox", "icon", "image",
 		},
 		Syntax: "CREATE MICROFLOW Module.Name ($P1: String, $P2: Integer)\n  RETURNS Type AS $Result\n  [FOLDER 'FolderPath']\n  [EXPOSED AS MICROFLOW ACTION 'Caption' IN 'Category'\n     [ICON 'icon.png'] [ICON DARK 'icon-dark.png']\n     [IMAGE 'image.png'] [IMAGE DARK 'image-dark.png']]\n  [EXPOSED AS WORKFLOW ACTION 'Caption' IN 'Category']\n  [NOT EXPOSED AS MICROFLOW|WORKFLOW ACTION]\nBEGIN\n  <statements>\nEND;\n\nEXPOSED AS puts the microflow in Studio Pro's toolbox, so whoever drags it in\ndoes not need to know it is a microflow. There are two toolboxes — the\nmicroflow editor's and the workflow editor's — so the clause names which.\nThe icon is a 64x64 PNG and the image a 256x192 PNG, read from disk relative\nto the .mdl file's own directory. An OMITTED clause preserves what is stored, so\nremoving an entry is NOT EXPOSED and clearing one bitmap is DROP ICON/IMAGE.\n\n" +
-			"Six properties have NO MDL syntax and are carried across a rewrite instead:\n" +
-			"the deep-link URL and its search parameters (Studio Pro's URL field, e.g.\n" +
-			"item/{Key}), the export level (Hidden | API), disallow-concurrent-execution\n" +
-			"with its error message and microflow, and Mark as used. A CREATE OR MODIFY\n" +
-			"that only changes the body leaves all of them alone. DROP + CREATE does not\n" +
-			"— that is a new document — and neither does a DESCRIBE -> rename -> exec\n" +
-			"copy; DESCRIBE emits `-- URL:` and `-- Export level:` comments so the gap\n" +
-			"is visible rather than silent.\n\n" +
-			"A parameter used in the URL PATH may not also be a URL SEARCH parameter:\n" +
-			"mxbuild rejects the overlap with CE5612. The two sets are disjoint.",
+			"Three document properties have their own header clauses:\n\n" +
+			"  URL 'item/{Key}'                 the deep link (Mendix 10.6+)\n" +
+			"  URL SEARCH PARAMETERS ($Filter)  parameters passed as query arguments\n" +
+			"  DROP URL                         remove the deep link and its search params\n" +
+			"  EXPORT LEVEL API | HIDDEN        the module's public surface on export\n" +
+			"  DISALLOW CONCURRENT EXECUTION ERROR MESSAGE 'text'\n" +
+			"  DISALLOW CONCURRENT EXECUTION ERROR MICROFLOW Module.Name\n" +
+			"  ALLOW CONCURRENT EXECUTION\n\n" +
+			"An OMITTED clause PRESERVES what is stored — the same rule as EXPOSED AS and\n" +
+			"@applyentityaccess — so a rewrite that only changes the body leaves all of\n" +
+			"them alone. DROP URL / EXPORT LEVEL HIDDEN / ALLOW are the explicit forms.\n\n" +
+			"Three platform rules, each checked before the write rather than at build:\n" +
+			"  MDL-MF01  every {Name} must name a parameter of this microflow\n" +
+			"  MDL-MF02  a PATH parameter may not also be a SEARCH parameter  (CE5612)\n" +
+			"  MDL-MF03  DISALLOW needs an error message or microflow         (CE4899)\n" +
+			"and with a project, a URL another microflow already owns         (CE0570).\n\n" +
+			"`Mark as used` still has no clause and is carried, as all of these were\n" +
+			"before they were authorable (mendixlabs/mxcli#1120).",
 		Example: "CREATE MICROFLOW MyModule.ACT_CreateOrder (\n  $CustomerCode: String,\n  $Quantity: Integer\n)\nRETURNS MyModule.Order AS $NewOrder\nFOLDER 'Orders'\nEXPOSED AS MICROFLOW ACTION 'Create order' IN 'Orders'\n  ICON 'assets/order-64.png'\nBEGIN\n  $NewOrder = CREATE MyModule.Order (\n    OrderNumber = 'ORD-001',\n    Quantity = $Quantity\n  );\n  COMMIT $NewOrder;\n  RETURN $NewOrder;\nEND;",
 		SeeAlso: []string{"microflow.nanoflow", "microflow.variables"},
 	})

@@ -581,6 +581,15 @@ POST: P O S T;
 PUT: P U T;
 PATCH: P A T C H;
 API: A P I;
+
+// Microflow document properties (mendixlabs/mxcli#1120 follow-up). All five are
+// in identifierOrKeyword so they stay usable as element names — HIDDEN and
+// ALLOW in particular are plausible attribute names.
+HIDDEN_KW: H I D D E N;  // HIDDEN is reserved by ANTLR (the hidden channel)
+ALLOW: A L L O W;
+DISALLOW: D I S A L L O W;
+CONCURRENT: C O N C U R R E N T;
+EXECUTION: E X E C U T I O N;
 CLIENT: C L I E N T;
 CLIENTS: C L I E N T S;
 PUBLISH: P U B L I S H;
