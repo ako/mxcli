@@ -31,6 +31,10 @@ features:
       min_version: "9.7.0"
       mdl: "SHOW PAGE Module.PageName WITH PARAMS ..."
       notes: "Pages$PageSettings.parameterMappings introduced in 9.7.0 (mendixmodelsdk StructureVersionInfo)"
+    disabled_activity:
+      min_version: "9.12.0"
+      mdl: "@disabled before an activity"
+      notes: "Microflows$ActionActivity.disabled introduced in 9.12.0 (mendixmodelsdk 4.115.0 StructureVersionInfo, and modelsdk/gen/microflows/version.go agrees). Below it the property is not on the type, so a document carrying it is one Studio Pro cannot open."
 
   pages:
     basic:

@@ -53,6 +53,10 @@ features:
     show_page_with_params:
       min_version: "11.0.0"
       mdl: "SHOW PAGE Module.PageName WITH PARAMS ..."
+    disabled_activity:
+      min_version: "11.0.0"
+      mdl: "@disabled before an activity"
+      notes: "Microflows$ActionActivity.disabled introduced in 9.12.0, so every 11.x supports it"
     send_rest_request:
       min_version: "10.1.0"
       mdl: "SEND REST REQUEST ..."

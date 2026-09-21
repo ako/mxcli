@@ -76,3 +76,46 @@ func nonDisablableStatement(s ast.MicroflowStatement) (kind, becomes string, ok 
 	}
 	return "", "", false
 }
+
+// FlowBodyUsesDisabled reports whether any statement in a flow body (at any
+// nesting depth) carries `@disabled`.
+//
+// The version gate reads the STATEMENT rather than the built model so it can
+// run before the build and name the annotation in its error. Bodies are walked
+// through ast.StatementBodies, so a `@disabled` inside a loop or an if branch
+// counts — the gate is about the document that would be written, and a nested
+// activity is written into the same one.
+func FlowBodyUsesDisabled(body []ast.MicroflowStatement) bool {
+	for _, s := range body {
+		if ann := ast.StatementAnnotations(s); ann != nil && ann.Disabled {
+			return true
+		}
+		for _, nested := range ast.StatementBodies(s) {
+			if FlowBodyUsesDisabled(nested) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// checkDisabledActivityFeature gates `@disabled` on the project's Mendix
+// version. Microflows$ActionActivity.disabled was introduced in **9.12.0** —
+// mendixmodelsdk 4.115.0's own StructureVersionInfo, which is the arbiter for a
+// metamodel property, and modelsdk/gen/microflows/version.go agrees.
+// sdk/versions/mendix-9.yaml's supported range starts at 9.0.0, so the window
+// below the floor is real rather than theoretical.
+//
+// This is a gate with no downstream safety net, which is why it is worth having:
+// mxbuild tolerates a property it does not know, so a pre-9.12 project carrying
+// `Disabled` builds green and Studio Pro throws `Sequence contains no matching
+// element` at MprProperty.cs — CLAUDE.md's overlay-writes rule, reached from the
+// version axis instead of the spelling one.
+func checkDisabledActivityFeature(ctx *ExecContext, body []ast.MicroflowStatement) error {
+	if !FlowBodyUsesDisabled(body) {
+		return nil
+	}
+	return checkFeature(ctx, "microflows", "disabled_activity", "@disabled on an activity",
+		"Microflows$ActionActivity has no `disabled` property before Mendix 9.12 — "+
+			"remove the annotation, or upgrade the project")
+}

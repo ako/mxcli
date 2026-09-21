@@ -57,6 +57,10 @@ features:
       min_version: "10.0.0"
       mdl: "SHOW PAGE Module.PageName WITH PARAMS ..."
       notes: "Pages$PageSettings.parameterMappings introduced in 9.7.0, so every 10.x supports it"
+    disabled_activity:
+      min_version: "10.0.0"
+      mdl: "@disabled before an activity"
+      notes: "Microflows$ActionActivity.disabled introduced in 9.12.0, so every 10.x supports it"
     send_rest_request:
       min_version: "10.1.0"
       mdl: "SEND REST REQUEST ..."

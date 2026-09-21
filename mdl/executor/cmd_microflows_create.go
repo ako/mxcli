@@ -33,6 +33,9 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 	if !ctx.ConnectedForWrite() {
 		return mdlerrors.NewNotConnectedWrite()
 	}
+	if err := checkDisabledActivityFeature(ctx, s.Body); err != nil {
+		return err
+	}
 
 	built, err := buildMicroflowFromStmt(ctx, s, buildFlowOpts{AllowCreate: true})
 	if err != nil {

@@ -32,6 +32,10 @@ func execCreateRule(ctx *ExecContext, s *ast.CreateRuleStmt) error {
 		return mdlerrors.NewNotConnectedWrite()
 	}
 
+	if err := checkDisabledActivityFeature(ctx, s.Body); err != nil {
+		return err
+	}
+
 	// Validate name is not empty
 	if strings.TrimSpace(s.Name.Name) == "" {
 		return mdlerrors.NewValidation("rule name must not be empty")
