@@ -295,6 +295,33 @@ type PageMutationBackend interface {
 	OpenPageForMutation(unitID model.ID) (PageMutator, error)
 }
 
+// FlowActivityMutationBackend toggles the Disabled flag on the activities of a
+// stored microflow, nanoflow or rule.
+//
+// Separate from creating the flow, and deliberately so: CREATE is model→gen and
+// can only write what the model can express, while this reaches into a document
+// that may hold constructs mxcli does not model. One boolean on the stored
+// bytes is safe for all of them (ADR-0005's fidelity-sensitive ALTER).
+type FlowActivityMutationBackend interface {
+	// SetActivitiesDisabled sets Disabled to `disable` on every activity of the
+	// unit that matches the filter.
+	//
+	// Returns how many activities it CHANGED, how many it MATCHED, and how many
+	// carried no Disabled property at all. The three are reported separately
+	// because they mean different things to the reader: 0 changed with 3
+	// matched is "already in that state", 0 changed with 0 matched is "the
+	// filter selected nothing", and a non-zero third count is a document
+	// written before Mendix 9.12, which is left alone rather than patched.
+	SetActivitiesDisabled(unitID model.ID, filter types.ActivityFilter, disable bool) (FlowActivityChange, error)
+}
+
+// FlowActivityChange is what one unit's SetActivitiesDisabled did.
+type FlowActivityChange struct {
+	Changed      int
+	Matched      int
+	WithoutField int
+}
+
 // WorkflowMutationBackend provides workflow mutation capabilities.
 type WorkflowMutationBackend interface {
 	// OpenWorkflowForMutation loads a workflow unit and returns a mutator

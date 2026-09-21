@@ -516,6 +516,12 @@ annotationName
     | ANNOTATION
     | ANCHOR
     | MERGE       // @merge(x, y) — the layout hint predates the `merge` keyword
+    // `disabled` became a lexer keyword when ALTER MICROFLOW … DISABLE ACTIVITIES
+    // needed a WHERE column of that name (mendixlabs/mxcli#1139). Without this
+    // arm `@disabled` stops matching IDENTIFIER and the annotation it names
+    // becomes a parse error — the keyword-collision trap, reached by adding a
+    // token rather than by naming something.
+    | DISABLED
     ;
 
 annotationParams
@@ -727,7 +733,8 @@ keyword
     | GET | POST | PUT | PATCH
 
     // Workflow
-    | ABORT | ACTIVITY | ANNOTATION | ANNOTATIONS | AT_KW | BOUNDARY | BY | COMPLETE_TASK
+    | ABORT | ACTIVITY | ACTIVITIES | ANNOTATION | ANNOTATIONS | AT_KW | BOUNDARY | BY | COMPLETE_TASK
+    | DISABLE | DISABLED | ENABLE
     | CONDITION | DATE | DECISION | DUE | GROUPS | INTERRUPTING | JUMP
     | LOCK | MULTI | NODE | NON | NOTIFICATION | NOTIFY
     | OPEN | OUTCOME | OUTCOMES | OVERVIEW | PARALLEL | PAUSE

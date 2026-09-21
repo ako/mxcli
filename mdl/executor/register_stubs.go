@@ -525,6 +525,10 @@ func registerAlterPageHandlers(r *Registry) {
 	r.Register(&ast.AlterPagesLayoutStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
 		return execAlterPagesLayout(ctx, stmt.(*ast.AlterPagesLayoutStmt))
 	})
+	// ALTER MICROFLOW[S]/NANOFLOW[S]/RULE[S] … DISABLE|ENABLE ACTIVITIES WHERE …
+	r.Register(&ast.AlterFlowActivitiesStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execAlterFlowActivities(ctx, stmt.(*ast.AlterFlowActivitiesStmt))
+	})
 }
 
 func registerFragmentHandlers(r *Registry) {

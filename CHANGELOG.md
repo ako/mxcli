@@ -8,6 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`ALTER MICROFLOW … DISABLE|ENABLE ACTIVITIES WHERE …`** (mendixlabs/mxcli#1139) — Studio Pro's right-click Disable applied to flows that **already exist**, in bulk. `@disabled` states the flag while *authoring* a flow; this is the everyday case, and the one the reporter asked for: "disable all debug log statements".
+
+  ```mdl
+  alter microflows in Sales disable activities where action = log and level in (debug, trace);
+  alter nanoflow Sales.ACT_Save disable activities where action = 'call javascript action';
+  alter microflows enable activities where disabled = true;
+  ```
+
+  `microflow` / `nanoflow` / `rule` take one document; the plurals take many, and **omitting `IN <module>` is the whole project** — the same rule `alter pages … set layout` follows. Conditions are joined by `and` over four columns — `action`, `level`, `caption` (also `like`), `disabled` — each taking `=`, `!=`, `in (…)` and `not in (…)`. There is no `or`: `in (a, b)` covers what one would be written for.
+
+  It is deliberately **not** `create or modify microflow` with a line changed. A rewrite rebuilds the document from MDL and is only as faithful as what MDL can spell — and the flows worth reaching into are exactly the ones holding constructs it cannot. This sets one boolean on the **stored** BSON and leaves every other byte alone, through the same write choke point as everything else, so a re-run that changes nothing writes nothing (measured on mtimes: no file touched).
+
+  The `action` vocabulary was **measured, not derived from type names**, and that is not a formality: the first draft read the Go type and got eight entries wrong at once — `create` stores `CreateChangeAction`, `commit` stores `CommitAction`, `show page` stores `ShowFormAction` — which is CLAUDE.md's storage-name table met from the other direction. Every wrong entry is a filter that matches nothing and reports a clean success, so a test now runs each alias's action through the codec and compares the `$Type`; an existence-only check passed three aliases the codec can decode but never writes. The Mendix storage name is accepted alongside the keyword, so the value `select ActionType from CATALOG.ACTIVITIES` prints can be pasted in unchanged.
+
+  A filter that cannot select anything — an unknown action word, `level` beside a non-log `action`, `like` on an enumeration — is **MDL088**, refused by `mxcli check` (no project needed) and by `exec` through the same function. What remains is told apart in the report rather than merged, because a statement that reports by counting otherwise reads a typo as a successful no-op: "No activity matched" and "all 2 matching activities already disabled" are different messages, and a flow or module name that resolves to nothing is an error. A matching activity in a pre-9.12 document is **named, never patched**.
+
 - **`@disabled` on a microflow or nanoflow activity** (mendixlabs/mxcli#1139) — Studio Pro's right-click **Disable**: the step stays in the flow, drawn greyed out, and is skipped at runtime. The reported use case is the one it is for — an activity mxcli cannot yet configure correctly is generated **off**, so a developer fixes it in Studio Pro and re-enables it, instead of shipping a live misconfigured step or deleting and recreating the activity.
 
   The report says "there is currently no MDL equivalent for this flag", and it was right about the outcome for the wrong reason: every layer was built except one. `@excluded` on a statement parsed into the AST, `applyAnnotations` had an arm that set `ActionActivity.Disabled`, the writer called `SetDisabled` and `describe` emitted the annotation back. In between, `mergeStatementAnnotations` — which fills the `pendingAnnotations` that is the only value `applyAnnotations` is ever called with — copied position, caption, colour, notes and all six anchor fields and dropped this one. So the arm was dead code and the script reported success, checked clean and left the step live. Measured on a real Mendix 11.12.4 app: the same script stores `Disabled: false` before and `Disabled: true` after, `mx check` 0 errors.

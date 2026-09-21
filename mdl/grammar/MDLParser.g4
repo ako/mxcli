@@ -148,6 +148,9 @@ alterStatement
     | ALTER SETTINGS alterSettingsClause
     | ALTER PAGE qualifiedName LBRACE alterPageOperation+ RBRACE
     | alterPagesLayoutStatement
+    // Before the flavour-keyword arms below, so `ALTER MICROFLOW X DISABLE …`
+    // is claimed here rather than by a later rule that starts the same way.
+    | alterFlowActivitiesStatement
     // ALTER LAYOUT reuses alterPageOperation wholesale: a layout's widget tree is
     // a page's widget tree with four extra element types, so SET/INSERT/DROP/
     // REPLACE mean exactly the same thing. A scroll-container region is addressed

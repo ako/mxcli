@@ -1,0 +1,48 @@
+-- mendixlabs/mxcli#1139, follow-up: ALTER MICROFLOW … DISABLE|ENABLE ACTIVITIES.
+--
+-- `@disabled` states the flag while AUTHORING a flow. The everyday case is the
+-- other one — "this is usually used to disable or enable activities in an
+-- EXISTING microflow" — and in bulk: "disable all debug log statements".
+--
+-- Doing that through `create or modify microflow` would be wrong even where it
+-- works: a rewrite is only as faithful as what MDL can spell, and the flows
+-- worth reaching into are the ones holding constructs it cannot. This statement
+-- sets one boolean on the stored document and leaves every other byte alone.
+--
+-- Expected, in order:
+--   Disabled 2 activities in 1 microflow: Mx1139Alter.Logger (2)
+--   Unchanged: all 2 matching activities already disabled.      (the re-run)
+--   Enabled 2 activities in 1 microflow: Mx1139Alter.Logger (2)
+-- and `describe microflow Mx1139Alter.Logger` shows @disabled on the two debug
+-- logs and on neither of the others.
+
+create module Mx1139Alter;
+
+create or modify microflow Mx1139Alter.Logger ()
+returns Boolean
+begin
+  log debug 'chatty one';
+  log info 'keep me';
+  log debug 'chatty two';
+  log error 'keep me too';
+  return true;
+end;
+
+-- The reported case. IN scopes it to one module; omitting IN is the whole
+-- project, the same rule ALTER PAGES … SET LAYOUT follows.
+alter microflows in Mx1139Alter disable activities
+  where action = log and level = debug;
+
+-- Re-running changes nothing and says so, rather than reporting a second
+-- success. The write goes through the same choke point as every other one, so
+-- ADR-0008's elision applies: no file is touched.
+alter microflows in Mx1139Alter disable activities
+  where action = log and level = debug;
+
+-- The inverse. `level in (…)` is how an OR is written — there is no OR.
+alter microflow Mx1139Alter.Logger enable activities
+  where action = log and level in (debug, trace);
+
+-- The current state is a column of its own, so "everything anyone turned off"
+-- is expressible without naming what it was.
+alter microflows in Mx1139Alter enable activities where disabled = true;

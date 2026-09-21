@@ -200,6 +200,52 @@ believed was off.
 works. Before a `CREATE MICROFLOW` the same word means *Exclude from project*, which
 is a different setting.
 
+### Disabling activities in a flow that already exists
+
+`@disabled` states the flag while *authoring* a flow. To turn a step off in a
+microflow that already exists — usually several at once — use `ALTER`:
+
+```sql
+-- the everyday one: turn off debug logging across a module before a release
+ALTER MICROFLOWS IN Sales DISABLE ACTIVITIES
+  WHERE action = log AND level IN (debug, trace);
+
+-- and back on
+ALTER MICROFLOWS IN Sales ENABLE ACTIVITIES
+  WHERE action = log AND level IN (debug, trace);
+
+-- one step in one flow
+ALTER NANOFLOW Sales.ACT_Save DISABLE ACTIVITIES
+  WHERE action = 'call javascript action';
+
+-- everything anyone turned off, whatever it was
+ALTER MICROFLOWS ENABLE ACTIVITIES WHERE disabled = true;
+```
+
+`MICROFLOW` / `NANOFLOW` / `RULE` take one document; the plurals take many, and
+**omitting `IN <module>` means the whole project** — the same rule
+`ALTER PAGES … SET LAYOUT` follows.
+
+This is deliberately not `CREATE OR MODIFY MICROFLOW` with one line changed. A
+rewrite rebuilds the document from MDL and is only as faithful as what MDL can
+spell; the flows worth reaching into are the ones holding constructs it cannot.
+`ALTER` sets one boolean on the **stored** document and leaves the rest alone.
+
+Filter columns, joined by `AND` (there is no `OR` — `IN (a, b)` covers it):
+
+| Column | Values |
+|--------|--------|
+| `action` | The MDL keyword (`log`, `commit`, `'call javascript action'`), quoted when it has a space; or the storage name `CATALOG.ACTIVITIES.ActionType` prints |
+| `level` | `critical`, `error`, `warning`, `info`, `debug`, `trace` — a **log** activity's level, and a property of nothing else |
+| `caption` | The caption DESCRIBE shows; also `caption LIKE '%TODO%'` |
+| `disabled` | `true` / `false`, the activity's current state |
+
+A filter that cannot select anything — an unknown action, `level` beside a
+non-log `action`, `LIKE` on an enumeration — is **MDL088**, refused by
+`mxcli check` and by `exec` rather than run to a zero count that looks like
+success. What remains is told apart in the report: "No activity matched" is not
+the same message as "all 2 matching activities already disabled".
+
 ### Annotation (Visual Note)
 
 Attach a visual annotation note to the next activity:

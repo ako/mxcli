@@ -333,6 +333,9 @@ type MockBackend struct {
 	// WorkflowMutationBackend
 	OpenWorkflowForMutationFunc func(unitID model.ID) (backend.WorkflowMutator, error)
 
+	// FlowActivityMutationBackend
+	SetActivitiesDisabledFunc func(unitID model.ID, filter types.ActivityFilter, disable bool) (backend.FlowActivityChange, error)
+
 	// WidgetSerializationBackend
 
 	// WidgetBuilderBackend

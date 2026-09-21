@@ -1,0 +1,22 @@
+-- mendixlabs/mxcli#1139, the refusal half of ALTER … DISABLE ACTIVITIES — MDL088.
+--
+-- Every case below matches NOTHING. That is the whole failure mode of a
+-- statement whose report is a count: a filter that selects nothing writes
+-- nothing and exits 0, which is indistinguishable from a model that genuinely
+-- had no matching activity. Only one of those is worth acting on, so the ones
+-- that can be recognised as impossible are refused instead of run.
+--
+-- Checked without a project, by the same function the executor calls — so
+-- `check` cannot accept a filter `exec` refuses, or the other way round.
+--
+-- Expected: three MDL088 errors.
+
+-- An action word that resolves to no Mendix action type.
+alter microflows in Sales disable activities where action = frobnicate;
+
+-- `level` is a property of a log activity and of nothing else, so requiring it
+-- alongside a different action is a contradiction, not a narrow filter.
+alter microflows disable activities where action = commit and level = debug;
+
+-- LIKE matches text; `level` is an enumeration member.
+alter microflow Sales.ACT_Do disable activities where level like 'deb%';

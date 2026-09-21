@@ -1112,6 +1112,11 @@ func (unsupportedBackend) SerializeWidgetToOpaque(_ pages.Widget) (r0 any) {
 	return
 }
 
+func (unsupportedBackend) SetActivitiesDisabled(_ model.ID, _ types.ActivityFilter, _ bool) (r0 backend.FlowActivityChange, err1 error) {
+	err1 = errUnsupported("SetActivitiesDisabled")
+	return
+}
+
 func (unsupportedBackend) SetDomainModelAnnotations(_ model.ID, _ []*domainmodel.Annotation) (err0 error) {
 	err0 = errUnsupported("SetDomainModelAnnotations")
 	return

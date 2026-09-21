@@ -985,3 +985,55 @@ changeList
 changeItem
     : IDENTIFIER EQUALS expression
     ;
+
+// ALTER MICROFLOW Mod.Flow DISABLE ACTIVITIES WHERE action = log AND level = debug
+// ALTER MICROFLOWS [IN Mod]  ENABLE ACTIVITIES WHERE caption = 'Refresh entity'
+//
+// Studio Pro's right-click Disable, applied to activities that already exist.
+// `@disabled` states the flag while AUTHORING a flow; this changes it on one
+// that is already there, without rewriting the flow — which matters because a
+// rewrite is only as faithful as what MDL can spell, and the microflows people
+// want to reach into are the ones full of things it cannot.
+//
+// The plural form is the real one for the reported use case ("disable all debug
+// log statements"), and it takes the same optional `IN <module>` scope as
+// ALTER PAGES … SET LAYOUT, with no IN meaning the whole project.
+//
+// The selector is a WHERE for the same reason ALTER PAGES has one: "every
+// activity matching X" is the operation people actually want, and one uniform
+// filter covers both the single-flow and the bulk form.
+alterFlowActivitiesStatement
+    : ALTER flowFlavourSingular qualifiedName activityToggle ACTIVITIES
+      WHERE activityFilter
+    | ALTER flowFlavourPlural (IN identifierOrKeyword)? activityToggle ACTIVITIES
+      WHERE activityFilter
+    ;
+
+flowFlavourSingular : MICROFLOW | NANOFLOW | RULE ;
+flowFlavourPlural   : MICROFLOWS | NANOFLOWS | RULES ;
+
+activityToggle : DISABLE | ENABLE ;
+
+// Conditions are ANDed. There is no OR: `IN (a, b)` covers what an OR would be
+// written for, and a boolean expression tree would need precedence rules that
+// no other MDL clause has.
+activityFilter
+    : activityCondition (AND activityCondition)*
+    ;
+
+activityCondition
+    : activityColumn (EQUALS | NOT_EQUALS) activityValue
+    | activityColumn NOT? IN LPAREN activityValue (COMMA activityValue)* RPAREN
+    | activityColumn LIKE STRING_LITERAL
+    ;
+
+activityColumn : ACTION | LEVEL | CAPTION | DISABLED ;
+
+// A single-word value may be bare (`log`, `debug`, `true`); a multi-word action
+// is quoted (`'call javascript action'`). Bare multi-word would be ambiguous
+// against the AND that follows it, and quoting is the escape MDL already uses
+// everywhere a name could collide with a keyword.
+activityValue
+    : STRING_LITERAL
+    | identifierOrKeyword
+    ;

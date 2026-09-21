@@ -273,6 +273,76 @@ commit $BatchList on error rollback;  -- ✅ single transaction
 3. After the loop: `commit $XxxList on error rollback;`
 
 This applies whenever the loop **creates** new objects. For loops that only **change** existing objects, the same pattern applies — accumulate changed objects in a list, commit the list once outside the loop.
+## Disabling activities in a flow that already exists
+
+`@disabled` states the flag while **authoring** a flow. The everyday case is the
+other one — turning a step off in a microflow that is already there, and usually
+several at once:
+
+```mdl
+-- turn off the debug logging across a module before a release
+alter microflows in Sales disable activities
+  where action = log and level in (debug, trace);
+
+-- and back on
+alter microflows in Sales enable activities
+  where action = log and level in (debug, trace);
+
+-- one step in one flow
+alter nanoflow Sales.ACT_Save disable activities
+  where action = 'call javascript action';
+
+-- everything anyone turned off, whatever it was
+alter microflows enable activities where disabled = true;
+```
+
+`microflow`, `nanoflow` and `rule` take the singular form; `microflows`,
+`nanoflows` and `rules` take the bulk form, where **omitting `IN <module>` means
+the whole project** — the same rule `alter pages … set layout` follows.
+
+**This is not `create or modify microflow` with one line changed, and the
+difference is the point.** A rewrite rebuilds the whole document from MDL, so it
+is only as faithful as what MDL can spell — and the flows worth reaching into are
+exactly the ones holding constructs it cannot. This statement sets one boolean on
+the **stored** document and leaves every other byte alone, so nothing has to be
+reproducible for it to be safe. It goes through the same write choke point as
+everything else, so a re-run that changes nothing writes nothing.
+
+### The filter
+
+Conditions are joined by `and`. There is no `or`: `in (a, b)` covers what an `or`
+would be written for, and a boolean expression tree would need precedence rules
+no other MDL clause has.
+
+| Column | Values | Notes |
+|--------|--------|-------|
+| `action` | `log`, `commit`, `retrieve`, `'call javascript action'`, … | The MDL keyword for the activity; **quoted** when it contains a space. The Mendix storage name works too — the value `select ActionType from CATALOG.ACTIVITIES` prints — so an activity you cannot name can be found by querying for it |
+| `level` | `critical`, `error`, `warning`, `info`, `debug`, `trace` | A **log** activity's level, and a property of nothing else. Pairing it with a different `action` matches nothing, and is refused rather than run |
+| `caption` | `'Save the order'`, or `caption like '%TODO%'` | The caption DESCRIBE shows. `like` takes `%` and `_` |
+| `disabled` | `true` / `false` | The activity's **current** state |
+
+Each takes `=`, `!=`, `in (…)` and `not in (…)`; only `caption` takes `like`.
+
+### Why a filter that selects nothing is an error
+
+The statement reports by counting, so "your filter is wrong" and "the model had
+nothing to change" both write nothing and exit 0. The ones that can be recognised
+as impossible — an action word that names no Mendix action, `level` beside a
+non-log `action`, `like` on an enumeration — are **MDL088**, refused by `mxcli
+check` (with no project needed) and by `exec`, through the same function.
+
+What remains is told apart in the report rather than merged:
+
+```
+Disabled 2 activities in 1 microflow: Sales.ACT_Do (2)
+Unchanged: all 2 matching activities already disabled.
+No activity matched in Sales (14 microflows) — nothing to disable.
+```
+
+The flag needs **Mendix 9.12+** (`Microflows$ActionActivity.disabled`). A matching
+activity in an older document is **named, never patched** — adding a property the
+type does not have is what makes a project Studio Pro cannot open.
+
 ## Activity Annotations
 
 Annotations use `@` prefix syntax placed before the activity they apply to:

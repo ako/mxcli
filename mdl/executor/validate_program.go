@@ -98,6 +98,12 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 		if awfStmt, ok := stmt.(*ast.AlterWorkflowStmt); ok {
 			violations = append(violations, ValidateAlterWorkflow(awfStmt)...)
 		}
+		// ALTER MICROFLOW … DISABLE|ENABLE ACTIVITIES WHERE …: the filter is
+		// checked with the SAME function the executor calls, so `check` cannot
+		// accept a filter `exec` refuses or the other way round (MDL088).
+		if afStmt, ok := stmt.(*ast.AlterFlowActivitiesStmt); ok {
+			violations = append(violations, ValidateAlterFlowActivities(afStmt)...)
+		}
 		// Check GRANT for member rights Mendix cannot store
 		if grantStmt, ok := stmt.(*ast.GrantEntityAccessStmt); ok {
 			violations = append(violations, ValidateGrantEntityAccess(grantStmt)...)

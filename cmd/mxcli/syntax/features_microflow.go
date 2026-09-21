@@ -462,6 +462,63 @@ func init() {
 	})
 
 	Register(SyntaxFeature{
+		Path:    "microflow.disable",
+		Summary: "Disable or enable activities in flows that already exist",
+		Keywords: []string{
+			"disable", "enable", "activities", "disabled", "alter", "microflows",
+			"nanoflows", "rules", "where", "level", "action", "caption",
+		},
+		Syntax: "ALTER MICROFLOW  Mod.Flow  DISABLE|ENABLE ACTIVITIES WHERE <filter>\n" +
+			"ALTER NANOFLOW   Mod.Flow  DISABLE|ENABLE ACTIVITIES WHERE <filter>\n" +
+			"ALTER RULE       Mod.Rule  DISABLE|ENABLE ACTIVITIES WHERE <filter>\n" +
+			"ALTER MICROFLOWS [IN Mod]  DISABLE|ENABLE ACTIVITIES WHERE <filter>\n" +
+			"ALTER NANOFLOWS  [IN Mod]  DISABLE|ENABLE ACTIVITIES WHERE <filter>\n" +
+			"ALTER RULES      [IN Mod]  DISABLE|ENABLE ACTIVITIES WHERE <filter>\n\n" +
+			"Studio Pro's right-click Disable, applied to flows that ALREADY EXIST.\n" +
+			"@disabled states the flag while AUTHORING a flow; this changes it on a\n" +
+			"stored one without rewriting it — which matters, because a rewrite is only\n" +
+			"as faithful as what MDL can spell and the flows worth reaching into are\n" +
+			"the ones holding constructs it cannot. One boolean on the stored document\n" +
+			"is safe for all of them.\n\n" +
+			"Omitting IN scopes the plural form to the WHOLE PROJECT, the same rule\n" +
+			"ALTER PAGES … SET LAYOUT follows.\n\n" +
+			"FILTER — conditions joined by AND. There is no OR: IN (a, b) covers what\n" +
+			"an OR would be written for.\n\n" +
+			"  action   = log | commit | retrieve | 'call javascript action' | …\n" +
+			"           the MDL keyword for the activity. A word with a space in it is\n" +
+			"           QUOTED. The Mendix storage name works too — the value\n" +
+			"           `select ActionType from CATALOG.ACTIVITIES` prints — so an\n" +
+			"           activity you cannot name can be found by querying for it.\n" +
+			"  level    = critical | error | warning | info | debug | trace\n" +
+			"           a LOG activity's level, and a property of nothing else. Pairing\n" +
+			"           it with a different `action` matches nothing and is refused.\n" +
+			"  caption  = 'text'  |  caption LIKE '%text%'\n" +
+			"           the caption DESCRIBE shows. LIKE takes % and _.\n" +
+			"  disabled = true | false\n" +
+			"           the activity's CURRENT state.\n\n" +
+			"Each takes = , != , IN (…) and NOT IN (…); only `caption` takes LIKE.\n\n" +
+			"A filter that cannot select anything is an ERROR (MDL088), not a run that\n" +
+			"reports zero: an unknown action word and a genuinely empty result both\n" +
+			"write nothing and exit 0, and only one of them is worth acting on. The\n" +
+			"report tells the remaining two apart — \"No activity matched\" is not the\n" +
+			"same as \"all 3 matching activities already disabled\".\n\n" +
+			"The flag itself needs Mendix 9.12+ (Microflows$ActionActivity.disabled).\n" +
+			"A matching activity in an older document is named, never patched.",
+		Example: "-- the everyday one: turn off the debug logging before a release\n" +
+			"ALTER MICROFLOWS IN Sales DISABLE ACTIVITIES\n" +
+			"  WHERE action = log AND level IN (debug, trace);\n\n" +
+			"-- and back on again\n" +
+			"ALTER MICROFLOWS IN Sales ENABLE ACTIVITIES\n" +
+			"  WHERE action = log AND level IN (debug, trace);\n\n" +
+			"-- one step in one flow\n" +
+			"ALTER NANOFLOW Sales.ACT_Save DISABLE ACTIVITIES\n" +
+			"  WHERE action = 'call javascript action';\n\n" +
+			"-- everything someone turned off, back on\n" +
+			"ALTER MICROFLOWS ENABLE ACTIVITIES WHERE disabled = true;",
+		SeeAlso: []string{"microflow", "microflow.layout"},
+	})
+
+	Register(SyntaxFeature{
 		Path:    "microflow.layout",
 		Summary: "Statement annotations — @position, @start, @anchor, @curve, @caption, @color, @disabled",
 		Keywords: []string{

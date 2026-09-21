@@ -7,6 +7,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/linter"
+	"github.com/mendixlabs/mxcli/mdl/types"
 )
 
 // MDL087 — `@disabled` on a statement that is not an action activity.
@@ -118,4 +119,42 @@ func checkDisabledActivityFeature(ctx *ExecContext, body []ast.MicroflowStatemen
 	return checkFeature(ctx, "microflows", "disabled_activity", "@disabled on an activity",
 		"Microflows$ActionActivity has no `disabled` property before Mendix 9.12 — "+
 			"remove the annotation, or upgrade the project")
+}
+
+// MDL088 — a WHERE on activities that cannot select what it names.
+//
+// Reported by `mxcli check` with the same function the executor calls, so the
+// two cannot disagree. The failure it exists for is specific: an unresolvable
+// action word or a self-contradicting pair matches NOTHING, and a statement
+// that matched nothing writes nothing and exits 0. Without this the reader gets
+// "No activity matched" for a typo and for a genuinely empty result alike, and
+// only one of those is worth acting on.
+//
+// No project is needed. Action words are then resolved against the aliases
+// alone; a storage label reaches exec and is resolved there, which is why a
+// label `check` cannot confirm is accepted rather than refused — refusing it
+// would make `check` reject a script `exec` runs.
+func ValidateAlterFlowActivities(s *ast.AlterFlowActivitiesStmt) []linter.Violation {
+	if s == nil {
+		return nil
+	}
+	name := string(s.Flavour) + "s"
+	if !s.Bulk {
+		name = s.Name.String()
+	} else if s.Module != "" {
+		name = s.Module
+	}
+	var out []linter.Violation
+	for _, p := range types.CheckActivityFilter(s.Filter, nil) {
+		out = append(out, linter.Violation{
+			RuleID:   "MDL088",
+			Severity: linter.SeverityError,
+			Message:  p,
+			Location: linter.Location{DocumentType: string(s.Flavour), DocumentName: name},
+			Suggestion: "A filter that selects nothing reports a clean success and changes " +
+				"nothing, so it is refused rather than run. `mxcli syntax microflow.disable` " +
+				"lists the columns and what each one accepts.",
+		})
+	}
+	return out
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/mendixlabs/mxcli/mdl/backend"
+	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/pages"
 )
@@ -30,6 +31,17 @@ func (m *MockBackend) OpenWorkflowForMutation(unitID model.ID) (backend.Workflow
 		return m.OpenWorkflowForMutationFunc(unitID)
 	}
 	return nil, fmt.Errorf("MockBackend.OpenWorkflowForMutation not configured")
+}
+
+// ---------------------------------------------------------------------------
+// FlowActivityMutationBackend
+// ---------------------------------------------------------------------------
+
+func (m *MockBackend) SetActivitiesDisabled(unitID model.ID, filter types.ActivityFilter, disable bool) (backend.FlowActivityChange, error) {
+	if m.SetActivitiesDisabledFunc != nil {
+		return m.SetActivitiesDisabledFunc(unitID, filter, disable)
+	}
+	return backend.FlowActivityChange{}, fmt.Errorf("MockBackend.SetActivitiesDisabled not configured")
 }
 
 // ---------------------------------------------------------------------------

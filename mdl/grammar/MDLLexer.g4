@@ -588,6 +588,12 @@ API: A P I;
 HIDDEN_KW: H I D D E N;  // HIDDEN is reserved by ANTLR (the hidden channel)
 ALLOW: A L L O W;
 DISALLOW: D I S A L L O W;
+// ALTER MICROFLOW … DISABLE|ENABLE ACTIVITIES (mendixlabs/mxcli#1139). DISABLED is
+// the WHERE column naming an activity's current state, not the annotation —
+// `@disabled` is lexed as AT + IDENTIFIER like every other annotation name.
+DISABLE: D I S A B L E;
+ENABLE: E N A B L E;
+DISABLED: D I S A B L E D;
 CONCURRENT: C O N C U R R E N T;
 EXECUTION: E X E C U T I O N;
 CLIENT: C L I E N T;
@@ -796,6 +802,7 @@ WRITE: W R I T E;
 DESCRIPTION: D E S C R I P T I O N;
 DISPLAY: D I S P L A Y;
 ACTIVITY: A C T I V I T Y;
+ACTIVITIES: A C T I V I T I E S;
 CONDITION: C O N D I T I O N;
 OFF: O F F;
 USERS: U S E R S;

@@ -23,6 +23,12 @@ func (b *Builder) ExitAlterStatement(ctx *parser.AlterStatementContext) {
 		return
 	}
 
+	// Handle ALTER MICROFLOW[S] … DISABLE|ENABLE ACTIVITIES WHERE …
+	if sub := ctx.AlterFlowActivitiesStatement(); sub != nil {
+		b.exitAlterFlowActivitiesStatement(sub.(*parser.AlterFlowActivitiesStatementContext))
+		return
+	}
+
 	// Handle ALTER STYLING
 	if ctx.STYLING() != nil {
 		b.exitAlterStylingStatement(ctx)
