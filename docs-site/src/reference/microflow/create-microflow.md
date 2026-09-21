@@ -146,7 +146,8 @@ Error handling is attached as a suffix to an individual activity. `ON ERROR CONT
 
 ### Annotations
 
-Annotations are placed before an activity to control visual appearance in the microflow editor:
+Annotations are placed before an activity to control its appearance in the
+microflow editor, and — for `@disabled` — whether it runs at all:
 
 ```sql
 @position(x, y)          -- Canvas position
@@ -154,7 +155,15 @@ Annotations are placed before an activity to control visual appearance in the mi
 @caption 'text'          -- Custom caption
 @color Green             -- Background color
 @annotation 'text'       -- Visual note attached to next activity
+@disabled                -- Studio Pro's Disable: greyed out, skipped at runtime
 ```
+
+`@disabled` applies to one **action activity**. Mendix stores the flag on
+`Microflows$ActionActivity` and on no other microflow object, so it is refused
+(**MDL087**) on an `IF`, `CASE`, `SPLIT TYPE`, `LOOP`, `WHILE`, `MERGE`, `JOIN`,
+`RETURN`, `RAISE ERROR`, `BREAK` or `CONTINUE` rather than dropped. `@excluded`
+before a statement is the older spelling of the same flag; before a
+`CREATE MICROFLOW` that word means *Exclude from project* instead.
 
 `@start` positions the start event, which has no statement of its own, so it is
 written on the first statement — the one the start flows into. It is optional:

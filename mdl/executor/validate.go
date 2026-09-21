@@ -1291,6 +1291,15 @@ var execEnforcedMicroflowRules = map[string]bool{
 	// otherwise `check` catches the typo and the write that follows does not.
 	"MDL059": true,
 	"MDL060": true,
+	// MDL087: same argument as MDL059, and the same evidence — not a CE code but
+	// a measured DROP. `applyAnnotations` sets Disabled inside its
+	// `case *microflows.ActionActivity` arm and nowhere else, so `@disabled` on
+	// a split, a loop, a merge or an event reaches the model as nothing at all
+	// (TestDisabledAnnotationTargetsAreNotActionActivities builds each one and
+	// shows no activity comes out disabled). Leaving exec permissive would mean
+	// `check` catching a step the author wanted inert and the write that follows
+	// shipping it live (mendixlabs/mxcli#1139).
+	"MDL087": true,
 	// MDL-WF16: a notify workflow with no target is CE0166 at build time,
 	// measured on the 11.6, 11.10 and 11.13 mxbuilds.
 	"MDL-WF16": true,

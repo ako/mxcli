@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`@disabled` on a microflow or nanoflow activity** (mendixlabs/mxcli#1139) — Studio Pro's right-click **Disable**: the step stays in the flow, drawn greyed out, and is skipped at runtime. The reported use case is the one it is for — an activity mxcli cannot yet configure correctly is generated **off**, so a developer fixes it in Studio Pro and re-enables it, instead of shipping a live misconfigured step or deleting and recreating the activity.
+
+  The report says "there is currently no MDL equivalent for this flag", and it was right about the outcome for the wrong reason: every layer was built except one. `@excluded` on a statement parsed into the AST, `applyAnnotations` had an arm that set `ActionActivity.Disabled`, the writer called `SetDisabled` and `describe` emitted the annotation back. In between, `mergeStatementAnnotations` — which fills the `pendingAnnotations` that is the only value `applyAnnotations` is ever called with — copied position, caption, colour, notes and all six anchor fields and dropped this one. So the arm was dead code and the script reported success, checked clean and left the step live. Measured on a real Mendix 11.12.4 app: the same script stores `Disabled: false` before and `Disabled: true` after, `mx check` 0 errors.
+
+  `@disabled` is the spelling `describe` emits now. `@excluded` before a **statement** is the older one and still sets the same flag, so describe output written by an earlier mxcli keeps executing; before a `create microflow` that word means *Exclude from project*, a different Studio Pro setting, which is why one word no longer names both.
+
+  Mendix stores the flag on `Microflows$ActionActivity` and on **no other** microflow object — `Disabled` occurs exactly once in `generated/metamodel` — so `@disabled` on an `if`, `case`, `split type`, `loop`, `while`, `merge`, `join`, `return`, `raise error`, `break` or `continue` is refused as **MDL087** rather than silently ignored. An ignored request there would ship a live step the author believed was off, which is the failure the annotation exists to prevent.
+
 ### Fixed
 
 - **A page's image-collection reference passed `mxcli check --references` and failed the build** (mendixlabs/mxcli#1149) — `staticimage imgAll (Image: 'Atlas_UI_Resources.Atlas_Icons.checkbox_checked')` in a Selection helper's custom state checked clean, exec'd cleanly and then came back as `[error] [CE1613] "The selected image … no longer exists."`, once per state. The report asks for syntax, but the syntax landed with #1057 — describe emits the three `staticimage` lines and re-running the description reports `Unchanged page`, measured on a blank 11.14.0 project. What was missing is that nothing resolved the name #1057 had made writable.

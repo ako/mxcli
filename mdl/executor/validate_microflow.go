@@ -203,6 +203,7 @@ func (v *microflowValidator) checkDuplicateLoopVariables(body []ast.MicroflowSta
 func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 	for _, s := range body {
 		v.checkUnknownAnnotations(s)
+		v.checkDisabledAnnotationTarget(s)
 		v.checkErrorHandlingContinueSupported(s)
 		v.checkErrorHandlingSupported(s)
 		switch stmt := s.(type) {
@@ -1448,7 +1449,8 @@ var knownActivityAnnotations = map[string]bool{
 	"caption":    true,
 	"color":      true,
 	"annotation": true,
-	"excluded":   true,
+	"disabled":   true,
+	"excluded":   true, // the older spelling of @disabled (#1139)
 	"anchor":     true,
 	"curve":      true,
 	"merge":      true,
@@ -1483,7 +1485,7 @@ func (v *microflowValidator) checkUnknownAnnotations(s ast.MicroflowStatement) {
 			fmt.Sprintf("unknown annotation `@%s` — it parses but does nothing, so whatever it was "+
 				"meant to express is silently lost", name),
 			fmt.Sprintf("mxcli implements @position(x, y), @start(x, y), @caption, @color, @annotation, "+
-				"@excluded, @anchor, @curve and @merge on a microflow statement. If `@%s` is a typo of "+
+				"@disabled, @anchor, @curve and @merge on a microflow statement. If `@%s` is a typo of "+
 				"one of those, correct it; container size is not authorable (upstream #884).", name))
 	}
 	for _, bad := range ann.InvalidNotes {

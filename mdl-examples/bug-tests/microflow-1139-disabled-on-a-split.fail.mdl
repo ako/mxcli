@@ -1,0 +1,26 @@
+-- mendixlabs/mxcli#1139, the refusal half — MDL087.
+--
+-- `Disabled` is a property of Microflows$ActionActivity and of nothing else
+-- (it occurs exactly once in generated/metamodel), so a decision, a loop, a
+-- merge and an end event have nowhere to store it. `applyAnnotations` only
+-- reaches for the flag inside its `case *microflows.ActionActivity` arm, so
+-- `@disabled` here reaches the model as nothing at all.
+--
+-- Refused rather than ignored, and refused by `exec` as well as `check`: the
+-- author is asking for a step to be inert, and an ignored request ships a LIVE
+-- step they believe is off. Same argument as MDL059 (#884).
+--
+-- Expected: MDL087 on the IF, naming the statement.
+
+create microflow Mx1139Fail.DisabledOnASplit ()
+returns Boolean
+begin
+  @disabled
+  if 1 = 1 then
+    log info 'a';
+  else
+    log info 'b';
+  end if;
+
+  return true;
+end;

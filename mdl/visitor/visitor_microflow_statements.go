@@ -314,9 +314,16 @@ func extractMicroflowAnnotations(annotations []parser.IAnnotationContext) *ast.A
 				hasAny = true
 			}
 
-		case "excluded":
-			// @excluded — no value needed
-			result.Excluded = true
+		case "disabled", "excluded":
+			// @disabled — Studio Pro's right-click "Disable" on an action
+			// activity. No value needed.
+			//
+			// `@excluded` is the older spelling of the same flag and is kept
+			// because DESCRIBE emitted it for years; at the document level the
+			// same word means "Exclude from project", which is a different
+			// Studio Pro concept, so `@disabled` is what DESCRIBE emits now
+			// (mendixlabs/mxcli#1139).
+			result.Disabled = true
 			hasAny = true
 			seenActivityMetadata = true
 
@@ -467,7 +474,7 @@ func hasLaterActivityAnnotation(annotations []parser.IAnnotationContext, start i
 	for _, annCtx := range annotations[start:] {
 		ann := annCtx.(*parser.AnnotationContext)
 		switch strings.ToLower(ann.AnnotationName().GetText()) {
-		case "position", "caption", "color", "excluded", "anchor":
+		case "position", "caption", "color", "disabled", "excluded", "anchor":
 			return true
 		}
 	}

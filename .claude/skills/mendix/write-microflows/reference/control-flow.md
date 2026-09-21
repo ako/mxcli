@@ -294,6 +294,13 @@ log info node 'App' 'Success';
 @annotation 'Validate the order before processing'
 commit $Order;
 
+-- Disabled: Studio Pro's right-click "Disable". The step stays in the flow,
+-- drawn greyed out, and is skipped at runtime.
+@disabled
+call javascript action NanoflowCommons.RefreshEntity (
+    EntityToRefresh = $Item
+);
+
 -- Multiple annotations stacked on a single activity
 @position(400, 200)
 @caption 'Persist product'
@@ -304,10 +311,20 @@ commit $Product;
 
 **Rules:**
 - `@annotation` before an activity attaches the note to that activity
-- `@annotation` before activity-binding metadata such as `@position`, `@caption`, `@color`, `@excluded`, or `@anchor` stays free-floating when later metadata binds the following activity
+- `@annotation` before activity-binding metadata such as `@position`, `@caption`, `@color`, `@disabled`, or `@anchor` stays free-floating when later metadata binds the following activity
 - `@annotation` at the end (no following activity) creates a free-floating note
 - Escape single quotes by doubling: `@annotation 'Don''t forget'`
 - `@position` always appears in DESCRIBE output; `@caption` only when custom; `@color` only when not Default
+- `@disabled` marks **one action activity** inert — it is Studio Pro's right-click
+  "Disable", and the generated step is greyed out and skipped at runtime. Its use is
+  generating a step that is not yet right (a parameter mxcli cannot express) OFF rather
+  than live, for a developer to fix and re-enable without losing the configuration.
+  Mendix stores the flag on `Microflows$ActionActivity` and on nothing else, so it is
+  refused (**MDL087**) on an `if`, `case`, `split type`, `loop`, `while`, `merge`,
+  `join`, `return`, `raise error`, `break` and `continue` rather than being dropped.
+  `@excluded` before a **statement** is the older spelling of the same flag and still
+  works; before a `create microflow` the same word means "Exclude from project", which
+  is a different setting (mendixlabs/mxcli#1139)
 - DESCRIBE MICROFLOW shows `@` annotations before their activities
 - `@start(x, y)` positions the **start event** and goes on the first statement, because the start has no statement of its own. Omit it and the start is derived — one spacing unit (160) left of the first activity, on its centre line — and a rewrite re-derives it so the start follows the activities when they move. A start that is not at the derived spot was placed by hand (in Studio Pro or with `@start`): it survives a rewrite that does not mention it, and DESCRIBE emits `@start` for it. An explicit `@start` overrides both (#951)
 - `@position(x, y)` on a **parameter** goes inside the parameter list, ahead of the parameter it places — a parameter is a stored node with its own coordinates, and this is the only annotation it takes. Omit it and the parameters form a row along the top of the canvas (200;53, 300;53, …). The `@start` rule above applies unchanged: a parameter on that derived row is re-derived on a rewrite, one anywhere else was placed by hand, survives, and is emitted by DESCRIBE (#993). Before this, a hand-aligned parameter block was moved back onto the row by any rewrite — including a describe → exec of mxcli's own output:

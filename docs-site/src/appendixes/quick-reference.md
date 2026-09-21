@@ -164,6 +164,7 @@ AUTHENTICATION Basic, Session
 | Start event | `@start(x, y)` | Canvas position of the start, on the **first** statement. Omit it and the start is placed one spacing unit left of the first activity and MOVES with it on a rewrite; a start that is not at that derived spot is treated as hand-placed, survives a rewrite, and is emitted by DESCRIBE (#951) |
 | Caption | `@caption 'text'` | Custom caption (before activity) |
 | Color | `@color Green` | Background color (before activity) |
+| Disabled activity | `@disabled` | Studio Pro's right-click **Disable** (before activity): the step stays in the flow, greyed out, and is skipped at runtime. Refused (**MDL087**) on an `IF`, `CASE`, `SPLIT TYPE`, `LOOP`, `WHILE`, `MERGE`, `JOIN`, `RETURN`, `RAISE ERROR`, `BREAK` or `CONTINUE` — Mendix stores the flag on action activities only. `@excluded` before a *statement* is the older spelling; before a `CREATE` it means Exclude from project instead |
 | Annotation | `@annotation 'text'` | Visual note attached to next activity |
 | IF | `IF condition THEN ... [ELSE ...] END IF;` | |
 | LOOP | `LOOP $Item IN $List BEGIN ... END LOOP;` | FOR EACH over list |

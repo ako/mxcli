@@ -781,7 +781,12 @@ func emitObjectAnnotations(
 
 	if activity, ok := obj.(*microflows.ActionActivity); ok {
 		if activity.Disabled {
-			*lines = append(*lines, indentStr+"@excluded")
+			// `@disabled`, not the `@excluded` this emitted before #1139:
+			// at the document level `@excluded` means "Exclude from project",
+			// so one word named two different Studio Pro concepts depending on
+			// where it sat. `@excluded` is still ACCEPTED on a statement, so
+			// describe output written by an older mxcli still executes.
+			*lines = append(*lines, indentStr+"@disabled")
 		}
 		if !activity.AutoGenerateCaption && activity.Caption != "" {
 			*lines = append(*lines, indentStr+fmt.Sprintf("@caption %s", mdlQuote(activity.Caption)))

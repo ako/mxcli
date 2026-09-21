@@ -334,7 +334,7 @@ type FlowAnchors struct {
 }
 
 // ActivityAnnotations holds metadata annotations for microflow activities.
-// These are emitted as @position, @caption, @color, @annotation, @excluded, @anchor lines in MDL.
+// These are emitted as @position, @caption, @color, @annotation, @disabled, @anchor lines in MDL.
 type ActivityAnnotations struct {
 	Position *Position // @position(x, y)
 	Caption  string    // @caption 'text'
@@ -346,8 +346,18 @@ type ActivityAnnotations struct {
 	// FreeNotes are @annotation lines that stand on their own — a note on the
 	// canvas wired to nothing.
 	FreeNotes []MicroflowAnnotation
-	Excluded  bool         // @excluded
-	Anchor    *FlowAnchors // @anchor(from: X, to: Y) — anchors of the flow leaving this statement
+
+	// Disabled is Studio Pro's right-click "Disable" on an action activity —
+	// Microflows$ActionActivity.Disabled. The step stays in the flow, drawn
+	// greyed out, and is skipped at runtime. Written `@disabled`; `@excluded`
+	// is the older spelling and still sets it (mendixlabs/mxcli#1139).
+	//
+	// ActionActivity is the ONLY microflow object that carries the property —
+	// `Disabled` appears exactly once in generated/metamodel — so a split, a
+	// loop, a merge or an end event cannot be disabled. MDL087 says so rather
+	// than dropping the annotation in silence.
+	Disabled bool         // @disabled
+	Anchor   *FlowAnchors // @anchor(from: X, to: Y) — anchors of the flow leaving this statement
 
 	// Split-specific anchors for IF statements. When the statement is not an
 	// IF these remain nil. The grammar accepts them on IfStmt only:

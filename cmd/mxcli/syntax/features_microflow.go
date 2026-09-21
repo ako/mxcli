@@ -463,10 +463,10 @@ func init() {
 
 	Register(SyntaxFeature{
 		Path:    "microflow.layout",
-		Summary: "Canvas layout annotations — @position, @start, @anchor, @curve, @caption, @color",
+		Summary: "Statement annotations — @position, @start, @anchor, @curve, @caption, @color, @disabled",
 		Keywords: []string{
 			"position", "start", "anchor", "curve", "layout", "canvas",
-			"annotation", "caption", "color", "excluded", "bezier",
+			"annotation", "caption", "color", "disabled", "excluded", "bezier",
 		},
 		Syntax: "@position(x, y)                       -- the activity's centre point\n" +
 			"@position(x, y)                       -- also on a PARAMETER, in the ( … ) list\n" +
@@ -474,7 +474,9 @@ func init() {
 			"@anchor(from: right, to: left)        -- which SIDE each end of the outgoing flow attaches to\n" +
 			"@curve(from: (40, -90), to: (-40, 90))  -- the flow's bezier control vectors\n" +
 			"@merge(x, y)                          -- the implicit merge that closes a split\n" +
-			"@caption 'text'\n@color Green\n@annotation 'a note'\n@excluded\n" +
+			"@caption 'text'\n@color Green\n@annotation 'a note'\n" +
+			"@disabled                             -- Studio Pro's Disable, on ONE action activity\n" +
+			"@excluded                             -- DOCUMENT-level, before CREATE MICROFLOW/PAGE/…\n" +
 			"@applyentityaccess | @applyentityaccess(false)  -- DOCUMENT-level, before CREATE MICROFLOW/RULE\n" +
 			"@annotation(id: n1, text: 'a note', position: (x, y), size: (w, h))\n" +
 			"@annotation(id: n1)                   -- attaches THAT note to another activity\n\n" +
@@ -483,12 +485,22 @@ func init() {
 			"DOCUMENT annotations too — a typo, or one on a document kind that does not\n" +
 			"read it (@applyentityaccess on a nanoflow, @excluded on a queue), is\n" +
 			"refused with the list of what that document does accept.\n\n" +
+			"@disabled is Studio Pro's right-click Disable: the step stays in the flow,\n" +
+			"drawn greyed out, and is skipped at runtime. Its use is generating a step\n" +
+			"that is not yet right OFF rather than live, so a developer can fix and\n" +
+			"re-enable it without losing its configuration. Mendix stores the flag on\n" +
+			"Microflows$ActionActivity and on NO other microflow object, so @disabled on\n" +
+			"an IF, CASE, SPLIT TYPE, LOOP, WHILE, MERGE, JOIN, RETURN, RAISE ERROR,\n" +
+			"BREAK or CONTINUE is refused (MDL087) rather than dropped. @excluded before\n" +
+			"a STATEMENT is the older spelling of the same flag and still works.\n\n" +
 			"@excluded and @applyentityaccess are DOCUMENT annotations — they go before\n" +
-			"CREATE, not on a statement. @applyentityaccess runs the flow under the\n" +
-			"current user's entity access rules instead of with full access; it is a\n" +
-			"SECURITY setting and only ever narrows, so an ABSENT annotation PRESERVES\n" +
-			"whatever is stored and @applyentityaccess(false) is how a script turns it\n" +
-			"off. A nanoflow has no such property (it runs in the client).\n\n" +
+			"CREATE, not on a statement; at document level @excluded is Exclude from\n" +
+			"project, a different setting from @disabled. @applyentityaccess runs the\n" +
+			"flow under the current user's entity access rules instead of with full\n" +
+			"access; it is a SECURITY setting and only ever narrows, so an ABSENT\n" +
+			"annotation PRESERVES whatever is stored and @applyentityaccess(false) is\n" +
+			"how a script turns it off. A nanoflow has no such property (it runs in the\n" +
+			"client).\n\n" +
 			"Mendix stores no waypoints — a flow's shape is two control vectors, each a\n" +
 			"pixel offset from its end of the line. (0, 0) at both ends is straight.\n" +
 			"@position on a split belongs to the SPLIT, so its end-if join has its own\n" +

@@ -1,0 +1,57 @@
+-- mendixlabs/mxcli#1139 — `@disabled` on an activity.
+--
+-- "Studio Pro allows marking any activity as disabled (right-click → Disable) —
+--  the activity remains in the flow but is skipped at runtime. There is
+--  currently no MDL equivalent for this flag."
+--
+-- The flag had a spelling, `@excluded`, that the visitor parsed, the flow
+-- builder knew how to apply, the writer knew how to store and DESCRIBE knew how
+-- to emit. It never reached the model: mergeStatementAnnotations — the one hop
+-- between the AST and applyAnnotations — copied every other field and dropped
+-- this one, so the script executed clean and the step came out live.
+--
+-- The reported use case is the one at the bottom: an activity mxcli cannot yet
+-- configure correctly is generated OFF, for a developer to fix and re-enable in
+-- Studio Pro, instead of shipping live and wrong.
+--
+-- Expected: `describe microflow Mx1139.WithDisabledStep` re-emits @disabled on
+-- the first LOG and on nothing else.
+
+create module Mx1139;
+
+create entity if not exists Mx1139.Buffer (
+    Name: string(200)
+);
+
+create or modify microflow Mx1139.WithDisabledStep ()
+returns Boolean
+begin
+  @disabled
+  log info 'this step is off';
+
+  log info 'this step runs';
+
+  return true;
+end;
+
+-- `@excluded` is the older spelling. It still sets the same flag, so describe
+-- output written by an mxcli from before #1139 keeps executing.
+create or modify microflow Mx1139.LegacySpelling ()
+returns Boolean
+begin
+  @excluded
+  log info 'this step is off';
+
+  return true;
+end;
+
+-- The issue's own case: a JavaScript action call generated in a disabled state.
+create or modify nanoflow Mx1139.RefreshDisabled (
+    $Item: Mx1139.Buffer
+)
+begin
+  @disabled
+  call javascript action NanoflowCommons.RefreshEntity (
+      EntityToRefresh = $Item
+  );
+end;

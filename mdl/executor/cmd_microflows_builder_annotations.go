@@ -51,6 +51,14 @@ func (fb *flowBuilder) mergeStatementAnnotations(stmt ast.MicroflowStatement) {
 	if ann.Color != "" {
 		fb.pendingAnnotations.Color = ann.Color
 	}
+	// applyAnnotations is only ever called with pendingAnnotations, so a field
+	// this merge does not copy is a field it can never see. Disabled was the
+	// one omission: parsed by the visitor, applied by applyAnnotations, stored
+	// by the writer, emitted by DESCRIBE — and dropped here, so `@disabled`
+	// executed clean and left the activity enabled (mendixlabs/mxcli#1139).
+	if ann.Disabled {
+		fb.pendingAnnotations.Disabled = true
+	}
 	if len(ann.Notes) > 0 {
 		fb.pendingAnnotations.Notes = append(fb.pendingAnnotations.Notes, ann.Notes...)
 	}
@@ -88,8 +96,8 @@ func (fb *flowBuilder) applyAnnotations(activityID model.ID, ann *ast.ActivityAn
 		return
 	}
 
-	// Find the object by ID for @caption, @color, and @excluded
-	if ann.Caption != "" || ann.Color != "" || ann.Excluded {
+	// Find the object by ID for @caption, @color, and @disabled
+	if ann.Caption != "" || ann.Color != "" || ann.Disabled {
 		for _, obj := range fb.objects {
 			if obj.GetID() != activityID {
 				continue
@@ -104,7 +112,7 @@ func (fb *flowBuilder) applyAnnotations(activityID model.ID, ann *ast.ActivityAn
 				if ann.Color != "" {
 					activity.BackgroundColor = ann.Color
 				}
-				if ann.Excluded {
+				if ann.Disabled {
 					activity.Disabled = true
 				}
 			case *microflows.ExclusiveSplit:

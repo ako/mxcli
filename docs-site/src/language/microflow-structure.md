@@ -174,6 +174,32 @@ Set the background color of the activity:
 COMMIT $Order;
 ```
 
+### Disabled
+
+Mark a single activity as disabled — Studio Pro's right-click **Disable**. The step
+stays in the flow, is drawn greyed out, and is skipped at runtime:
+
+```sql
+@disabled
+CALL JAVASCRIPT ACTION NanoflowCommons.RefreshEntity (
+    EntityToRefresh = $Item
+);
+```
+
+This is how a step that is not yet right is generated **off** rather than live: the
+developer fixes it in Studio Pro and re-enables it, instead of deleting and
+recreating the activity.
+
+Mendix stores the flag on `Microflows$ActionActivity` and on no other microflow
+object, so `@disabled` on an `IF`, `CASE`, `SPLIT TYPE`, `LOOP`, `WHILE`, `MERGE`,
+`JOIN`, `RETURN`, `RAISE ERROR`, `BREAK` or `CONTINUE` is refused (**MDL087**)
+rather than quietly ignored — an ignored request would ship a live step the author
+believed was off.
+
+`@excluded` before a **statement** is the older spelling of the same flag and still
+works. Before a `CREATE MICROFLOW` the same word means *Exclude from project*, which
+is a different setting.
+
 ### Annotation (Visual Note)
 
 Attach a visual annotation note to the next activity:
