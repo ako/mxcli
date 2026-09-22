@@ -1,15 +1,18 @@
 ---
 title: DESCRIBE Round-Trip Gaps
 category: bug-pattern
-last-synced: 888e78cf
+last-synced: 643271e8
 sources:
   - .claude/skills/fix-issue/findings/mdl-executor.jsonl
+  - .claude/skills/fix-issue/findings/mdl-backend.jsonl
   - mdl/executor/cmd_workflows.go
   - mdl/executor/cmd_pages_describe_pluggable.go
+  - mdl/executor/cmd_microflows_show.go
   - mdl/executor/cmd_microflows_show_crossed.go
   - mdl/executor/cmd_microflows_normalize.go
   - mdl/microflowgraph/structure.go
   - docs/11-proposals/PROPOSAL_structured_microflow_description.md
+  - docs/13-decisions/0008-identity-and-idempotence.md
 ---
 
 > **Do not duplicate**: the per-construct fix recipes live in the findings
@@ -102,22 +105,68 @@ copies. The same logic applies to a second *rendering mode*: build it by rewriti
 the graph into one the existing describer already handles, never by writing a
 second describer, or every activity renderer exists twice and drifts.
 
+The copies are not always in different files, and that is what makes this one
+hard to see: one file held two renderers of the same document header, so a clause
+added to one of them worked through `diff-local` and printed nothing under
+`describe`. Grepping for the *call site* finds nothing wrong — the tell is
+counting how many functions already emit the construct (`grep -c` returning 2),
+before adding to either. The same instinct applies to the question the copies
+are answering: whether a widget has two datasources is a property of the **stored
+document**, not of which per-widget extractor happened to run, so the detection
+has to run unconditionally rather than behind the fallback's `if nothing found`
+guard. [[duplicate-resolver-drift]] is the structural cause in general; this is
+its describe-side face.
+
+**DESCRIBE's own comments are a to-do list.** Where the describer cannot state a
+construct it emits a marker — a bare `-- [Type$Name]` line, a "not re-executable"
+note — which reads as honesty and is one, but it is also the only inventory
+anyone keeps of what a rewrite from that output will delete. The describer's
+generic fallback decides what to comment; a separate guard decides what a rewrite
+must refuse to drop; nothing holds the two lists against each other. The rule
+that falls out belongs to [[rewrite-drops-unauthored-state]], where the loss
+lands — what belongs here is that the markers exist, and that emitting one is a
+report, not a resolution.
+
 **Fixing one half is worse than the bug.** Where a describer has two defects at
 once — say, quoting *and* a missing property — shipping the quoting fix alone
 turns unparseable output into output that parses cleanly while silently dropping
 something. That is strictly worse: a wrong page that validates.
 
-**A round trip that is a fixed point on the corpus you have is not evidence that
-it is faithful.** This is the trap that makes the *means something else* shape
-survive. Where a describer rests on an inference rule — "an empty error handler
-means the path falls through to here" — the rule was reverse-engineered from the
-corpus, so the corpus agrees with it by construction. The test that matters is one
-where the stored document means something *other* than the rule assumes, and you
-have to **construct** it: repoint one pointer in a copy and re-describe. The real
+**mxcli round-tripping its own output proves nothing about this class.** It is
+the single most expensive measurement mistake here, and it is not a matter of
+degree: mxcli writes the document and mxcli describes it, so every constant the
+writer hardcodes agrees with itself and every inference the describer makes was
+reverse-engineered from documents built under that inference. Measured on a page
+round trip, the bug-test reported the healthy answer against the **unfixed**
+build. A round trip over mxcli's own corpus is not a weak test of faithfulness;
+it is not a test of it at all.
+
+Two references restore the signal, and which one you need depends on where the
+describer's belief came from. Where it encodes a value — a canvas width, a
+default action flag — the reference must be a document **Studio Pro** wrote; a
+committed CI fixture only counts if it is one, and the hardcoded value that looks
+safe usually is not (one canvas width matched 4 of 67 real pages, so the round
+trip moved the other 63). Where it encodes an inference rule — "an empty error
+handler means the path falls through to here", "there is only one association
+that could reach this entity" — no existing document disproves it, because the
+corpus agrees with it by construction; the case has to be **constructed**,
+by editing a stored document into the reading the rule gets wrong and
+re-describing. That edit is often cheaper than it sounds: two names of equal
+length can be swapped in the stored BSON without resizing anything. The real
 microflow that motivated all of this round-tripped correctly by luck.
 
-Three further measurement rules, each of which hid a defect until it was applied:
+Four further measurement rules, each of which hid a defect until it was applied:
 
+- **Let write elision answer the question.** Because storage refuses to write a
+  unit whose rebuild is semantically equal to what is stored
+  ([ADR-0008](../../docs/13-decisions/0008-identity-and-idempotence.md)),
+  replaying a description is self-scoring: the executor reports `Unchanged` when
+  the round trip was faithful and `Replaced` when anything differs — including
+  the differences no error and no `mx check` will ever mention. It is the nearest
+  thing this class has to an oracle, and it costs one run. Its blind spot is
+  exactly the trap above: over mxcli's own output it reports `Unchanged` whether
+  or not the describer is right, so the document under test has to be one mxcli
+  did not write.
 - **Compare identities, not counts.** A count cannot tell "preserved" from
   "deleted and recreated", and it hid an equal-sized swap of which pages failed.
 - **Diff the whole corpus against a baseline binary.** Keep a pre-change build,
@@ -143,5 +192,9 @@ callers of the emitter before changing what it emits.
 - [[widget-type-object-drift]] — the neighbouring class where the *written* widget
   is wrong rather than the described one
 - [[silent-property-drop]] — the write-side twin of *silently drops*
+- [[rewrite-drops-unauthored-state]] — where a description's unsayable constructs
+  are actually lost, on the rewrite that replays it
+- [[duplicate-resolver-drift]] — the structural cause behind *the defect is
+  usually the copy*
 - `.claude/skills/verify-in-runtime.md` — for the cases where neither the model
   nor its description is the thing that is wrong
