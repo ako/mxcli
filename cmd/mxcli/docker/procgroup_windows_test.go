@@ -5,9 +5,9 @@
 package docker
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -44,13 +44,27 @@ func TestWindowsProcessHelper(t *testing.T) {
 	case "spawn":
 		// A grandchild that inherits our stdout/stderr — the inherited pipe is
 		// exactly what kept cmd.Wait() blocked in the field.
-		gc := exec.Command("cmd", "/c", "ping", "-n", "60", "127.0.0.1")
+		//
+		// Note what this mode does NOT do: announce the grandchild. Start()
+		// returns as soon as the grandchild has been created, which is before it
+		// is running and holding the pipe, so a marker written here says nothing
+		// about the process the test is about. The grandchild announces itself
+		// below instead.
+		gc := exec.Command(os.Args[0], "-test.run=TestWindowsProcessHelper")
+		gc.Env = append(os.Environ(), "MXCLI_PROC_HELPER=grandchild")
 		gc.Stdout = os.Stdout
 		gc.Stderr = os.Stderr
 		if err := gc.Start(); err != nil {
 			os.Exit(3)
 		}
-		os.Stdout.WriteString("grandchild-started\n")
+		time.Sleep(60 * time.Second)
+		os.Exit(0)
+	case "grandchild":
+		// Announce over the INHERITED pipe, and with our own pid, so the test can
+		// establish that this process — the one holding the write end — is really
+		// running before it kills the tree. This mirrors the unix half, where the
+		// wrapper echoes `$!` and the test checks it with kill(pid, 0).
+		fmt.Fprintf(os.Stdout, "grandchild-started %d\n", os.Getpid())
 		time.Sleep(60 * time.Second)
 		os.Exit(0)
 	}
@@ -155,6 +169,11 @@ func TestLocalRuntime_AliveTracksProcess(t *testing.T) {
 //
 // It would have failed on the pre-fix code: p.Kill() terminates only the helper,
 // the grandchild keeps the write end open, and Wait() never returns.
+//
+// The grandchild is a re-exec of this test binary rather than `cmd /c ping`, so
+// that it can announce itself over the inherited pipe. That handshake is what
+// makes the test deterministic: see the "spawn" mode's comment for the race the
+// old marker left open, which failed this job intermittently (ako/mxcli#594).
 func TestKillProcessGroup_ReapsGrandchildAndUnblocksWait(t *testing.T) {
 	var log syncBuffer
 	cmd := helperCmd(t, "spawn")
@@ -166,13 +185,34 @@ func TestKillProcessGroup_ReapsGrandchildAndUnblocksWait(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = killProcessGroup(cmd.Process) })
 
-	// Wait for the grandchild to be running and holding the inherited pipe.
+	// Wait for the grandchild to be running and holding the inherited pipe. The
+	// marker arrives over that pipe from the grandchild itself, so reading it
+	// proves the pipe holder exists; waiting on anything the helper printed
+	// would not (see the "spawn" mode's comment).
 	deadline := time.Now().Add(15 * time.Second)
-	for !strings.Contains(log.String(), "grandchild-started") {
+	var gpid int
+	for {
+		if p, ok := grandchildPID(log.String()); ok {
+			gpid = p
+			break
+		}
 		if time.Now().After(deadline) {
-			t.Fatalf("helper never reported its grandchild; output so far: %q", log.String())
+			t.Fatalf("grandchild never announced itself; output so far: %q", log.String())
 		}
 		time.Sleep(50 * time.Millisecond)
+	}
+
+	// The CONTROL for the marker: assert the announced process really is alive
+	// before the kill, so a test that goes green has actually exercised a tree
+	// kill and not a race that killed a one-process tree. The unix half does the
+	// same with kill(gpid, 0).
+	gproc, err := os.FindProcess(gpid)
+	if err != nil {
+		t.Fatalf("grandchild %d should be alive before the kill: %v", gpid, err)
+	}
+	defer func() { _ = gproc.Release() }()
+	if !processAlive(gproc) {
+		t.Fatalf("grandchild %d should be alive before the kill", gpid)
 	}
 
 	done := make(chan error, 1)
