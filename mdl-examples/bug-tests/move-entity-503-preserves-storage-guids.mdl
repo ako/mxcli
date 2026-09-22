@@ -1,0 +1,78 @@
+-- ============================================================================
+-- ako/mxcli#503 — MOVE ENTITY must not re-mint a storage GUID
+-- ============================================================================
+--
+-- A moved entity, its attributes, and any association the move converts into a
+-- cross-module association each carry a `GUID` the runtime keys the database on.
+-- MoveEntity rebuilt all of them from the semantic model, so each came out with
+-- `GUID = $ID`: #657 had fixed that for ALTER's entity and #1119 for its
+-- children, and the move path got neither.
+--
+-- WHY THE MOVE IS NOT A SPECIAL CASE, MEASURED
+--
+-- A module move changes the table name (`myfirstmodule$moveprobe` ->
+-- `administration$moveprobe`), so it was an open question whether the data could
+-- survive at all. It can, and only if the GUID does. On Mendix 11.13.0 +
+-- PostgreSQL 16, same 250-row starting state both ways:
+--
+--   GUID re-minted (pre-fix)  -> old table dropped, new one created: 250 -> 0 rows
+--   GUID preserved  (fixed)   -> table RENAMED: 250 -> 250 rows, values intact
+--
+-- The runtime resolves the entity by its GUID, not by its table name. So this is
+-- the same defect as #1119, not a lesser one: it loses the whole table rather
+-- than a column.
+--
+-- WHAT THIS FILE CHECKS, AND WHAT IT CANNOT
+--
+--   mxcli exec move-entity-503-preserves-storage-guids.mdl -p app.mpr
+--
+-- Expected: every statement succeeds. It is a smoke test that both move
+-- directions still execute — the conversion is asymmetric, since moving the
+-- CHILD leaves the cross-association in the source module while moving the
+-- PARENT sends it to the target.
+--
+-- It CANNOT fail on the bug, and the reason is the trap worth carrying away:
+-- everything this script creates is created by MXCLI, so its GUID equals its $ID
+-- from birth, and a rewrite that "re-mints GUID = $ID" reproduces the very same
+-- value. Measured — the pre-fix binary passes this file exactly as the fixed one
+-- does. Only a STUDIO PRO-authored entity, whose GUID and $ID genuinely differ,
+-- can detect the defect; run these statements against one and a regression in
+-- the cross-association carry is refused outright by the #1119 write guard:
+--
+--   refusing to write unit ...: 1 element(s) kept their $ID but would be written
+--   with a different GUID ... (DomainModels$CrossAssociation)
+--
+-- That refusal is how the bug was found. It covers only the association, because
+-- that conversion happens in place in the source unit; the entity's and
+-- attributes' GUIDs land in a DIFFERENT unit, where the guard has nothing to pair
+-- against. The real assertions therefore live in
+-- mdl/backend/modelsdk/issue503_move_guid_test.go — on raw BSON, over a Studio
+-- Pro-authored fixture entity, with each of the three carries stubbed
+-- independently as its own control.
+-- ============================================================================
+
+CREATE MODULE BugMoveGuid503A;
+CREATE MODULE BugMoveGuid503B;
+
+CREATE OR MODIFY PERSISTENT ENTITY BugMoveGuid503A.Parent (
+  Code: String(50)
+);
+
+CREATE OR MODIFY PERSISTENT ENTITY BugMoveGuid503A.Child (
+  Label: String(100)
+);
+
+-- FROM Child TO Parent: per the pointer semantics, ParentPointer holds the FROM
+-- entity (Child) and ChildPointer the TO entity (Parent). So moving Parent is
+-- the "child moved" case for the conversion, and it is the one the guard sees.
+CREATE OR MODIFY ASSOCIATION BugMoveGuid503A.Child_Parent
+  FROM BugMoveGuid503A.Child TO BugMoveGuid503A.Parent TYPE Reference;
+
+-- Case 1: the TO entity moves. The association becomes a cross-association that
+-- STAYS in the source module, keeping its $ID — so a lost GUID is refused here.
+MOVE ENTITY BugMoveGuid503A.Parent TO BugMoveGuid503B;
+
+-- Case 2: the FROM entity moves too, which sends the cross-association to the
+-- target module. Nothing pairs it there, so this half depends entirely on the
+-- carry rather than on the guard.
+MOVE ENTITY BugMoveGuid503A.Child TO BugMoveGuid503B;

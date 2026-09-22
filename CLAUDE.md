@@ -366,6 +366,25 @@ Consequences for any write path:
 3. **A new element must get a fresh `GUID`**, and an element copied from another
    model must not keep the source's — two elements sharing a `GUID` are one entity
    as far as the runtime is concerned.
+4. **Moving an element between modules does not exempt it** — it is the most
+   expensive case, not a lesser one. Measured on 11.13.0 + PostgreSQL 16 with the
+   same 250-row starting state both ways: with the `GUID` preserved the runtime
+   **renames** the table (`myfirstmodule$x` → `administration$x`, three DDL
+   commands) and every row survives; with it re-minted the old table is dropped and
+   an empty one created, losing all 250. The runtime resolves the entity by `GUID`,
+   not by table name, so a move loses a whole **table** where an ALTER loses a
+   column (#503). Converting to a different `$Type` on the way needs a **raw
+   transform** — `SetRaw` passes the stored `$Type` through, and gen's
+   `SetDataStorageGuid` is unusable twice over (wrong key, and `string` where the
+   property is a 16-byte binary) — with the target key set taken from
+   `generated/metamodel`.
+
+**Before trusting any GUID test, check the subject.** An entity **mxcli created**
+has `GUID == $ID` from birth, so a rewrite that re-mints `GUID = $ID` reproduces
+the same value and the defect is undetectable. Only a **Studio Pro-authored**
+element can fail. This voided a live-database control and left an MDL repro script
+unable to fail (both caught by running the pre-fix binary against them), so it is
+the first thing to suspect when a GUID test passes.
 
 ### Writes Are Conditional, and an `$ID` Is Never Renumbered In Place
 

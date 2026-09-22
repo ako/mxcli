@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"strings"
 
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/x/bsonx/bsoncore"
+
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
 	"github.com/mendixlabs/mxcli/modelsdk/element"
@@ -68,10 +71,35 @@ func crossAssocToGen(ca *domainmodel.CrossModuleAssociation) *genDm.CrossAssocia
 	return out
 }
 
-// crossAssocFromGenAssoc builds a gen CrossAssociation from a (regular) gen
-// Association being converted during a cross-module move. parentID is the local
-// FROM entity; childRef is the remote TO entity's qualified name.
+// crossAssocFromGenAssoc converts a (regular) gen Association into the
+// CrossAssociation a cross-module move turns it into. parentID is the local FROM
+// entity; childRef is the remote TO entity's qualified name.
+//
+// It prefers a RAW transform of the stored document (crossAssocRawFromAssoc),
+// because the conversion is a re-addressing of the same association and every
+// property it does not touch should survive byte-for-byte — the GUID above all.
+// The runtime keys the database on that GUID, and re-minting it here is what made
+// the #1119 write guard refuse MOVE ENTITY for any entity in an association
+// (ako/mxcli#503).
+//
+// The property-by-property build below is the fallback for an association with no
+// stored bytes — one created earlier in the same session and moved before it was
+// ever persisted. It is also the cautionary case: a hand-maintained copy list
+// silently drops whatever nobody thought to add, which is how it lost the view
+// source once (see the Source arm) and the GUID until #503.
 func crossAssocFromGenAssoc(a *genDm.Association, parentID, childRef string) *genDm.CrossAssociation {
+	if raw, ok := crossAssocRawFromAssoc(a, childRef); ok {
+		out := genDm.NewCrossAssociation()
+		// Clean element: SetRaw + InitFromRaw bind the properties without dirtying
+		// any, so the encoder's existing-element path passes the whole document
+		// through verbatim. The registered EmitGUID/NullFields defaults apply only
+		// to a fresh (raw == nil) element, so nothing is appended on top.
+		out.SetRaw(raw)
+		out.InitFromRaw(raw)
+		out.SetID(a.ID())
+		return out
+	}
+
 	out := genDm.NewCrossAssociation()
 	out.SetID(a.ID()) // preserve the original association's ID
 	out.SetName(a.Name())
@@ -104,6 +132,82 @@ func crossAssocFromGenAssoc(a *genDm.Association, parentID, childRef string) *ge
 		out.SetSource(oqlViewAssociationSourceToGen(src.Reference()))
 	}
 	return out
+}
+
+// crossAssocRawFromAssoc rewrites a stored DomainModels$Association document as a
+// DomainModels$CrossAssociation one. Three edits, and everything else passes
+// through untouched:
+//
+//   - $Type becomes DomainModels$CrossAssociation.
+//   - ChildPointer (a 16-byte element id, only resolvable inside one unit) becomes
+//     Child, the target entity's qualified name.
+//   - ChildConnection and ParentConnection are dropped. They are the association
+//     line's on-canvas waypoints, and a cross-module association has no line to
+//     draw to the other module.
+//
+// That difference is not guessed: it is the whole difference between the two types
+// in `generated/metamodel` — the arbiter when the two generated sources disagree —
+// whose DomainModelsCrossAssociation declares Child, GUID, DeleteBehavior,
+// Documentation, ExportLevel, Name, Owner, ParentPointer, Source, StorageFormat
+// and Type, and DomainModelsAssociation the same set with ChildPointer in place of
+// Child plus the two connection points. Verified against the stored key set of a
+// real association: exactly those thirteen keys plus $ID and $Type.
+//
+// ParentPointer is kept verbatim in both move directions. When the CHILD moves the
+// cross-association stays in the source unit beside its unchanged parent; when the
+// PARENT moves it travels to the target unit with it. Either way the id it holds
+// still resolves in the unit the document ends up in.
+//
+// Key ORDER follows the stored association rather than any reference
+// cross-association, because there is no Studio Pro-authored one to pin against
+// here. That is sound rather than a gap: mxcli already writes cross-associations
+// in gen-property order today and they load, so the order of properties is not
+// something Mendix's reader depends on.
+//
+// Returns false when the association has no stored bytes, which is the one case
+// the caller must build from properties instead.
+func crossAssocRawFromAssoc(a *genDm.Association, childRef string) (bson.Raw, bool) {
+	raw := a.Raw()
+	if raw == nil {
+		return nil, false
+	}
+	elems, err := bsoncore.Document(raw).Elements()
+	if err != nil {
+		return nil, false
+	}
+
+	out := make(bson.D, 0, len(elems))
+	child := false
+	for _, e := range elems {
+		switch e.Key() {
+		case "$Type":
+			out = append(out, bson.E{Key: "$Type", Value: "DomainModels$CrossAssociation"})
+		case "ChildPointer":
+			out = append(out, bson.E{Key: "Child", Value: childRef})
+			child = true
+		case "ChildConnection", "ParentConnection":
+			// No line to the other module; the type declares neither.
+		default:
+			v := e.Value()
+			out = append(out, bson.E{
+				Key:   e.Key(),
+				Value: bson.RawValue{Type: bson.Type(v.Type), Value: v.Data},
+			})
+		}
+	}
+
+	// Child is mandatory on the target type (no omitempty in the metamodel), so a
+	// source document without a ChildPointer to rename would produce a document
+	// missing it. Hand that case to the property build rather than emit one.
+	if !child {
+		return nil, false
+	}
+
+	b, err := bson.Marshal(out)
+	if err != nil {
+		return nil, false
+	}
+	return bson.Raw(b), true
 }
 
 // deleteBehaviorToGen builds an AssociationDeleteBehavior with the given parent/
@@ -208,16 +312,18 @@ func (b *Backend) MoveEntity(entity *domainmodel.Entity, sourceDMID, targetDMID 
 		}
 	}
 
-	// Remove the moved entity from the source DM.
-	removed := false
+	// Remove the moved entity from the source DM, keeping the stored element so
+	// its identities can be carried onto the rebuild that lands in the target.
+	var orig *genDm.Entity
 	for i, el := range sourceDM.EntitiesItems() {
-		if string(el.ID()) == string(entity.ID) {
-			sourceDM.RemoveEntities(i)
-			removed = true
-			break
+		if string(el.ID()) != string(entity.ID) {
+			continue
 		}
+		orig, _ = el.(*genDm.Entity)
+		sourceDM.RemoveEntities(i)
+		break
 	}
-	if !removed {
+	if orig == nil {
 		return nil, fmt.Errorf("entity not found in source domain model: %s", entity.ID)
 	}
 
@@ -260,10 +366,27 @@ func (b *Backend) MoveEntity(entity *domainmodel.Entity, sourceDMID, targetDMID 
 		return nil, fmt.Errorf("MoveEntity: persist source: %w", err)
 	}
 
-	// Add the (rebuilt) entity to the target DM.
+	// Add the (rebuilt) entity to the target DM, carrying the identities the
+	// rebuild has no business re-minting — the same two carries UpdateEntity does,
+	// which MoveEntity never got (#657 for the entity, #1119 for its children).
+	//
+	// Nothing in the entity's unmodeled properties goes stale when the module
+	// changes, which is what makes a blanket raw carry safe here as well as there.
+	// `Image` is a qualified name pointing at an image document that does NOT move
+	// with the entity, so keeping it is correct rather than stale — and it is
+	// unmodeled, so without this carry a move silently drops an entity's
+	// domain-model image as well as its GUID.
+	// Everything that does need rewriting is modeled and therefore dirty:
+	// `MaybeGeneralization`, `Location`, `ExportLevel` and the member lists are all
+	// re-encoded from the rebuild, and `Source`/`ValidationRules` were re-pointed on
+	// `entity` just above.
 	ge := entityToGen(entity, targetModuleName, b.majorVersion())
 	ge.SetID(element.ID(entity.ID))
 	assignEntityIDs(ge)
+	if raw := orig.Raw(); raw != nil {
+		ge.SetRaw(raw)
+	}
+	carryChildIdentity(ge, orig, entity)
 	targetDM.AddEntities(ge)
 	if err := b.persistDM(targetDMID, targetDM); err != nil {
 		return nil, fmt.Errorf("MoveEntity: persist target: %w", err)
