@@ -4,6 +4,7 @@ package mock
 
 import (
 	"fmt"
+	"github.com/mendixlabs/mxcli/mdl/types"
 
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
@@ -65,7 +66,7 @@ func (m *MockBackend) DeleteEntity(domainModelID model.ID, entityID model.ID) er
 	return nil
 }
 
-func (m *MockBackend) MoveEntity(entity *domainmodel.Entity, sourceDMID, targetDMID model.ID, sourceModuleName, targetModuleName string) ([]string, error) {
+func (m *MockBackend) MoveEntity(entity *domainmodel.Entity, sourceDMID, targetDMID model.ID, sourceModuleName, targetModuleName string) ([]types.MovedAssociation, error) {
 	if m.MoveEntityFunc != nil {
 		return m.MoveEntityFunc(entity, sourceDMID, targetDMID, sourceModuleName, targetModuleName)
 	}

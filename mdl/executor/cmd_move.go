@@ -8,6 +8,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
+	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 )
@@ -319,7 +320,8 @@ func moveEntity(ctx *ExecContext, name ast.QualifiedName, sourceModule, targetMo
 		return mdlerrors.NewBackend("get target domain model", err)
 	}
 
-	// Move entity via writer (converts associations to CrossAssociations, updates validation rule refs)
+	// Move entity via writer (converts associations to CrossAssociations, updates
+	// validation rule and access rule refs)
 	convertedAssocs, err := ctx.Backend.MoveEntity(entity, sourceDM.ID, targetDM.ID, sourceModule.Name, targetModule.Name)
 	if err != nil {
 		return mdlerrors.NewBackend("move entity", err)
@@ -344,10 +346,46 @@ func moveEntity(ctx *ExecContext, name ast.QualifiedName, sourceModule, targetMo
 		fmt.Fprintf(ctx.Output, "Updated %d OQL query(ies) referencing %s\n", oqlUpdated, oldQualifiedName)
 	}
 
+	// Every OTHER cross-module move sweeps the project for BY_NAME references (the
+	// isCrossModuleMove branch in execMove). An entity move returns early, before
+	// both the doctype switch and that sweep — correctly, because an entity is not a
+	// top-level unit, but the sweep is purely name-based and applies just the same.
+	// Without it a move reported success and left every reference to the entity, its
+	// attribute paths and the converted association naming the old module: 33 CE1613s
+	// in a blank 11.13 app, in microflow activities, page widgets, page parameters and
+	// access rules (#605).
+	//
+	// The association renames come from the backend rather than from the module names,
+	// because only the direction that carried the cross-association to the target
+	// changed its qualified name; the other is a no-op here by construction.
+	sweep := func(oldQN, newQN string) error {
+		if oldQN == newQN {
+			return nil
+		}
+		updated, err := ctx.Backend.UpdateQualifiedNameInAllUnits(oldQN, newQN)
+		if err != nil {
+			return mdlerrors.NewBackend("update references", err)
+		}
+		if updated > 0 {
+			fmt.Fprintf(ctx.Output, "Updated references in %d document(s): %s → %s\n", updated, oldQN, newQN)
+		}
+		return nil
+	}
+	// The entity itself, which also covers every `Module.Entity.Attribute` path
+	// because the sweep matches a name that equals the old one or is prefixed by it.
+	if err := sweep(oldQualifiedName, newQualifiedName); err != nil {
+		return err
+	}
+	for _, assoc := range convertedAssocs {
+		if err := sweep(assoc.OldQualifiedName, assoc.NewQualifiedName); err != nil {
+			return err
+		}
+	}
+
 	fmt.Fprintf(ctx.Output, "Moved entity %s to %s\n", name.String(), targetModule.Name)
 	if len(convertedAssocs) > 0 {
 		fmt.Fprintf(ctx.Output, "Converted %d association(s) to cross-module associations:\n", len(convertedAssocs))
-		for _, assocName := range convertedAssocs {
+		for _, assocName := range types.MovedAssociationNames(convertedAssocs) {
 			fmt.Fprintf(ctx.Output, "  - %s\n", assocName)
 		}
 	}

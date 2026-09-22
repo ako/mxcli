@@ -838,8 +838,8 @@ func (unimplemented) MoveDocument(_ model.ID, _ model.ID) error {
 	return errUnimplemented("MoveDocument")
 }
 
-func (unimplemented) MoveEntity(_ *domainmodel.Entity, _ model.ID, _ model.ID, _ string, _ string) ([]string, error) {
-	var r0 []string
+func (unimplemented) MoveEntity(_ *domainmodel.Entity, _ model.ID, _ model.ID, _ string, _ string) ([]types.MovedAssociation, error) {
+	var r0 []types.MovedAssociation
 	return r0, errUnimplemented("MoveEntity")
 }
 

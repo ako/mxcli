@@ -9,6 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/x/bsonx/bsoncore"
 
+	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
 	"github.com/mendixlabs/mxcli/modelsdk/element"
@@ -285,10 +286,13 @@ func (b *Backend) UpdateEnumerationRefsInAllDomainModels(oldQualifiedName, newQu
 // MoveEntity moves an entity from a source domain model to a target one,
 // converting any same-DM associations that reference it into cross-module
 // associations (FROM-child stays in source, FROM-parent goes to target), and
-// rewriting the entity's view source / validation-rule attribute refs to the new
-// module. Mirrors the legacy MoveEntity. Returns the names of converted
-// associations as warnings.
-func (b *Backend) MoveEntity(entity *domainmodel.Entity, sourceDMID, targetDMID model.ID, sourceModuleName, targetModuleName string) ([]string, error) {
+// rewriting the entity's view source, validation-rule attribute refs and
+// access-rule member refs to the new module.
+//
+// Returns one entry per converted association, carrying the qualified name it had
+// and the one it has afterwards, so the caller can sweep references from the names
+// instead of deriving them — the two move directions differ (see MovedAssociation).
+func (b *Backend) MoveEntity(entity *domainmodel.Entity, sourceDMID, targetDMID model.ID, sourceModuleName, targetModuleName string) ([]types.MovedAssociation, error) {
 	if entity == nil {
 		return nil, fmt.Errorf("MoveEntity: nil entity")
 	}
@@ -328,7 +332,14 @@ func (b *Backend) MoveEntity(entity *domainmodel.Entity, sourceDMID, targetDMID 
 	}
 
 	// Convert associations referencing the moved entity to cross-associations.
-	var converted []string
+	//
+	// Each conversion records the qualified name the association had and the one it
+	// has afterwards, because Mendix stores an association in the module of its FROM
+	// entity and the two directions therefore differ: the parent moving takes the
+	// cross-association to the target module, the child moving leaves it in the
+	// source. The caller sweeps references from these names, so the case that does
+	// not move is a no-op rather than a branch it has to know about (#605).
+	var converted []types.MovedAssociation
 	var removeIdx []int
 	for i, el := range sourceDM.AssociationsItems() {
 		a, ok := el.(*genDm.Association)
@@ -336,15 +347,21 @@ func (b *Backend) MoveEntity(entity *domainmodel.Entity, sourceDMID, targetDMID 
 			continue
 		}
 		parentID, childID := string(a.ParentRefID()), string(a.ChildRefID())
+		moved := types.MovedAssociation{
+			Name:             a.Name(),
+			OldQualifiedName: sourceModuleName + "." + a.Name(),
+			NewQualifiedName: sourceModuleName + "." + a.Name(),
+		}
 		switch {
 		case childID == string(entity.ID): // child moved → cross-assoc stays in source
 			sourceDM.AddCrossAssociations(crossAssocFromGenAssoc(a, parentID, targetModuleName+"."+entity.Name))
 			removeIdx = append(removeIdx, i)
-			converted = append(converted, a.Name())
+			converted = append(converted, moved)
 		case parentID == string(entity.ID): // parent moved → cross-assoc goes to target
 			targetDM.AddCrossAssociations(crossAssocFromGenAssoc(a, parentID, sourceModuleName+"."+nameByID[childID]))
 			removeIdx = append(removeIdx, i)
-			converted = append(converted, a.Name())
+			moved.NewQualifiedName = targetModuleName + "." + a.Name()
+			converted = append(converted, moved)
 		}
 	}
 	for i := len(removeIdx) - 1; i >= 0; i-- {
@@ -359,6 +376,37 @@ func (b *Backend) MoveEntity(entity *domainmodel.Entity, sourceDMID, targetDMID 
 	for _, vr := range entity.ValidationRules {
 		if strings.HasPrefix(string(vr.AttributeID), oldPrefix) {
 			vr.AttributeID = model.ID(newPrefix + string(vr.AttributeID)[len(oldPrefix):])
+		}
+	}
+
+	// The same re-pointing for the entity's own ACCESS RULES, which name each member
+	// by qualified name and were the missed sibling of the validation rules above
+	// (#605). Leaving them stale is worse than a dangling string: entityToGen's
+	// syncMemberAccesses matches existing entries by qualified name, so a stale
+	// `Source.Entity.Attr` never equals the rebuilt `Target.Entity.Attr` and it
+	// appends the new one while keeping the old — the moved entity ends up carrying
+	// every member twice, half of the entries dangling. DESCRIBE renders members
+	// bare, so the duplication is the only thing that shows.
+	//
+	// An ATTRIBUTE reference always follows the entity, so its module prefix is
+	// rewritten unconditionally. An ASSOCIATION reference is rewritten only for the
+	// associations this move actually sent to the target module: a pre-existing
+	// cross-association whose parent is the moved entity is not in the conversion
+	// list and does not travel, so a blanket prefix swap would break it.
+	assocRenames := make(map[string]string, len(converted))
+	for _, m := range converted {
+		if m.Moved() {
+			assocRenames[m.OldQualifiedName] = m.NewQualifiedName
+		}
+	}
+	for _, ar := range entity.AccessRules {
+		for _, ma := range ar.MemberAccesses {
+			if strings.HasPrefix(ma.AttributeName, oldPrefix) {
+				ma.AttributeName = newPrefix + ma.AttributeName[len(oldPrefix):]
+			}
+			if to, ok := assocRenames[ma.AssociationName]; ok {
+				ma.AssociationName = to
+			}
 		}
 	}
 

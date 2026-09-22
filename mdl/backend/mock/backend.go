@@ -68,7 +68,7 @@ type MockBackend struct {
 	CreateEntityFunc                           func(domainModelID model.ID, entity *domainmodel.Entity) error
 	UpdateEntityFunc                           func(domainModelID model.ID, entity *domainmodel.Entity) error
 	DeleteEntityFunc                           func(domainModelID model.ID, entityID model.ID) error
-	MoveEntityFunc                             func(entity *domainmodel.Entity, sourceDMID, targetDMID model.ID, sourceModuleName, targetModuleName string) ([]string, error)
+	MoveEntityFunc                             func(entity *domainmodel.Entity, sourceDMID, targetDMID model.ID, sourceModuleName, targetModuleName string) ([]types.MovedAssociation, error)
 	AddAttributeFunc                           func(domainModelID model.ID, entityID model.ID, attr *domainmodel.Attribute) error
 	UpdateAttributeFunc                        func(domainModelID model.ID, entityID model.ID, attr *domainmodel.Attribute) error
 	DeleteAttributeFunc                        func(domainModelID model.ID, entityID model.ID, attrID model.ID) error

@@ -1,5 +1,5 @@
 -- ============================================================================
--- ako/mxcli#503 — MOVE ENTITY must not re-mint a storage GUID
+-- ako/mxcli#503 + #605 — what a cross-module MOVE ENTITY must preserve
 -- ============================================================================
 --
 -- A moved entity, its attributes, and any association the move converts into a
@@ -49,30 +49,57 @@
 -- mdl/backend/modelsdk/issue503_move_guid_test.go — on raw BSON, over a Studio
 -- Pro-authored fixture entity, with each of the three carries stubbed
 -- independently as its own control.
+--
+-- The #605 half below is DIFFERENT in this respect, and genuinely does fail against
+-- the broken code: a stale qualified name has nothing to do with GUID divergence,
+-- so an mxcli-created entity detects it perfectly well. Measured — pre-fix this
+-- file leaves 3 CE1613s, fixed it is 0 errors.
 -- ============================================================================
 
 CREATE MODULE BugMoveGuid503A;
 CREATE MODULE BugMoveGuid503B;
 
-CREATE OR MODIFY PERSISTENT ENTITY BugMoveGuid503A.Parent (
-  Code: String(50)
-);
+-- Two INDEPENDENT pairs, because the two conversion directions must be exercised
+-- without ever moving both endpoints of the SAME association. Doing that leaves a
+-- pre-existing cross-association pointing at an element that is no longer in its
+-- unit, and the project will not even open:
+--
+--   System.AggregateException: The given key '<guid>' was not present in the dictionary.
+--
+-- Measured with a binary predating both fixes here, so it is a third defect on this
+-- command and not something these fixes introduced — but it is why this file keeps
+-- one endpoint of each pair put.
 
-CREATE OR MODIFY PERSISTENT ENTITY BugMoveGuid503A.Child (
-  Label: String(100)
-);
+-- Pair 1 — the TO side moves, so the cross-association STAYS in the source module
+-- and its qualified name does not change.
+CREATE OR MODIFY PERSISTENT ENTITY BugMoveGuid503A.Parent1 ( Code: String(50) );
+CREATE OR MODIFY PERSISTENT ENTITY BugMoveGuid503A.Child1  ( Label: String(100) );
+CREATE OR MODIFY ASSOCIATION BugMoveGuid503A.Child1_Parent1
+  FROM BugMoveGuid503A.Child1 TO BugMoveGuid503A.Parent1 TYPE Reference;
 
--- FROM Child TO Parent: per the pointer semantics, ParentPointer holds the FROM
--- entity (Child) and ChildPointer the TO entity (Parent). So moving Parent is
--- the "child moved" case for the conversion, and it is the one the guard sees.
-CREATE OR MODIFY ASSOCIATION BugMoveGuid503A.Child_Parent
-  FROM BugMoveGuid503A.Child TO BugMoveGuid503A.Parent TYPE Reference;
+-- Pair 2 — the FROM side moves, so the cross-association TRAVELS to the target and
+-- its qualified name changes with it. Only this direction may be swept; sweeping
+-- the other would rewrite references that are still correct.
+CREATE OR MODIFY PERSISTENT ENTITY BugMoveGuid503A.Parent2 ( Code: String(50) );
+CREATE OR MODIFY PERSISTENT ENTITY BugMoveGuid503A.Child2  ( Label: String(100) );
+CREATE OR MODIFY ASSOCIATION BugMoveGuid503A.Child2_Parent2
+  FROM BugMoveGuid503A.Child2 TO BugMoveGuid503A.Parent2 TYPE Reference;
 
--- Case 1: the TO entity moves. The association becomes a cross-association that
--- STAYS in the source module, keeping its $ID — so a lost GUID is refused here.
-MOVE ENTITY BugMoveGuid503A.Parent TO BugMoveGuid503B;
+-- A consumer, so the #605 sweep has something to rewrite. Without a reference to
+-- the moved entity, a move has nothing to sweep and the statements below pass
+-- whether or not the sweep exists. Both the parameter and the retrieve name
+-- Parent1, which is about to move.
+CREATE OR MODIFY MICROFLOW BugMoveGuid503A.ACT_UsesParent1 ($P: BugMoveGuid503A.Parent1)
+RETURNS list of BugMoveGuid503A.Parent1
+BEGIN
+  retrieve $all from BugMoveGuid503A.Parent1;
+  return $all;
+END;
 
--- Case 2: the FROM entity moves too, which sends the cross-association to the
--- target module. Nothing pairs it there, so this half depends entirely on the
--- carry rather than on the guard.
-MOVE ENTITY BugMoveGuid503A.Child TO BugMoveGuid503B;
+-- Each of these now reports what it rewrote, e.g.
+--   Updated references in 1 document(s): BugMoveGuid503A.Parent1 → BugMoveGuid503B.Parent1
+-- and `mxcli docker check -p app.mpr` is 0 errors afterwards. Before #605 the
+-- microflow's parameter and retrieve were left naming a module the entity had left,
+-- as CE1613 at build time with nothing said at move time.
+MOVE ENTITY BugMoveGuid503A.Parent1 TO BugMoveGuid503B;
+MOVE ENTITY BugMoveGuid503A.Child2 TO BugMoveGuid503B;

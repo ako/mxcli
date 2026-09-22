@@ -3,6 +3,7 @@
 package backend
 
 import (
+	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 )
@@ -30,7 +31,12 @@ type DomainModelBackend interface {
 	CreateEntity(domainModelID model.ID, entity *domainmodel.Entity) error
 	UpdateEntity(domainModelID model.ID, entity *domainmodel.Entity) error
 	DeleteEntity(domainModelID model.ID, entityID model.ID) error
-	MoveEntity(entity *domainmodel.Entity, sourceDMID, targetDMID model.ID, sourceModuleName, targetModuleName string) ([]string, error)
+	// MoveEntity moves an entity between domain models, converting each association
+	// that touches it into a cross-module association. It reports one entry per
+	// conversion with the qualified name the association had and the one it has
+	// afterwards, because the two move directions differ and the caller must sweep
+	// references from the names rather than derive them (#605).
+	MoveEntity(entity *domainmodel.Entity, sourceDMID, targetDMID model.ID, sourceModuleName, targetModuleName string) ([]types.MovedAssociation, error)
 
 	// Attributes
 	AddAttribute(domainModelID model.ID, entityID model.ID, attr *domainmodel.Attribute) error
