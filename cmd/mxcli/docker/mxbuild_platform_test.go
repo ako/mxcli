@@ -142,3 +142,37 @@ func TestResolveMxBuildForLocal_NonLinuxWithoutStudioProRefuses(t *testing.T) {
 		t.Errorf("nothing should have been downloaded, but progress was written:\n%s", out.String())
 	}
 }
+
+// TestResolveMxBuildForLocal_EnvOverride — MXCLI_MXBUILD_PATH is the override
+// for callers that cannot add a flag (an IDE task, a CI step, a wrapper script).
+// Issue #1086 asked for "--mxbuild-path flag / MXCLI_MXBUILD_PATH environment
+// variable"; without it the Linux-only CDN was the only road left on Windows.
+func TestResolveMxBuildForLocal_EnvOverride(t *testing.T) {
+	// The reporter's host: Windows, and a version no Studio Pro here matches, so
+	// without the override resolution has nothing it may use.
+	fromEnv := writeBinary(t, t.TempDir(), "mxbuild.exe", peMagic)
+	t.Setenv(MxBuildPathEnv, fromEnv)
+
+	got, err := resolveMxBuildForLocalOn("windows", "", "99.99.99", &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("env override rejected: %v", err)
+	}
+	if got != fromEnv {
+		t.Errorf("resolved %q, want %s=%q", got, MxBuildPathEnv, fromEnv)
+	}
+}
+
+// TestResolveMxBuildForLocal_FlagBeatsEnv — the flag is the more specific
+// statement of intent, so it wins over a variable set in the shell's profile.
+func TestResolveMxBuildForLocal_FlagBeatsEnv(t *testing.T) {
+	t.Setenv(MxBuildPathEnv, writeBinary(t, t.TempDir(), "mxbuild", elfMagic))
+	flag := writeBinary(t, t.TempDir(), "mxbuild", elfMagic)
+
+	got, err := resolveMxBuildForLocalOn("linux", flag, "11.12.0", &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != flag {
+		t.Errorf("resolved %q, want the flag's %q", got, flag)
+	}
+}

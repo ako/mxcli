@@ -1,0 +1,111 @@
+-- ============================================================================
+-- RENAME ENTITY / RENAME ASSOCIATION left the renamed element's own member
+-- references stale — the project-wide sweep was CLOBBERED by the persist
+-- ============================================================================
+--
+-- An entity's access rules and validation rules name each member by QUALIFIED
+-- name (`Module.Entity.Attr`), and an access rule names an association the same
+-- way (`Module.Association`). Both of those strings contain the very name a
+-- RENAME changes, and both live in the SAME unit as the element being renamed.
+--
+-- THE MECHANISM IS A CLOBBER, NOT A MISSED SWEEP
+--
+-- `execRenameEntity` / `execRenameAssociation` read the domain model, run the
+-- project-wide `RenameReferences` pass — which DOES rewrite those names, in the
+-- raw unit — and then persist the semantic model they read BEFORE the sweep,
+-- putting the stale names straight back. The reference report and the build
+-- errors line up exactly, which is the tell: measured on a Studio Pro-authored
+-- 11.13 module,
+--
+--   Renamed entity: Administration.AccountPasswordData → Administration.PasswordData
+--   Updated 24 reference(s) in 11 document(s)
+--
+-- and then four CE1613s naming three attributes and one association, every one of
+-- them "at Access rule of entity" or "at Validation rule of entity" for the
+-- element that had just been renamed. The sweep had done its job and the write
+-- undid it.
+--
+-- This is the RENAME sibling of ako/mxcli#605, where the same names went stale on
+-- the MODULE prefix during a cross-module MOVE ENTITY. It is worse than a
+-- dangling string: `entityToGen`'s `syncMemberAccesses` matches existing entries
+-- BY qualified name, so a stale `Module.Old.Attr` never equals the rebuilt
+-- `Module.New.Attr` and it appends the new entry while KEEPING the old — the
+-- entity ends up carrying every member twice, half of the entries dangling.
+-- `DESCRIBE` renders members bare, so the duplication is the only visible trace.
+--
+-- The association half is the longest-lived of the four, because the stale name is
+-- then re-read by every later statement that loads the unit: a RENAME ASSOCIATION
+-- followed by an unrelated RENAME ENTITY carried it into the second write too.
+--
+-- HOW TO RUN IT
+--
+--   mxcli exec rename-self-references-clobbered-by-persist.mdl -p app.mpr
+--   mxcli docker check -p app.mpr
+--
+-- Expected: every statement succeeds AND the check is 0 errors. Unlike the GUID
+-- scripts next to this one, THIS FILE GENUINELY FAILS against the broken code —
+-- a stale qualified name has nothing to do with GUID divergence, so an
+-- mxcli-created entity detects it perfectly well. Measured on 11.13.0: 3 CE1613s
+-- before the fix (two access-rule attributes and one validation rule), 0 after.
+--
+-- ONE ARM OF IT IS NOT CAUGHT BY `mx check` HERE, and the asymmetry is worth
+-- knowing before trusting a green build. In this script the stale ASSOCIATION
+-- reference raises NO error, because mxcli wrote the access rule and the
+-- MemberAccess still carries a valid pointer to the association element — the
+-- qualified name is what a reader shows, not what mxbuild resolves. Against a
+-- STUDIO PRO-authored access rule the same rename does error:
+--
+--   [CE1613] "The selected association 'Administration.AccountPasswordData_Account'
+--            no longer exists." at Access rule of entity 'Administration.PasswordData'
+--
+-- So the association half of the fix is proven on a real module, not by this file.
+-- What this file shows for it is the visible trace: run it against the pre-fix
+-- binary and the DESCRIBE below emits `read (..., Widget_Holder)` — the old name,
+-- for an association that no longer has it — where the fixed binary emits
+-- `Gadget_Holder`.
+--
+-- The executor-level assertions, each with its re-point stubbed as its own
+-- control, are in mdl/executor/rename_entity_self_refs_test.go.
+-- ============================================================================
+
+CREATE MODULE BugRenameRefs;
+CREATE MODULE ROLE BugRenameRefs.User;
+
+-- The subject. `NOT NULL ERROR` is what puts a VALIDATION rule on the attribute;
+-- without one, only the access-rule half of the defect is exercised and a fix
+-- that covered access rules alone would look complete.
+CREATE OR MODIFY PERSISTENT ENTITY BugRenameRefs.Widget (
+  WidgetName: String(100) NOT NULL ERROR 'A name is required',
+  WidgetCode: String(50)
+);
+
+CREATE OR MODIFY PERSISTENT ENTITY BugRenameRefs.Holder (
+  HolderName: String(100)
+);
+
+CREATE OR MODIFY ASSOCIATION BugRenameRefs.Widget_Holder
+  FROM BugRenameRefs.Widget TO BugRenameRefs.Holder TYPE Reference;
+
+-- The access rules: member entries naming both attributes AND the association.
+-- Mendix stores an association's MemberAccess on the FROM entity only (putting one
+-- on the TO entity is CE0066), so this has to be granted on Widget.
+GRANT BugRenameRefs.User ON BugRenameRefs.Widget (
+  CREATE, DELETE,
+  READ (WidgetName, WidgetCode, Widget_Holder),
+  WRITE (WidgetCode, Widget_Holder)
+);
+
+-- ---------------------------------------------------------------------------
+-- The two renames. Order matters: the association first, so the second rename
+-- re-reads the unit and would carry a stale association name forward into its own
+-- write — which is how the association half outlived a fix for the entity half.
+-- ---------------------------------------------------------------------------
+
+RENAME ASSOCIATION BugRenameRefs.Widget_Holder TO Gadget_Holder;
+
+RENAME ENTITY BugRenameRefs.Widget TO Gadget;
+
+-- The visible trace, and the one part MDL can check for itself: each member must
+-- appear ONCE. Two entries for the same member is the duplication
+-- syncMemberAccesses introduces when the stale name fails to match the rebuilt one.
+DESCRIBE ENTITY BugRenameRefs.Gadget;

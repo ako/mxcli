@@ -1,0 +1,33 @@
+-- NEGATIVE TEST — `mxcli check` must REFUSE this file.
+--
+-- mendixlabs/mxcli#1064 — `CALL MICROFLOW M.F(…) IN QUEUE M.Q` where F returns
+-- Boolean: `mxcli check --references` said "Check passed!" and the build failed:
+--
+--   [CE7033] "A microflow used for background execution must have a Microflow
+--   return type of 'Nothing'." at Call microflow activity 'F'
+--
+-- The call and the queue both resolve; the constraint is on the flow the call
+-- names. Measured on mxbuild 11.12.0: this shape → CE7033, the control beside
+-- it → 0 errors.
+--
+-- Verify:
+--   mxcli check 1064-queued-microflow-must-return-nothing.fail.mdl
+--       -- must report MDL088 naming Q1064.Work and CE7033, and exit non-zero
+--
+-- The control lives beside this file as 1064-queued-microflow-must-return-nothing.mdl.
+
+create module Q1064;
+/
+create queue Q1064.Work (Parallelism: 1);
+/
+create microflow Q1064.ACT_Work ()
+returns boolean
+begin
+  return true;
+end;
+/
+create microflow Q1064.ACT_Enqueue ()
+begin
+  call microflow Q1064.ACT_Work() in queue Q1064.Work;
+end;
+/

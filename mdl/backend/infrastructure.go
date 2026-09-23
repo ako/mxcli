@@ -48,6 +48,17 @@ type RawUnitBackend interface {
 	// missing from its output is missing on purpose, and carrying it back would
 	// undo a deliberate deletion.
 	UpdateRawUnitOwningTranslations(unitID string, contents []byte) error
+
+	// UpdateRawUnitOwningStorageGUIDs is UpdateRawUnit for a write that
+	// deliberately transplants storage GUIDs onto elements that keep their $ID.
+	//
+	// The write path refuses that pattern by default, because for every ordinary
+	// write it means the database's identity for an element was dropped and the
+	// next deploy will drop its column (#1119). The marketplace module update is
+	// the exception: it captures a module's GUIDs and puts them back onto the
+	// documents replacing it, which is what stops an update destroying that
+	// module's data. Only a caller doing that may use this.
+	UpdateRawUnitOwningStorageGUIDs(unitID string, contents []byte) error
 }
 
 // MetadataBackend provides project-level metadata and introspection.

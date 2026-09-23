@@ -847,6 +847,12 @@ func validateFlowBodyReferences(ctx *ExecContext, body []ast.MicroflowStatement,
 		}
 	}
 
+	// A queued call's target must return nothing (CE7033) — resolving the name
+	// says nothing about that (mendixlabs/mxcli#1064).
+	if len(refs.queues) > 0 && len(refs.microflows) > 0 {
+		errors = append(errors, validateQueuedMicroflowTargets(body, buildMicroflowReturnTypes(ctx), sc)...)
+	}
+
 	if len(refs.nanoflows) > 0 {
 		known := buildNanoflowQualifiedNames(ctx)
 		for _, ref := range refs.nanoflows {

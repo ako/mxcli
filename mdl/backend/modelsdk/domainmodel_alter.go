@@ -183,6 +183,22 @@ func (b *Backend) UpdateEntity(domainModelID model.ID, entity *domainmodel.Entit
 		ge.SetRaw(raw)
 	}
 
+	// The same carry, one level down, for the entity's GUID-bearing CHILDREN.
+	// #657 closed this for the entity element and noted that siblings survive via
+	// the list-rebuild raw passthrough — but the target's own children do not:
+	// entityToGen rebuilds every attribute and index from the semantic model, so
+	// each arrives raw==nil and the codec's EmitGUID default writes GUID = $ID.
+	//
+	// For an attribute that GUID is the database's identity, not a cross-reference:
+	// the runtime keys mendixsystem$attribute.id on it, so re-minting it makes the
+	// synchroniser treat every column as deleted-and-re-added and DROP it on the
+	// next deploy. Measured on a real project: one ALTER, 0 of 28 GUIDs surviving,
+	// all 607 rows' attribute values gone (issue #1119). Nothing caught it — the
+	// model stays valid, mx check is clean, and because the new GUID is derived
+	// from a now-stable $ID the damage is idempotent, so a second run is elided
+	// and reports "Unchanged".
+	carryChildIdentity(ge, orig, entity)
+
 	// When an update empties a child list, the fresh (empty) list on ge is "clean"
 	// — entityToGen appended nothing to it — so the codec passes the STORED raw
 	// bytes through unchanged and the removal silently does not happen. Touching
@@ -249,10 +265,22 @@ func (b *Backend) UpdateEntity(domainModelID model.ID, entity *domainmodel.Entit
 // UpdateDomainModel persists a whole mutated domain model (the executor's
 // read-modify-write path for ALTER ASSOCIATION, CREATE OR MODIFY ASSOCIATION,
 // and RENAME). It rebuilds the Entities and Associations lists from the semantic
-// model via the byte-faithful converters, preserving each element's identity.
+// model via the byte-faithful converters, carrying each element's stored identity
+// — both its $ID and its storage GUID — onto the rebuild.
 // CrossAssociations and Annotations are NOT represented in domainmodel.DomainModel,
 // so they are left as gen passthrough rather than dropped (ADR-0005: guard
 // fidelity — the existing raw bytes carry forward unchanged).
+//
+// The GUID half of that was missing until ako/mxcli#1169. Unlike UpdateEntity,
+// which swaps one entity into an otherwise raw-passthrough list, this rebuilds
+// EVERY entity and EVERY association — so every element arrived raw==nil and the
+// codec's EmitGUID default wrote GUID = $ID across the whole unit, including
+// elements the statement never named. The reporter measured 282 moved GUIDs in one
+// module. What that costs is in the carry comments below; the short version is
+// that the runtime keys the database on the GUID, so re-minting one drops a column
+// (an attribute) or a whole table (an entity, whose name is the table name — which
+// is why RENAME ENTITY routing through here was the worst of the affected
+// statements).
 func (b *Backend) UpdateDomainModel(dm *domainmodel.DomainModel) error {
 	if dm == nil {
 		return fmt.Errorf("UpdateDomainModel: nil domain model")
@@ -267,6 +295,25 @@ func (b *Backend) UpdateDomainModel(dm *domainmodel.DomainModel) error {
 	moduleName := b.moduleNameFor(dm.ID)
 	major := b.majorVersion()
 
+	// Index the stored elements by $ID BEFORE the removal loops empty the lists.
+	// The $ID is the right key because the read path round-trips it into the
+	// semantic model, so it is exact rather than structural: a RENAME keeps the ID
+	// and carries the identity forward (Studio Pro renames the table or column and
+	// keeps the data), while a genuinely new element arrives with an empty ID,
+	// matches nothing, and correctly gets a fresh GUID.
+	storedEntities := make(map[string]*genDm.Entity, len(gdm.EntitiesItems()))
+	for _, el := range gdm.EntitiesItems() {
+		if ge, ok := el.(*genDm.Entity); ok {
+			storedEntities[string(ge.ID())] = ge
+		}
+	}
+	storedAssociations := make(map[string]*genDm.Association, len(gdm.AssociationsItems()))
+	for _, el := range gdm.AssociationsItems() {
+		if ga, ok := el.(*genDm.Association); ok {
+			storedAssociations[string(ga.ID())] = ga
+		}
+	}
+
 	for i := len(gdm.EntitiesItems()) - 1; i >= 0; i-- {
 		gdm.RemoveEntities(i)
 	}
@@ -274,6 +321,18 @@ func (b *Backend) UpdateDomainModel(dm *domainmodel.DomainModel) error {
 		ge := entityToGen(e, moduleName, major)
 		ge.SetID(element.ID(e.ID))
 		assignEntityIDs(ge)
+		// Carry the stored raw bytes so the codec treats the rebuild as an EXISTING
+		// element: the properties entityToGen set re-encode, while the ones the
+		// semantic model does not carry — the GUID above all — pass through verbatim.
+		// This is #657's carry (for the entity) and #1119's (for its attributes and
+		// indexes) applied to a path that had neither, because it rebuilds the whole
+		// list instead of swapping one member into it (#1169).
+		if orig := storedEntities[string(e.ID)]; orig != nil {
+			if raw := orig.Raw(); raw != nil {
+				ge.SetRaw(raw)
+			}
+			carryChildIdentity(ge, orig, e)
+		}
 		gdm.AddEntities(ge)
 	}
 
@@ -286,6 +345,20 @@ func (b *Backend) UpdateDomainModel(dm *domainmodel.DomainModel) error {
 			ga.SetID(element.ID(a.ID))
 		}
 		assignAssociationIDs(ga)
+		// The same carry for associations. A direct SetRaw is enough here, where the
+		// cross-module MOVE needed a raw transform (crossAssocRawFromAssoc, #503):
+		// assocToGen is Association -> Association, so the stored $Type and the
+		// rebuilt one agree and nothing has to be rewritten on the way.
+		//
+		// It also subsumes the property-by-property patch #872 made for the line
+		// anchors: those were lost to this same "the rebuild only carries what the
+		// semantic model models" mechanism, and raw passthrough covers the whole
+		// class rather than one property of it.
+		if orig := storedAssociations[string(a.ID)]; orig != nil {
+			if raw := orig.Raw(); raw != nil {
+				ga.SetRaw(raw)
+			}
+		}
 		gdm.AddAssociations(ga)
 	}
 

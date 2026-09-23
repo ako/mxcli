@@ -1,0 +1,54 @@
+-- Bug test for upstream issue #1176: DESCRIBE printed `all` on an import
+-- activity that returns ONE object.
+--
+-- Reported on v0.23.0 / Studio Pro 11.12.3:
+--
+--   $objectResponse = import from mapping TestModule.MF_importmapping_rest_object($sCountryISOCode) all;
+--
+-- The stored Range really is All — ConstantRange{SingleObject:false} is what
+-- Studio Pro writes for an object-rooted mapping — so #881's `all` was
+-- accurate, but it reads as "returns a list". DESCRIBE now leaves it off an
+-- object result and keeps it on a list result.
+--
+-- Dropping it is exact, not a shorthand: a missing keyword is written as All
+-- explicitly (the runtime fix after #881), and the object is inferred from
+-- the mapping's root. Both microflows below store the same activity.
+--
+-- Expected: both describe as `import from mapping MyFirstModule.IMM_1176($P);`
+-- with no trailing `all`, `mx check` reports 0 errors, and exec'ing the
+-- described text changes nothing.
+
+create json structure MyFirstModule.JSON_1176
+snippet '{"code": "NL", "name": "Netherlands"}';
+
+create non-persistent entity MyFirstModule.Country1176 ( Code: string, Name: string );
+/
+
+-- Object-rooted: the activity binds ONE Country1176.
+create import mapping MyFirstModule.IMM_1176
+  with json structure MyFirstModule.JSON_1176
+{
+  create MyFirstModule.Country1176 {
+    Code = code,
+    Name = name
+  }
+};
+/
+
+-- Written with `all`: still accepted, describes without it.
+create microflow MyFirstModule.MF1176_All ( $P: string )
+returns MyFirstModule.Country1176 as $R
+begin
+  $R = import from mapping MyFirstModule.IMM_1176($P) all;
+  return $R;
+end;
+/
+
+-- The form DESCRIBE now emits for both.
+create microflow MyFirstModule.MF1176_Bare ( $P: string )
+returns MyFirstModule.Country1176 as $R
+begin
+  $R = import from mapping MyFirstModule.IMM_1176($P);
+  return $R;
+end;
+/

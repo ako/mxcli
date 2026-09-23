@@ -1,0 +1,29 @@
+-- mendixlabs/mxcli#1171
+-- CALL JAVASCRIPT ACTION with an entity-type (`entity <>`) parameter, written
+-- with the argument on its own line and `)` on the next. The visitor keeps an
+-- argument's trailing whitespace so expressions round-trip as written, and the
+-- entity-type path (added for #1137) stored that text as the entity name:
+--   "$Type": "Microflows$EntityTypeCodeActionParameterValue"
+--   "Entity": "Administration.Account\n"
+--
+-- Measured on mxbuild 11.6.6 against testdata/expr-checker/minimal.mpr:
+--   fixed  -> "The app contains: 0 errors."
+--   faulty -> CE1613 "The selected entity 'Administration.Account
+--             ' no longer exists." at Call JavaScript action activity
+-- `mxcli check --references` passes on both. The report's CE0115 was the
+-- #1137 symptom (v0.23.0 predates that fix); on a build with #1137 and
+-- without this fix, the same MDL fails with CE1613 instead.
+--
+-- Needs an app with the NanoflowCommons module (testdata/expr-checker/minimal.mpr).
+--
+-- Verify after exec:
+--   ./bin/mxcli bson dump -p app.mpr --type nanoflow --object MyFirstModule.ACT_Refresh_Multiline
+-- the parameter value's "Entity" must be exactly "Administration.Account".
+
+create or modify nanoflow MyFirstModule.ACT_Refresh_Multiline ()
+begin
+$Var = call javascript action NanoflowCommons.RefreshEntity(
+EntityToRefresh = Administration.Account
+);
+return;
+end;

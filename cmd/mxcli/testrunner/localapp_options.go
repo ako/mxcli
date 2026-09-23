@@ -41,6 +41,7 @@ func localAppOptions(opts RunOptions, logPath string, env []string, w io.Writer)
 		SkipBuild:         opts.SkipBuild,
 		Env:               env,
 		ConstantOverrides: opts.ConstantOverrides,
+		MxBuildPath:       opts.MxBuildPath,
 		RuntimeLogPath:    logPath,
 		Stdout:            w,
 		Stderr:            w,

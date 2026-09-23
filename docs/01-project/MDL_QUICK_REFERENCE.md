@@ -519,7 +519,7 @@ it is for pages.
 | Reduce a list | `$Folded = reduce($list, expression, initial: value, returns: Type);` | `$currentResult` is the accumulator. `initial` and `returns` are **required** — Mendix stores both and neither is inferable, so MDL will not guess (#1004) |
 | Call microflow | `$Result = call microflow Module.Name (Param = $value);` | A Mendix **expression** cannot call anything — `declare $r Boolean = Module.Name(...)` is CE0117 (MDL066) |
 | Call a rule | `if Module.SomeRule (Param = $value) then ... end if;` | A decision is the **only** place a rule can be evaluated; there is no call activity for one. The name must resolve to a rule — a microflow there is CE0117 |
-| Call microflow on a queue | `call microflow Module.Name (Param = $value) in queue Module.Queue;` | Background execution; the queue must exist (CE1613) |
+| Call microflow on a queue | `call microflow Module.Name (Param = $value) in queue Module.Queue;` | Background execution; the queue must exist (CE1613), and the called microflow must return nothing, else CE7033 (**MDL088**) |
 | Call Java action on a queue | `call java action Module.Name (Param = $value) in queue Module.Queue;` | The Java action must `returns void`, else CE7038 |
 | Call nanoflow | `$Result = call nanoflow Module.Name (Param = $value);` | |
 | Call JS action | `$Result = call javascript action Module.Name (Param = $value);` | JavaScript action (nanoflow/microflow) |

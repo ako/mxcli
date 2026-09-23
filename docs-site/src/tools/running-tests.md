@@ -90,6 +90,17 @@ mxcli run  --local --test-endpoint -p app.mpr    # terminal 1
 mxcli test tests/ -p app.mpr --attach            # terminal 2
 ```
 
+`--local` builds with the same mxbuild `run --local` resolves: Studio Pro's
+bundled one on macOS and Windows, the cached CDN download on Linux (the CDN
+publishes Linux binaries only). To point it somewhere else — a Studio Pro
+installed outside `Program Files`, say — pass `--mxbuild-path`, or set
+`MXCLI_MXBUILD_PATH` for a wrapper or CI step that cannot add a flag. The flag
+wins when both are set.
+
+```bash
+mxcli test tests/ -p app.mpr --local --mxbuild-path "C:\Program Files\Mendix\11.11.0\modeler\mxbuild.exe"
+```
+
 `--watch` is the everyday loop: edit a test *or* the microflow under test, and
 the verdict lands in about two seconds.
 
