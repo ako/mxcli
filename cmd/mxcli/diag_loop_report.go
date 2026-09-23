@@ -233,7 +233,7 @@ func analyzeLoop(records []logRecord) loopReport {
 
 	for _, inv := range invs {
 		// The report never counts itself. Since ako/mxcli#617 every command is
-		// recorded from PersistentPreRun, which excludes `diag` for this reason;
+		// recorded from startSession, which excludes `diag` for this reason;
 		// the filter stays as the second guard, because a report whose numbers
 		// depend on one exclusion staying in place would drift silently.
 		if inv.Verb == "diag" || strings.HasPrefix(inv.Verb, "diag ") {

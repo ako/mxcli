@@ -32,10 +32,22 @@ func main() {
 		fmt.Fprint(os.Stderr, warningBanner)
 	}
 
+	// Open the process session before cobra sees argv. Cobra validates a
+	// command's Args before any hook runs, so a session started from
+	// PersistentPreRun missed every run with the wrong number of arguments
+	// (ako/mxcli#633).
+	startSession(os.Args[1:])
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	// Close only on a normal return. A failure that exits through os.Exit —
+	// almost every one — leaves no session_end, and that absence is what
+	// `diag loop-report` reads as a non-zero exit. Closing here rather than in
+	// PersistentPostRun also covers --help and --version, which cobra answers
+	// before any hook and which would otherwise read as failed runs.
+	diaglog.CloseCurrent()
 }
 
 // shouldSuppressWarning checks if the warning should be suppressed
@@ -101,21 +113,6 @@ Examples:
 `,
 	Version: version,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// Record the invocation before anything can reject it. `diag loop-report`
-		// reports "mxcli invocations: N", and it used to count only the commands
-		// that happened to build a logged executor — 14 files of 53 registered
-		// commands — and only when the run survived long enough to reach that
-		// code. A `check` without -p was invisible, and so was every run that
-		// exited on a bad argument, which is exactly the agent failure the report
-		// exists to show (ako/mxcli#617). Init is a per-process singleton, so the
-		// commands that call it later get this same logger.
-		//
-		// diag is excluded: a report that counted its own runs would climb every
-		// time it was read.
-		if !strings.HasPrefix(cmd.CommandPath(), cmd.Root().Name()+" diag") {
-			_ = diaglog.Init(version, cmd.CommandPath())
-		}
-
 		projectPath, _ := cmd.Flags().GetString("project")
 		if projectPath == "" {
 			if discovered := discoverProjectPath(); discovered != "" {
@@ -134,12 +131,6 @@ Examples:
 		globalMCPVerbose, _ = cmd.Flags().GetBool("mcp-verbose")
 		globalMCPTrace, _ = cmd.Flags().GetBool("mcp-trace")
 		globalEngineFlag, _ = cmd.Flags().GetString("engine")
-	},
-	PersistentPostRun: func(cmd *cobra.Command, args []string) {
-		// Closes the session opened in PersistentPreRun. Cobra skips this when a
-		// command exits through os.Exit, which is how almost every failure path
-		// ends — so "no session_end" stays the tell for a non-zero exit.
-		diaglog.CloseCurrent()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		// Get flags
@@ -408,6 +399,7 @@ func init() {
 	testRunCmd.Flags().Bool("attach", false, "Run against an app already started with 'mxcli run --local --test-endpoint' instead of booting one (tests hit that app's database)")
 	testRunCmd.Flags().String("configuration", "", "With --local, which project configuration's constant values to run the tests with (default: the only one, or \"Default\") — the same resolution 'mxcli run --local' uses, so a suite sees the same constants either way")
 	testRunCmd.Flags().StringArray("constant", nil, "With --local, set a constant for THIS RUN only: Module.Name=value (repeatable). Never written to the project. The value is visible in shell history and in `ps` — for a value that must not be, see docs/11-proposals/PROPOSAL_constant_values.md")
+	testRunCmd.Flags().String("mxbuild-path", "", "With --local, the mxbuild to build with, overriding resolution (Studio Pro's bundled mxbuild on macOS/Windows, the cached CDN download on Linux); also settable as MXCLI_MXBUILD_PATH")
 	testRunCmd.Flags().BoolP("verbose", "v", false, "Show all runtime log output")
 	testRunCmd.Flags().BoolP("color", "", false, "Use colored output")
 	testRunCmd.Flags().StringP("timeout", "t", "5m", "Timeout for runtime startup and test execution")

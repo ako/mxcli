@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 // `--mxbuild-path` was documented as the override for the local loop by the
@@ -47,7 +49,10 @@ func TestRunMxBuildPathFlagIsAccepted(t *testing.T) {
 // TestErrorGuidanceNamesAFlagThatExists is the general form of the defect: an
 // error telling the user to pass an option the command does not have is worse
 // than no guidance, because it reads as the user's mistake. Every --flag any
-// mxbuild-resolution message recommends must be registered on `run`.
+// mxbuild-resolution message recommends must be registered on every command that
+// reaches that resolution — `run --local` and `test --local` both go through
+// ResolveMxBuildForLocal, so both print the same guidance. Checking only `run`
+// is how `test` shipped without the flag (issue #1086).
 func TestErrorGuidanceNamesAFlagThatExists(t *testing.T) {
 	for _, src := range []string{
 		filepath.Join("docker", "mxbuild_platform.go"),
@@ -61,8 +66,10 @@ func TestErrorGuidanceNamesAFlagThatExists(t *testing.T) {
 		if !strings.Contains(string(b), "--mxbuild-path") {
 			continue
 		}
-		if runCmd.Flags().Lookup("mxbuild-path") == nil {
-			t.Errorf("%s tells users to pass --mxbuild-path, which `run` does not accept", src)
+		for _, c := range []*cobra.Command{runCmd, testRunCmd} {
+			if c.Flags().Lookup("mxbuild-path") == nil {
+				t.Errorf("%s tells users to pass --mxbuild-path, which `%s` does not accept", src, c.Name())
+			}
 		}
 	}
 }

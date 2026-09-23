@@ -451,7 +451,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			props = append(props, fmt.Sprintf("Caption: %s", mdlQuote(w.Caption)))
 		}
 		if len(w.Parameters) > 0 {
-			props = append(props, fmt.Sprintf("ContentParams: [%s]", strings.Join(formatParametersV3(w.Parameters), ", ")))
+			props = append(props, fmt.Sprintf("CaptionParams: [%s]", strings.Join(formatParametersV3(w.Parameters), ", ")))
 		}
 		if w.Action != "" {
 			props = append(props, fmt.Sprintf("Action: %s", w.Action))

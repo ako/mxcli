@@ -1,0 +1,64 @@
+-- ============================================================================
+-- ako/mxcli#632: captionparams on an action button passes check and is never
+-- written.
+-- ============================================================================
+--
+-- Reported:
+--
+--   `captionparams` on an action button is accepted by `mxcli check` but not
+--   written; a container with `onclick` and a dynamic text does the job.
+--
+-- Two silent drops, same class:
+--
+--   1. A BARE attribute (`[{1} = Title]`) was written as the string literal
+--      'Title' -- the button had its own copy of the parameter resolver. The
+--      same text on a dynamictext binds the attribute, which is why the
+--      workaround worked. `check --references` passed and so did `mx check`:
+--      a literal is perfectly valid, it just shows the attribute's NAME.
+--   2. DESCRIBE printed a button's parameters as `ContentParams:`, which the
+--      button builder never read. describe -> exec passed `check` and wrote
+--      every caption with its parameters gone.
+--
+-- Measured on a blank Mendix 11.12.1 project:
+--
+--   pre-fix   describe -> b2 `ContentParams: [{1} = 'Title']` (a literal)
+--             describe -> exec -> check passed; captions lose their params
+--             mx check -> 4 x CE0720 "Place holder index 1 is greater than 0,
+--                         the number of parameter(s)" (one per button)
+--
+--   fixed     describe -> b2 `CaptionParams: [{1} = Title]` (bound)
+--             describe -> exec -> "Unchanged page" (round trip stable)
+--             mx check -> 0 errors
+--             a caption `{1}` with no parameter is now MDL-WIDGET04 at check
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/632-button-captionparams-bare-attribute.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe page Bug632.OrderDetail"   # b2/b4 bound, not quoted
+--   mx check app.mpr   # 0 errors
+-- ============================================================================
+
+create module Bug632;
+
+create persistent entity Bug632.Order (
+  Title: string(100),
+  Num: integer
+);
+
+create page Bug632.OrderDetail (
+  title: 'Order',
+  layout: Atlas_Core.Atlas_Default,
+  params: { $o: Bug632.Order }
+) {
+  dataview dv (datasource: $o) {
+    -- quoted literal: stays a literal
+    actionbutton b1 (caption: 'Save {1}', captionparams: [{1} = 'order'], action: save_changes)
+    -- bare attribute: binds Bug632.Order.Title (was the literal 'Title')
+    actionbutton b2 (caption: 'Save {1}', captionparams: [{1} = Title], action: save_changes)
+    -- parameter-qualified attribute
+    actionbutton b3 (caption: 'Save {1}', captionparams: [{1} = $o.Title], action: save_changes)
+    -- non-string bare attribute
+    linkbutton b4 (caption: 'Order #{1}', captionparams: [{1} = Num], action: save_changes)
+    -- the workaround from the report, for comparison: binds the same way
+    dynamictext t1 (content: 'Save {1}', contentparams: [{1} = Title])
+  }
+}

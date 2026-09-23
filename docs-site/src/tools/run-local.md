@@ -77,7 +77,7 @@ so structural changes need a restart; behavioural changes do not.
 | `--app-port` | 8080 | App HTTP port |
 | `--admin-port` | 8090 | M2EE admin API port |
 | `--serve-port` | 6543 | `mxbuild --serve` port |
-| `--mxbuild-path` | resolved for this host | The mxbuild to build with, overriding resolution (Studio Pro on macOS/Windows, the cached CDN download on Linux) |
+| `--mxbuild-path` | resolved for this host | The mxbuild to build with, overriding resolution (Studio Pro on macOS/Windows, the cached CDN download on Linux). `MXCLI_MXBUILD_PATH` sets the same override from the environment; the flag wins |
 | `--db-host` | 127.0.0.1:5432 | Database `host:port`; bracket IPv6 endpoints (`[::1]:5432`) |
 | `--db-name` | derived from project | Database name |
 | `--db-user` / `--db-password` | mendix / mendix | Database credentials |

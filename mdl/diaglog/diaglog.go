@@ -39,7 +39,7 @@ const parentPIDEnv = "MXCLI_SESSION_PID"
 //
 // `diag loop-report` counts session records, so a process that opened two would
 // count twice and one that opened none would be invisible. Init is called from
-// PersistentPreRun for every command and again by each command that builds a
+// mxcli's main() for every command and again by each command that builds a
 // logged executor; the second call has to return the SAME logger (ako/mxcli#617).
 var (
 	mu      sync.Mutex
@@ -47,7 +47,7 @@ var (
 )
 
 // CloseCurrent ends the process session, if one was started. It is called from
-// PersistentPostRun, which cobra runs only when the command returned normally —
+// main() only when the command returned normally —
 // so a run that exits through os.Exit leaves no session_end, and that absence is
 // what `diag loop-report` reads as a non-zero exit.
 func CloseCurrent() {

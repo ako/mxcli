@@ -1,0 +1,61 @@
+-- ako/mxcli#631 — "List views are written with `Editable: false` by mxcli, so
+-- every input inside a list view renders disabled — even with `editable:
+-- Always` on the text box, and even inside a nested data view."
+--
+-- The BSON is valid, `mxcli check` was clean and the build succeeds; the
+-- failure only shows in the rendered app.
+--
+-- false IS Mendix's default (mendixmodelsdk 4.115.0: Pages$ListView `editable`
+-- defaults to false), and Studio Pro agrees: in ako/TestApp (Mendix 11.14.0)
+-- 30 of 32 list views are stored false with no input inside, and the only one
+-- holding inputs (Pages.EditableLIstView) was set to true. So the writer is not
+-- changed. What was missing is a diagnostic: `mxcli check` now warns
+-- MDL-WIDGET31 on a list view that is not editable while it holds inputs that
+-- are not `editable: Never`.
+--
+-- Verify:
+--
+--   mxcli check 631-listview-inputs-not-editable.mdl
+--     -> MDL-WIDGET31 on lvDefault (textbox tDefault) and lvNested (checkbox
+--        cbNested); nothing on lvEditable, lvReadOnly or lvDisplay.
+
+create module Lv631;
+/
+
+create or modify entity Lv631.Thing (
+  Name: String(100),
+  Active: Boolean
+);
+/
+
+create or replace page Lv631.P_Inputs
+( title: 'List view inputs', layout: Atlas_Core.Atlas_Default )
+{
+  -- WARNS: the reported case. The textbox's own `editable: Always` does not help.
+  listview lvDefault (datasource: database Lv631.Thing) {
+    textbox tDefault (label: 'Name', attribute: Name, editable: Always)
+  }
+
+  -- WARNS: a nested data view does not escape the list view's read-only context.
+  listview lvNested (datasource: database Lv631.Thing) {
+    dataview dvNested (datasource: $currentObject) {
+      checkbox cbNested (label: 'Active', attribute: Active)
+    }
+  }
+
+  -- The fix.
+  listview lvEditable (datasource: database Lv631.Thing, editable: true) {
+    textbox tEditable (label: 'Name', attribute: Name)
+  }
+
+  -- Intentionally read-only inputs: quiet.
+  listview lvReadOnly (datasource: database Lv631.Thing) {
+    textbox tReadOnly (label: 'Name', attribute: Name, editable: Never)
+  }
+
+  -- No inputs at all: quiet.
+  listview lvDisplay (datasource: database Lv631.Thing) {
+    dynamictext dtDisplay (content: '{1}', contentparams: [{1} = Name])
+  }
+}
+/
