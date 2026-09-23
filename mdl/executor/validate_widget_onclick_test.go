@@ -37,6 +37,17 @@ func clickPage(widget string) string {
 }
 
 // The reported case, plus the two other silent drops measured beside it.
+// A list view's on-click used to be case three here — "Mendix does model one on
+// listview, but mxcli has no writer for it". It is written as of ako/mxcli#512,
+// so the case moved to TestBuildWidget_ClickActionIsCarried and the widget must
+// now be SILENT. Keeping it here would assert the gap still exists.
+func TestMDLWIDGET23_ListViewOnClickIsNoLongerReported(t *testing.T) {
+	src := `LISTVIEW lv (DataSource: DATABASE W.Product, OnClick: SHOW_PAGE W.P) { DYNAMICTEXT t (Content: 'x') }`
+	if got := widgetViolations(t, clickPage(src), "MDL-WIDGET23"); len(got) != 0 {
+		t.Errorf("MDL-WIDGET23 still reports a list view on-click, which mxcli now writes: %#v", got)
+	}
+}
+
 func TestMDLWIDGET23_ReportsTheDroppedAction(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -52,13 +63,6 @@ func TestMDLWIDGET23_ReportsTheDroppedAction(t *testing.T) {
 			name:   "dynamictext",
 			widget: `DYNAMICTEXT t (Content: 'x', OnClick: SHOW_PAGE W.P)`,
 			want:   "no click action on dynamictext at all",
-		},
-		{
-			// Mendix models this one, so it earns the other sentence: the model
-			// could hold it, mxcli just does not write it.
-			name:   "listview, which Mendix does model",
-			widget: `LISTVIEW lv (DataSource: DATABASE W.Product, OnClick: SHOW_PAGE W.P) { DYNAMICTEXT t (Content: 'x') }`,
-			want:   "Mendix does model one on listview",
 		},
 	}
 
@@ -172,20 +176,27 @@ func TestClickCapableTypesCarryClickActionInMetamodel(t *testing.T) {
 		t.Error("PagesDivContainer has no click action in the metamodel, yet mxcli writes one for a container")
 	}
 
-	// Every type the rule claims Mendix models must really carry one. Getting
-	// this wrong sends the author the wrong remedy — "mxcli has no writer" when
-	// in fact the model has no slot.
+	// These three carried a click action in the metamodel that mxcli did not
+	// write, which is what clickCapableInMendix existed to report. As of
+	// ako/mxcli#512 it IS written — the model and the writers always had the
+	// field, and only the builders never read it off the AST — so the metamodel
+	// half of the invariant stands and the "not written" half does not.
+	//
+	// The assertion is therefore inverted rather than deleted: a name left in
+	// clickCapableInMendix after its writer lands makes mxcli report a gap it no
+	// longer has, and TestBuildWidget_ClickActionIsCarried is the other side of
+	// this pair.
 	for mdlType, metamodelType := range map[string]string{
 		"listview":     "PagesListView",
 		"staticimage":  "PagesStaticImageViewer",
 		"dynamicimage": "PagesDynamicImageViewer",
 	} {
-		if !clickCapableInMendix[mdlType] {
-			t.Errorf("%s dropped out of clickCapableInMendix", mdlType)
+		if clickCapableInMendix[mdlType] {
+			t.Errorf("%s is still listed as click-capable-but-unwritten, and its action IS now written", mdlType)
 		}
 		if !withClickAction[metamodelType] {
-			t.Errorf("clickCapableInMendix says Mendix models a click action on %s, but %s carries none",
-				mdlType, metamodelType)
+			t.Errorf("%s carries no click action in the metamodel, yet mxcli now writes one for %s",
+				metamodelType, mdlType)
 		}
 	}
 

@@ -45,6 +45,40 @@ CREATE EXTERNAL ENTITIES FROM Module.Service ENTITIES (Customer, Order);
 CREATE OR MODIFY EXTERNAL ENTITIES FROM Module.Service;
 ```
 
+### Complex types are flattened
+
+The Mendix domain model has no complex types. A property typed as an OData
+`ComplexType` is imported as one attribute per leaf — the same thing Studio Pro
+does — named `<property>_<leaf>` and read over the OData path `<property>/<leaf>`:
+
+| $metadata | Mendix attribute | Remote name |
+|-----------|------------------|-------------|
+| `MaxQty` of type `Shared.Uom.Quantity` { `UoMNId`, `QuantityValue` } | `MaxQty_UoMNId`, `MaxQty_QuantityValue` | `MaxQty/UoMNId`, `MaxQty/QuantityValue` |
+
+The complex type may live in any `Schema` in the document — it is resolved by
+qualified name, so two namespaces may each declare a `Quantity`.
+
+Three properties of a complex type are **not** importable. Each is reported by
+name and reason rather than dropped, so an import that loses something says so:
+
+- **Inherited properties.** Only a complex type's own properties are imported.
+  Where `AirportLocation` derives from `Location`, the inherited `Address` is not
+  reachable through it (`CE6615`) — though the same `Address` is imported
+  normally through a property typed `Location` directly.
+- **Leaves Mendix cannot represent**, such as `Edm.GeographyPoint` (`CE6622`).
+- **A complex type nested in a complex type** — flattening is one level deep.
+
+Two more consequences:
+
+- **Flattened attributes are read-only.** Mendix treats an external entity that
+  contains them as readable and deletable only, whatever the entity set's
+  `InsertRestrictions` / `UpdateRestrictions` say. Marking them creatable or
+  updatable is `CE6630`.
+- **They are filterable and sortable only where their entity is** — that is, on
+  an entity backed by an entity set. On a derived or contained type they are
+  neither. `CE6630` fires in both directions here, so this follows the contract
+  rather than a fixed answer.
+
 ## Contract Browsing Statements
 
 Browse available assets from cached service contracts without network access.

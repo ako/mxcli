@@ -256,8 +256,30 @@ var DefaultAnnotationSize = model.Size{Width: 200, Height: 50}
 // failure is silent in the worst way: the describer omits a position the builder
 // then re-derives differently, so the note creeps further on every round trip.
 // TestAnnotationGeometryDefaultIsSharedByBothSides pins that.
-func defaultAnnotationGeometry(activityPos model.Point, index int) (model.Point, model.Size) {
-	return model.Point{X: activityPos.X, Y: activityPos.Y - 100 - index*(DefaultAnnotationSize.Height+10)}, DefaultAnnotationSize
+// targetHeight is the height of the element the note belongs to. A note is placed
+// above that element's TOP EDGE, not a fixed distance above its centre: a loop is a
+// box several hundred pixels tall, so the old centre-relative offset dropped its
+// note inside the box, on top of the body it was describing. An ordinary activity
+// is ActivityHeight tall and keeps the geometry it has always had.
+func defaultAnnotationGeometry(activityPos model.Point, index int, targetHeight int) (model.Point, model.Size) {
+	if targetHeight < ActivityHeight {
+		targetHeight = ActivityHeight
+	}
+	above := targetHeight/2 - ActivityHeight/2
+	return model.Point{
+		X: activityPos.X,
+		Y: activityPos.Y - above - 100 - index*(DefaultAnnotationSize.Height+10),
+	}, DefaultAnnotationSize
+}
+
+// objectHeight is an element's stored height, defaulting to an activity's.
+func objectHeight(obj microflows.MicroflowObject) int {
+	if withSize, ok := obj.(interface{ GetSize() model.Size }); ok {
+		if h := withSize.GetSize().Height; h > 0 {
+			return h
+		}
+	}
+	return ActivityHeight
 }
 
 // attachAnnotation attaches one note to an activity.
@@ -291,13 +313,15 @@ func (fb *flowBuilder) attachAnnotation(note ast.MicroflowAnnotation, activityID
 	}
 
 	var activityPos model.Point
+	activityHeight := ActivityHeight
 	for _, obj := range fb.objects {
 		if obj.GetID() == activityID {
 			activityPos = obj.GetPosition()
+			activityHeight = objectHeight(obj)
 			break
 		}
 	}
-	pos, size := defaultAnnotationGeometry(activityPos, index)
+	pos, size := defaultAnnotationGeometry(activityPos, index, activityHeight)
 	if note.Position != nil {
 		pos = model.Point{X: note.Position.X, Y: note.Position.Y}
 	}

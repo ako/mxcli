@@ -228,6 +228,34 @@ deleteBehavior
 // ALTER ENTITY / ASSOCIATION / ENUMERATION ACTIONS
 // =============================================================================
 
+// ALTER ENTITIES [IN <module>] ADD ATTRIBUTE ... [WHERE PERSISTENT|NON-PERSISTENT]
+//
+// The bulk form, and deliberately narrower than alterEntityAction: an audit
+// trail is added to every entity in a module at once, which is the case that
+// made the single-entity form cost one statement per entity. Only ADD
+// ATTRIBUTE is offered, because it is the only action here that is safe to
+// aim at a set -- DROP and RENAME in bulk are destructive by a typo, and SET
+// POSITION on every entity is meaningless. Same reasoning as ALTER PAGES,
+// which is bulk for exactly one operation.
+//
+// WHERE reuses the persistence words CREATE ENTITY already uses rather than
+// inventing a predicate language: audit members belong on stored entities,
+// and a non-persistent helper is the thing you want to skip.
+alterEntitiesStatement
+    : ALTER ENTITIES (IN identifierOrKeyword)?
+      alterEntitiesAction (COMMA? alterEntitiesAction)*
+      (WHERE entityPersistenceFilter)?
+    ;
+
+alterEntitiesAction
+    : docComment? ADD ATTRIBUTE ifNotExists? attributeDefinition
+    ;
+
+entityPersistenceFilter
+    : PERSISTENT
+    | NON_PERSISTENT
+    ;
+
 alterEntityAction
     : docComment? ADD ATTRIBUTE ifNotExists? attributeDefinition
     | docComment? ADD COLUMN ifNotExists? attributeDefinition

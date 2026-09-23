@@ -283,3 +283,94 @@ func TestAlterSet_NotConnected(t *testing.T) {
 		t.Fatalf("ran without a project: %v", errs)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// upstream #1032 — a destructive SET must be refused by check, not just by exec
+// ---------------------------------------------------------------------------
+
+// storedDataViewPage builds a page holding one DataView on a microflow source —
+// the starting point #1032 reproduces from.
+func storedDataViewPage() bson.D {
+	dv := bson.D{
+		{Key: "$Type", Value: "Forms$DataView"},
+		{Key: "Name", Value: "dvCust"},
+		{Key: "DataSource", Value: bson.D{
+			{Key: "$Type", Value: "Forms$MicroflowSource"},
+			{Key: "MicroflowSettings", Value: bson.D{
+				{Key: "$Type", Value: "Forms$MicroflowSettings"},
+				{Key: "Microflow", Value: "MyModule.ACT_GetCustomer"},
+			}},
+		}},
+	}
+	return bson.D{
+		{Key: "$Type", Value: "Forms$Page"},
+		{Key: "FormCall", Value: bson.D{
+			{Key: "Arguments", Value: bson.A{
+				int32(2),
+				bson.D{{Key: "Widgets", Value: bson.A{int32(2), dv}}},
+			}},
+		}},
+	}
+}
+
+func dataViewPageCtx(t *testing.T) (*ExecContext, *countingDeps) {
+	t.Helper()
+	mod := mkModule("MyModule")
+	pg := mkPage(mod.ID, "P_View")
+	deps := &countingDeps{}
+	mb := &mock.MockBackend{
+		IsConnectedFunc: func() bool { return true },
+		ListModulesFunc: func() ([]*model.Module, error) { return []*model.Module{mod}, nil },
+		ListFoldersFunc: func() ([]*types.FolderInfo, error) { return nil, nil },
+		ListPagesFunc:   func() ([]*pages.Page, error) { return []*pages.Page{pg}, nil },
+		OpenPageForMutationFunc: func(unitID model.ID) (backend.PageMutator, error) {
+			return pagemutator.New(storedDataViewPage(), unitID, deps), nil
+		},
+	}
+	ctx, _ := newMockCtx(t, withBackend(mb), withHierarchy(mkHierarchy(mod)))
+	return ctx, deps
+}
+
+// TestAlterSet_DatabaseDataSourceOnDataView — the reported statement. It used
+// to pass check AND exec ("Altered page …", exit 0) while leaving the DataView
+// with a Forms$DataViewSource whose SourceVariable was null: DESCRIBE showed no
+// datasource and mxbuild reported CE7007 on a page mxcli had called successful.
+//
+// The dry run is what makes check agree with exec here — one refusal in the
+// mutator, reached by both, rather than a second copy of the rule in the
+// validator.
+func TestAlterSet_DatabaseDataSourceOnDataView(t *testing.T) {
+	ctx, deps := dataViewPageCtx(t)
+
+	errs := checkAlterSet(t, ctx,
+		`alter page MyModule.P_View { set DataSource = DATABASE MyModule.Customer on dvCust; }`)
+	if len(errs) != 1 {
+		t.Fatalf("got %d errors, want 1: %v", len(errs), errs)
+	}
+	msg := strings.ToLower(errs[0].Error())
+	for _, want := range []string{"data view", "database", "dvcust"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error %q does not mention %q", errs[0], want)
+		}
+	}
+	if deps.saves != 0 {
+		t.Errorf("validation wrote to storage %d times, want 0", deps.saves)
+	}
+}
+
+// Control: the sources a DataView really takes must still pass check, or the
+// refusal has simply moved the failure rather than fixing it.
+func TestAlterSet_ValidDataViewSourcesStillPass(t *testing.T) {
+	for _, src := range []string{
+		`set DataSource = MICROFLOW MyModule.ACT_GetCustomer on dvCust;`,
+		`set DataSource = SELECTION lvOther on dvCust;`,
+	} {
+		t.Run(src, func(t *testing.T) {
+			ctx, _ := dataViewPageCtx(t)
+			errs := checkAlterSet(t, ctx, `alter page MyModule.P_View { `+src+` }`)
+			if len(errs) != 0 {
+				t.Fatalf("valid datasource reported: %v", errs)
+			}
+		})
+	}
+}

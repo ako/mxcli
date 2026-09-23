@@ -1,0 +1,49 @@
+-- Bug: ALTER PAGE SET could not address a pluggable widget's named action slot.
+-- Upstream mendixlabs/mxcli#995 (follow-up to #956).
+--
+-- #956 gave named action slots a spelling on CREATE PAGE
+-- (`createFileAction: microflow M.F`), but `alter page … { set … }` fell
+-- through to a scalar value rule with no `microflow <name>` form:
+--
+--   line 2:37 extraneous input 'MyModule' expecting {DROP, ADD, SET, INSERT, REPLACE, '}'}
+--
+-- so retargeting one slot meant REPLACEing the whole widget and restating
+-- every other property.
+--
+-- Expected: `mxcli check` passes; after exec, DESCRIBE shows
+-- `onSelectionChange: microflow M995.ACT_B` AND still `PageSize: 17` (the set
+-- touched one slot, nothing else); `mx check` reports 0 errors (measured on
+-- 11.12.1).
+--
+-- A key that is not action-typed is refused, naming the widget's action slots:
+--   set 'PageSize' = microflow M995.ACT_B on dg;
+--   -> property "PageSize" of widget "dg" has type Integer, not Action —
+--      its action slots are: onClick, onConfigurationChange, onSelectionChange
+
+create module M995;
+create module role M995.User;
+create persistent entity M995.Thing ( Name: string(100) );
+create microflow M995.ACT_A () begin log 'A'; end;
+create microflow M995.ACT_B () begin log 'B'; end;
+
+create or replace page M995.P_Grid (Title: 'Grid', Layout: Atlas_Core.Atlas_Default)
+{
+  DATAGRID dg (
+    DataSource: DATABASE M995.Thing,
+    Selection: Multiple,
+    PageSize: 17,
+    onSelectionChange: microflow M995.ACT_A
+  ) {
+    COLUMN c1 (Attribute: Name, Caption: 'Name')
+  }
+}
+
+-- The quoted form (the pluggable-property convention) and the bare form both work.
+alter page M995.P_Grid {
+  set 'onSelectionChange' = microflow M995.ACT_B on dg;
+};
+alter page M995.P_Grid {
+  set onSelectionChange = microflow M995.ACT_B on dg;
+};
+
+describe page M995.P_Grid;

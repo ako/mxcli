@@ -37,6 +37,9 @@ func TestInitAndClose(t *testing.T) {
 	// Use a temp dir for logs
 	tmpDir := t.TempDir()
 	setHomeDir(t, tmpDir)
+	// Init is a per-process singleton (ako/mxcli#617); start from a clean one so
+	// this test does not inherit the previous test's open session.
+	resetForTest()
 
 	l := Init("test-version", "test")
 	if l == nil {
@@ -63,6 +66,9 @@ func TestInitAndClose(t *testing.T) {
 func TestCommandLogging(t *testing.T) {
 	tmpDir := t.TempDir()
 	setHomeDir(t, tmpDir)
+	// Init is a per-process singleton (ako/mxcli#617); start from a clean one so
+	// this test does not inherit the previous test's open session.
+	resetForTest()
 
 	l := Init("test", "batch")
 	if l == nil {
@@ -99,6 +105,9 @@ func TestCommandLogging(t *testing.T) {
 func TestDisabledViaEnv(t *testing.T) {
 	tmpDir := t.TempDir()
 	setHomeDir(t, tmpDir)
+	// Init is a per-process singleton (ako/mxcli#617); start from a clean one so
+	// this test does not inherit the previous test's open session.
+	resetForTest()
 	t.Setenv("MXCLI_LOG", "0")
 
 	l := Init("test", "batch")

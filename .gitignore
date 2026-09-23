@@ -67,3 +67,7 @@ snap-bson
 # Anchored: an unanchored "mprsnapshot" also matches the scripts/mprsnapshot/
 # source directory, which silently excludes it from `git add`.
 /mprsnapshot
+
+# CI test-output capture (.github/workflows/push-test.yml); also created if you
+# run those step bodies locally.
+go-test-output.txt

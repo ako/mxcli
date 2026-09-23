@@ -46,6 +46,34 @@ var editableWidgetTypes = map[string]bool{
 	"textbox":                   true, // Pages$TextBox
 }
 
+// plainEditableWidgetTypes are the MDL widget types whose Mendix counterpart has
+// a plain `Editable bool` and NO Editability.
+//
+// That is a different property from the one above, with a different meaning, and
+// conflating the two was ako/mxcli#510. Pages$ListView.Editable makes the input
+// widgets INSIDE the list view editable; Pages$GridColumn.Editable does the same
+// for a column's cell. mxcli writes both — buildListViewV3 sets it, `describe
+// page` reads it back, and mxbuild accepts the result at 0 errors on 11.12.2 —
+// so warning that they are "silently dropped" was false, and told authors to
+// stop setting the one property that makes an authored list view's inputs
+// editable at all. buildListViewV3's own comment records how that failure looks:
+// every input rendered as `<div class="form-control-static">`, with entity
+// access ReadWrite and `mx check` clean.
+//
+// Only the PLAIN form is written. Neither type has ConditionalEditabilitySettings,
+// so `editable: [expr]` on one is genuinely dropped and still earns MDL-WIDGET20
+// — which is why this is a separate set rather than more entries in the one
+// above.
+//
+// Kept in sync with generated/metamodel by TestPlainEditableBoolTypesMatchMetamodel,
+// the sibling of TestEditableWidgetTypesMatchMetamodel. The older test could not
+// have caught #510: it enumerates types carrying Editability, and these carry
+// none, so they were invisible to it.
+var plainEditableWidgetTypes = map[string]bool{
+	"listview": true, // Pages$ListView
+	"column":   true, // Pages$GridColumn
+}
+
 // ValidateWidgetEditability reports (MDL-WIDGET20) an `editable:` property on a
 // widget type that has no editability in the Mendix model.
 //
@@ -65,7 +93,14 @@ func validateWidgetEditability(w *ast.WidgetV3, locationPrefix string) []linter.
 	if !ok {
 		return nil
 	}
-	if editableWidgetTypes[strings.ToLower(w.Type)] {
+	typ := strings.ToLower(w.Type)
+	if editableWidgetTypes[typ] {
+		return nil
+	}
+	// A plain `Editable bool` type: the plain form is written, the bracket form
+	// (lowered to EditableIf, and riding on ConditionalEditabilitySettings these
+	// types do not have) is not. Only the second is worth reporting.
+	if plainEditableWidgetTypes[typ] && !strings.EqualFold(key, "editableif") {
 		return nil
 	}
 	return []linter.Violation{{

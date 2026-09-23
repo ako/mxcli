@@ -1,0 +1,105 @@
+-- @version: 11.0+
+-- ============================================================================
+-- ako/mxcli#541 — `describe page` → `exec` over a Studio Pro page reported
+-- "Replaced page", not "Unchanged page". Per ADR-0008 an in-sync unit is not
+-- written at all, so "Replaced" means the rebuild was not semantically equal to
+-- what Studio Pro stored — the round trip was lossy, with `mx check` clean
+-- either way.
+--
+-- Measured on ako/TestApp's Rules.RuleAction_NewEdit at Mendix 11.14.0, the
+-- round trip differed in FOURTEEN places. Four classes, each fixed by measuring
+-- what Studio Pro actually stores across all 67 of that app's pages:
+--
+--  1. Page header constants. pageToGen hardcoded Autofocus/CanvasWidth/
+--     CanvasHeight. Studio Pro varies all three per page — CanvasWidth took
+--     SEVEN distinct values, and the hardcoded 1200 matched 4 of 67, so a round
+--     trip moved the canvas of the other 63. Now carried from the stored
+--     document on a rewrite (a new page still gets the defaults).
+--
+--  2. Client-action defaults. save_changes / cancel_changes / close_page /
+--     delete_object never wrote DisabledDuringExecution, which Studio Pro
+--     stores true on all 39 of them; save_changes wrote SyncAutomatically true
+--     where all 8 store false.
+--
+--  3. AttributeRef.EntityRef. Present on 338 of 338 stored AttributeRefs (313
+--     null, 25 navigated); mxcli emitted it only on the navigated branch.
+--
+--  4. Forms$PageVariable. Studio Pro writes all six keys; mxcli set only the
+--     one carrying a value, so the other five were never marked dirty and the
+--     encoder omitted them.
+--
+-- 3 and 4 are registered in the codec's TypeDefaults rather than patched at
+-- each construction site, which is the mechanism that already handles an
+-- association's null Source.
+--
+-- Result on that page: 14 differences → 1. The one remaining is a pluggable
+-- widget Object property (a combobox), which is the CE0463 subsystem and needs
+-- its own investigation.
+--
+-- EXPECTED: `mx check` reports 0 errors.
+--
+-- WHAT THIS FILE IS NOT: a detector. A describe → exec of the page below
+-- reports "Unchanged" on BOTH the fixed and the unfixed build — measured, not
+-- assumed — because mxcli writes the page and mxcli describes it, so its own
+-- constants agree with themselves. The bug only appears against a document
+-- STUDIO PRO wrote, where mxcli's constants differ from the stored values.
+--
+-- So this is a reproduction scaffold: it exercises all four classes in one
+-- page, which is what makes it useful for eyeballing the BSON or re-running
+-- the measurement. The evidence that the fix detects anything is the Go tests
+-- in mdl/backend/modelsdk (each run against a stubbed-out fix) plus the
+-- measurement on ako/TestApp, 14 differences → 1.
+--
+-- The same caveat applies to the issue's suggestion of a committed CI fixture:
+-- a page mxcli creates cannot catch this class. The fixture has to be a
+-- Studio Pro-authored document.
+-- ============================================================================
+
+create module Issue541;
+
+@position(100, 100)
+create persistent entity Issue541.BusinessRule (
+  Name: string(200)
+);
+
+@position(400, 100)
+create persistent entity Issue541.RuleAction (
+  ActionType: string(200)
+);
+
+create association Issue541.RuleAction_BusinessRule
+  from Issue541.RuleAction to Issue541.BusinessRule;
+
+create or replace page Issue541.RuleAction_NewEdit (
+  title: 'Edit Rule Action',
+  layout: Atlas_Core.PopupLayout,
+  params: { $RuleAction: Issue541.RuleAction }
+)
+{
+  layoutgrid layoutGrid1 {
+    row row1 {
+      column col1 (DesktopWidth: AutoFill) {
+        -- A page-parameter datasource: exercises Forms$PageVariable (class 4).
+        dataview dvMain (datasource: $RuleAction) {
+          -- A plain binding: exercises AttributeRef.EntityRef = null (class 3).
+          textbox tbActionType (label: 'Action type', attribute: ActionType)
+          -- A navigated binding: EntityRef must NOT be flattened to null.
+          textbox tbRuleName (label: 'Rule', attribute: RuleAction_BusinessRule/Name)
+
+          -- All four actions whose DisabledDuringExecution was missing, plus
+          -- save_changes' SyncAutomatically (class 2).
+          footer footerButtons {
+            actionbutton btnSave (caption: 'Save', action: save_changes close_page, buttonstyle: Success)
+            actionbutton btnCancel (caption: 'Cancel', action: cancel_changes close_page)
+            actionbutton btnClose (caption: 'Close', action: close_page)
+            actionbutton btnDelete (caption: 'Delete', action: delete_object)
+          }
+        }
+      }
+    }
+  }
+}
+
+-- Emitted so the round trip can be inspected by hand. Note the caveat above:
+-- re-executing this output reports "Unchanged" on an unfixed build too.
+describe page Issue541.RuleAction_NewEdit;

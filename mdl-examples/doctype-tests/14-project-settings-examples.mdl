@@ -206,6 +206,53 @@ alter settings language DefaultLanguageCode = 'en_US';
  */
 alter settings workflows UserEntity = 'System.User';
 
+-- Workflow groups (Settings$WorkflowGroup) are 11.2+ metamodel; mxcli refuses
+-- them on an older project, so Examples 4.3-4.7 are gated. Ungated, they
+-- failed the 10.24 nightly.
+-- @version: 11.2+
+/**
+ * Example 4.3: Add a workflow group (App Settings > Workflows > Groups)
+ *
+ * The named buckets a user task's group targeting selects from. Description is
+ * the only option — a Settings$WorkflowGroup stores Name and Description and
+ * nothing else — and the NAME is the group's identity, which is how MODIFY and
+ * REMOVE address one. Needs Mendix 11.2+.
+ */
+alter settings workflows add group 'Approvers' (Description: 'Primary approval group');
+alter settings workflows add group 'Reviewers';
+
+/**
+ * Example 4.4: Change a group's description
+ *
+ * Only the options the statement names are touched, so this cannot blank a
+ * description somebody wrote in Studio Pro.
+ */
+alter settings workflows modify group 'Reviewers' (Description: 'Second-line review');
+
+/**
+ * Example 4.5: Add or modify — what DESCRIBE SETTINGS emits
+ *
+ * Adds the group when it is absent and changes it when it is there, so a
+ * described project re-executes against itself without an error.
+ */
+alter settings workflows add or modify group 'Approvers' (Description: 'Approves budget requests');
+
+/**
+ * Example 4.6: List the groups
+ */
+show workflow groups;
+
+/**
+ * Example 4.7: Remove a group
+ *
+ * The model has no reference to a settings group — a user task targets groups
+ * through a microflow or an XPath returning System.WorkflowGroup objects — so
+ * there is nothing to dangle. The coupling is at runtime, where Mendix
+ * materialises one System.WorkflowGroup row per entry.
+ */
+alter settings workflows remove group 'Reviewers';
+-- @version: any
+
 -- ============================================================================
 -- SUMMARY
 -- ============================================================================
@@ -219,6 +266,8 @@ alter settings workflows UserEntity = 'System.User';
 -- DROP CONFIGURATION
 -- ALTER SETTINGS LANGUAGE
 -- ALTER SETTINGS WORKFLOWS
+-- ALTER SETTINGS WORKFLOWS ADD [OR MODIFY] / MODIFY / REMOVE GROUP (11.2+)
+-- SHOW WORKFLOW GROUPS
 -- SHOW SETTINGS / DESCRIBE SETTINGS (read-only)
 -- SHOW LANGUAGES (lists language codes with string counts; requires refresh catalog full)
 --

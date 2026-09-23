@@ -40,6 +40,10 @@ features:
     basic:
       min_version: "10.0.0"
       mdl: "CREATE MICROFLOW Module.Name (...) BEGIN ... END"
+    deep_link_url:
+      min_version: "11.0.0"
+      mdl: "URL 'item/{Key}' / URL SEARCH PARAMETERS ($Filter) / DROP URL"
+      notes: "Microflow deep links (10.6+, so available throughout 11.x)."
     synchronize:
       min_version: "10.0.0"
       mdl: "SYNCHRONIZE ALL | $Var[, $Var...]  (nanoflow only)"
@@ -176,6 +180,10 @@ features:
     basic:
       min_version: "9.0.0"
       mdl: "CREATE WORKFLOW Module.Name ..."
+    groups:
+      min_version: "11.2.0"
+      mdl: "ALTER SETTINGS WORKFLOWS ADD [OR MODIFY] GROUP 'Approvers' (Description: '...')"
+      notes: "Settings$WorkflowGroup and WorkflowsProjectSettingsPart.groups were both introduced in 11.2.0 (mendixmodelsdk 4.115.0 StructureVersionInfo). Mendix's release notes call the feature GA in 11.6; the metamodel floor is what decides whether the document loads. Corroborated against real projects: a blank 11.13.0 app's workflows settings part carries `Groups: [2]`, an 11.1.0 one has no Groups key at all — so writing the property below the floor would be inventing a key, the mendixlabs/mxcli#759 failure shape."
     parallel_split:
       min_version: "9.0.0"
     user_task:

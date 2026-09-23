@@ -168,6 +168,16 @@ func checkExternalActionCall(ctx *ExecContext, h *ContainerHierarchy, services [
 	if err := checkExternalActionParameters(c, action); err != nil {
 		return err
 	}
+	// The types the contract gives those parameters, and the return type. A type
+	// Mendix does not support on an external action is the case with no remedy
+	// at all, and the one mendixlabs/mxcli#1089 was filed about: the statement
+	// executed, the build failed with CE7252, and every MDL the reporter reached
+	// for was aimed at a stored fingerprint that does not exist.
+	if err := checkExternalActionTypes(c, action, doc, svcQN, func(remoteName string) string {
+		return externalEntityFor(ctx, h, svcQN, remoteName)
+	}); err != nil {
+		return err
+	}
 	return checkExternalActionReturn(ctx, h, c, action, svcQN)
 }
 

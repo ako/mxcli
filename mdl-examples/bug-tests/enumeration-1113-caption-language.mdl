@@ -1,0 +1,50 @@
+-- ============================================================================
+-- Bug test: mendixlabs/mxcli#1113 — DESCRIBE ENUMERATION returned empty captions
+-- ============================================================================
+--
+-- Named with a topic prefix: "1113" is already taken in this directory by
+-- 1113-database-query-type-enum.mdl, where it is the MENDIX VERSION 11.13. That
+-- is a third numbering namespace meeting here, beside upstream PR numbers and
+-- ako/mxcli issue numbers.
+--
+-- Reported symptom: "Every value comes back with an empty caption: MyValue '',
+-- regardless of what's configured in Studio Pro."
+--
+-- Cause: a caption is a Texts$Text and Mendix has no language-neutral text —
+-- every Texts$Translation carries a LanguageCode. The read side asked for a
+-- hardcoded "en_US", so on a project whose default language is anything else
+-- (the reporter's was single-language, not en_US) every caption read as empty.
+-- DESCRIBE now reads the language CREATE writes (the project's
+-- DefaultLanguageCode, #970), so describe -> exec round-trips.
+--
+-- To verify:
+--   1. Run this script against a project.
+--   2. mxcli -p app.mpr -c "DESCRIBE ENUMERATION Bug1113.OrderStatus"
+--      → each value prints its caption, NOT ''.
+--   3. Feed that output back through `mxcli exec`: it must report
+--      "Unchanged enumeration", not "Modified enumeration". Before the fix it
+--      wrote the empty strings back and destroyed the captions.
+--
+--   The bug only shows on a non-en_US project. To reproduce the original
+--   symptom, first switch the project's default language:
+--     ALTER SETTINGS LANGUAGE ADD OR MODIFY 'nl_NL' (CheckCompleteness: false);
+--     ALTER SETTINGS LANGUAGE DefaultLanguageCode = 'nl_NL';
+--   then re-run the CREATE below so the captions are stored under nl_NL.
+--   (Not done here: this script must leave the project's language alone.)
+-- ============================================================================
+
+CREATE MODULE Bug1113;
+
+CREATE ENUMERATION Bug1113.OrderStatus (
+  Fresh 'Nieuw',
+  Shipped 'Verzonden',
+  Cancelled 'Geannuleerd'
+);
+
+-- ALTER must re-caption in place, in the same language, so the value stays
+-- readable by DESCRIBE afterwards.
+ALTER ENUMERATION Bug1113.OrderStatus MODIFY VALUE Shipped CAPTION 'Onderweg';
+
+ALTER ENUMERATION Bug1113.OrderStatus ADD VALUE IF NOT EXISTS Returned CAPTION 'Geretourneerd';
+
+DESCRIBE ENUMERATION Bug1113.OrderStatus;

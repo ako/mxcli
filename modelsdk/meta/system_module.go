@@ -10,9 +10,22 @@ const (
 
 // SystemAttrDef defines an attribute in a System entity.
 type SystemAttrDef struct {
-	Name   string
-	Type   string // "String", "Integer", "Decimal", "Boolean", "DateTime", "Enumeration", "Long", "Binary", "HashedString", "AutoNumber"
-	Length int    // for String type
+	Name string
+	Type string // "String", "Integer", "Decimal", "Boolean", "DateTime", "Enumeration", "Long", "Binary", "HashedString", "AutoNumber"
+
+	// Length is the maximum string length for Type "String", carrying Mendix's
+	// own meaning: 0 is UNLIMITED, not unknown. Every String attribute here is
+	// measured from a deployed model (testdata/system_string_lengths.txt), and
+	// TestSystemStringLengths fails on a String attribute that has no
+	// measurement — so a 0 is a finding, never a gap.
+	//
+	// It went three versions unpopulated, which made every System string read
+	// as unlimited and put mxcli's length checks into direct disagreement with
+	// mxbuild: a view entity over System.User.Name had its correct String(100)
+	// refused and its wrong String waved through, to fail later with CE6770
+	// (ako/mxcli#584).
+	Length int
+
 	EnumQN string // for Enumeration type, qualified name
 }
 
@@ -87,15 +100,22 @@ func ModelerSystemAssociations() []SystemAssocDef {
 }
 
 // SystemEntities lists all entities in the System module.
-// Extracted from Mendix Studio Pro 11.6.4 via DummySystem module.
+//
+// Entities, attributes and types were extracted from Mendix Studio Pro 11.6.4
+// via a DummySystem module. The String LENGTHS come from a different and more
+// direct source — the System module's domain model inside the
+// `deployment/model/model.mdp` mxbuild writes — because that is the model the
+// runtime builds the System tables from, and so the one Mendix judges a length
+// against. See testdata/system_string_lengths.txt for the measurement and how
+// to redo it.
 var SystemEntities = []SystemEntityDef{
 	{Name: "UserRole", Persistable: true, Attributes: []SystemAttrDef{
-		{Name: "ModelGUID", Type: "String"},
-		{Name: "Name", Type: "String"},
-		{Name: "Description", Type: "String"},
+		{Name: "ModelGUID", Type: "String", Length: 36},
+		{Name: "Name", Type: "String", Length: 100},
+		{Name: "Description", Type: "String", Length: 1000},
 	}},
 	{Name: "User", Persistable: true, Attributes: []SystemAttrDef{
-		{Name: "Name", Type: "String"},
+		{Name: "Name", Type: "String", Length: 100},
 		{Name: "Password", Type: "HashedString"},
 		{Name: "LastLogin", Type: "DateTime"},
 		{Name: "Blocked", Type: "Boolean"},
@@ -107,42 +127,42 @@ var SystemEntities = []SystemEntityDef{
 	}},
 	{Name: "FileDocument", Persistable: true, Attributes: []SystemAttrDef{
 		{Name: "FileID", Type: "AutoNumber"},
-		{Name: "Name", Type: "String"},
+		{Name: "Name", Type: "String", Length: 400},
 		{Name: "DeleteAfterDownload", Type: "Boolean"},
 		{Name: "Contents", Type: "Binary"},
 		{Name: "HasContents", Type: "Boolean"},
 		{Name: "Size", Type: "Long"},
 	}},
 	{Name: "Image", Persistable: true, Generalization: "System.FileDocument", Attributes: []SystemAttrDef{
-		{Name: "PublicThumbnailPath", Type: "String"},
+		{Name: "PublicThumbnailPath", Type: "String", Length: 500},
 		{Name: "EnableCaching", Type: "Boolean"},
 	}},
 	{Name: "XASInstance", Persistable: true, Attributes: []SystemAttrDef{
-		{Name: "XASId", Type: "String"},
+		{Name: "XASId", Type: "String", Length: 50},
 		{Name: "LastUpdate", Type: "DateTime"},
 		{Name: "AllowedNumberOfConcurrentUsers", Type: "Integer"},
-		{Name: "PartnerName", Type: "String"},
-		{Name: "CustomerName", Type: "String"},
+		{Name: "PartnerName", Type: "String", Length: 200},
+		{Name: "CustomerName", Type: "String", Length: 200},
 	}},
 	{Name: "Session", Persistable: true, Attributes: []SystemAttrDef{
-		{Name: "SessionId", Type: "String"},
-		{Name: "CSRFToken", Type: "String"},
+		{Name: "SessionId", Type: "String", Length: 50},
+		{Name: "CSRFToken", Type: "String", Length: 36},
 		{Name: "LastActive", Type: "DateTime"},
 	}},
 	{Name: "ScheduledEventInformation", Persistable: true, Attributes: []SystemAttrDef{
-		{Name: "Name", Type: "String"},
+		{Name: "Name", Type: "String", Length: 200},
 		{Name: "Description", Type: "String"},
 		{Name: "StartTime", Type: "DateTime"},
 		{Name: "EndTime", Type: "DateTime"},
 		{Name: "Status", Type: "Enumeration", EnumQN: "System.EventStatus"},
 	}},
 	{Name: "Language", Persistable: true, Attributes: []SystemAttrDef{
-		{Name: "Code", Type: "String"},
-		{Name: "Description", Type: "String"},
+		{Name: "Code", Type: "String", Length: 20},
+		{Name: "Description", Type: "String", Length: 200},
 	}},
 	{Name: "TimeZone", Persistable: true, Attributes: []SystemAttrDef{
-		{Name: "Code", Type: "String"},
-		{Name: "Description", Type: "String"},
+		{Name: "Code", Type: "String", Length: 50},
+		{Name: "Description", Type: "String", Length: 100},
 		{Name: "RawOffset", Type: "Integer"},
 	}},
 	{Name: "Error", Persistable: false, Attributes: []SystemAttrDef{
@@ -163,7 +183,7 @@ var SystemEntities = []SystemEntityDef{
 		{Name: "UserAgent", Type: "String"},
 	}},
 	{Name: "HttpMessage", Persistable: false, Attributes: []SystemAttrDef{
-		{Name: "HttpVersion", Type: "String"},
+		{Name: "HttpVersion", Type: "String", Length: 10},
 		{Name: "Content", Type: "String"},
 	}},
 	{Name: "HttpHeader", Persistable: false, Attributes: []SystemAttrDef{
@@ -172,7 +192,7 @@ var SystemEntities = []SystemEntityDef{
 	}},
 	{Name: "UserReportInfo", Persistable: true, Attributes: []SystemAttrDef{
 		{Name: "UserType", Type: "Enumeration", EnumQN: "System.UserType"},
-		{Name: "Hash", Type: "String"},
+		{Name: "Hash", Type: "String", Length: 64},
 	}},
 	{Name: "HttpRequest", Persistable: true, Generalization: "System.HttpMessage", Attributes: []SystemAttrDef{
 		{Name: "Uri", Type: "String"},
@@ -184,28 +204,28 @@ var SystemEntities = []SystemEntityDef{
 	{Name: "Paging", Persistable: false, Attributes: []SystemAttrDef{
 		{Name: "PageNumber", Type: "Long"},
 		{Name: "IsSortable", Type: "Boolean"},
-		{Name: "SortAttribute", Type: "String"},
+		{Name: "SortAttribute", Type: "String", Length: 200},
 		{Name: "SortAscending", Type: "Boolean"},
 		{Name: "HasMoreData", Type: "Boolean"},
 	}},
 	{Name: "SynchronizationError", Persistable: true, Attributes: []SystemAttrDef{
 		{Name: "Reason", Type: "String"},
-		{Name: "ObjectId", Type: "String"},
-		{Name: "ObjectType", Type: "String"},
+		{Name: "ObjectId", Type: "String", Length: 200},
+		{Name: "ObjectType", Type: "String", Length: 1000},
 		{Name: "ObjectContent", Type: "String"},
 	}},
 	{Name: "SynchronizationErrorFile", Persistable: true, Generalization: "System.FileDocument"},
 	{Name: "ProcessedQueueTask", Persistable: true, Attributes: []SystemAttrDef{
 		{Name: "Sequence", Type: "Long"},
 		{Name: "Status", Type: "Enumeration", EnumQN: "System.QueueTaskStatus"},
-		{Name: "QueueId", Type: "String"},
-		{Name: "QueueName", Type: "String"},
+		{Name: "QueueId", Type: "String", Length: 36},
+		{Name: "QueueName", Type: "String", Length: 200},
 		{Name: "ContextType", Type: "Enumeration", EnumQN: "System.ContextType"},
 		{Name: "ContextData", Type: "String"},
-		{Name: "MicroflowName", Type: "String"},
-		{Name: "UserActionName", Type: "String"},
+		{Name: "MicroflowName", Type: "String", Length: 200},
+		{Name: "UserActionName", Type: "String", Length: 200},
 		{Name: "Arguments", Type: "String"},
-		{Name: "XASId", Type: "String"},
+		{Name: "XASId", Type: "String", Length: 50},
 		{Name: "ThreadId", Type: "Long"},
 		{Name: "Created", Type: "DateTime"},
 		{Name: "StartAt", Type: "DateTime"},
@@ -214,39 +234,39 @@ var SystemEntities = []SystemEntityDef{
 		{Name: "Duration", Type: "Long"},
 		{Name: "Retried", Type: "Long"},
 		{Name: "ErrorMessage", Type: "String"},
-		{Name: "ScheduledEventName", Type: "String"},
+		{Name: "ScheduledEventName", Type: "String", Length: 200},
 	}},
 	{Name: "QueuedTask", Persistable: true, Attributes: []SystemAttrDef{
 		{Name: "Sequence", Type: "AutoNumber"},
 		{Name: "Status", Type: "Enumeration", EnumQN: "System.QueueTaskStatus"},
-		{Name: "QueueId", Type: "String"},
-		{Name: "QueueName", Type: "String"},
+		{Name: "QueueId", Type: "String", Length: 36},
+		{Name: "QueueName", Type: "String", Length: 200},
 		{Name: "ContextType", Type: "Enumeration", EnumQN: "System.ContextType"},
 		{Name: "ContextData", Type: "String"},
-		{Name: "MicroflowName", Type: "String"},
-		{Name: "UserActionName", Type: "String"},
+		{Name: "MicroflowName", Type: "String", Length: 200},
+		{Name: "UserActionName", Type: "String", Length: 200},
 		{Name: "Arguments", Type: "String"},
-		{Name: "XASId", Type: "String"},
+		{Name: "XASId", Type: "String", Length: 50},
 		{Name: "ThreadId", Type: "Long"},
 		{Name: "Created", Type: "DateTime"},
 		{Name: "StartAt", Type: "DateTime"},
 		{Name: "Started", Type: "DateTime"},
 		{Name: "Retried", Type: "Long"},
-		{Name: "Retry", Type: "String"},
-		{Name: "ScheduledEventName", Type: "String"},
+		{Name: "Retry", Type: "String", Length: 200},
+		{Name: "ScheduledEventName", Type: "String", Length: 200},
 	}},
 	{Name: "WorkflowDefinition", Persistable: true, Attributes: []SystemAttrDef{
-		{Name: "Name", Type: "String"},
-		{Name: "Title", Type: "String"},
+		{Name: "Name", Type: "String", Length: 200},
+		{Name: "Title", Type: "String", Length: 200},
 		{Name: "IsObsolete", Type: "Boolean"},
 		{Name: "IsLocked", Type: "Boolean"},
 	}},
 	{Name: "WorkflowUserTaskDefinition", Persistable: true, Attributes: []SystemAttrDef{
-		{Name: "Name", Type: "String"},
+		{Name: "Name", Type: "String", Length: 200},
 		{Name: "IsObsolete", Type: "Boolean"},
 	}},
 	{Name: "Workflow", Persistable: true, Attributes: []SystemAttrDef{
-		{Name: "Name", Type: "String"},
+		{Name: "Name", Type: "String", Length: 200},
 		{Name: "Description", Type: "String"},
 		{Name: "StartTime", Type: "DateTime"},
 		{Name: "EndTime", Type: "DateTime"},
@@ -263,13 +283,13 @@ var SystemEntities = []SystemEntityDef{
 		{Name: "StartTime", Type: "DateTime"},
 		{Name: "DueDate", Type: "DateTime"},
 		{Name: "EndTime", Type: "DateTime"},
-		{Name: "Outcome", Type: "String"},
+		{Name: "Outcome", Type: "String", Length: 200},
 		{Name: "State", Type: "Enumeration", EnumQN: "System.WorkflowUserTaskState"},
 		{Name: "CompletionType", Type: "Enumeration", EnumQN: "System.WorkflowUserTaskCompletionType"},
 	}},
 	{Name: "TaskQueueToken", Persistable: true, Attributes: []SystemAttrDef{
-		{Name: "QueueName", Type: "String"},
-		{Name: "XASId", Type: "String"},
+		{Name: "QueueName", Type: "String", Length: 200},
+		{Name: "XASId", Type: "String", Length: 50},
 		{Name: "ValidUntil", Type: "DateTime"},
 	}},
 	{Name: "ODataResponse", Persistable: false, Attributes: []SystemAttrDef{
@@ -282,18 +302,18 @@ var SystemEntities = []SystemEntityDef{
 		{Name: "Action", Type: "Enumeration", EnumQN: "System.WorkflowCurrentActivityAction"},
 	}},
 	{Name: "WorkflowActivityDetails", Persistable: false, Attributes: []SystemAttrDef{
-		{Name: "ActivityId", Type: "String"},
+		{Name: "ActivityId", Type: "String", Length: 50},
 		{Name: "ActivityCaption", Type: "String"},
 		{Name: "ActivityType", Type: "Enumeration", EnumQN: "System.WorkflowActivityType"},
 		{Name: "ExistsInCurrentVersion", Type: "Boolean"},
 	}},
 	{Name: "WorkflowUserTaskOutcome", Persistable: true, Attributes: []SystemAttrDef{
-		{Name: "Outcome", Type: "String"},
+		{Name: "Outcome", Type: "String", Length: 200},
 		{Name: "Time", Type: "DateTime"},
 	}},
 	{Name: "WorkflowRecord", Persistable: false, Attributes: []SystemAttrDef{
-		{Name: "WorkflowKey", Type: "String"},
-		{Name: "Name", Type: "String"},
+		{Name: "WorkflowKey", Type: "String", Length: 200},
+		{Name: "Name", Type: "String", Length: 200},
 		{Name: "Description", Type: "String"},
 		{Name: "State", Type: "Enumeration", EnumQN: "System.WorkflowState"},
 		{Name: "StartTime", Type: "DateTime"},
@@ -302,22 +322,22 @@ var SystemEntities = []SystemEntityDef{
 		{Name: "Reason", Type: "String"},
 	}},
 	{Name: "WorkflowActivityRecord", Persistable: false, Attributes: []SystemAttrDef{
-		{Name: "ModelGUID", Type: "String"},
-		{Name: "ActivityKey", Type: "String"},
-		{Name: "PreviousActivityKey", Type: "String"},
+		{Name: "ModelGUID", Type: "String", Length: 200},
+		{Name: "ActivityKey", Type: "String", Length: 200},
+		{Name: "PreviousActivityKey", Type: "String", Length: 200},
 		{Name: "ActivityType", Type: "Enumeration", EnumQN: "System.WorkflowActivityType"},
 		{Name: "Caption", Type: "String"},
 		{Name: "State", Type: "Enumeration", EnumQN: "System.WorkflowActivityExecutionState"},
 		{Name: "StartTime", Type: "DateTime"},
 		{Name: "EndTime", Type: "DateTime"},
-		{Name: "Outcome", Type: "String"},
-		{Name: "MicroflowName", Type: "String"},
+		{Name: "Outcome", Type: "String", Length: 200},
+		{Name: "MicroflowName", Type: "String", Length: 200},
 		{Name: "TaskName", Type: "String"},
 		{Name: "TaskDescription", Type: "String"},
 		{Name: "TaskDueDate", Type: "DateTime"},
 		{Name: "TaskCompletionType", Type: "Enumeration", EnumQN: "System.WorkflowUserTaskCompletionType"},
 		{Name: "TaskRequiredUsers", Type: "Integer"},
-		{Name: "TaskKey", Type: "String"},
+		{Name: "TaskKey", Type: "String", Length: 200},
 		{Name: "Reason", Type: "String"},
 	}},
 	{Name: "WorkflowEvent", Persistable: false, Attributes: []SystemAttrDef{
@@ -338,27 +358,27 @@ var SystemEntities = []SystemEntityDef{
 		{Name: "StartTime", Type: "DateTime"},
 		{Name: "DueDate", Type: "DateTime"},
 		{Name: "EndTime", Type: "DateTime"},
-		{Name: "Outcome", Type: "String"},
+		{Name: "Outcome", Type: "String", Length: 200},
 		{Name: "State", Type: "Enumeration", EnumQN: "System.WorkflowUserTaskState"},
 		{Name: "CompletionType", Type: "Enumeration", EnumQN: "System.WorkflowUserTaskCompletionType"},
-		{Name: "UserTaskKey", Type: "String"},
+		{Name: "UserTaskKey", Type: "String", Length: 200},
 	}},
 	{Name: "WorkflowEndedUserTaskOutcome", Persistable: true, Attributes: []SystemAttrDef{
-		{Name: "Outcome", Type: "String"},
+		{Name: "Outcome", Type: "String", Length: 200},
 		{Name: "Time", Type: "DateTime"},
 	}},
 	{Name: "WorkflowGroup", Persistable: true, Attributes: []SystemAttrDef{
-		{Name: "Name", Type: "String"},
+		{Name: "Name", Type: "String", Length: 200},
 		{Name: "Description", Type: "String"},
 	}},
 	// --- Entities below extracted from MDP (Phase 3, 2026-04-24) ---
 	{Name: "WorkflowVersion", Persistable: true, RuntimeOnly: true, Attributes: []SystemAttrDef{
-		{Name: "VersionHash", Type: "String"},
+		{Name: "VersionHash", Type: "String", Length: 200},
 		{Name: "ModelJSON", Type: "String"},
 	}},
 	{Name: "WorkflowActivity", Persistable: true, RuntimeOnly: true, Attributes: []SystemAttrDef{
-		{Name: "ModelGUID", Type: "String"},
-		{Name: "ActivityGUID", Type: "String"},
+		{Name: "ModelGUID", Type: "String", Length: 36},
+		{Name: "ActivityGUID", Type: "String", Length: 36},
 		{Name: "Caption", Type: "String"},
 		{Name: "DetailsJson", Type: "String"},
 		{Name: "State", Type: "Enumeration", EnumQN: "System.WorkflowActivityState"},
@@ -366,13 +386,13 @@ var SystemEntities = []SystemEntityDef{
 		{Name: "EndTime", Type: "DateTime"},
 		{Name: "ActionTime", Type: "DateTime"},
 		{Name: "Reason", Type: "String"},
-		{Name: "ActivityHash", Type: "String"},
+		{Name: "ActivityHash", Type: "String", Length: 200},
 		{Name: "IsDerivedActivity", Type: "Boolean"},
-		{Name: "Outcome", Type: "String"},
-		{Name: "OutcomeModelGUID", Type: "String"},
+		{Name: "Outcome", Type: "String", Length: 200},
+		{Name: "OutcomeModelGUID", Type: "String", Length: 36},
 	}},
 	{Name: "WorkflowActivityUserTaskOutcome", Persistable: true, RuntimeOnly: true, Attributes: []SystemAttrDef{
-		{Name: "Outcome", Type: "String"},
+		{Name: "Outcome", Type: "String", Length: 200},
 		{Name: "Time", Type: "DateTime"},
 	}},
 	{Name: "PrivateFileDocument", Persistable: true, RuntimeOnly: true, Generalization: "System.FileDocument"},
@@ -385,24 +405,24 @@ var SystemEntities = []SystemEntityDef{
 		{Name: "Successful", Type: "Boolean"},
 	}},
 	{Name: "AutoCommitEntry", Persistable: true, RuntimeOnly: true, Attributes: []SystemAttrDef{
-		{Name: "SessionId", Type: "String"},
+		{Name: "SessionId", Type: "String", Length: 36},
 		{Name: "ObjectId", Type: "Long"},
 	}},
 	{Name: "UnreferencedFile", Persistable: true, RuntimeOnly: true, Attributes: []SystemAttrDef{
-		{Name: "FileKey", Type: "String"},
+		{Name: "FileKey", Type: "String", Length: 36},
 		{Name: "State", Type: "Enumeration", EnumQN: "System.UnreferencedFileState"},
-		{Name: "TransactionId", Type: "String"},
+		{Name: "TransactionId", Type: "String", Length: 36},
 	}},
 	{Name: "OfflineCreatedGuids", Persistable: true, RuntimeOnly: true, Attributes: []SystemAttrDef{
-		{Name: "Guid", Type: "String"},
+		{Name: "Guid", Type: "String", Length: 200},
 	}},
 	{Name: "OfflineSynchronizationHistory", Persistable: true, RuntimeOnly: true, Attributes: []SystemAttrDef{
-		{Name: "SyncId", Type: "String"},
+		{Name: "SyncId", Type: "String", Length: 200},
 	}},
 	{Name: "ChangeHash", Persistable: true, RuntimeOnly: true, Attributes: []SystemAttrDef{
 		{Name: "ObjectId", Type: "Long"},
-		{Name: "Attribute", Type: "String"},
-		{Name: "Hash", Type: "String"},
+		{Name: "Attribute", Type: "String", Length: 200},
+		{Name: "Hash", Type: "String", Length: 200},
 	}},
 }
 

@@ -213,7 +213,7 @@ create page FragTest.P004_Customer_New
   params: { $Customer: FragTest.Customer },
   title: 'New Customer',
   layout: Atlas_Core.Atlas_Default,
-  url: 'frag_004_customer_new'
+  url: 'frag_004_customer_new/{Customer}'
 )
 {
   -- A data view shows ONE object, so it binds a page parameter (or a microflow

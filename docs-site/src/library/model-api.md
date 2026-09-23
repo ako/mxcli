@@ -7,13 +7,13 @@ The `api` package provides a high-level fluent API inspired by the Mendix Web Ex
 ```go
 import (
     "github.com/mendixlabs/mxcli/api"
-    "github.com/mendixlabs/mxcli/sdk/mpr"
 )
 
-writer, _ := mpr.OpenForWriting("/path/to/MyApp.mpr")
-defer writer.Close()
-
-modelAPI := api.New(writer)
+modelAPI, err := api.Open("/path/to/MyApp.mpr")
+if err != nil {
+    panic(err)
+}
+defer modelAPI.Close()
 ```
 
 ## Setting the Module Context
@@ -21,7 +21,7 @@ modelAPI := api.New(writer)
 Most operations require a module context. Set it before calling builders:
 
 ```go
-module, _ := modelAPI.Modules.GetModule("MyModule")
+module, _ := modelAPI.Modules.Get("MyModule")
 modelAPI.SetModule(module)
 ```
 
@@ -91,7 +91,7 @@ page, _ := modelAPI.Pages.CreatePage("CustomerOverview").
 modules, _ := modelAPI.Modules.ListModules()
 
 // Get a specific module
-module, _ := modelAPI.Modules.GetModule("MyModule")
+module, _ := modelAPI.Modules.Get("MyModule")
 ```
 
 ## MDL to Fluent API Mapping

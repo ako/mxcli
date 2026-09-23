@@ -39,7 +39,18 @@ create or modify page Vehicles.Vehicle_Overview (
     Title: 'Vehicle Overview',
     Layout: Atlas_Core.Atlas_Default
 ) {
-    listview vehicleListView (DataSource: database from Vehicles.Vehicle) {
+    -- `search by` names the attributes the list view's search bar filters on
+    -- (Forms$ListViewSearch.SearchRefs). It mirrors `sort by` — same position,
+    -- same comma list — and takes no direction, because a search attribute is
+    -- only a name (ako/mxcli#512).
+    --
+    -- List view only: Forms$ListViewXPathSource is the source type that declares
+    -- Search; the grid sources do not.
+    listview vehicleListView (
+        DataSource: database from Vehicles.Vehicle
+                      sort by Brand asc
+                      search by Brand, Model
+    ) {
         -- The default body: what a Vehicle that is none of the specializations
         -- below renders as. This is the list view's own Widgets array.
         dynamictext defaultVehicle (

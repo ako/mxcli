@@ -1,0 +1,57 @@
+-- ako/mxcli#512 — "On click" on a List View (and on the two legacy image
+-- widgets) was parsed, accepted, and dropped on write.
+--
+-- Before the fix, `mxcli check` said so honestly:
+--
+--     ⚠ widget `lvClick` (listview) has an on-click action, and Mendix does model
+--       one on listview — but mxcli has no writer for it, so the value is dropped
+--       and the widget does nothing                              [MDL-WIDGET23]
+--       → Wrap the clickable part in a `container` and put the action there
+--
+-- Honest, and still a tool gap the author had to model around.
+--
+-- It turned out to be one line per widget. The MODEL already carried the field
+-- (pages.ListView.ClickAction, pages.StaticImage/DynamicImage.OnClickAction) and
+-- the WRITERS already serialised it — widget_write.go calls
+-- clientActionToGen(x.ClickAction) for the list view, widget_write_legacy_gaps.go
+-- does the same for both images. Only the builders never read the action off the
+-- AST, so the field was always nil.
+--
+-- Measured on a blank Mendix 11.12.2 project:
+--
+--     exec      -> Created page MyFirstModule.OnClick
+--     mx check  -> The app contains: 0 errors.
+--     describe  -> listview lvClick (DataSource: …, Action: microflow …)
+--     re-exec   -> Unchanged page      <- the describe output rebuilds the
+--                                         stored document exactly
+--
+-- The describe half is not optional. The write half landed on its own first and
+-- the action vanished on the next describe → exec: valid BSON, clean build,
+-- construct silently gone — the half-shell trap this repo keeps recording.
+-- Adding the emitter also duplicated `Editable: true` on every list view, which
+-- only showed up by round-tripping a DIFFERENT page than the one under test.
+
+create entity MyFirstModule.Thing ( Name: string(200) );
+create microflow MyFirstModule.ACT_Nothing()
+begin
+  show message 'hi';
+end;
+
+create or replace page MyFirstModule.OnClick (
+  title: 'c', layout: 'Atlas_Core.Atlas_Default'
+) {
+  listview lvClick (
+    DataSource: database from MyFirstModule.Thing,
+    Action: microflow MyFirstModule.ACT_Nothing
+  ) {
+    dynamictext dt (Content: 'x')
+  }
+};
+
+-- The control that keeps the rule alive: Mendix models NO click action on a data
+-- view, so MDL-WIDGET23 must still report this one. Emptying the rule's map
+-- rather than correcting it would silence a real gap.
+--
+--   dataview dv (DataSource: microflow MyFirstModule.ACT_Nothing,
+--                OnClick: microflow MyFirstModule.ACT_Nothing) { … }
+--   -> MDL-WIDGET23: … Mendix models no click action on dataview at all

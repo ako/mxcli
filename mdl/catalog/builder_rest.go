@@ -5,6 +5,7 @@ package catalog
 import (
 	"crypto/sha256"
 	"fmt"
+	"strings"
 )
 
 // buildRestClients populates the rest_clients and rest_operations catalog tables.
@@ -104,6 +105,25 @@ func (b *Builder) buildRestClients() error {
 	return nil
 }
 
+// publishedRestRef is one published REST operation → microflow edge. sourceID is
+// the operation's synthetic catalog id, so the emitted edge joins back to
+// published_rest_operations_data rather than only naming the operation in prose.
+type publishedRestRef struct{ sourceID, qualifiedName, moduleName, microflow string }
+
+// publishedRestOpName renders the name a published operation is known by in the
+// reference graph. The empty parts are dropped rather than left as runs of
+// spaces: an operation on a resource's own root has no path, and a name ending
+// in whitespace is one a user cannot retype.
+func publishedRestOpName(service, resource, method, path string) string {
+	parts := make([]string, 0, 4)
+	for _, p := range []string{service, resource, method, path} {
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
 // buildPublishedRestServices populates the published_rest_services and published_rest_operations catalog tables.
 func (b *Builder) buildPublishedRestServices() error {
 	services, err := b.reader.ListPublishedRestServices()
@@ -192,6 +212,21 @@ func (b *Builder) buildPublishedRestServices() error {
 					return err
 				}
 				totalOps++
+
+				// An operation with no microflow is a real shape — Mendix allows
+				// one while the service is being built — and an edge to the empty
+				// name would collide with every other unnamed target in refs.
+				if op.Microflow != "" {
+					b.publishedRestRefs = append(b.publishedRestRefs, publishedRestRef{
+						sourceID: opID,
+						// The resource is part of what makes an operation unique:
+						// two resources of one service can both expose GET on the
+						// same relative path.
+						qualifiedName: publishedRestOpName(qualifiedName, res.Name, op.HTTPMethod, op.Path),
+						moduleName:    moduleName,
+						microflow:     op.Microflow,
+					})
+				}
 			}
 		}
 	}

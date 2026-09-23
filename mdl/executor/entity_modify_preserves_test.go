@@ -246,6 +246,14 @@ func TestMergeDeclaredOntoStoredEntity_EveryFieldHasADecision(t *testing.T) {
 		if name == "BaseElement" || name == "ContainerID" {
 			continue // element identity; preserved, and re-asserted at the call site
 		}
+		if entityFieldsMergedWithStored[name] {
+			// Neither side owns the whole field, so there is no value to compare
+			// against. The semantics are covered by the named tests above
+			// (KeepsRulesTheEntityBodyCannotSpell and its three controls), and
+			// listing a field here is the deliberate act of taking it out of this
+			// guard's reach.
+			continue
+		}
 		got, fromStored, fromDeclared := mv.Field(i), sv.Field(i), dv.Field(i)
 		wantDeclared := entityFieldsDeclaredByStatement[name]
 
@@ -293,5 +301,161 @@ func fillDistinctly(v reflect.Value, seed int) {
 				f.Set(g)
 			}
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Validation rules the entity body has no words for (ako/mxcli#556)
+// ---------------------------------------------------------------------------
+
+// The reported symptom: re-running an idempotent script reports
+// `Modified entity: …` + `Created RegEx validation rule on …` on EVERY run, and
+// the unit comes back the same size with a handful of 16-byte runs changed.
+//
+// MEASURED on the v1 fixture, two statements that say nothing new:
+//
+//	create or modify entity Demo.Widget ( SerialNumber: String(100) );
+//	create validation rule for Demo.Widget.SerialNumber regex Demo.SerialPattern ...;
+//
+//	unit 1368 bytes before and after, 62 bytes differ, at
+//	  ValidationRules/1/$ID, .../Message/$ID, .../Message/Items/1/$ID, .../RuleInfo/$ID
+//
+// Splitting the two statements says which one moves: the entity rewrite alone
+// takes the unit from 1368 to 947 bytes — it DELETES the rule — and the
+// validation-rule statement then puts an identically-shaped one back under four
+// fresh identities. The validation-rule statement on its own is already
+// idempotent to the byte (canon transplants the ids back), so the churn is
+// entirely the drop.
+//
+// The drop is the bug, not the re-mint. `create [or modify] entity` can only
+// spell Required (`not null`) and Unique (`unique`); RegEx and Range have no
+// spelling in the entity body at all, so an omission carries no meaning — the
+// same reasoning that already preserves access rules here.
+func storedEntityWithARegexRule() *domainmodel.Entity {
+	e := storedEntityWithARule()
+	e.ValidationRules = []*domainmodel.ValidationRule{{
+		BaseElement: model.BaseElement{ID: "vr-regex"},
+		AttributeID: "Fx.Probe.Code",
+		Type:        "RegEx",
+		Rule:        &domainmodel.RegexValidationRuleInfo{RegularExpressionQualifiedName: "Fx.SerialPattern"},
+	}}
+	return e
+}
+
+func TestMergeDeclaredOntoStoredEntity_KeepsRulesTheEntityBodyCannotSpell(t *testing.T) {
+	stored := storedEntityWithARegexRule()
+	merged := mergeDeclaredOntoStoredEntity(stored, declaredEntity("Name", "Code"), &ast.CreateEntityStmt{})
+
+	if len(merged.ValidationRules) != 1 || merged.ValidationRules[0].Type != "RegEx" {
+		t.Fatalf("the rewrite kept %+v, want the stored RegEx rule — `create or modify entity` "+
+			"has no spelling for one, so dropping it makes every re-run re-create it under "+
+			"fresh identities (ako/mxcli#556)", merged.ValidationRules)
+	}
+	if merged.ValidationRules[0].ID != "vr-regex" {
+		t.Errorf("the carried rule lost its identity: %q", merged.ValidationRules[0].ID)
+	}
+}
+
+// A MaxLength or EqualsTo rule does not survive the READ (the model carries no
+// payload type for it), so carrying it is what lets UpdateEntity REFUSE the
+// rewrite. Dropping it here is worse than refusing: the constraint is gone and
+// the build still passes.
+func TestMergeDeclaredOntoStoredEntity_KeepsAnUnreadableRuleSoTheWriteCanRefuse(t *testing.T) {
+	stored := storedEntityWithARule()
+	stored.ValidationRules = []*domainmodel.ValidationRule{{
+		BaseElement: model.BaseElement{ID: "vr-maxlength"},
+		AttributeID: "Fx.Probe.Code",
+		Type:        "MaxLength",
+	}}
+	merged := mergeDeclaredOntoStoredEntity(stored, declaredEntity("Name", "Code"), &ast.CreateEntityStmt{})
+	if len(merged.ValidationRules) != 1 {
+		t.Fatalf("a MaxLength rule was silently dropped by the rewrite (%d rules kept) — "+
+			"UpdateEntity's guard-don't-drop refusal never even sees it", len(merged.ValidationRules))
+	}
+}
+
+// The other half of the contract, and the control that a merge broken into
+// "keep everything stored" would fail: Required and Unique DO have a spelling,
+// so the statement stays authoritative about them. Omitting `not null` removes
+// the Required rule.
+func TestMergeDeclaredOntoStoredEntity_StatementStillOwnsRequiredAndUnique(t *testing.T) {
+	stored := storedEntityWithARegexRule()
+	stored.ValidationRules = append(stored.ValidationRules, &domainmodel.ValidationRule{
+		BaseElement: model.BaseElement{ID: "vr-required"},
+		AttributeID: "Fx.Probe.Name",
+		Type:        "Required",
+	})
+
+	merged := mergeDeclaredOntoStoredEntity(stored, declaredEntity("Name", "Code"), &ast.CreateEntityStmt{})
+
+	for _, vr := range merged.ValidationRules {
+		if vr.Type == "Required" {
+			t.Fatalf("omitting `not null` left the Required rule in place — the statement is " +
+				"authoritative about the rule types it can spell")
+		}
+	}
+	if len(merged.ValidationRules) != 1 {
+		t.Fatalf("kept %d rules, want only the RegEx one", len(merged.ValidationRules))
+	}
+}
+
+// A re-declared Required rule is taken from the STATEMENT, not carried — its
+// error message is part of what the statement says.
+func TestMergeDeclaredOntoStoredEntity_RedeclaredRequiredComesFromTheStatement(t *testing.T) {
+	stored := storedEntityWithARule()
+	stored.ValidationRules = []*domainmodel.ValidationRule{{
+		BaseElement:  model.BaseElement{ID: "vr-stored"},
+		AttributeID:  "Fx.Probe.Name",
+		Type:         "Required",
+		ErrorMessage: &model.Text{Translations: map[string]string{"en_US": "old message"}},
+	}}
+	declared := declaredEntity("Name", "Code")
+	declared.Attributes[0].ID = "attr-name"
+	declared.ValidationRules = []*domainmodel.ValidationRule{{
+		BaseElement:  model.BaseElement{ID: "vr-declared"},
+		AttributeID:  "attr-name",
+		Type:         "Required",
+		ErrorMessage: &model.Text{Translations: map[string]string{"en_US": "new message"}},
+	}}
+
+	merged := mergeDeclaredOntoStoredEntity(stored, declared, &ast.CreateEntityStmt{})
+	if len(merged.ValidationRules) != 1 {
+		t.Fatalf("kept %d rules, want 1", len(merged.ValidationRules))
+	}
+	if got := merged.ValidationRules[0].ErrorMessage.Translations["en_US"]; got != "new message" {
+		t.Errorf("the re-declared Required rule kept the stored message %q", got)
+	}
+}
+
+// A rule whose attribute this rewrite REMOVED must go with it, or it outlives
+// the attribute it constrains — CE1613, the same class reconcileDroppedIndexes
+// and pruneMemberAccessesForDroppedAttributes exist to prevent.
+func TestMergeDeclaredOntoStoredEntity_DropsARuleWhoseAttributeWentAway(t *testing.T) {
+	stored := storedEntityWithARegexRule()
+	merged := mergeDeclaredOntoStoredEntity(stored, declaredEntity("Name"), &ast.CreateEntityStmt{})
+	if len(merged.ValidationRules) != 0 {
+		t.Errorf("the rule on the dropped Code attribute survived: %+v", merged.ValidationRules)
+	}
+}
+
+// CONTROL for that, and the specialisation trap pruneMemberAccessesForDroppedAttributes
+// already paid for: a rule naming a member the entity does not own itself
+// (inherited, or an attribute the reader spelled differently) is kept unless the
+// STORED entity owned an attribute of that name and this rewrite removed it.
+func TestMergeDeclaredOntoStoredEntity_KeepsARuleNamingAMemberTheEntityDoesNotOwn(t *testing.T) {
+	stored := &domainmodel.Entity{
+		Name:              "ExportDocument",
+		GeneralizationRef: "System.FileDocument",
+		ValidationRules: []*domainmodel.ValidationRule{{
+			BaseElement: model.BaseElement{ID: "vr-inherited"},
+			AttributeID: "System.FileDocument.Name",
+			Type:        "RegEx",
+			Rule:        &domainmodel.RegexValidationRuleInfo{RegularExpressionQualifiedName: "Fx.P"},
+		}},
+	}
+	declared := &domainmodel.Entity{Name: "ExportDocument", GeneralizationRef: "System.FileDocument"}
+	merged := mergeDeclaredOntoStoredEntity(stored, declared, &ast.CreateEntityStmt{})
+	if len(merged.ValidationRules) != 1 {
+		t.Errorf("a rule on an inherited member was dropped by an entity that owns no attributes")
 	}
 }

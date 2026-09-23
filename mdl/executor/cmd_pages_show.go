@@ -24,6 +24,8 @@ func listPages(ctx *ExecContext, moduleName string) error {
 		return mdlerrors.NewBackend("list pages", err)
 	}
 
+	lang := describeDefaultLanguage(ctx)
+
 	// Collect rows
 	type row struct {
 		qualifiedName string
@@ -43,17 +45,7 @@ func listPages(ctx *ExecContext, moduleName string) error {
 		if moduleName == "" || modName == moduleName {
 			qualifiedName := modName + "." + p.Name
 			folderPath := h.BuildFolderPath(p.ContainerID)
-			title := ""
-			if p.Title != nil {
-				// Try to get English title first, then any available translation
-				title = p.Title.GetTranslation("en_US")
-				if title == "" {
-					for _, t := range p.Title.Translations {
-						title = t
-						break
-					}
-				}
-			}
+			title := pickTextTranslation(p.Title, lang)
 			url := p.URL
 
 			rows = append(rows, row{qualifiedName, modName, p.Name, p.Excluded, folderPath, title, url, len(p.Parameters)})

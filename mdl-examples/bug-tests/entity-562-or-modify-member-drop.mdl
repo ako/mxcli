@@ -1,0 +1,103 @@
+-- Bug test for ako/mxcli#562:
+-- CREATE OR MODIFY ENTITY drops attributes added by a later ALTER without
+-- saying so.
+--
+-- Reported shape: the entity is created in 01-domain-core.mdl and a calculated
+-- attribute added in 03-logic.mdl, because the microflow it calculates by does
+-- not exist until then. Re-running slice 01 ALONE rebuilt the entity from its
+-- own statement and dropped the attribute; `exec` reported only
+-- `Modified entity: …`, and it surfaced two slices later as
+--
+--   [error] [CE1613] "The selected attribute
+--   'ServiceCore.LithoSystem.OpenRequestCount' no longer exists." at Text 'dtOpen'
+--
+-- Two halves, and this script exercises both:
+--
+--   exec   prints `⚠ create or modify entity … drops 1 existing member(s) …`
+--          as it applies the statement (shipped earlier, see findings #24).
+--   check  reports MDL087 BEFORE anything is written — run it separately:
+--
+--            mxcli check mdl-examples/bug-tests/entity-562-or-modify-member-drop.mdl \
+--              -p app.mpr --references
+--
+--          against a project that ALREADY holds the attribute. MDL087 is a
+--          warning, so the run still exits 0.
+--
+-- Note MDL087 is a NET computation over the whole script: this file adds the
+-- attribute back (Step 4) and explicitly drops another (Step 5), so checking
+-- THIS file reports nothing. That is the point — re-running slice 01 on its own
+-- is what loses a member, not the full script.
+
+create module BugTest562;
+
+-- ============================================================================
+-- Step 1 — slice 01: the entity's own statement. It does NOT mention
+-- OpenRequestCount, because CALC_OpenRequestCount does not exist yet.
+-- ============================================================================
+
+@position(100,100)
+create or modify persistent entity BugTest562.LithoSystem (
+  Name: String(200),
+  SerialNumber: String(50),
+  Retired: Boolean
+);
+
+-- ============================================================================
+-- Step 2 — slice 03: the microflow, then the calculated attribute.
+-- ============================================================================
+
+create or modify microflow BugTest562.CALC_OpenRequestCount ($LithoSystem: BugTest562.LithoSystem)
+returns Integer as $Result
+begin
+  declare $Result Integer = 0;
+  return $Result;
+end;
+/
+
+alter entity BugTest562.LithoSystem
+  add attribute if not exists OpenRequestCount: Integer
+    calculated by BugTest562.CALC_OpenRequestCount;
+
+-- ============================================================================
+-- Step 3 — the bug: re-running slice 01 alone. Identical statement, and the
+-- attribute Step 2 added is not in it.
+--
+-- EXPECTED exec output (this is the fix; before it there was only
+-- `Modified entity:`):
+--
+--   ⚠ create or modify entity BugTest562.LithoSystem drops 1 existing
+--     member(s) not listed in this statement: OpenRequestCount
+--     They are removed from the entity; anything still bound to them
+--     (widgets, microflows) will fail the build with CE1613.
+--     To add attributes without disturbing the rest, use: alter entity
+--     BugTest562.LithoSystem add attribute <name>: <type>;
+-- ============================================================================
+
+@position(100,100)
+create or modify persistent entity BugTest562.LithoSystem (
+  Name: String(200),
+  SerialNumber: String(50),
+  Retired: Boolean
+);
+
+-- ============================================================================
+-- Step 4 — the incremental spelling the warning points at. Re-adding what
+-- Step 3 dropped leaves the entity whole, and is why MDL087 is net rather than
+-- per-statement: the two slices run in order lose nothing.
+-- ============================================================================
+
+alter entity BugTest562.LithoSystem
+  add attribute if not exists OpenRequestCount: Integer
+    calculated by BugTest562.CALC_OpenRequestCount;
+
+-- ============================================================================
+-- Step 5 — CONTROL: an explicit removal. `drop attribute` says what it does,
+-- so MDL087 must stay silent about Retired even though the member is gone.
+-- A pure before/after diff cannot tell this from the accident in Step 3.
+-- ============================================================================
+
+alter entity BugTest562.LithoSystem
+  drop attribute if exists Retired;
+
+describe entity BugTest562.LithoSystem;
+-- Expected: Name, SerialNumber and OpenRequestCount; no Retired.

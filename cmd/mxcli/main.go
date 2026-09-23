@@ -32,10 +32,22 @@ func main() {
 		fmt.Fprint(os.Stderr, warningBanner)
 	}
 
+	// Open the process session before cobra sees argv. Cobra validates a
+	// command's Args before any hook runs, so a session started from
+	// PersistentPreRun missed every run with the wrong number of arguments
+	// (ako/mxcli#633).
+	startSession(os.Args[1:])
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	// Close only on a normal return. A failure that exits through os.Exit —
+	// almost every one — leaves no session_end, and that absence is what
+	// `diag loop-report` reads as a non-zero exit. Closing here rather than in
+	// PersistentPostRun also covers --help and --version, which cobra answers
+	// before any hook and which would otherwise read as failed runs.
+	diaglog.CloseCurrent()
 }
 
 // shouldSuppressWarning checks if the warning should be suppressed

@@ -1,0 +1,52 @@
+-- ============================================================================
+-- ako/mxcli#600 — CREATE OR REPLACE LAYOUT replaced the unit under a new GUID
+-- ============================================================================
+--
+-- The last open piece of ako/mxcli#556. Running this file twice must leave the
+-- project byte-identical, so `git status` comes back clean.
+--
+-- `CREATE OR REPLACE LAYOUT` was DeleteLayout + CreateLayout with a freshly
+-- built layout, and a create goes through InsertUnit under a newly minted id.
+-- Measured on a blank Mendix 11.14.0 project, three identical re-runs of the
+-- statement below:
+--
+--   run 1  Replaced layout …  D mprcontents/8a/a3/8aa37ee1-….mxunit  ?? .../fd/6e/
+--   run 2  Replaced layout …  D mprcontents/fd/6e/fd6e9c96-….mxunit  ?? .../6d/2a/
+--   run 3  Replaced layout …  3 changed files
+--
+-- The whole .mxunit is renamed each run — a delete plus an untracked add, not
+-- churned bytes — so an MDL-generated project is not reviewable in version
+-- control. #556's storage-layer net cannot catch this: it keys on the unit id
+-- and this path re-mints it.
+--
+-- TWO things the control establishes, neither of which a build reports:
+--
+--   1. mxbuild does not care. With a real page bound to the churned layout,
+--      `mxcli docker check` is 0 errors on BOTH the churning and the fixed
+--      project. Pages resolve layouts by qualified NAME, not by unit GUID, so
+--      nothing dangles — the cost is reviewability, not correctness. (#556 says
+--      otherwise, tying this to #553 where the project stopped loading.)
+--   2. A foldered layout was moved back to the module root on every rewrite.
+--      There is no FOLDER clause on CREATE LAYOUT, so the rebuild always named
+--      the module root, and the insert applied it — the same defect #932 fixed
+--      for REST clients. Measured: `show layouts` Folder column goes Layouts ->
+--      (empty) on the unfixed build and stays Layouts on the fixed one. An
+--      in-place rewrite does not touch the unit's row, so it cannot happen.
+--
+-- After the fix, an identical re-run reports `Unchanged layout …` and a real
+-- edit reports `Replaced layout …` against the SAME .mxunit file.
+-- ============================================================================
+
+CREATE MODULE BugLayoutRewrite;
+
+CREATE OR REPLACE LAYOUT BugLayoutRewrite.Probe_Layout (
+  layouttype: 'Responsive'
+) {
+  scrollcontainer scrollContainer1 {
+    region top (Class: 'region-topbar') {
+    }
+    region center (Class: 'region-content') {
+      placeholder Main
+    }
+  }
+}

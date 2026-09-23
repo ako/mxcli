@@ -425,6 +425,9 @@ func (b *Builder) ExitAlterProjectSecurityStatement(ctx *parser.AlterProjectSecu
 		if roleCtx := ctx.IdentifierOrKeyword(); roleCtx != nil {
 			stmt.GuestUserRole = unquoteIdentifier(roleCtx.GetText())
 		}
+	} else if ctx.STRICT() != nil {
+		enabled := ctx.ON() != nil
+		stmt.StrictModeEnabled = &enabled
 	}
 
 	b.statements = append(b.statements, stmt)

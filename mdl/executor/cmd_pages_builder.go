@@ -51,18 +51,19 @@ type pageBuilder struct {
 	// Entity context for resolving short attribute names inside DataViews
 	entityContext string // Qualified entity name (e.g., "Module.Entity")
 
-	// Name of the variable the enclosing data widget is bound to, without the "$"
-	// (e.g. "Car" for `dataview dv (DataSource: $Car)`). Empty when the context
-	// object has no name of its own — a database/association/microflow source
-	// supplies a row object addressable only as $currentObject. Used to tell a
-	// SHOW_PAGE argument that names the context object from one that names
-	// something else, which mxcli cannot store; see cmd_pages_showpage_args.go.
-	contextVarName string
+	// What this point of the walk knows about the object a SHOW_PAGE widget
+	// action would bind its argument to: whether it is knowable at all, whether
+	// there is one, and what it is called. Used to tell an argument that names
+	// the context object from one that names something else — and from one
+	// written where no context object exists at all, which mxcli cannot store
+	// either. See cmd_pages_showpage_args.go.
+	argCtx pageArgContext
 
-	// True once the walk has entered a data-bound widget, so contextVarName is
-	// meaningful. False means the context object is unknown (ALTER PAGE builds an
-	// action without traversing the stored page), not that it has no name.
-	contextKnown bool
+	// Name of the widget currently being built, so a refusal names the control
+	// the author has to go and fix. The check-time mirror gets it from the AST
+	// node it is looking at; the builder's action path is several calls deep and
+	// would otherwise say only "this widget".
+	currentWidget string
 
 	// Local page/snippet variables (Variables: { $name: Type = 'default' }).
 	// Used to distinguish a $localVar reference from a page parameter when

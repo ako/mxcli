@@ -28,9 +28,14 @@ func brokenCatalogDB(t *testing.T) catalog.CatalogDB {
 		`CREATE TABLE entities (Id TEXT, Name TEXT, QualifiedName TEXT, ModuleName TEXT,
 			Folder TEXT, EntityType TEXT, Description TEXT, Generalization TEXT,
 			AttributeCount INTEGER, AccessRuleCount INTEGER, ValidationRuleCount INTEGER,
-			HasEventHandlers INTEGER, IsExternal INTEGER)`,
+			HasEventHandlers INTEGER, IsExternal INTEGER,
+			HasCreatedDate INTEGER, HasChangedDate INTEGER,
+			HasOwner INTEGER, HasChangedBy INTEGER)`,
 		`INSERT INTO modules VALUES ('ModA', '')`,
-		`INSERT INTO entities VALUES ('e1','E','ModA.E','ModA','','PERSISTENT','','',0,0,0,0,0)`,
+		`INSERT INTO entities (Id, Name, QualifiedName, ModuleName, Folder, EntityType,
+		    Description, Generalization, AttributeCount, AccessRuleCount,
+		    ValidationRuleCount, HasEventHandlers, IsExternal)
+		 VALUES ('e1','E','ModA.E','ModA','','PERSISTENT','','',0,0,0,0,0)`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			t.Fatalf("exec %s: %v", q, err)

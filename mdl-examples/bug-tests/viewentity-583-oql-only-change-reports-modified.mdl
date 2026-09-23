@@ -1,0 +1,71 @@
+-- ako/mxcli#583 — `CREATE OR MODIFY VIEW ENTITY` that changes ONLY the OQL
+-- printed `Unchanged view entity: …` while the new query WAS stored.
+--
+-- The OQL lives in a separate DomainModels$ViewEntitySourceDocument unit. The
+-- executor deleted that unit and inserted a fresh one on every write, and an
+-- InsertUnit is not one of the choke points WriteStats counts — so the elision
+-- check saw the (genuinely unchanged) domain-model unit, saw no counted write,
+-- and downgraded the verb. `describe entity` showed the new query all along.
+--
+-- Two things this file demonstrates, and the second is the control:
+--
+--   statement 3 changes only the OQL          -> must report Modified
+--   statement 4 is byte-identical to 3        -> must report Unchanged
+--
+-- Without the control a fix is indistinguishable from deleting the downgrade.
+-- Run with `mxcli exec` and read the verbs; `mxcli docker check` must be 0 errors.
+--
+-- The same fix stops the unit being replaced under a new GUID on every run,
+-- which is one of the four units #556 measured as un-reviewable in git.
+
+create module Ve583;
+
+create persistent entity Ve583.Meter (MeterName: String(100));
+create persistent entity Ve583.Reading (Kwh: Decimal);
+create association Ve583.Reading_Meter from Ve583.Reading to Ve583.Meter type reference;
+
+-- 1. Created.
+create or modify view entity Ve583.Totals (
+  TotalKwh: Decimal
+) as (
+  from Ve583.Reading as r
+  join r/Ve583.Reading_Meter/Ve583.Meter as m
+  group by m.MeterName
+  select sum(r.Kwh) as TotalKwh
+);
+
+-- 2. Attribute list AND query change: reported Modified even before the fix,
+--    because the domain-model unit changed. Here to keep the two cases apart.
+create or modify view entity Ve583.Totals (
+  TotalKwh: Decimal,
+  ReadingCount: Integer
+) as (
+  from Ve583.Reading as r
+  join r/Ve583.Reading_Meter/Ve583.Meter as m
+  group by m.MeterName
+  select sum(r.Kwh) as TotalKwh, count(r.ID) as ReadingCount
+);
+
+-- 3. ONLY the query changes — the bug. Must report Modified.
+create or modify view entity Ve583.Totals (
+  TotalKwh: Decimal,
+  ReadingCount: Integer
+) as (
+  from Ve583.Reading as r
+  join r/Ve583.Reading_Meter/Ve583.Meter as m
+  where r.Kwh > 0
+  group by m.MeterName
+  select sum(r.Kwh) as TotalKwh, count(r.ID) as ReadingCount
+);
+
+-- 4. The control: identical to 3. Must report Unchanged.
+create or modify view entity Ve583.Totals (
+  TotalKwh: Decimal,
+  ReadingCount: Integer
+) as (
+  from Ve583.Reading as r
+  join r/Ve583.Reading_Meter/Ve583.Meter as m
+  where r.Kwh > 0
+  group by m.MeterName
+  select sum(r.Kwh) as TotalKwh, count(r.ID) as ReadingCount
+);

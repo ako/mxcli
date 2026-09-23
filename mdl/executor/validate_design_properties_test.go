@@ -47,7 +47,7 @@ func TestAstDesignPropToValue_Typed(t *testing.T) {
 		{"Unknown Key", "x", "option"},         // not in registry → default option
 	}
 	for _, c := range cases {
-		dp, ok := astDesignPropToValue(ast.DesignPropertyEntryV3{Key: c.key, Value: c.val}, props)
+		dp, ok := mustDesignPropValue(t, ast.DesignPropertyEntryV3{Key: c.key, Value: c.val}, props)
 		if !ok {
 			t.Fatalf("%s: expected ok", c.key)
 		}
@@ -56,14 +56,14 @@ func TestAstDesignPropToValue_Typed(t *testing.T) {
 		}
 	}
 	// on/off still map to toggle/skip regardless of metadata.
-	if dp, ok := astDesignPropToValue(ast.DesignPropertyEntryV3{Key: "Card style", Value: "on"}, props); !ok || dp.ValueType != "toggle" {
+	if dp, ok := mustDesignPropValue(t, ast.DesignPropertyEntryV3{Key: "Card style", Value: "on"}, props); !ok || dp.ValueType != "toggle" {
 		t.Errorf("on → toggle, got %+v ok=%v", dp, ok)
 	}
-	if _, ok := astDesignPropToValue(ast.DesignPropertyEntryV3{Key: "Card style", Value: "off"}, props); ok {
+	if _, ok := mustDesignPropValue(t, ast.DesignPropertyEntryV3{Key: "Card style", Value: "off"}, props); ok {
 		t.Error("off should be skipped")
 	}
 	// Without metadata the flat default stays option (backward compatible).
-	if dp, _ := astDesignPropToValue(ast.DesignPropertyEntryV3{Key: "Text alignment", Value: "Center"}, nil); dp.ValueType != "option" {
+	if dp, _ := mustDesignPropValue(t, ast.DesignPropertyEntryV3{Key: "Text alignment", Value: "Center"}, nil); dp.ValueType != "option" {
 		t.Errorf("no metadata → option, got %q", dp.ValueType)
 	}
 }

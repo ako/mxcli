@@ -3,8 +3,12 @@
 package modelsdkbackend
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
 	"github.com/mendixlabs/mxcli/modelsdk/element"
+	genDm "github.com/mendixlabs/mxcli/modelsdk/gen/domainmodels"
 	genPg "github.com/mendixlabs/mxcli/modelsdk/gen/pages"
 	"github.com/mendixlabs/mxcli/sdk/pages"
 )
@@ -69,7 +73,7 @@ func dropDownToGen(dd *pages.DropDown) (element.Element, error) {
 	g := genPg.NewDropDown()
 	applyWidgetBase(g, &dd.BaseWidget)
 	g.SetAriaRequired(false)
-	if ref := attributeRefToGen(dd.AttributePath); ref != nil {
+	if ref := inputAttributeRefToGen(dd.AttributePath, dd.AttributeRefSteps); ref != nil {
 		g.SetAttributeRef(ref)
 	}
 	g.SetEditable(pages.WidgetEditability(&dd.BaseWidget))
@@ -93,11 +97,16 @@ func dropDownToGen(dd *pages.DropDown) (element.Element, error) {
 
 // staticImageToGen builds a Forms$StaticImageViewer.
 //
-// Deprecated in the Mendix 11 React client (CE0582) — `image` routes to the
-// pluggable widget instead — but `staticimage` is still a keyword the executor
-// dispatches, so the writer has to answer for it. Unlike `statictext` the TYPE
-// exists: the project loads, and CE0582 is Mendix's own advice rather than a
-// defect, so refusing it would be over-reach.
+// Not supported by the React client — which Mendix added in 10.7 and which is the
+// only client on 11 — so mxbuild reports CE0582 wherever that client is enabled,
+// and `image` routes to the pluggable widget instead.
+//
+// `staticimage` is still a keyword the executor dispatches, so the writer has to
+// answer for it. Unlike `statictext` the TYPE exists: the project loads, and
+// CE0582 is Mendix's own advice rather than a defect, so refusing it would be
+// over-reach. `mxcli lint` reports the widget as MPR012 instead, which is where
+// a deprecation belongs — a `check` warning would fire on every legitimate
+// describe -> exec of a legacy page.
 func staticImageToGen(img *pages.StaticImage) (element.Element, error) {
 	g := genPg.NewStaticImageViewer()
 	applyWidgetBase(g, &img.BaseWidget)
@@ -107,15 +116,35 @@ func staticImageToGen(img *pages.StaticImage) (element.Element, error) {
 		return nil, err
 	}
 	g.SetClickAction(click)
-	// MDL cannot name an image (the builder never fills ImageID), so this is
-	// always the unset value — and unset is "", not null; see the header.
-	g.SetImageQualifiedName("")
+	// Which image is shown, as the qualified name of an image-collection entry
+	// (Module.Collection.Image). Unset is "", not null; see the header. MDL had
+	// no spelling for this at all until mendixlabs/mxcli#1057, so a
+	// describe -> exec of a page carrying one silently emptied the widget.
+	g.SetImageQualifiedName(img.ImageName)
 	g.SetHeight(int32(img.Height))
-	g.SetHeightUnit("Auto")
+	// The units were hardcoded to "Auto", so a pixel-sized image came back
+	// auto-sized on any rewrite. Auto is Studio Pro's default and stays the
+	// value for an unset field, so nothing an existing script writes changes.
+	g.SetHeightUnit(imageSizeUnit(img.HeightUnit))
 	g.SetResponsive(img.Responsive)
 	g.SetWidth(int32(img.Width))
-	g.SetWidthUnit("Auto")
+	g.SetWidthUnit(imageSizeUnit(img.WidthUnit))
 	return g, nil
+}
+
+// imageSizeUnit maps a semantic width/height unit onto the Pages$WidthUnit /
+// Pages$HeightUnit member Mendix stores, defaulting to Studio Pro's "Auto".
+// Validating rather than passing the string through: an unknown member is the
+// enum trap CLAUDE.md names ("SettingsDatabaseType is Hsqldb, never HSQLDB").
+func imageSizeUnit(u pages.WidthUnit) string {
+	switch strings.ToLower(string(u)) {
+	case "pixels":
+		return "Pixels"
+	case "percentage":
+		return "Percentage"
+	default:
+		return "Auto"
+	}
 }
 
 // dynamicImageToGen builds a Forms$ImageViewer — gen calls the type
@@ -129,24 +158,70 @@ func dynamicImageToGen(img *pages.DynamicImage) (element.Element, error) {
 		return nil, err
 	}
 	g.SetClickAction(click)
-	g.SetDataSource(imageViewerSourceToGen())
-	g.SetDefaultImageQualifiedName("")
+	// The entity holding the image. Bound to nothing, mxbuild refuses the widget
+	// with CE0489 "Select an entity for the data source of this dynamic image",
+	// so this is the difference between a widget that builds and one that does
+	// not — not a fidelity nicety.
+	source, err := imageViewerSourceToGen(img.DataSource)
+	if err != nil {
+		return nil, err
+	}
+	g.SetDataSource(source)
+	// The fallback image, as the qualified name of an image-collection entry.
+	// Unset is "", not null; see the header.
+	g.SetDefaultImageQualifiedName(img.DefaultImageName)
 	g.SetHeight(int32(img.Height))
-	g.SetHeightUnit("Auto")
-	g.SetOnClickEnlarge(false)
+	g.SetHeightUnit(imageSizeUnit(img.HeightUnit))
+	g.SetOnClickEnlarge(img.OnClickEnlarge)
 	g.SetResponsive(img.Responsive)
-	g.SetShowAsThumbnail(false)
+	g.SetShowAsThumbnail(img.ShowAsThumbnail)
 	g.SetWidth(int32(img.Width))
-	g.SetWidthUnit("Auto")
+	g.SetWidthUnit(imageSizeUnit(img.WidthUnit))
 	return g, nil
 }
 
-// imageViewerSourceToGen builds the empty Forms$ImageViewerSource a dynamic
-// image carries when no entity path has been set.
-func imageViewerSourceToGen() element.Element {
+// imageViewerSourceToGen builds the Forms$ImageViewerSource a dynamic image
+// binds through. The source names an ENTITY and nothing else: unlike its
+// list-widget siblings it declares no XPath constraint and no sort bar, so only
+// an entity-backed source has anywhere to go here.
+//
+// Its EntityRef is a DomainModels$DirectEntityRef{Entity: "Module.Entity"} —
+// pinned to Studio Pro at 20 of 20 instances in a blank 11.12.1 app — and it is
+// the element mxbuild's CE0489 is asking for.
+//
+// A NIL source yields the bare element. That is what mxcli wrote for every
+// dynamic image until now and what mxbuild flags as CE0489, and it stays the
+// behaviour on purpose: describe emits no DataSource clause for a stored widget
+// that has none, so refusing here would make describe -> exec fail on a model
+// that already exists (guard-don't-drop, ADR-0005).
+//
+// Any OTHER source is refused rather than ignored. Forms$ImageViewerSource has
+// no slot for a microflow, a nanoflow or an association, and the metamodel's
+// context-path variants (EntityPath / SourceVariable) have no Studio Pro
+// reference here to pin them against. Writing the holder without them would
+// produce CE0489 — a message that says the author forgot the source when they
+// did not — so the gap is named at the point it is hit instead.
+func imageViewerSourceToGen(ds pages.DataSource) (element.Element, error) {
 	src := genPg.NewImageViewerSource()
 	assignID(src)
-	return src
+	src.SetForceFullObjects(false)
+	switch d := ds.(type) {
+	case nil:
+		return src, nil
+	case *pages.DatabaseSource:
+		if d.EntityName != "" {
+			ref := genDm.NewDirectEntityRef()
+			assignID(ref)
+			ref.SetEntityQualifiedName(d.EntityName)
+			src.SetEntityRef(ref)
+		}
+		return src, nil
+	default:
+		return nil, fmt.Errorf("dynamicimage: a %T data source cannot be stored on a "+
+			"Forms$ImageViewerSource, which holds an entity and nothing else — use "+
+			"`DataSource: database from Module.Entity` naming the entity that holds "+
+			"the image", ds)
+	}
 }
 
 // nanoflowSourceToGen builds a Forms$NanoflowSource — a list widget's "nanoflow"

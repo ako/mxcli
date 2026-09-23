@@ -428,3 +428,17 @@ trusting them from memory, and note that the listing name never matches the modu
   error with a login hint.
 - Marketplace CDN TLS handshakes time out occasionally. Retry once before reporting a
   failure.
+
+## Platform authentication (`mxcli auth login/logout/status/list`) with PAT scheme for marketplace-api
+
+Platform authentication (`mxcli auth login/logout/status/list`) with PAT scheme for marketplace-api.mendix.com, marketplace.mendix.com, and catalog.mendix.com; credentials stored at ~/.mxcli/auth.json (mode 0600), MENDIX_PAT env override
+
+## Marketplace download/install (`mxcli marketplace download/install`) — the content API now exposes a per-version downloadUrl (303→public CDN); install is type-aware (widget→widgets/, new module→`mx module-import`); existing-module updates are reported, not applied (entity-ID/local-edit safety — see PROPOSAL_marketplace_modules
+
+Marketplace download/install (`mxcli marketplace download/install`) — the content API now exposes a per-version downloadUrl (303→public CDN); install is type-aware (widget→widgets/, new module→`mx module-import`); existing-module updates are reported, not applied (entity-ID/local-edit safety — see PROPOSAL_marketplace_modules.md)
+
+## Marketplace drift detection (`mxcli marketplace diff <content-id> -p app.mpr [--to VERSION] [--json]`)
+
+reports **which elements of an installed marketplace module have been edited locally** — the question Studio Pro's Marketplace update never asks before replacing the module. The version's `.mpk` is downloaded and imported into a throwaway reference project built **at the consuming project's Mendix version** (a mismatch is refused, not warned about: Mendix's own conversions would read as user edits), then every element is described on both sides and the **DESCRIBE output** compared — not BSON, in which an *untouched* module differs from its own package in ~15,000 paths. `--to` adds what an upgrade would touch and which of those collide with local edits. Honesty rule: an element that cannot be described is reported **unknown, never unchanged**, and `verified:false` in the JSON means "no modifications found" is not a conclusion. Module + version are identified from the module's `AppStoreGuid`, which is the marketplace **version UUID** — matching on the version *number* is ambiguous (a blank project has Atlas_Web_Content 4.1.0 and Administration's content also published a 4.1.0). Measured on real content: Administration 4.3.2 in a blank 11.12.1 app → 21/21 unchanged; one added attribute → exactly `ENTITY Account`; `--to 4.3.2` (the installed version) touches nothing, which is the control for `--to 4.5.0`'s five. Package: `cmd/mxcli/marketplace/`. See `docs/11-proposals/PROPOSAL_marketplace_module_upgrade.md`
+
+**Not Yet Implemented:**

@@ -484,7 +484,7 @@ func mergeDeclaredOntoStoredEntity(stored, declared *domainmodel.Entity, s *ast.
 	merged.Persistable = declared.Persistable
 	merged.Location = declared.Location
 	merged.Attributes = declared.Attributes
-	merged.ValidationRules = declared.ValidationRules
+	merged.ValidationRules = mergeValidationRules(stored, declared)
 	merged.Indexes = declared.Indexes
 	merged.EventHandlers = declared.EventHandlers
 	merged.HasOwner = declared.HasOwner
@@ -524,7 +524,6 @@ var entityFieldsDeclaredByStatement = map[string]bool{
 	"Location":          true,
 	"Persistable":       true,
 	"Attributes":        true,
-	"ValidationRules":   true,
 	"Indexes":           true,
 	"EventHandlers":     true,
 	"HasOwner":          true,
@@ -537,6 +536,153 @@ var entityFieldsDeclaredByStatement = map[string]bool{
 	// ContainerID and the embedded BaseElement identify the stored element, so
 	// they are preserved. `entity.ID = existingEntity.ID` at the call site says
 	// the same thing about the ID; the merge is where it now comes from.
+	//
+	// ValidationRules is in neither group — see entityFieldsMergedWithStored.
+}
+
+// entityFieldsMergedWithStored names the fields the statement is authoritative
+// about only IN PART, so neither "take the declared value" nor "keep the stored
+// one" is right and the merge has to decide per element.
+//
+// There is exactly one, and it earned its place: the entity body can spell
+// `not null` and `unique` and nothing else, so it declares Required and Unique
+// rules and says nothing at all about RegEx, Range, MaxLength or EqualsTo —
+// which are authored by `create validation rule`, a separate statement.
+// Overwriting the whole list deleted those on every rewrite (ako/mxcli#556).
+//
+// A field listed here is exempt from the value check in
+// TestMergeDeclaredOntoStoredEntity_EveryFieldHasADecision, so adding one means
+// writing the tests for its semantics by hand.
+var entityFieldsMergedWithStored = map[string]bool{
+	"ValidationRules": true,
+}
+
+// mergeValidationRules keeps the rules the entity body cannot express and lets
+// the statement own the ones it can.
+//
+// `create [or modify] entity` authors exactly two rule types — Required from
+// `not null` and Unique from `unique` — so for those an omission is a removal,
+// the same contract an omitted attribute has. Every other type (RegEx, Range,
+// and the MaxLength/EqualsTo that do not survive the read at all) has no
+// spelling in the statement, so an omission carries no meaning and the stored
+// rule stands.
+//
+// Dropping them was not merely lossy, it churned: the following
+// `create validation rule` statement put an identically-shaped rule back under
+// four fresh element identities, so an idempotent script reported
+// `Modified entity: …` forever and the unit never came back byte-identical
+// (ako/mxcli#556, measured at 62 differing bytes in a 1,368-byte unit).
+//
+// Carrying a MaxLength or EqualsTo rule matters for a second reason: the model
+// carries no payload for either, so it is UpdateEntity's refusal — not this
+// function — that must see it. Dropping it here skipped the guard entirely and
+// turned "mxcli will not rewrite this entity" into a silent loss of the
+// constraint that no build reports (guard-don't-drop, ADR-0005).
+//
+// Stored order is kept, with a re-declared Required/Unique rule taking the
+// stored one's position, so the rewrite is a minimal diff rather than a
+// reshuffle.
+func mergeValidationRules(stored, declared *domainmodel.Entity) []*domainmodel.ValidationRule {
+	attrNameByID := make(map[model.ID]string, len(declared.Attributes))
+	declaredAttrNames := make(map[string]bool, len(declared.Attributes))
+	for _, a := range declared.Attributes {
+		if a == nil {
+			continue
+		}
+		attrNameByID[a.ID] = a.Name
+		declaredAttrNames[a.Name] = true
+	}
+	storedAttrNames := make(map[string]bool, len(stored.Attributes))
+	for _, a := range stored.Attributes {
+		if a != nil {
+			storedAttrNames[a.Name] = true
+		}
+	}
+
+	declaredBySlot := make(map[string]*domainmodel.ValidationRule, len(declared.ValidationRules))
+	for _, vr := range declared.ValidationRules {
+		if vr == nil {
+			continue
+		}
+		declaredBySlot[validationRuleSlot(vr, attrNameByID)] = vr
+	}
+
+	out := make([]*domainmodel.ValidationRule, 0, len(stored.ValidationRules)+len(declared.ValidationRules))
+	taken := make(map[*domainmodel.ValidationRule]bool, len(declared.ValidationRules))
+	for _, vr := range stored.ValidationRules {
+		if vr == nil {
+			continue
+		}
+		// A rule may only be dropped on POSITIVE evidence that this rewrite
+		// removed its attribute: the stored entity owned one of that name and the
+		// rebuilt one does not. "Not among the declared attributes" is the wrong
+		// predicate and wrong in the direction that loses data — an entity's rules
+		// can name INHERITED members, which never appear in its own Attributes
+		// list, and an entity that owns no attributes at all would lose every rule.
+		// (The same trap cost a day in pruneMemberAccessesForDroppedAttributes.)
+		name := validationRuleAttributeName(vr, attrNameByID)
+		if storedAttrNames[name] && !declaredAttrNames[name] {
+			continue
+		}
+		if !entityBodyDeclaresRuleType(vr.Type) {
+			out = append(out, vr)
+			continue
+		}
+		if d, ok := declaredBySlot[validationRuleSlot(vr, attrNameByID)]; ok && !taken[d] {
+			taken[d] = true
+			out = append(out, d)
+		}
+	}
+	for _, vr := range declared.ValidationRules {
+		if vr == nil || taken[vr] {
+			continue
+		}
+		out = append(out, vr)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// entityBodyDeclaresRuleType reports whether `create [or modify] entity` has a
+// spelling for this rule type, and so is authoritative about its presence.
+//
+// The empty string is Required: a rule whose RuleInfo the reader could not name
+// is written back as RequiredRuleInfo (ruleInfoToGen's `case "Required", ""`),
+// so treating it as anything else here would let the same rule be both carried
+// and re-declared.
+func entityBodyDeclaresRuleType(t string) bool {
+	return t == "Required" || t == "Unique" || t == ""
+}
+
+// validationRuleSlot identifies the (attribute, rule type) pair a rule occupies.
+// Mendix allows one rule of a type per attribute, so this is what decides that a
+// declared rule REPLACES a stored one rather than joining it.
+func validationRuleSlot(vr *domainmodel.ValidationRule, attrNameByID map[model.ID]string) string {
+	t := vr.Type
+	if t == "" {
+		t = "Required"
+	}
+	return validationRuleAttributeName(vr, attrNameByID) + "\x00" + t
+}
+
+// validationRuleAttributeName resolves the attribute a rule constrains, across
+// the two spellings the field carries.
+//
+// The modelsdk reader puts a QUALIFIED NAME in AttributeID (validationRuleFromGen
+// — the writer accepts either and this is the lossless one), while a rule the
+// executor just built from the statement holds a real attribute ID. Reading only
+// one would make this function a no-op on half its inputs.
+func validationRuleAttributeName(vr *domainmodel.ValidationRule, attrNameByID map[model.ID]string) string {
+	s := string(vr.AttributeID)
+	if i := strings.LastIndex(s, "."); i >= 0 {
+		return s[i+1:]
+	}
+	if n, ok := attrNameByID[vr.AttributeID]; ok {
+		return n
+	}
+	return s
 }
 
 // pruneMemberAccessesForDroppedAttributes removes the member entries of the
@@ -666,42 +812,15 @@ func isViewEntity(e *domainmodel.Entity) bool {
 
 // droppedEntityMembers reports the members present on existing but absent from
 // replacement — i.e. what a CREATE OR MODIFY replace would delete. Named
-// attributes are compared case-insensitively; the four audit system fields are
-// reported when their flag is on in existing but off in replacement. Used to
-// surface accidental data loss (findings #24).
+// attributes are compared case-insensitively; the four audit system fields and
+// the generalization are reported when existing carries one and replacement does
+// not. Used to surface accidental data loss (findings #24).
+//
+// The comparison itself lives in droppedMembers, shared with the check-time
+// MDL087 pass (ako/mxcli#562). Two hand-written diffs at two layers is how the
+// audit fields came to be covered by one and not the other.
 func droppedEntityMembers(existing, replacement *domainmodel.Entity) []string {
-	keep := make(map[string]bool, len(replacement.Attributes))
-	for _, a := range replacement.Attributes {
-		keep[strings.ToLower(a.Name)] = true
-	}
-	var dropped []string
-	for _, a := range existing.Attributes {
-		if !keep[strings.ToLower(a.Name)] {
-			dropped = append(dropped, a.Name)
-		}
-	}
-	// Audit system fields that were enabled and are no longer requested are also
-	// removed by the replace.
-	if existing.HasOwner && !replacement.HasOwner {
-		dropped = append(dropped, "owner (system field)")
-	}
-	if existing.HasChangedBy && !replacement.HasChangedBy {
-		dropped = append(dropped, "changedBy (system field)")
-	}
-	if existing.HasCreatedDate && !replacement.HasCreatedDate {
-		dropped = append(dropped, "createdDate (system field)")
-	}
-	if existing.HasChangedDate && !replacement.HasChangedDate {
-		dropped = append(dropped, "changedDate (system field)")
-	}
-	// An omitted EXTENDS un-inherits the entity, which is a bigger change than a
-	// dropped attribute and was the only one of these that happened in silence.
-	// It is reported rather than preserved because there is no "extends nothing"
-	// spelling, so preserving it would make an inheritance impossible to remove.
-	if existing.GeneralizationRef != "" && replacement.GeneralizationRef == "" {
-		dropped = append(dropped, "extends "+existing.GeneralizationRef+" (generalization)")
-	}
-	return dropped
+	return droppedMembers(memberSetFromEntity(existing), memberSetFromEntity(replacement))
 }
 
 // execCreateViewEntity handles CREATE VIEW ENTITY statements.
@@ -802,15 +921,15 @@ func execCreateViewEntity(ctx *ExecContext, s *ast.CreateViewEntityStmt) error {
 		location = model.Point{X: 100 + len(dm.Entities)*150, Y: 100}
 	}
 
-	// Create or update ViewEntitySourceDocument (separate document for OQL query)
+	// Create or update ViewEntitySourceDocument (separate document for OQL query).
+	// Written IN PLACE: this used to delete the stored document and insert a fresh
+	// one every time, which replaced the unit under a new GUID on every run and
+	// made `exec` report `Unchanged view entity` for a statement that had just
+	// rewritten the OQL — an insert is not a counted write, so the elision check
+	// saw only the (genuinely unchanged) domain-model unit (ako/mxcli#583).
+	// Duplicate documents, which the delete existed to clear, are still removed.
 	sourceDocRef := s.Name.Module + "." + s.Name.Name
-	// Always delete any existing ViewEntitySourceDocument before creating a new one.
-	// This prevents duplicate OQL documents from accumulating (e.g., from re-running
-	// scripts or after a previous DROP that didn't clean up properly).
-	if err := ctx.Backend.DeleteViewEntitySourceDocumentByName(s.Name.Module, s.Name.Name); err != nil {
-		return mdlerrors.NewBackend("delete existing ViewEntitySourceDocument", err)
-	}
-	_, err = ctx.Backend.CreateViewEntitySourceDocument(
+	_, err = ctx.Backend.WriteViewEntitySourceDocument(
 		module.ID,
 		s.Name.Module,
 		s.Name.Name,
@@ -818,7 +937,7 @@ func execCreateViewEntity(ctx *ExecContext, s *ast.CreateViewEntityStmt) error {
 		s.Documentation,
 	)
 	if err != nil {
-		return mdlerrors.NewBackend("create ViewEntitySourceDocument", err)
+		return mdlerrors.NewBackend("write ViewEntitySourceDocument", err)
 	}
 
 	// Create view attributes with OqlViewValue references.

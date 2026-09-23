@@ -1,0 +1,40 @@
+-- `jump to <activity>` inside a boundary-event body (mendixlabs/mxcli#1024).
+--
+-- Reported against v0.20.0 / Mendix 11.14.0: `check --references` clean, `exec`
+-- written, DESCRIBE reads back `jump to A;`, then native `mx check`:
+--
+--   [error] [CE0495] "Duplicate name 'A'." at User task 'A', Jump 'A'
+--   [error] [CE6680] "The 'Target' property is required." at Jump 'A'
+--
+-- The jump was NAMED after its target instead of only targeting it. Same root
+-- cause as #1005, fixed by 825873d6 (a jump is now named JumpTo, and jumps are
+-- deduplicated last); v0.20.0 predates that commit. Measured on 11.14.0: the
+-- commit before 825873d6 reproduces both errors verbatim, 825873d6 and main give
+-- 0 errors. An interrupting boundary event's path must end in `end workflow` or
+-- `jump to`, so this is the only way to author one that loops back.
+--
+-- Verify on a blank project (`mxcli new … --version 11.14.0`):
+--   mxcli exec mdl-examples/bug-tests/1024-boundary-event-jump-to.mdl -p app.mpr
+--   mxcli docker check -p app.mpr   → 0 errors
+
+create module Probe;
+create persistent entity Probe.Ctx ( Code: string(50) );
+
+create page Probe."WF_TaskPage" (
+  params: { $Task: System.WorkflowUserTask },
+  title: 'Task', layout: Atlas_Core.Atlas_Default
+) {
+  layoutgrid g { row r { column c (desktopwidth: 12) {
+    dataview dv (datasource: $Task) { textbox tb (attribute: Name, label: 'Task') }
+  } } }
+};
+
+create workflow Probe.WF_BoundaryJump
+  parameter $WorkflowContext: Probe.Ctx
+begin
+  user task A 'A' page Probe.WF_TaskPage outcomes 'Done' { }
+    boundary event interrupting timer 'addDays([%CurrentDateTime%], 3)' { jump to A; };
+
+  wait for notification B
+    boundary event interrupting timer 'addDays([%CurrentDateTime%], 1)' { jump to A; };
+end workflow;

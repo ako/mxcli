@@ -65,6 +65,28 @@ mxcli marketplace install 2888 --version 7.0.3 -p app.mpr   # a module
 | **Module** (already present) | **Reported, not modified** — see below. |
 | Theme / Starter App / Sample | Downloaded to disk with import instructions (import via Studio Pro). |
 
+### Installing a `.mpk` you already have (`--file`)
+
+Not every package comes from the marketplace: an internal or company-standard module handed
+over as a file, a theme module, a package fetched earlier with `download`, or a CI job with no
+token. `--file` installs such a package through the same writer as an online install, with no
+marketplace lookup and no PAT:
+
+```bash
+mxcli marketplace install --file ./CompanyTheme.mpk -p app.mpr
+```
+
+The kind is read from the package's own `package.xml` — a module goes through the transplant
+writer (storage format preserved, theme modules included), a widget lands in `widgets/`.
+Anything else is refused rather than guessed at. A module installed this way carries **no
+marketplace version stamp**, because it has none: `update` and `diff` will report that no
+marketplace content is installed under it, which is the truth.
+
+The reference project the writer builds is still created with `mx` at the project's Mendix
+version, so a package that `mx` itself cannot open — one exported from a Studio Pro further back
+than the version window `mx module-import` accepts — is refused with `mx`'s own message. Convert
+it once with `mx convert` on a toolset whose window covers it, then `--file` the result.
+
 ### The latest version is often not installable
 
 New releases are published against the newest Studio Pro patch within days of it shipping, and `install` with no `--version` resolves to the latest — so on a project that is not on the very newest patch, the default is routinely the one version that cannot be imported. Measured on an 11.12.1 project: the latest release of all six agent-editor stack modules required 11.12.2, published five days earlier.

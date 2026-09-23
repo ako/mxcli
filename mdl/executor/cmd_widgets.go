@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
+	"github.com/mendixlabs/mxcli/mdl/backend"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/model"
 )
@@ -113,22 +114,50 @@ func execUpdateWidgets(ctx *ExecContext, s *ast.UpdateWidgetsStmt) error {
 	}
 
 	// Process each container
-	totalUpdated := 0
+	var total updateOutcome
 	for containerID, widgetRefs := range containers {
-		updated, err := updateWidgetsInContainer(ctx, containerID, widgetRefs, s.Assignments, s.DryRun)
+		outcome, err := updateWidgetsInContainer(ctx, containerID, widgetRefs, s.Assignments, s.DryRun)
 		if err != nil {
 			fmt.Fprintf(ctx.Output, "Warning: Failed to update widgets in %s: %v\n", containerID, err)
 			continue
 		}
-		totalUpdated += updated
+		total.add(outcome)
+	}
+
+	verb := "Updated"
+	if s.DryRun {
+		verb = "[dry run] Would update"
+	}
+	fmt.Fprintf(ctx.Output, "\n%s %d widget(s)\n", verb, total.WidgetsChanged)
+	// Name the two ways a matched widget is not an updated one, so a run that
+	// changed less than it matched says so rather than rounding to the headline.
+	if total.WidgetsUnchanged > 0 {
+		fmt.Fprintf(ctx.Output, "%d widget(s) matched but had no property that could be set\n",
+			total.WidgetsUnchanged)
+	}
+	if total.WidgetsMissing > 0 {
+		fmt.Fprintf(ctx.Output, "%d widget(s) are in the catalog but not in the document — "+
+			"run 'refresh catalog full force' and try again\n", total.WidgetsMissing)
 	}
 
 	if s.DryRun {
-		fmt.Fprintf(ctx.Output, "\n[dry run] Would update %d widget(s)\n", totalUpdated)
 		fmt.Fprintln(ctx.Output, "\nRun without dry run to apply changes.")
-	} else {
-		fmt.Fprintf(ctx.Output, "\nUpdated %d widget(s)\n", totalUpdated)
+		return nil
+	}
+	// The catalog note is only true when something changed; printing it after a
+	// run that wrote nothing told the reader there were changes to pick up.
+	if total.WidgetsChanged > 0 {
 		fmt.Fprintln(ctx.Output, "\nNote: Run 'refresh catalog full force' to update the catalog with changes.")
+	}
+	// A statement that matched widgets and wrote none of them has not succeeded.
+	// Reporting that as an error is what stops a script silently doing nothing —
+	// the failure mode ako/mxcli#520 was filed for.
+	if total.changedNothing() {
+		return mdlerrors.NewValidation(fmt.Sprintf(
+			"no widget was updated: %d assignment(s) could not be applied. "+
+				"A design property (Atlas styling) is not a pluggable widget property and "+
+				"cannot be set this way — see `mxcli syntax page.styling`",
+			len(total.Failures)))
 	}
 
 	return nil
@@ -195,11 +224,40 @@ func groupWidgetsByContainer(widgets []widgetRef) map[string][]widgetRef {
 	return containers
 }
 
+// updateOutcome is what a run actually did, which is three numbers and not one.
+//
+// It used to be a single `updated` count that meant "widgets found", and was
+// reported as "Updated N widget(s)" — so a run where every assignment was
+// refused still claimed success, right after warning about each refusal
+// (ako/mxcli#520). Splitting the outcome is the fix: a widget nothing could be
+// written to is not updated, and a widget the document does not carry is neither
+// updated nor a property failure.
+type updateOutcome struct {
+	WidgetsChanged   int      // at least one assignment landed
+	WidgetsUnchanged int      // found in the document, nothing could be set
+	WidgetsMissing   int      // listed by the catalog, absent from the document
+	Failures         []string // one per refused assignment, "'prop' on widget"
+}
+
+func (o *updateOutcome) add(other updateOutcome) {
+	o.WidgetsChanged += other.WidgetsChanged
+	o.WidgetsUnchanged += other.WidgetsUnchanged
+	o.WidgetsMissing += other.WidgetsMissing
+	o.Failures = append(o.Failures, other.Failures...)
+}
+
+// changedNothing reports a run that matched widgets and wrote none of them.
+// Distinct from an empty match, which is reported before we get here.
+func (o *updateOutcome) changedNothing() bool {
+	return o.WidgetsChanged == 0 && (o.WidgetsUnchanged > 0 || o.WidgetsMissing > 0)
+}
+
 // updateWidgetsInContainer updates widgets within a single page or snippet
 // using the PageMutator backend (no direct BSON manipulation).
-func updateWidgetsInContainer(ctx *ExecContext, containerID string, widgetRefs []widgetRef, assignments []ast.WidgetPropertyAssignment, dryRun bool) (int, error) {
+func updateWidgetsInContainer(ctx *ExecContext, containerID string, widgetRefs []widgetRef, assignments []ast.WidgetPropertyAssignment, dryRun bool) (updateOutcome, error) {
+	var out updateOutcome
 	if len(widgetRefs) == 0 {
-		return 0, nil
+		return out, nil
 	}
 
 	containerName := widgetRefs[0].ContainerName
@@ -207,43 +265,82 @@ func updateWidgetsInContainer(ctx *ExecContext, containerID string, widgetRefs [
 	// Open the container (page, layout, or snippet) through the backend mutator.
 	mutator, err := ctx.Backend.OpenPageForMutation(model.ID(containerID))
 	if err != nil {
-		return 0, mdlerrors.NewBackend(fmt.Sprintf("open %s for mutation", containerName), err)
+		return out, mdlerrors.NewBackend(fmt.Sprintf("open %s for mutation", containerName), err)
 	}
 	if mutator == nil {
-		return 0, mdlerrors.NewBackend(fmt.Sprintf("open %s for mutation", containerName),
+		return out, mdlerrors.NewBackend(fmt.Sprintf("open %s for mutation", containerName),
 			fmt.Errorf("backend returned nil mutator for %s", containerID))
 	}
 
-	updated := 0
+	// A dry run attempts the same assignments against a DISCARDABLE COPY of the
+	// document, so the preview reports what would actually happen rather than
+	// assuming every assignment lands. Without this the preview told the same
+	// lie one step earlier — and the syntax help says to run it first, which is
+	// exactly when a user is relying on it (ako/mxcli#520).
+	//
+	// Best-effort: a backend whose mutator offers no probe keeps the optimistic
+	// preview it had, which is no worse than before.
+	target := mutator
+	if dryRun {
+		if p, ok := mutator.(interface {
+			Probe() (backend.PageMutator, error)
+		}); ok {
+			if probe, perr := p.Probe(); perr == nil && probe != nil {
+				target = probe
+			}
+		}
+	}
+
 	for _, ref := range widgetRefs {
 		// Verify the widget exists before attempting assignments.
-		if !mutator.FindWidget(ref.Name) {
+		if !target.FindWidget(ref.Name) {
 			fmt.Fprintf(ctx.Output, "  Warning: Widget %q not found in %s %s\n",
 				ref.Name, mutator.ContainerType(), containerName)
+			out.WidgetsMissing++
 			continue
 		}
+		landed := 0
 		for _, assignment := range assignments {
+			err := target.SetWidgetProperty(ref.Name, assignment.PropertyPath, assignment.Value)
+			if err != nil {
+				out.Failures = append(out.Failures,
+					fmt.Sprintf("'%s' on %s (%s) in %s: %v",
+						assignment.PropertyPath, ref.Name, ref.WidgetType, containerName, err))
+				verb := "Failed to set"
+				if dryRun {
+					verb = "Cannot set"
+				}
+				fmt.Fprintf(ctx.Output, "  Warning: %s '%s' on %s: %v\n",
+					verb, assignment.PropertyPath, ref.Name, err)
+				continue
+			}
+			landed++
 			if dryRun {
 				fmt.Fprintf(ctx.Output, "  Would set '%s' = %v on %s (%s) in %s\n",
 					assignment.PropertyPath, assignment.Value, ref.Name, ref.WidgetType, containerName)
-			} else {
-				if err := mutator.SetWidgetProperty(ref.Name, assignment.PropertyPath, assignment.Value); err != nil {
-					fmt.Fprintf(ctx.Output, "  Warning: Failed to set '%s' on %s: %v\n",
-						assignment.PropertyPath, ref.Name, err)
-				}
 			}
 		}
-		updated++
-	}
-
-	// Persist changes via the mutator.
-	if !dryRun && updated > 0 {
-		if err := mutator.Save(); err != nil {
-			return updated, mdlerrors.NewBackend(fmt.Sprintf("save %s", containerName), err)
+		// A widget nothing could be written to is not an updated widget. That
+		// distinction is the whole of ako/mxcli#520.
+		if landed > 0 {
+			out.WidgetsChanged++
+		} else {
+			out.WidgetsUnchanged++
 		}
 	}
 
-	return updated, nil
+	// Persist only when something actually changed. Gating on the found-count
+	// offered a write for a container whose every assignment was refused;
+	// idempotent-write elision (ADR-0008) discarded the bytes, so the damage was
+	// confined to the summary — but offering it at all is what produced the
+	// summary.
+	if !dryRun && out.WidgetsChanged > 0 {
+		if err := mutator.Save(); err != nil {
+			return out, mdlerrors.NewBackend(fmt.Sprintf("save %s", containerName), err)
+		}
+	}
+
+	return out, nil
 }
 
 // mapWidgetFilterField maps user-facing field names to catalog column names.

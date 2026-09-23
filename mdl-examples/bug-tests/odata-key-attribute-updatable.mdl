@@ -1,0 +1,102 @@
+-- CREATE OR MODIFY EXTERNAL ENTITIES FROM marked an external entity's KEY
+-- attribute Updatable=true whenever the entity set's UpdateRestrictions said
+-- the set was updatable.
+--
+-- Symptom, verbatim:
+--
+--   [error] [CE6630] "'DefinitionId' is marked Updatable=False in the OData
+--                     service, but True in the app."
+--           at Attribute 'MyFirstModule.Definition.DefinitionId'
+--
+-- Mendix computes a key property as non-updatable whatever the contract says —
+-- a key cannot be changed after the object exists — so following the entity set
+-- is exactly one CE6630 per key part on every writable service.
+--
+-- Cause: mdl/executor/cmd_contract.go, createExternalEntities' attribute loop.
+-- `updatable` started from the entity set's UpdateRestrictions/Updatable and was
+-- cleared only by NonUpdatableProperties, Core.Computed, Core.Immutable or a
+-- flattened complex-type leaf. Key membership was already in hand as
+-- keyPropSet[p.Name] — it was passed to edmToDomainModelAttrType and never
+-- consulted for updatability.
+--
+-- Fix: the key of a TOP-LEVEL entity is never updatable. Creatable is
+-- deliberately NOT cleared with it: the key is written once, at creation, and
+-- the report's build flagged it Updatable=False ONLY, with no Creatable error
+-- beside it.
+--
+-- `isTopLevel` is load-bearing and was NOT in the first version of this fix.
+-- A blanket "a key is never updatable" turned the one reported CE6630 into
+-- SEVEN of its inverse on the live TripPin contract (mxbuild 11.12.2):
+--
+--   [error] [CE6630] "'TripId' is marked Updatable=True in the OData service,
+--                     but False in the app."
+--           at Attribute 'TripPinClient.Trip.TripId'
+--
+-- over Trip, PlanItem, Event, Flight, PublicTransportation, Employee and
+-- Manager — every one a derived or contained type with NO entity set, mutated
+-- through its parent's write flow — while the entity sets in the same contract
+-- (Person, Airline, Airport) stayed silent at Updatable=false. `UserName` is
+-- the two-sided control inside one document: False on Person, True on Employee
+-- and Manager, so the split is the entity set, not inheritance.
+--
+-- Measured on mxbuild 11.12.1, two copies of one project, same script:
+--
+--   pre-fix   (everything follows the set)  -> CE6630 on DefinitionId AND Label
+--   key-only  (key cleared)                 -> CE6630 on Label
+--   full fix  (top-level attrs cleared)     -> The app contains: 0 errors.
+--
+-- and across a seven-variant probe contract of TOP-LEVEL sets (inline record,
+-- typed record, UpdateMethod=PATCH, +NonUpdatableProperties/+DeleteRestrictions,
+-- unannotated, external <Annotations Target=…>, Core.Permissions/ReadWrite)
+-- mxbuild was SILENT on every key once it was non-updatable.
+--
+-- THE NON-KEY HALF, fixed in a follow-up: `Label` was flagged too, and the
+-- rule turned out to be wider than the key. NO attribute of a TOP-LEVEL
+-- external entity is updatable, whatever UpdateRestrictions says; EVERY
+-- attribute of a non-top-level one is, because it is written through its
+-- parent's flow. Measured across TEN top-level contract shapes, each one
+-- mxbuild reads as updatable and each answering False:
+--
+--   inline <Record>                  typed <Record Type=...>
+--   UpdateMethod=PATCH               +NonUpdatableProperties +DeleteRestrictions
+--   unannotated                      external <Annotations Target=...>
+--   Core.Permissions/ReadWrite       Core.OptimisticConcurrency (ETag)
+--   DeepUpdateSupport Supported=true NonUpdatableProperties naming ONLY the key
+--
+-- The last closes it: the service lists `Id` as the sole non-updatable
+-- property -- asserting that `Label` IS updatable -- and mxbuild still says
+-- False. Two things the rule is not, each with its own control: not "the
+-- entity is read-only" (Creatable follows Insertable on the same attributes),
+-- and not the model's "allow creating and changing objects locally" (setting
+-- AllowCreateChangeLocally=Yes left the expectation at False). An external
+-- object can be changed in memory and handed to an external action; that is
+-- what the local-change flag governs, while this flag mirrors what the
+-- endpoint itself accepts.
+--
+-- So this script now reaches 0 errors, where it was 2 before any fix and 1
+-- after the key-only one.
+--
+-- Run it:
+--   cp mdl-examples/bug-tests/contracts/key-updatable-metadata.xml \
+--      <project>/key-updatable-metadata.xml
+--   mxcli exec odata-key-attribute-updatable.mdl -p <project>/app.mpr
+--   mxcli docker check -p <project>/app.mpr
+--
+-- Regression coverage: mdl/executor/cmd_contract_key_updatable_test.go
+
+create or modify module OdataKeyUpd;
+
+create or modify constant OdataKeyUpd.SvcUrl
+  type string
+  default 'https://example.com/odata/v4/App/';
+
+create or modify odata client OdataKeyUpd.App (
+  ODataVersion: 'OData4',
+  MetadataUrl: './key-updatable-metadata.xml',
+  ServiceUrl: '@OdataKeyUpd.SvcUrl'
+);
+
+create or modify external entities from OdataKeyUpd.App into OdataKeyUpd entities (Definition);
+
+-- DefinitionId (the key, renamed off the reserved word `Id`) and Label.
+describe external entity OdataKeyUpd.Definition;

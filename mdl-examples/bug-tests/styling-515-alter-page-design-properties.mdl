@@ -1,0 +1,129 @@
+-- ako/mxcli#515 — `alter page … set '<design property>' = <value> on <widget>`
+-- could not write a design property. The only spelling that worked was
+-- ALTER STYLING, and the two have identical scope.
+--
+-- Before: the statement dead-ended, because `set` reaches a handful of
+-- first-class properties and the stored widget's PLUGGABLE property bag, while a
+-- design property lives in Appearance.DesignProperties.
+--
+--     Error: property "Row size" is not a property of this built-in widget — …
+--            for an Atlas design property use `alter styling …` instead
+--
+-- The scope measurement that makes this one operation and not two (see #515):
+-- ALTER STYLING's grammar is
+--     ALTER STYLING ON (PAGE|SNIPPET) qualifiedName WIDGET IDENTIFIER …
+-- with BOTH operands mandatory — omitting either is a parse error. There is no
+-- bulk form. So it is the same one-widget-on-one-page operation ALTER PAGE SET
+-- performs, which "One Way to Do Each Thing" rules out having twice.
+--
+-- Measured on a blank Mendix 11.12.2 project:
+--
+--     alter page … { set 'Row size' = 'Small' on lvThings; }
+--     -> Altered page
+--     describe styling -> DesignProperties: ['Row size': 'Small', 'Hover style': on]
+--     mx check -> The app contains: 0 errors.
+--
+-- And the two statements produce the SAME document: writing via ALTER STYLING
+-- and then running the ALTER PAGE form rewrote 0 units — idempotent-write
+-- elision (ADR-0008) skipped it, which is only possible if the documents are
+-- semantically equal.
+--
+-- How a design property is told from a mistyped pluggable one: the key is
+-- resolved against the STORED widget's own type, via the $Type → theme-registry
+-- mapping that already existed (`bsonTypeToDesignPropsKey`) but had no callers.
+-- ako/mxcli#509 deliberately avoided standing that up before something needed
+-- it; this is that something.
+--
+-- Two shapes `set` still refuses, both because a SET assignment carries ONE
+-- scalar — exactly as a StylingAssignment does:
+--
+--   set 'Hide on' = 'Phone' on lvThings;
+--   -> design property "Hide on" takes a SET of options, not one value — write it
+--      inline instead: `DesignProperties: ['Hide on': ['Phone': on]]` … A single
+--      value is stored as an Option and mxbuild refuses it with CE6084
+--      (that is ako/mxcli#511, and this path inherits its refusal rather than
+--       forking the vocabulary)
+--
+--   a compound such as 'Spacing' — same reason, same remedy.
+
+create entity MyFirstModule.Thing ( Name: string(200) );
+
+create or replace page MyFirstModule.ThingList (
+  title: 'Things', layout: 'Atlas_Core.Atlas_Default'
+) {
+  listview lvThings (DataSource: database from MyFirstModule.Thing) {
+    dynamictext dtName (Content: 'x')
+  }
+};
+
+-- A type-specific design property, and an inherited one (from Atlas's `Widget`
+-- group, which applies to every widget — resolving only the type-specific list
+-- is the mistake this area keeps producing).
+alter page MyFirstModule.ThingList {
+  set 'Row size' = 'Small' on lvThings;
+  set 'Align self' = 'Right' on lvThings;
+};
+
+-- A toggle. OFF is a REMOVAL, not a stored false: Mendix represents the off
+-- state as the absence of the entry, matching what `alter styling … = off` does.
+alter page MyFirstModule.ThingList {
+  set 'Hover style' = on on lvThings;
+};
+
+-- The control that keeps the routing narrow. A key the theme does not declare
+-- for this widget stays on the pluggable path and keeps that path's error:
+--
+--   alter page MyFirstModule.ThingList { set 'Rowsize' = 'Small' on lvThings; };
+--   -> property "Rowsize" is not a property of this built-in widget, and not an
+--      Atlas design property your theme declares for it — … Run
+--      `mxcli show design properties for <widget type>` to see which those are
+--
+-- That message used to name ALTER STYLING as the route. It no longer does:
+-- naming a second statement for something `set` now writes is stale advice.
+
+-- ---------------------------------------------------------------------------
+-- The bulk form
+-- ---------------------------------------------------------------------------
+--
+-- A house style is "every data grid is compact and striped", which should be one
+-- statement rather than one per page. It mirrors the layout sweep MDL already
+-- has (ALTER PAGES [IN mod] SET LAYOUT = … [WHERE LAYOUT = …]) and is told apart
+-- from it at parse time by what follows SET: LAYOUT is a keyword, a design
+-- property is a quoted string.
+--
+--   alter pages in MyFirstModule
+--     set 'Compact' = on, 'Striped' = on
+--     where widgettype = datagrid
+--     dry run;
+--
+-- Measured on a blank 11.12.2 project with two Data grid 2 widgets:
+--
+--   dry run -> Found 2 datagrid widget(s) in 2 container(s)
+--              Would set 'Compact' on dgA in MyFirstModule.GridA  (…and dgB)
+--              [dry run] Would style 2 widget(s)
+--   apply   -> Styled 2 widget(s)
+--   describe styling -> DesignProperties: ['Compact': on, 'Striped': on]
+--   mx check -> The app contains: 0 errors.
+--
+-- WHERE selects a TYPE, never a name. A widget name is unique only within its
+-- page — measured, `actionButton1` appears in 30 units of a blank project — so a
+-- name predicate would sweep unrelated widgets together.
+--
+-- And the type is named by its MDL KEYWORD, which resolves to exactly one widget
+-- id. The predicate a user reaches for instead, `WidgetType LIKE '%datagrid%'`,
+-- matches 20 widgets in 6 containers on the same blank project, because it also
+-- sweeps in DatagridTextFilter, DatagridDateFilter and DatagridDropdownFilter —
+-- different widgets that do not carry the data grid's design properties.
+--
+-- Reporting is ako/mxcli#520's three-way outcome, so a sweep that matches
+-- widgets and writes none of them says so instead of claiming success:
+--
+--   alter pages in MyFirstModule set 'Row size' = 'Small' where widgettype = datagrid;
+--   -> Warning: Failed to set 'Row size' on dgA: not a design property this
+--      widget's theme declares
+--      Styled 0 widget(s)
+--      2 widget(s) matched but had no design property that could be set
+--      exit 1
+--
+-- ('Row size' is the NATIVE data grid's property; Data grid 2 declares Borders,
+--  Compact, Hover and Striped. `show design properties for datagrid` lists them.)

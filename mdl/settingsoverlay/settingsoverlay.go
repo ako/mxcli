@@ -494,3 +494,53 @@ func newLanguage(siblings []map[string]any) map[string]any {
 		"CustomDateTimeFormat": "",
 	}
 }
+
+// WorkflowGroupListMarker is the typed-array marker Studio Pro writes for the
+// Groups list of a Settings$WorkflowsProjectSettingsPart. It is 2, not the 3 the
+// other settings child lists use — measured on a blank Mendix 11.13.0 project,
+// whose empty list is stored as `Groups: [2]`. It is only a fallback: a stored
+// list keeps whatever marker it already carries.
+const WorkflowGroupListMarker = int32(2)
+
+// WorkflowGroups rebuilds the Groups list of a raw
+// Settings$WorkflowsProjectSettingsPart, overlaying each modelled group onto the
+// raw group it was read from. Groups are matched by name, which is also how the
+// executor addresses one (ALTER SETTINGS WORKFLOWS ... GROUP '<name>') — a
+// Settings$WorkflowGroup declares no identifier property, so the name is the
+// identity.
+//
+// raw is mutated and returned.
+func WorkflowGroups(ws *model.WorkflowsSettings, raw map[string]any) map[string]any {
+	rawGroups := ArrayElements(raw["Groups"])
+	byName := make(map[string]map[string]any, len(rawGroups))
+	for _, rg := range rawGroups {
+		name, _ := rg["Name"].(string)
+		byName[strings.ToLower(name)] = rg
+	}
+
+	groups := bson.A{ArrayMarker(raw["Groups"], WorkflowGroupListMarker)}
+	for _, g := range ws.Groups {
+		groups = append(groups, WorkflowGroupDoc(g, byName[strings.ToLower(g.Name)]))
+	}
+	raw["Groups"] = groups
+	return raw
+}
+
+// WorkflowGroupDoc overlays one group onto its preserved document. A group with
+// no counterpart on disk is newly added, and unlike a language or a server
+// configuration it needs no sibling to copy a shape from: Settings$WorkflowGroup
+// declares exactly Name and Description and nothing else, in every source that
+// describes the type (modelsdk/gen, generated/metamodel, mendixmodelsdk 4.115.0),
+// so there is no version-specific spelling to guess at.
+func WorkflowGroupDoc(g model.WorkflowGroup, raw map[string]any) map[string]any {
+	if raw == nil {
+		raw = map[string]any{}
+	}
+	raw["$Type"] = "Settings$WorkflowGroup"
+	if raw["$ID"] == nil {
+		raw["$ID"] = elementID(g.ID)
+	}
+	raw["Name"] = g.Name
+	raw["Description"] = g.Description
+	return raw
+}

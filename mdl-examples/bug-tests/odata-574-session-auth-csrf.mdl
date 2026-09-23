@@ -1,0 +1,98 @@
+-- ako/mxcli#574 — a session-authenticated OData READ needs X-Csrf-Token.
+--
+-- The mendix-vega-charts skill pack claimed that "same-origin requests carry
+-- the session cookie, so an endpoint authenticated by session is reachable …
+-- without any token handling". The cookie does go; it is not sufficient. A
+-- URL-fed Vega-Lite spec therefore drew axes and a full legend with ZERO data
+-- points and no error, because Vega reads the 401 body as an empty dataset.
+--
+-- This script is the reproduction harness for the runtime half of that claim:
+-- it builds the smallest app that can be asked the question — one persistent
+-- entity, seeded with one row, published over OData with BOTH `basic` and
+-- `session` authentication, so a single URL can be fetched four ways and only
+-- the header differs between the two that matter.
+--
+--   mxcli new CsrfProbe --version 11.14.0 --theme none --layout none --skip-init
+--   mxcli exec odata-574-session-auth-csrf.mdl -p CsrfProbe/CsrfProbe.mpr
+--   mxcli docker check -p CsrfProbe/CsrfProbe.mpr      # 0 errors
+--   mxcli run --local -p CsrfProbe/CsrfProbe.mpr --ensure-db
+--
+--   URL=http://127.0.0.1:8080/odata/chartapi/v1/Rows
+--   curl -s -c jar.txt -X POST http://127.0.0.1:8080/xas/ \
+--     -H 'Content-Type: application/json' -H 'X-Requested-With: XMLHttpRequest' \
+--     -d '{"action":"login","params":{"username":"probe","password":"ProbePassw0rd1!"}}'
+--   # -> {"csrftoken":"…"}; XASSESSIONID and xasid land in jar.txt, both httpOnly,
+--   #    which is why document.cookie shows neither and a cookie hunt finds nothing.
+--
+--   curl -s -w '%{http_code}\n'                        "$URL"   # 401  no credentials
+--   curl -s -w '%{http_code}\n' -b jar.txt             "$URL"   # 401  cookie only
+--   curl -s -w '%{http_code}\n' -b jar.txt -H "X-Csrf-Token: $TOKEN" "$URL"  # 200
+--   curl -s -w '%{http_code}\n' -u 'probe:ProbePassw0rd1!'       "$URL"      # 200
+--
+-- Measured on Mendix 11.14.0. Rows 2 and 3 differ in exactly one header, and the
+-- 401 body is the one in the issue:
+--   {"error":{"code":"401","message":"You are not authorized to access this resource"}}
+--
+-- The fix is in the skill pack's widget: it attaches the token to same-origin
+-- fetches only (.claude/skills/packs/mendix-vega-charts/widget/src/csrf.ts).
+--
+-- Written against a `mxcli new` app, whose starting module is MyFirstModule.
+-- Re-runnable: every statement is CREATE OR MODIFY / OR REPLACE.
+
+alter project security level production;
+alter project security demo users on;
+
+create or modify module role MyFirstModule.User;
+create or modify user role ApiUser (MyFirstModule.User, System.User);
+
+create or modify entity MyFirstModule.Row (
+  -- CE6624: an OData key attribute needs a unique validation rule.
+  Cat: String(100) unique error 'Cat must be unique',
+  V: Decimal
+);
+
+grant MyFirstModule.User on MyFirstModule.Row (CREATE, DELETE, READ *, WRITE *);
+
+create demo user 'probe' password 'ProbePassw0rd1!' (ApiUser);
+
+-- Seed one row, so a 200 over data can be told apart from a 200 over nothing.
+-- Returns Boolean because an after-startup microflow must (CE0142).
+create or replace microflow MyFirstModule.Seed ()
+  returns Boolean as $Ok
+begin
+  declare $Ok Boolean = true;
+  retrieve $Existing from MyFirstModule.Row;
+  $N = count($Existing);
+  if $N = 0 then
+    $R = create MyFirstModule.Row (Cat = 'Groceries', V = 697.70) commit;
+  end if;
+  set $Ok = true;
+  return $Ok;
+end;
+
+alter settings MODEL AfterStartupMicroflow = 'MyFirstModule.Seed';
+
+-- Both methods on one service: `basic` is the control that proves the endpoint
+-- and the data are fine when `session` answers 401.
+create or modify odata service MyFirstModule.ChartApi (
+  path: 'odata/chartapi/v1/',
+  version: '1.0.0',
+  ODataVersion: OData4,
+  namespace: 'MyFirstModule.ChartApi',
+  ServiceName: 'ChartApi'
+)
+authentication basic, session
+{
+  publish entity MyFirstModule.Row as 'Rows' (
+    ReadMode: source,
+    InsertMode: not_supported,
+    UpdateMode: not_supported,
+    DeleteMode: not_supported
+  )
+  expose (
+    Cat as 'Cat' (KEY, Filterable, Sortable),
+    V as 'V' (Filterable)
+  );
+};
+
+grant access on odata service MyFirstModule.ChartApi to MyFirstModule.User;

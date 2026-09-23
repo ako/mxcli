@@ -71,11 +71,15 @@ var clickDroppedNoSlot = map[string]bool{
 // to a container is a workaround rather than the correct modelling.
 //
 // Bare `image` is deliberately absent — it is not always the legacy viewer.
-var clickCapableInMendix = map[string]bool{
-	"listview":     true,
-	"staticimage":  true,
-	"dynamicimage": true,
-}
+// It is empty today: all three are written as of ako/mxcli#512 — the model and
+// the writers already carried ClickAction / OnClickAction, and only the builders
+// never read the action off the AST. The map stays because the CATEGORY is real
+// and will recur: a widget Mendix gives a click action and mxcli does not write
+// earns a different sentence from one Mendix models no click action on at all,
+// since the remedy differs (implement the writer vs. move the action to a
+// container). TestClickCapableInMendix_NoLongerNamesWhatIsWritten keeps a name
+// from outliving its gap.
+var clickCapableInMendix = map[string]bool{}
 
 // validateWidgetOnClick reports (MDL-WIDGET23) an `onclick:`/`action:` property
 // that mxcli does not write for this widget type.

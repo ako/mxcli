@@ -1,0 +1,61 @@
+-- mendixlabs/mxcli#1121 — CREATE PAGE with Params: was refused on every Mendix 10
+-- project, so no parameterised page could be authored from MDL there at all.
+--
+-- REPORTED SHAPE (Mendix 10.24.25, MPR v2):
+--
+--   create page with parameters requires Mendix 11.0+ (project is 10.24.25)
+--     hint: pass data via a non-persistent entity or microflow parameter instead
+--
+-- The 11.0 floor was never measured. It matches the illustrative `show features`
+-- sample table in docs/11-proposals/PROPOSAL_version_aware_agent_support.md and
+-- nothing else. Measured against the Mendix Model SDK's own StructureVersionInfo
+-- records (mendixmodelsdk 4.115.0, src/gen/pages.js):
+--
+--   Pages$PageParameter, Page.parameters       9.4.0
+--   Pages$PageSettings.parameterMappings       9.7.0   (SHOW PAGE arguments)
+--   Pages$PageParameter.isRequired            11.5.0
+--   Pages$PageParameter.defaultValue          11.5.0
+--
+-- So the ELEMENT is 9.4 and only its optional/default-value half is 11.5. The
+-- fix splits the two: the registry floor drops to 9.4, and the writer emits
+-- IsRequired/DefaultValue only on 11.5+ — MDL cannot express either, so below
+-- 11.5 they are two keys the project's metamodel does not declare. mxbuild
+-- accepts unknown properties; Studio Pro throws InvalidOperationException at
+-- MprProperty.cs, so lifting the gate without that guard would have traded an
+-- honest refusal for a page Studio Pro cannot open.
+--
+-- 11.0–11.4 is the row that shows the guard is not cosmetic: those versions
+-- PASSED the old 11.0 gate and got both 11.5-only keys written.
+--
+-- Run against a Mendix 10.x project; before the fix, statement 2 is refused.
+
+CREATE MODULE Bug1121;
+
+CREATE PERSISTENT ENTITY Bug1121.Item (
+  Name: String(200)
+);
+
+-- 1. A page that takes an object parameter and binds a data view to it.
+CREATE OR REPLACE PAGE Bug1121.Item_Edit (
+  Title: 'Edit item',
+  Layout: Atlas_Core.PopupLayout,
+  Params: { $Item: Bug1121.Item }
+) {
+  layoutgrid lg {
+    row r {
+      column c (DesktopWidth: AutoFill) {
+        dataview dv (DataSource: $Item) {
+          textbox txtName (Label: 'Name', Attribute: Name)
+        }
+      }
+    }
+  }
+}
+
+-- 2. Passing the argument from a microflow. Without this half a parameterised
+--    page is unreachable, which is the other thing the report calls out.
+CREATE OR REPLACE MICROFLOW Bug1121.ACT_EditItem (
+  $Item: Bug1121.Item
+) BEGIN
+  SHOW PAGE Bug1121.Item_Edit ($Item = $Item);
+END

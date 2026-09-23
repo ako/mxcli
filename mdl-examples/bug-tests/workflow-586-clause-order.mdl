@@ -1,0 +1,145 @@
+-- ako/mxcli#586 — CREATE WORKFLOW clause order was load-bearing, and the parse
+-- error did not say so.
+--
+-- The grammar was a fixed SEQUENCE of optional clauses, so every clause was
+-- optional but its POSITION was not. `on created microflow` written anywhere
+-- but between the targeting clauses and `entity` failed with
+--
+--     line 6:4 mismatched input 'ON' expecting ';'
+--
+-- which names neither the clause nor the rule. The reporter worked the order
+-- out empirically and wrote it into their notes — "parameter -> display ->
+-- description -> export level -> overview page -> due date -> events, and
+-- within a user task: page -> targeting -> on created -> description ->
+-- outcomes". That is not something a language should ask of its users, and it
+-- sat oddly beside the rest of MDL, where properties go in an order-free block
+-- (ADR-0003).
+--
+-- Both the header clauses and a user task's clauses are now a SET: any order,
+-- each at most once. The at-most-once half is enforced by the visitor rather
+-- than the grammar, so the message can name the clause
+-- (`duplicate PAGE clause on user task Review …`) instead of pointing at a
+-- token. The two `targeting` spellings count as ONE clause, because a user task
+-- stores one UserSource — under the old grammar both were accepted and the one
+-- written last silently won.
+--
+-- Verified: this script and `workflow-586-clause-order-canonical.mdl` (the same
+-- workflows with every clause in the old mandatory order) produce the SAME
+-- model — re-running either over the other's result reports `Unchanged
+-- workflow`, which is the idempotence machinery of ADR-0008 used as the
+-- comparator. The `.fail.mdl` sibling holds the duplicate-clause cases.
+
+create module WF586;
+
+create entity WF586.Request (
+  Status : string(200)
+);
+
+create page WF586.TaskPage (
+  title: 'Task',
+  layout: Atlas_Core.Atlas_Default,
+  params: { $WorkflowUserTask: System.WorkflowUserTask }
+) {
+  layoutgrid g1 {
+    row r1 {
+      column c1 (desktopwidth: 12) {
+        dynamictext txt1 (content: 'Review the request', rendermode: H2)
+      }
+    }
+  }
+}
+/
+
+create page WF586.Overview (
+  title: 'Overview',
+  layout: Atlas_Core.Atlas_Default
+) {
+  layoutgrid g1 {
+    row r1 {
+      column c1 (desktopwidth: 12) {
+        dynamictext txt1 (content: 'Requests', rendermode: H2)
+      }
+    }
+  }
+}
+/
+
+-- Targeting microflow: (System.Workflow, context) -> List of System.User
+create microflow WF586.ACT_GetUsers (
+  $Workflow : System.Workflow,
+  $Context  : WF586.Request
+)
+returns list of System.User as $Users
+begin
+  @position(200,200)
+  retrieve $Users from System.User;
+  @position(400,200) return $Users;
+end;
+/
+
+create microflow WF586.ACT_OnCreated (
+  $WorkflowUserTask : System.WorkflowUserTask,
+  $WorkflowContext  : WF586.Request
+)
+begin
+  @position(200,200) declare $Message String = 'task created';
+end;
+/
+
+create microflow WF586.ACT_OnEvent (
+  $WorkflowEvent            : System.WorkflowEvent,
+  $WorkflowRecord           : System.WorkflowRecord,
+  $WorkflowActivityRecord   : System.WorkflowActivityRecord
+)
+begin
+  @position(200,200) declare $Message String = 'workflow event';
+end;
+/
+
+create microflow WF586.ACT_Audit (
+  $WorkflowContext : WF586.Request
+)
+begin
+  @position(200,200) declare $Message String = 'audited';
+end;
+/
+
+-- The header clauses in a deliberately different order from the one the old
+-- grammar demanded: the event handler first, `folder` last.
+create or replace workflow WF586.Review
+  on any workflow event microflow WF586.ACT_OnEvent as 'all events'
+  due date '${P2D}'
+  description 'Reviews a request'
+  overview page WF586.Overview
+  display 'Request review'
+  parameter $WorkflowContext: WF586.Request
+  export level Hidden
+  folder 'Flows'
+begin
+  -- A user task with `on created microflow` FIRST — the position that used to
+  -- be a parse error.
+  user task Review 'Review the request'
+    on created microflow WF586.ACT_OnCreated
+    description 'Check the request and decide'
+    boundary event interrupting timer '${PT8H}'
+    entity WF586.Request
+    outcomes
+      'Approve' { call microflow WF586.ACT_Audit; }
+      'Reject'  { }
+    due date '${PT4H}'
+    page WF586.TaskPage
+    targeting microflow WF586.ACT_GetUsers;
+
+  -- The multi-user clauses are order-free too, including the three that only a
+  -- multi user task has.
+  multi user task Confirm 'Confirm the decision'
+    await all users
+    outcomes
+      'Confirmed' { }
+    decide by majority more than half fallback 'Confirmed'
+    page WF586.TaskPage
+    participants 60 percent
+    targeting groups xpath '[Name = ''Administrator'']'
+    due date '${PT2H}';
+end workflow;
+/

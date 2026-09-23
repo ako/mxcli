@@ -13,6 +13,7 @@ package executor
 
 import (
 	"fmt"
+	"log"
 	"regexp"
 	"sort"
 	"strconv"
@@ -60,6 +61,27 @@ func LoadWidgetRegistry(projectPath string) *WidgetRegistry {
 		return nil
 	}
 	if projectPath != "" {
+		// Generate the project's .def.json files from its installed .mpk when
+		// they are missing or behind this build, exactly as the page builder
+		// does before it reads them (cmd_pages_builder.go). Without this the
+		// validator and the builder read DIFFERENT registries, and the
+		// difference pointed the wrong way: on a project that had never run
+		// `mxcli widget init`, `check -p --references` reported every installed
+		// widget as "not a widget in this project" while `exec --no-check`
+		// wrote the page and generated the definitions on its way past
+		// (mendixlabs/mxcli#1135). check is meant to be the strict gate and
+		// exec the thing that runs; here it was inverted, and the script it
+		// blocked was one describe had just emitted.
+		//
+		// The self-healing is what made it read as flaky: the first exec writes
+		// the definitions and every check after it passes.
+		//
+		// Best-effort. A project whose definitions cannot be written — read-only
+		// checkout, no widgets/ at all — gets the registry it got before, which
+		// is strictly better than failing the check over a cache.
+		if _, err := RefreshStaleWidgetDefinitions(projectPath); err != nil {
+			log.Printf("warning: updating widget definitions: %v", err)
+		}
 		_ = registry.LoadUserDefinitions(projectPath)
 		registry.projectPath = projectPath
 		// The validator and DESCRIBE WIDGET must agree about which properties a
@@ -89,9 +111,9 @@ func ValidateWidgetPropertiesForStatement(stmt ast.Statement, registry *WidgetRe
 		for _, op := range s.Operations {
 			switch o := op.(type) {
 			case *ast.InsertWidgetOp:
-				out = append(out, validateWidgetTree(o.Widgets, registry, "alter "+s.PageName.String())...)
+				out = append(out, validateWidgetSubtree(o.Widgets, registry, "alter "+s.PageName.String())...)
 			case *ast.ReplaceWidgetOp:
-				out = append(out, validateWidgetTree(o.NewWidgets, registry, "alter "+s.PageName.String())...)
+				out = append(out, validateWidgetSubtree(o.NewWidgets, registry, "alter "+s.PageName.String())...)
 			}
 		}
 		return out
@@ -99,10 +121,23 @@ func ValidateWidgetPropertiesForStatement(stmt ast.Statement, registry *WidgetRe
 	return nil
 }
 
-// validateWidgetTree recursively walks the AST widget tree and validates
-// pluggable widgets it encounters.
+// validateWidgetTree recursively walks a WHOLE document's AST widget tree —
+// CREATE PAGE/SNIPPET, where `widgets` is the root — and validates the pluggable
+// widgets it encounters.
+//
+// The root of a document has no context object: nothing encloses it, so
+// $currentObject is unbound there. That is a fact this pass can state, unlike
+// validateWidgetSubtree below, and MDL-PAGEARG01 needs it (#1029).
 func validateWidgetTree(widgets []*ast.WidgetV3, registry *WidgetRegistry, locationPrefix string) []linter.Violation {
-	return validateWidgetTreeIn(widgets, registry, locationPrefix, nil, nil, "", false)
+	return validateWidgetTreeIn(widgets, registry, locationPrefix, nil, nil, atDocumentRoot())
+}
+
+// validateWidgetSubtree is validateWidgetTree for widgets that will be grafted
+// into a page this pass never sees — ALTER PAGE's INSERT and REPLACE. What
+// encloses them is unknown, so rules that depend on the enclosing context stand
+// down rather than guess.
+func validateWidgetSubtree(widgets []*ast.WidgetV3, registry *WidgetRegistry, locationPrefix string) []linter.Violation {
+	return validateWidgetTreeIn(widgets, registry, locationPrefix, nil, nil, pageArgContext{})
 }
 
 // validateWidgetTreeIn is validateWidgetTree with the *parent* widget's
@@ -113,7 +148,7 @@ func validateWidgetTree(widgets []*ast.WidgetV3, registry *WidgetRegistry, locat
 // must be exempt from the MDL-WIDGET07 "unrecognized property, silently dropped"
 // warning. When the parent mapping is known, the child's enumeration
 // sub-properties are validated against their member keys (MDL-WIDGET08). (9a)
-func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, locationPrefix string, parentObjectLists map[string]*ObjectListMapping, parent *ast.WidgetV3, contextVar string, contextKnown bool) []linter.Violation {
+func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, locationPrefix string, parentObjectLists map[string]*ObjectListMapping, parent *ast.WidgetV3, argCtx pageArgContext) []linter.Violation {
 	var out []linter.Violation
 	for _, w := range widgets {
 		if w == nil {
@@ -141,6 +176,8 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		// #928: contentparams with no `{N}` placeholder to consume them.
 		if lookupWidgetDef(w, registry) != nil {
 			out = append(out, validatePluggableContentParams(w, locationPrefix)...)
+			// #575: the same drop, per text-template property.
+			out = append(out, validatePluggableTemplateParams(w, locationPrefix)...)
 		}
 		out = append(out, validateWidgetVisibility(w, registry, locationPrefix)...)
 		// An IMAGE with nothing to show — the default source needs an image
@@ -150,8 +187,12 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		out = append(out, validateDynamicTextFormatting(w, locationPrefix)...)
 		out = append(out, validateDatasourceXPathAssociationEmpty(w, locationPrefix)...)
 		out = append(out, validateComboBoxAssociation(w, locationPrefix)...)
+		// #631: inputs inside a list view that will be written read-only.
+		out = append(out, validateListViewEditableInputs(w, locationPrefix)...)
 		// A show_page argument naming anything but the context object is dropped.
-		out = append(out, validateShowPageArguments(w, contextVar, contextKnown, locationPrefix)...)
+		// The widget's OWN action is judged in the context IT establishes, not the
+		// one it sits in — a list widget's onClick is row-scoped (ako/mxcli#552).
+		out = append(out, validateShowPageArguments(w, argContextForOwnAction(w, argCtx), locationPrefix)...)
 		// Unknown-property warning applies only to built-in widgets; pluggable
 		// widgets get the stricter def.json check (MDL-WIDGET01) above, and
 		// object-list items are validated by the object-list engine.
@@ -190,12 +231,7 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		// Reported once per grid, not once per column — see the rule's comment.
 		out = append(out, validateDataGrid2ColumnNames(w, locationPrefix)...)
 		if len(w.Children) > 0 {
-			// A data-bound widget renames the context object for everything below it.
-			childContextVar, childContextKnown := contextVar, contextKnown
-			if ds := w.GetDataSource(); ds != nil {
-				childContextVar, childContextKnown = contextVarFor(ds), true
-			}
-			out = append(out, validateWidgetTreeIn(w.Children, registry, locationPrefix, objectListMappingSet(def), w, childContextVar, childContextKnown)...)
+			out = append(out, validateWidgetTreeIn(w.Children, registry, locationPrefix, objectListMappingSet(def), w, argContextForChildren(w, argCtx))...)
 		}
 	}
 	out = append(out, validateConsecutiveDynamicText(widgets, locationPrefix)...)
@@ -637,8 +673,19 @@ var staticWidgetKnownProps = func() map[string]bool {
 		"ImageUrl", "LabelPosition", "PageSize", "Pagination", "PagingPosition",
 		"PhoneColumns", "ReadOnlyStyle", "Resizable", "Responsive", "ShowPagingButtons",
 		"Size", "Sortable", "TabletColumns", "WidthUnit", "WrapText", "Name",
+		// input-widget properties describe page emits (ako/mxcli#550): a text
+		// box's password flag and its Forms$WidgetValidation. Leaving them out
+		// makes the describe -> create round trip warn about its own output.
+		"Password", "Validation", "ValidationMessage",
 		// button icon-collection reference (issue #602)
 		"Icon",
+		// staticimage's image-collection reference, Module.Collection.Image
+		// (mendixlabs/mxcli#1057). Describe emits it, so leaving it out here
+		// makes the describe -> create round trip warn about its own output.
+		"Image",
+		// dynamicimage's fallback image, and the two display flags it shares
+		// with the pluggable image widget. Same reason: describe emits them.
+		"DefaultImage", "OnClickType",
 		// fragment / building-block sentinel-internal keys (USE_FRAGMENT /
 		// USE_BUILDING_BLOCK), consumed by the expander, never serialized
 		"Args", "DataSourceOverride", "ActionOverride",
@@ -668,7 +715,8 @@ var staticWidgetKnownPropList = func() []string {
 		"DesktopWidth", "TabletWidth", "PhoneWidth", "Selection", "Snippet", "Params",
 		"Attributes", "FilterType", "DesignProperties", "Width", "Height", "Visible",
 		"Editable", "Tooltip", "DynamicClasses", "WidthUnit", "HeightUnit",
-		"DesktopColumns", "TabletColumns", "PhoneColumns", "PageSize", "Pagination")
+		"DesktopColumns", "TabletColumns", "PhoneColumns", "PageSize", "Pagination",
+		"Image", "DefaultImage", "DisplayAs", "OnClickType")
 	return list
 }()
 
@@ -1045,17 +1093,18 @@ var templatePlaceholderRe = regexp.MustCompile(`\{(\d+)\}`)
 // sources mirror buildDynamicTextV3: explicit ContentParams, a single Attribute
 // binding, or a whole-content reference (which carries no {N}, so is irrelevant
 // here).
+//
+// An action/link button's Caption is the same ClientTemplate and orphans the
+// same way (CE0720). Its parameters mirror buildButtonV3: CaptionParams, or the
+// ContentParams spelling DESCRIBE emitted for buttons before #632.
 func validateDynamicTextPlaceholders(w *ast.WidgetV3, locationPrefix string) *linter.Violation {
+	if isButtonKeyword(w.Type) {
+		return validateButtonCaptionPlaceholders(w, locationPrefix)
+	}
 	if !strings.EqualFold(w.Type, "dynamictext") {
 		return nil
 	}
-	content := w.GetContent()
-	maxIdx := 0
-	for _, m := range templatePlaceholderRe.FindAllStringSubmatch(content, -1) {
-		if n, err := strconv.Atoi(m[1]); err == nil && n > maxIdx {
-			maxIdx = n
-		}
-	}
+	maxIdx := maxTemplatePlaceholder(w.GetContent())
 	if maxIdx == 0 {
 		return nil // no placeholders → nothing to orphan
 	}
@@ -1076,6 +1125,42 @@ func validateDynamicTextPlaceholders(w *ast.WidgetV3, locationPrefix string) *li
 			locationPrefix, w.Name, maxIdx, params, maxIdx,
 		),
 	}
+}
+
+func isButtonKeyword(t string) bool {
+	return strings.EqualFold(t, "actionbutton") || strings.EqualFold(t, "linkbutton")
+}
+
+func validateButtonCaptionPlaceholders(w *ast.WidgetV3, locationPrefix string) *linter.Violation {
+	maxIdx := maxTemplatePlaceholder(w.GetCaption())
+	if maxIdx == 0 {
+		return nil
+	}
+	params := len(w.GetCaptionParams())
+	if params == 0 {
+		params = len(w.GetContentParams())
+	}
+	if maxIdx <= params {
+		return nil
+	}
+	return &linter.Violation{
+		RuleID:   "MDL-WIDGET04",
+		Severity: linter.SeverityError,
+		Message: fmt.Sprintf(
+			"%s: widget `%s` (%s) caption references template placeholder {%d} but only %d parameter(s) are bound — bind it with `CaptionParams: [{%d} = <attr>]`. An orphaned placeholder fails the build (CE0720).",
+			locationPrefix, w.Name, strings.ToLower(w.Type), maxIdx, params, maxIdx,
+		),
+	}
+}
+
+func maxTemplatePlaceholder(template string) int {
+	maxIdx := 0
+	for _, m := range templatePlaceholderRe.FindAllStringSubmatch(template, -1) {
+		if n, err := strconv.Atoi(m[1]); err == nil && n > maxIdx {
+			maxIdx = n
+		}
+	}
+	return maxIdx
 }
 
 // validatePluggableWidgetProperties checks every AST property key on a
@@ -1223,6 +1308,30 @@ func addMappingNames(add func(string), m PropertyMapping) {
 	}
 }
 
+// addTemplateParamsNames records the `<Name>Params` companion of a text-template
+// property. A `{1}`-style template needs its parameters bound beside it, and the
+// companion's name is the widget's own property name — so it cannot have a token
+// of its own, and the validator has to derive it from the definition the same way
+// the engine does.
+//
+// Scoped to texttemplate mappings on purpose: a blanket "anything ending in
+// Params" would take MDL-WIDGET01's job away from a typo (#575).
+func addTemplateParamsNames(add func(string), m PropertyMapping) {
+	if m.Operation != "texttemplate" {
+		return
+	}
+	for _, n := range []string{m.PropertyKey, m.Source} {
+		if n != "" {
+			add(n + "Params")
+		}
+	}
+	for _, a := range m.MdlAliases {
+		if a != "" {
+			add(a + "Params")
+		}
+	}
+}
+
 // readsFixedASTSlot reports whether an operation's value is resolved from a
 // dedicated AST accessor rather than from a property looked up by name.
 //
@@ -1365,6 +1474,7 @@ func allowedWidgetProperties(def *WidgetDefinition) (map[string]bool, []string) 
 
 	for _, m := range def.PropertyMappings {
 		addMappingNames(add, m)
+		addTemplateParamsNames(add, m)
 	}
 	for _, m := range def.ChildSlots {
 		add(m.PropertyKey)
@@ -1375,6 +1485,7 @@ func allowedWidgetProperties(def *WidgetDefinition) (map[string]bool, []string) 
 	for _, mode := range def.Modes {
 		for _, m := range mode.PropertyMappings {
 			addMappingNames(add, m)
+			addTemplateParamsNames(add, m)
 		}
 		for _, m := range mode.ChildSlots {
 			add(m.PropertyKey)

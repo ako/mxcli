@@ -4,7 +4,7 @@ category: mental-model
 last-synced: 4e185f73
 sources:
   - CLAUDE.md
-  - sdk/mpr/writer_domainmodel.go
+  - mdl/backend/modelsdk/domainmodel_write.go
   - sdk/domainmodel/domainmodel.go
 ---
 
@@ -25,6 +25,6 @@ Getting the inversion wrong silently produces structurally valid BSON that fails
 ## See also
 
 - [../../CLAUDE.md](../../CLAUDE.md) — canonical pointer/keyword mapping table ("Association Parent/Child Pointer Semantics")
-- [../../sdk/mpr/writer_domainmodel.go](../../sdk/mpr/writer_domainmodel.go) — `serializeAssociation` writes `ParentPointer`/`ChildPointer`
+- [../../mdl/backend/modelsdk/domainmodel_write.go](../../mdl/backend/modelsdk/domainmodel_write.go) — writes `ParentPointer`/`ChildPointer`
 - [../../sdk/domainmodel/domainmodel.go](../../sdk/domainmodel/domainmodel.go) — `Association.ParentID`/`ChildID` and `MemberAccess`
 - [[models/storage-vs-qualified-names]] — the other place BSON naming surprises you

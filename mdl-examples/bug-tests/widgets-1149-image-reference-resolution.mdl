@@ -1,0 +1,101 @@
+-- mendixlabs/mxcli#1149 — the images a Selection helper's custom states show
+-- could be written, and nothing resolved their names.
+--
+-- The report opens on the symptom #1057 had already closed: DESCRIBE PAGE
+-- printing the widget as a note instead of MDL. On main that round-trips —
+-- measured on a blank Mendix 11.14.0 project, the page below describes back with
+-- the three `staticimage` lines and their `Image:` clauses, and re-running the
+-- description reports `Unchanged page`. What the report asks for underneath is
+-- the part that was still missing: "a reference to an image from an image
+-- collection". You could write the reference. Nothing checked it.
+--
+-- TWO defects, and fixing either alone leaves the reported script unchecked.
+--
+-- 1. imageRefErrors was wired for the pluggable `image` widget and keyed on the
+--    widget TYPE, so the widget #1057 had just given the same reference —
+--    `staticimage`, which is what Studio Pro puts in these slots — was never
+--    collected. Nor was a dynamic image's `DefaultImage` fallback.
+--
+-- 2. A page's widgets live in two AST fields: `Widgets` is the bare body, and
+--    content addressed to a named layout placeholder is held apart in
+--    `Placeholders` (#532). The three page validators walked the first alone, so
+--    EVERY reference inside a `placeholder X { … }` block — microflow, nanoflow,
+--    page, snippet, entity, image — escaped `mxcli check --references`. That is
+--    the shape mxcli's own skills, its examples and its DESCRIBE output write.
+--
+-- Measured on a blank Mendix 11.14.0 project (mxbuild 11.14.0):
+--
+--   pre-fix   check --references -> Check passed!
+--             exec               -> Created page …
+--             mx check           -> [error] [CE1613] "The selected image
+--                'Atlas_UI_Resources.Atlas_Icons.checkbox_checked' no longer
+--                exists."  at Static image 'imgAll'   (x3, one per state)
+--
+--   fixed     check --references -> image collection not found:
+--                Atlas_UI_Resources.Atlas_Icons (referenced as …) x3
+--
+--   control (same button, the two positions, pre-fix):
+--             placeholder Main { actionbutton … MICROFLOW Mod.NoSuch }
+--                                -> ✓ All references valid
+--             actionbutton … MICROFLOW Mod.NoSuch    (bare body)
+--                                -> microflow not found: Mod.NoSuch
+--
+-- Atlas_UI_Resources.Atlas_Icons is not invented for the test: it is the kind of
+-- name a reader guesses from the icon they want. A blank app has seven image
+-- collections and none of them is it.
+
+-- The reported page, with references that DO resolve. `mxcli check
+-- --references` passes and mxbuild reports no CE1613.
+--
+-- mxbuild 11.14.0 does report CE0582 ("Widget static image is not supported in
+-- React client") for a static image ANYWHERE, these slots included. That is
+-- Mendix's own deprecation advice, not an mxcli defect — the same note
+-- widgets-1057-staticimage-slot-round-trip.mdl carries. A new page should use
+-- the pluggable `image` widget.
+
+create or replace page MyFirstModule.ImageRefsResolve (
+  Title: 'Image references resolve', Layout: Atlas_Core.Atlas_Default
+) {
+  placeholder Main {
+    selectionhelper sh1 (renderStyle: 'custom') {
+      customallselected slot1 {
+        staticimage imgAll (Image: 'MyFirstModule.Images.gallery')
+      }
+      customsomeselected slot2 {
+        staticimage imgSome (Image: 'MyFirstModule.Images.combobox')
+      }
+      customnoneselected slot3 {
+        staticimage imgNone (Image: 'MyFirstModule.Images.dg2')
+      }
+    }
+  }
+};
+
+-- The same three references outside a placeholder block, plus a dynamic image's
+-- fallback. Defect 1 on its own: before the fix this passed `check --references`
+-- too, with the widgets in the position the walk DOES reach — which is what
+-- separates the two halves.
+
+create or replace page MyFirstModule.ImageRefsBareBody (
+  Title: 'Image references, bare body', Layout: Atlas_Core.Atlas_Default
+) {
+  staticimage imgBare (Image: 'MyFirstModule.Images.microflow')
+  image imgPluggable (Image: 'MyFirstModule.Images.nanoflow')
+};
+
+-- CONTROL for defect 2, in the direction that matters: a reference that resolves
+-- must stay silent now that the placeholder arm is walked. A validator that
+-- reports everything it can suddenly see is not a fix — it is a fix and a
+-- regression, and the escape was silent for long enough that plenty of correct
+-- scripts have only ever been checked in the bare-body position.
+
+create or replace page MyFirstModule.PlaceholderRefsAreFine (
+  Title: 'Placeholder references resolve', Layout: Atlas_Core.Atlas_Default
+) {
+  placeholder Main {
+    actionbutton btnHome (
+      Caption: 'Home',
+      Action: SHOW_PAGE MyFirstModule.ImageRefsResolve
+    )
+  }
+};

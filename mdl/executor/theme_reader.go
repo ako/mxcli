@@ -19,6 +19,18 @@ type ThemeProperty struct {
 	Description string        `json:"description"`
 	Class       string        `json:"class"`   // For Toggle type: the CSS class toggled
 	Options     []ThemeOption `json:"options"` // For Dropdown/ColorPicker/ToggleButtonGroup
+	// MultiSelect marks a property whose value is a SET of the declared options
+	// rather than one of them — Atlas declares it on `Hide on` (Phone/Tablet/
+	// Desktop). It changes the STORED SHAPE, not just the arity: Mendix writes a
+	// Forms$CompoundDesignPropertyValue whose Properties hold one
+	// Forms$DesignPropertyValue per selected option, each valued with a bare
+	// Forms$ToggleDesignPropertyValue. Measured by decoding a Studio Pro-authored
+	// Atlas page in a blank 11.12.2 project.
+	//
+	// Without it a flat `'Hide on': 'Phone'` serialized as a plain option, which
+	// mxbuild refuses with CE6084 "Expected design property Hide on to be of type
+	// Toggle button group, but found Option" (ako/mxcli#511).
+	MultiSelect bool `json:"multiSelect"`
 }
 
 // ThemeOption represents a single option within a dropdown/picker design property.
@@ -66,8 +78,8 @@ func loadThemeRegistry(projectDir string) (*ThemeRegistry, error) {
 			continue // Skip unreadable files
 		}
 
-		var fileProps map[string][]ThemeProperty
-		if err := json.Unmarshal(data, &fileProps); err != nil {
+		fileProps, err := parseDesignPropertiesJSON(data)
+		if err != nil {
 			continue // Skip malformed files
 		}
 
@@ -78,6 +90,17 @@ func loadThemeRegistry(projectDir string) (*ThemeRegistry, error) {
 	}
 
 	return registry, nil
+}
+
+// parseDesignPropertiesJSON decodes one design-properties.json into its widget
+// groups. Split out from the directory walk so the decoding — in particular that
+// `multiSelect` is read at all — is testable without a project on disk.
+func parseDesignPropertiesJSON(data []byte) (map[string][]ThemeProperty, error) {
+	var fileProps map[string][]ThemeProperty
+	if err := json.Unmarshal(data, &fileProps); err != nil {
+		return nil, err
+	}
+	return fileProps, nil
 }
 
 // GetPropertiesForWidget returns properties applicable to a widget type,

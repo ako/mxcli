@@ -51,6 +51,10 @@ type DomainModelBackend interface {
 
 	// View entities
 	CreateViewEntitySourceDocument(moduleID model.ID, moduleName, docName, oqlQuery, documentation string) (model.ID, error)
+	// WriteViewEntitySourceDocument stores the OQL document, updating the unit
+	// already there rather than replacing it — see the modelsdk implementation
+	// for why the difference is load-bearing (ako/mxcli#583).
+	WriteViewEntitySourceDocument(moduleID model.ID, moduleName, docName, oqlQuery, documentation string) (model.ID, error)
 	DeleteViewEntitySourceDocument(id model.ID) error
 	DeleteViewEntitySourceDocumentByName(moduleName, docName string) error
 	FindViewEntitySourceDocumentID(moduleName, docName string) (model.ID, error)

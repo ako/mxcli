@@ -43,14 +43,23 @@ func setupEntitiesDB(t *testing.T, entities [][]any) catalog.CatalogDB {
 		Id TEXT, Name TEXT, QualifiedName TEXT, ModuleName TEXT, Folder TEXT,
 		EntityType TEXT, Description TEXT, Generalization TEXT,
 		AttributeCount INTEGER, AccessRuleCount INTEGER, ValidationRuleCount INTEGER,
-		HasEventHandlers INTEGER, IsExternal INTEGER
+		HasEventHandlers INTEGER, IsExternal INTEGER,
+		HasCreatedDate INTEGER, HasChangedDate INTEGER,
+		HasOwner INTEGER, HasChangedBy INTEGER
 	)`)
 	if err != nil {
 		t.Fatalf("failed to create entities table: %v", err)
 	}
 
 	for _, row := range entities {
-		_, err := db.Exec(`INSERT INTO entities VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		// Named columns, not positional: the fixture supplies the 13 a rule
+		// test cares about, and a column added to the real schema (the four
+		// audit members were) must not break every caller.
+		_, err := db.Exec(`INSERT INTO entities
+			(Id, Name, QualifiedName, ModuleName, Folder, EntityType, Description,
+			 Generalization, AttributeCount, AccessRuleCount, ValidationRuleCount,
+			 HasEventHandlers, IsExternal)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			row...)
 		if err != nil {
 			t.Fatalf("failed to insert entity: %v", err)

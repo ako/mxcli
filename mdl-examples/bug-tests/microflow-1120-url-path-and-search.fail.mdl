@@ -1,0 +1,21 @@
+-- ============================================================================
+-- NEGATIVE TEST: `mxcli check` MUST reject this file.
+-- ============================================================================
+--
+-- A parameter used in the URL PATH may not ALSO be a URL SEARCH parameter.
+-- mxbuild reports the overlap as CE5612 ("cannot be used as a URL parameter if
+-- it is already a URL search parameter"); mxcli reports it as MDL-MF02 before
+-- anything is written.
+--
+-- This rule is here because it was learned the expensive way. The first version
+-- of #1120's own test fixture reused one parameter for both, and every unit test
+-- passed — nothing in a unit test validates the model. It took seeding a real
+-- project and running `mx check` to find that the fixture described a document
+-- Mendix refuses to build.
+
+CREATE OR MODIFY MICROFLOW Deeplink.ACT_Bad ($Key: String)
+URL 'item/{Key}'
+URL SEARCH PARAMETERS ($Key)
+BEGIN
+  LOG INFO $Key;
+END;

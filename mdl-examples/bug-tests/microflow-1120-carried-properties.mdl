@@ -1,0 +1,77 @@
+-- ============================================================================
+-- mendixlabs/mxcli#1120 — a rewrite keeps the microflow properties MDL cannot
+-- author: the deep-link URL, the export level, and the concurrency settings
+-- ============================================================================
+--
+-- POSITIVE TEST: `mxcli check` MUST accept this file.
+--
+-- Studio Pro stores several microflow properties that MDL has no syntax for:
+--
+--   Url / UrlSearchParameters   the deep link (Mendix 10.6+), e.g. item/{Key}
+--   ExportLevel                 Hidden or API — the module's public surface
+--   AllowConcurrentExecution    "disallow concurrent execution"
+--   ConcurrencyErrorMessage     what the second caller gets, translations and all
+--   ConcurrencyErrorMicroflow   or the microflow that handles it
+--   MarkAsUsed                  suppresses the "unused document" warning
+--
+-- `CREATE OR MODIFY MICROFLOW` rebuilds the document from the statement, so all
+-- of these used to be replaced by the writer's own literals — even when the
+-- script only changed the body.
+--
+-- What made this reach a user rather than CI is that NOTHING reports it.
+-- Measured end to end on mxbuild 11.6.6 against a real MPR v2 project, with the
+-- properties seeded into the stored unit the way Studio Pro writes them:
+--
+--   seeded control    Url="item/{Key}"  ExportLevel="API"     mx check 0 errors
+--   before the fix    Url=""            ExportLevel="Hidden"  mx check 0 errors
+--   after the fix     Url="item/{Key}"  ExportLevel="API"     mx check 0 errors
+--
+-- The middle row is the bug: a valid project, a clean build, and the deep link
+-- simply gone. The concurrency case is worse in kind — the rebuild wrote
+-- "allow", so a microflow that DISALLOWED concurrent execution came back
+-- allowing it, and CE4899 fires only on disallow-without-a-message, so the one
+-- error covering that area is blind to the direction that removes the
+-- protection.
+--
+-- One more rule, learned from the seeded fixture rather than from the docs: a
+-- parameter used in the URL PATH may not also be a URL SEARCH parameter. The
+-- two sets are disjoint and mxbuild rejects the overlap with CE5612.
+--
+-- THREE OF THE SIX ARE NOW AUTHORABLE. The URL, the export level and the
+-- concurrency settings have header clauses of their own — see
+-- doctype-tests/microflow-document-properties.mdl — and DESCRIBE emits them, so
+-- describe -> rename -> exec copies them faithfully. That is what preservation
+-- alone could never fix: a copy is a NEW document with nothing to preserve from.
+--
+-- The preservation rule is unchanged and is what the clauses are layered on: an
+-- OMITTED clause still means "the script does not say", so the rewrite below
+-- keeps everything. Clearing is explicit (DROP URL / EXPORT LEVEL HIDDEN /
+-- ALLOW CONCURRENT EXECUTION), and `Mark as used` still has no clause at all.
+--
+-- WHAT THIS FIXTURE PINS is the syntax half — that a body-only rewrite is valid
+-- MDL and stays accepted. It cannot pin the preservation itself: `check` runs
+-- without a project, so there is no stored document to preserve from. That half
+-- is guarded in Go (mdl/backend/modelsdk/microflow_roundtrip_flags_test.go,
+-- mdl/executor/microflow_carried_properties_test.go and
+-- microflow_authored_properties_test.go, each with the fix reverted as a
+-- control) and end to end by the procedure recorded in the findings.
+
+CREATE OR MODIFY MICROFLOW Bug1120.ACT_Item ($Key: String, $Filter: String)
+RETURNS String AS $Result
+BEGIN
+  -- A microflow that, in a real project, would carry Url = 'item/{Key}' with
+  -- $Filter (NOT $Key — CE5612) as its search parameter, ExportLevel = 'API',
+  -- and concurrent execution disallowed with an error message.
+  $Result = $Key + '/' + $Filter;
+  RETURN $Result;
+END;
+
+-- Re-running the same statement with a different body is the exact shape of the
+-- report: nothing here mentions the URL, the export level or concurrency, and
+-- none of them may be disturbed.
+CREATE OR MODIFY MICROFLOW Bug1120.ACT_Item ($Key: String, $Filter: String)
+RETURNS String AS $Result
+BEGIN
+  $Result = $Filter + '/' + $Key;
+  RETURN $Result;
+END;

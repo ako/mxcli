@@ -1,5 +1,12 @@
 # Code Review
 
+> **Point-in-time review, not a current description.** This was written against the
+> project when it was called `ModelSDKGo` and when the `sdk/mpr` engine still
+> existed; that package has since been deleted
+> ([ADR-0004](13-decisions/0004-full-codec-engine.md)). The observations are kept
+> as a record — for how the code is laid out today, read
+> [`docs/01-project/ARCHITECTURE.md`](01-project/ARCHITECTURE.md).
+
 This document provides a review of the `ModelSDKGo` project, a command-line application for working with Mendix projects.
 
 ## 1. Overview

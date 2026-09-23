@@ -82,3 +82,7 @@ Two things to know if you place entities yourself:
 - An entity created with no position takes the next slot in a wrapping grid.
   That is a default, not a layout: it keeps a large model on screen and stops
   boxes overlapping, but it knows nothing about which entities are related.
+
+## Default position for an entity with no `@Position`
+
+A wrapping grid (`mdl/dmlayout`), not the single 6,000px row it used to be.

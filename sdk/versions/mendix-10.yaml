@@ -43,6 +43,10 @@ features:
     basic:
       min_version: "10.0.0"
       mdl: "CREATE MICROFLOW Module.Name (...) BEGIN ... END"
+    deep_link_url:
+      min_version: "10.6.0"
+      mdl: "URL 'item/{Key}' / URL SEARCH PARAMETERS ($Filter) / DROP URL"
+      notes: "Microflow deep links. A path parameter may not also be a search parameter (CE5612)."
     synchronize:
       min_version: "10.0.0"
       mdl: "SYNCHRONIZE ALL | $Var[, $Var...]  (nanoflow only)"
@@ -50,10 +54,9 @@ features:
       min_version: "10.0.0"
       mdl: "SYNCHRONIZE UNSYNCHRONIZED  (nanoflow only)"
     show_page_with_params:
-      min_version: "11.0.0"
-      workaround:
-        description: "Pass data via a non-persistent entity or microflow parameter"
-        max_version: "10.99.99"
+      min_version: "10.0.0"
+      mdl: "SHOW PAGE Module.PageName WITH PARAMS ..."
+      notes: "Pages$PageSettings.parameterMappings introduced in 9.7.0, so every 10.x supports it"
     send_rest_request:
       min_version: "10.1.0"
       mdl: "SEND REST REQUEST ..."
@@ -75,12 +78,15 @@ features:
       min_version: "10.0.0"
       mdl: "CREATE PAGE Module.Name (...) { ... }"
     page_parameters:
-      min_version: "11.0.0"
-      workaround:
-        description: "Use non-persistent entity or microflow parameter"
-        max_version: "10.99.99"
+      min_version: "10.0.0"
+      mdl: "CREATE PAGE Module.Name (Params: ($P: Module.Entity)) { ... }"
+      notes: "Pages$PageParameter introduced in 9.4.0, so every 10.x supports it. The
+        optional/default-value half (PageParameter.IsRequired, PageParameter.DefaultValue)
+        is 11.5.0 and MDL cannot express it; the writer omits both below 11.5."
     page_variables:
-      min_version: "11.0.0"
+      min_version: "10.20.0"
+      notes: "Pages$LocalVariable introduced in 10.17.0, but its DefaultValue in 10.20.0.
+        MDL always writes a default expression, so the floor is the later of the two."
     pluggable_widgets:
       min_version: "10.0.0"
       notes: "Widget templates are currently extracted from 11.6; may cause CE0463 on 10.x"
@@ -199,9 +205,6 @@ deprecated:
 
 upgrade_opportunities:
   from_10_to_11:
-    - feature: "page_parameters"
-      description: "Replace non-persistent entity parameter passing with direct page parameters"
-      effort: "low"
     - feature: "design_properties_v3"
       description: "Atlas v3 design properties available for richer styling"
       effort: "low"

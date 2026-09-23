@@ -63,6 +63,14 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 		// script passed check AND exec and failed a build later
 		// (mendixlabs/mxcli#1063).
 		violations = append(violations, validateLayoutPlaceholders(stmt)...)
+		// A snippet parameter must be an entity; mxbuild rejects a primitive one
+		// with CE0046 (MDL087). The documented spelling used the primitive form,
+		// so this was reachable straight from `mxcli syntax snippet.create`
+		// (mendixlabs/mxcli#1028).
+		violations = append(violations, validateSnippetParameters(stmt)...)
+		// A microflow's URL / export level / concurrency clauses, against the
+		// same rules the writer applies (MDL-MF01..MF04).
+		violations = append(violations, validateMicroflowDocumentProperties(stmt)...)
 		// A page with parameters and a Url must name each parameter in it (CE5601).
 		if pageStmt, ok := stmt.(*ast.CreatePageStmtV3); ok {
 			violations = append(violations, ValidatePageURLParameters(pageStmt)...)
@@ -76,6 +84,8 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 		// Parameter annotations for the two flow flavours that do not go through
 		// ValidateMicroflow but share the parameter grammar.
 		if nfStmt, ok := stmt.(*ast.CreateNanoflowStmt); ok {
+			// MDL044 over the body (mendixlabs/mxcli#1033).
+			violations = append(violations, ValidateNanoflow(nfStmt)...)
 			violations = append(violations,
 				ValidateFlowParameterAnnotations("nanoflow '"+nfStmt.Name.String()+"'", nfStmt.Parameters)...)
 		}
@@ -128,6 +138,14 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 	// (themesource design-properties.json) — flags unknown keys and invalid
 	// option values, listing the allowed values. Only runs with --project.
 	violations = append(violations, ValidateDesignProperties(prog, projectPath)...)
+
+	// The same question for ALTER STYLING, which that pass never looked at — the
+	// one statement whose entire job is writing design properties, and the one
+	// where an unsupported key was silent until mxbuild said CE6083
+	// (ako/mxcli#509). It resolves less, because the statement names a STORED
+	// widget whose $Type this pass cannot read; see the file comment.
+	violations = append(violations, validateAlterStylingDesignProps(
+		prog, LoadThemeRegistryForProject(projectPath))...)
 
 	// Validate pluggable widget properties against widget definitions —
 	// catches typos in property keys before MxBuild does. Uses built-in

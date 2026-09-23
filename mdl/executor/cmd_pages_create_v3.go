@@ -21,7 +21,12 @@ func execCreatePageV3(ctx *ExecContext, s *ast.CreatePageStmtV3) error {
 		return mdlerrors.NewNotConnectedWrite()
 	}
 
-	// Version pre-check: page parameters require 11.0+
+	// Version pre-check: page parameters exist from Mendix 9.4, not 11.0. The
+	// registry used to say 11.0 — a figure that came from an illustrative sample
+	// table in PROPOSAL_version_aware_agent_support.md, never from a measurement —
+	// which locked every 10.x project out of parameterised pages entirely
+	// (mendixlabs/mxcli#1121). The gate stays because 9.0–9.3 genuinely has no
+	// Pages$PageParameter; only the floor and the hint were wrong.
 	if len(s.Parameters) > 0 {
 		if err := checkFeature(ctx, "pages", "page_parameters",
 			"create page with parameters",
@@ -105,6 +110,9 @@ func execCreatePageV3(ctx *ExecContext, s *ast.CreatePageStmtV3) error {
 		fragments:        ctx.Fragments,
 		themeRegistry:    ctx.GetThemeRegistry(),
 		widgetBackend:    ctx.Backend,
+		// The root of a document that this pass walks in full: there is no
+		// enclosing data widget, so there is no context object. #1029.
+		argCtx: atDocumentRoot(),
 	}
 
 	page, err := pb.buildPageV3(s)
@@ -241,6 +249,9 @@ func execCreateSnippetV3(ctx *ExecContext, s *ast.CreateSnippetStmtV3) error {
 		fragments:        ctx.Fragments,
 		themeRegistry:    ctx.GetThemeRegistry(),
 		widgetBackend:    ctx.Backend,
+		// The root of a document that this pass walks in full: there is no
+		// enclosing data widget, so there is no context object. #1029.
+		argCtx: atDocumentRoot(),
 	}
 
 	snippet, err := pb.buildSnippetV3(s)

@@ -10,7 +10,7 @@
 | `models/storage-vs-qualified-names.md` | mental-model | BSON `$type` vs SDK qualified name |
 | `models/version-gating.md` | mental-model | feature registry, `min_version`, `checkFeature()` |
 | `rationale/mdl-as-sql.md` | rationale | why MDL is SQL-shaped, design principles (cites ADRs) |
-| `rationale/backend-abstraction.md` | rationale | why the executor never imports `sdk/mpr` for writes (cites ADRs) |
+| `rationale/backend-abstraction.md` | rationale | why the executor never reaches past `ctx.Backend` for writes (cites ADRs) |
 | `positioning/vs-typescript-sdk.md` | positioning | gap analysis, intentional differences |
 | `glossary.md` | glossary | Mendix ↔ mxcli ↔ BSON term bridge |
 | `bug-patterns/bson-numeric-width.md` | bug-pattern | int32/int64 mismatches (links #583, #585 findings) |

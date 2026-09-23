@@ -34,7 +34,9 @@ func setupModuleFilterDB(t *testing.T) catalog.CatalogDB {
 		Id TEXT, Name TEXT, QualifiedName TEXT, ModuleName TEXT, Folder TEXT,
 		EntityType TEXT, Description TEXT, Generalization TEXT,
 		AttributeCount INTEGER, AccessRuleCount INTEGER, ValidationRuleCount INTEGER,
-		HasEventHandlers INTEGER, IsExternal INTEGER
+		HasEventHandlers INTEGER, IsExternal INTEGER,
+		HasCreatedDate INTEGER, HasChangedDate INTEGER,
+		HasOwner INTEGER, HasChangedBy INTEGER
 	)`)
 	if err != nil {
 		t.Fatalf("create entities table: %v", err)
@@ -53,7 +55,11 @@ func setupModuleFilterDB(t *testing.T) catalog.CatalogDB {
 		if _, err := db.Exec(`INSERT INTO modules VALUES (?, ?, '')`, mod+"-id", mod); err != nil {
 			t.Fatalf("insert module %s: %v", mod, err)
 		}
-		if _, err := db.Exec(`INSERT INTO entities VALUES (?, ?, ?, ?, '', 'PERSISTENT', '', '', 0, 0, 0, 0, 0)`,
+		if _, err := db.Exec(`INSERT INTO entities
+			(Id, Name, QualifiedName, ModuleName, Folder, EntityType, Description,
+			 Generalization, AttributeCount, AccessRuleCount, ValidationRuleCount,
+			 HasEventHandlers, IsExternal)
+			VALUES (?, ?, ?, ?, '', 'PERSISTENT', '', '', 0, 0, 0, 0, 0)`,
 			mod+"_e", mod+"_Entity", mod+".Entity", mod); err != nil {
 			t.Fatalf("insert entity for %s: %v", mod, err)
 		}

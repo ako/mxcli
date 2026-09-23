@@ -1,0 +1,47 @@
+-- ako/mxcli#510 — MDL-WIDGET20 falsely warned that `Editable` is dropped on a
+-- List View and on a grid column. mxcli writes both.
+--
+-- Before the fix, `mxcli check -p … --references` on this file reported:
+--
+--     ⚠ widget `lvThings` (listview) has an `Editable` property, but Mendix models
+--       editability on input widgets only — listview has no Editability, so this is
+--       silently dropped on write and the widget stays enabled        [MDL-WIDGET20]
+--       → Use `visible: [ ... ]` to hide it conditionally (buttons do support
+--         conditional visibility) …
+--
+-- Every clause after the "but" was wrong, and the suggestion is addressed to a
+-- button — the tell that the branch was written for a different widget.
+--
+-- The rule's premise is right for the bug it was written for (#928, `editable:`
+-- on a button): Mendix models EDITABILITY — Editability /
+-- ConditionalEditabilitySettings — on input widgets only. Pages$ListView carries
+-- neither. What it has is a plain `Editable bool`, a different property with a
+-- different meaning: it makes the inputs INSIDE the list view editable.
+--
+-- Measured on 11.12.2: exec writes it, `describe page` reads back
+-- `Editable: true`, and `mxcli docker check` reports 0 errors.
+--
+-- What must still warn, and is the reason this is a second set rather than more
+-- entries in the first: neither type has ConditionalEditabilitySettings, so the
+-- BRACKET form `Editable: [expr]` really is dropped and keeps MDL-WIDGET20.
+
+create entity MyFirstModule.Thing ( Name: string(200) );
+
+create or replace page MyFirstModule.EditableListView (
+  title: 'Editable', layout: 'Atlas_Core.Atlas_Default'
+) {
+  listview lvThings (
+    DataSource: database from MyFirstModule.Thing,
+    Editable: true                      -- written; must NOT warn
+  ) {
+    textbox tbName (Label: 'Name', Attribute: Name)
+  }
+};
+
+create or replace page MyFirstModule.EditableColumn (
+  title: 'Column', layout: 'Atlas_Core.Atlas_Default'
+) {
+  legacydatagrid dgThings (DataSource: database from MyFirstModule.Thing) {
+    column colName (Attribute: Name, Caption: 'Name', Editable: true)   -- likewise
+  }
+};

@@ -1,0 +1,115 @@
+-- ako/mxcli#587 — the manage-security skill offered a microflow data source as
+-- the way past the System-module ceiling. It is not one: a microflow data
+-- source moves the ROWS, not the MEMBERS.
+--
+-- A microflow does not apply entity access, so its retrieve returns every row.
+-- The runtime then RE-APPLIES entity access when it serializes those objects to
+-- the client, XPath constraint included — so a row the role may not read arrives
+-- with every member empty. The list is the right length and the cards are blank,
+-- with `mxcli check`, `lint`, `report` and `mx check` all at 0 errors.
+--
+-- THIS FILE IS THE MEASUREMENT, not a unit test. The symptom is a property of
+-- the RUNNING APP (.claude/skills/verify-in-runtime.md), so nothing below the
+-- browser can see it. To reproduce, on a blank project:
+--
+--   mxcli new SecProbe --version 11.14.0 --theme none --layout none --skip-init \
+--       --skip-build --output-dir /root/sec
+--   mxcli exec mdl-examples/bug-tests/security-587-system-member-access.mdl \
+--       -p /root/sec/SecProbe.mpr
+--   mxcli run --local -p /root/sec/SecProbe.mpr --setup --ensure-db
+--   mxcli run --local -p /root/sec/SecProbe.mpr
+--   # open http://127.0.0.1:8080/ and sign in as each demo user below
+--
+-- Measured on Mendix 11.14.0. Both lists hold TWO rows for BOTH users — the
+-- microflow really did carry the rows past entity access — and only list A loses
+-- the values:
+--
+--   list                                   as probe_admin        as probe_viewer
+--   A  the System.User objects             probe_admin,          (blank),
+--                                          probe_viewer          probe_viewer
+--   B  a module-owned copy, Name read      probe_admin,          probe_admin,
+--      INSIDE the microflow                probe_viewer          probe_viewer
+--
+-- A loses them PER OBJECT: System.User's own rule grants read where
+-- [id = '[%CurrentUser%]'], which is why a user picker shows you yourself and
+-- nobody else rather than showing nothing. System.WorkflowUserTask has no such
+-- escape hatch for an ordinary role, so the reporter's workflow inbox came out
+-- entirely blank.
+
+create module Sec;
+
+-- A row the project owns, so every role can be granted it.
+create non-persistent entity Sec.UserRow (
+  DisplayName: String(200)
+);
+
+create module role Sec.Viewer;
+create module role Sec.Admin;
+
+-- A: rows straight out of System.User.
+create microflow Sec.GetSystemUsers ()
+returns list of System.User as $Users
+begin
+  retrieve $Users from System.User;
+  return $Users;
+end;
+
+-- B: the same rows, with Name read inside the microflow and copied onto an
+-- entity this module owns. Entity access applies to neither the retrieve nor the
+-- member read — only to what crosses to the client.
+create microflow Sec.GetUserRows ()
+returns list of Sec.UserRow as $Rows
+begin
+  $Rows = create list of Sec.UserRow;
+  retrieve $Users from System.User;
+  loop $u in $Users begin
+    $row = create Sec.UserRow (DisplayName = $u/Name);
+    add $row to $Rows;
+  end loop;
+  return $Rows;
+end;
+
+create or replace page Sec.Home (
+  title: 'System vs owned',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  container cA {
+    dynamictext hA (content: 'A: System.User via microflow datasource')
+    listview lvSystem (DataSource: MICROFLOW Sec.GetSystemUsers) {
+      textbox tbSysName (Label: 'SysName', Attribute: Name)
+    }
+    dynamictext hB (content: 'B: Sec.UserRow via microflow datasource')
+    listview lvRows (DataSource: MICROFLOW Sec.GetUserRows) {
+      textbox tbRowName (Label: 'RowName', Attribute: DisplayName)
+    }
+  }
+}
+/
+alter project security level production;
+
+-- Sec.Viewer may read everything this MODULE owns and may run both microflows
+-- and open the page — so anything blank is the System module's doing, not a
+-- grant we forgot.
+alter user role User add module roles (Sec.Viewer);
+alter user role Administrator add module roles (Sec.Admin);
+
+grant Sec.Viewer on Sec.UserRow (read *, write *, create, delete);
+grant Sec.Admin  on Sec.UserRow (read *, write *, create, delete);
+
+grant execute on microflow Sec.GetSystemUsers to Sec.Viewer, Sec.Admin;
+grant execute on microflow Sec.GetUserRows to Sec.Viewer, Sec.Admin;
+grant view on page Sec.Home to Sec.Viewer, Sec.Admin;
+
+create or replace navigation Responsive
+  home page Sec.Home
+  menu (
+    menu item 'Home' page Sec.Home icon glyph 57377;
+  )
+;
+
+-- The control is the ROLE, not the build: Administrator sees both names in list
+-- A, so a blank there is entity access and not a broken page.
+drop demo user if exists 'demo_user';
+drop demo user if exists 'demo_administrator';
+create demo user 'probe_admin' password 'Passw0rdProbe1' (Administrator);
+create demo user 'probe_viewer' password 'Passw0rdProbe1' (User);

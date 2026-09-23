@@ -85,6 +85,9 @@ func listSettings(ctx *ExecContext) error {
 		if ws.DefaultTaskParallelism > 0 {
 			values = append(values, fmt.Sprintf("TaskParallelism: %d", ws.DefaultTaskParallelism))
 		}
+		if len(ws.Groups) > 0 {
+			values = append(values, fmt.Sprintf("%d group(s)", len(ws.Groups)))
+		}
 		tr.Rows = append(tr.Rows, []any{"Workflow Settings", strings.Join(values, ", ")})
 	}
 
@@ -224,6 +227,16 @@ func describeSettings(ctx *ExecContext, configName string) error {
 		}
 		if len(parts) > 0 {
 			fmt.Fprintf(ctx.Output, "alter settings workflows\n%s;\n\n", strings.Join(parts, ",\n"))
+		}
+		// The groups, in stored order. `add or modify` so a described project
+		// re-executes against a project that already has some of them.
+		for _, g := range ws.Groups {
+			fmt.Fprintf(ctx.Output,
+				"alter settings workflows add or modify group '%s' (\n  Description: '%s'\n);\n",
+				escapeMDLString(g.Name), escapeMDLString(g.Description))
+		}
+		if len(ws.Groups) > 0 {
+			fmt.Fprintln(ctx.Output)
 		}
 	}
 
@@ -395,6 +408,17 @@ func alterSettings(ctx *ExecContext, stmt *ast.AlterSettingsStmt) error {
 		if errs := validateSettingsReferences(stmt, mfs, ents, rets, nil); len(errs) > 0 {
 			return errs[0]
 		}
+	}
+
+	// ADD/REMOVE GROUP change the workflows part's Groups list rather than a key
+	// on it, so they are dispatched before the key/value sections — as the
+	// language forms below are, and for the same reason.
+	if stmt.AddGroup || stmt.ModifyGroup || stmt.UpsertGroup || stmt.RemoveGroup {
+		if section != "workflows" {
+			return mdlerrors.NewUnsupported(fmt.Sprintf(
+				"GROUP is only defined for the WORKFLOWS section, not %s", stmt.Section))
+		}
+		return alterSettingsWorkflowGroup(ctx, ps, stmt)
 	}
 
 	// ADD/REMOVE change the list of ENABLED languages rather than a key on the

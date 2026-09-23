@@ -53,6 +53,17 @@ DESCRIBE SETTINGS MODEL;
 DESCRIBE SETTINGS CONFIGURATION;
 ```
 
+### List workflow groups
+
+```sql
+SHOW WORKFLOW GROUPS;
+```
+
+Lists the workflow groups from App Settings ▸ Workflows ▸ Groups with their
+descriptions. It reads the project settings directly, so no catalog refresh is
+needed. Groups are created with
+[`ALTER SETTINGS WORKFLOWS ... GROUP`](alter-settings.md).
+
 ### Describe workflow settings
 
 ```sql

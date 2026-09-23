@@ -128,6 +128,35 @@ type AlterEntityStmt struct {
 
 func (s *AlterEntityStmt) isStatement() {}
 
+// EntityPersistenceFilter narrows ALTER ENTITIES to one persistence kind.
+type EntityPersistenceFilter int
+
+const (
+	// EntityFilterAll is the absence of a WHERE clause.
+	EntityFilterAll EntityPersistenceFilter = iota
+	EntityFilterPersistent
+	EntityFilterNonPersistent
+)
+
+// AlterEntitiesStmt is the bulk form: one statement applied to every entity in
+// a module, rather than one statement per entity.
+//
+// It carries a LIST of AlterEntityStmt rather than its own operation fields.
+// The executor resolves the target set and then runs each action through the
+// single-entity path unchanged, so every domain rule, refusal and idempotence
+// guard that applies to ALTER ENTITY applies here for free and cannot drift.
+type AlterEntitiesStmt struct {
+	// Module is the module to sweep. Empty means every module in the project.
+	Module string
+	// Filter narrows the set by persistence; EntityFilterAll means no WHERE.
+	Filter EntityPersistenceFilter
+	// Actions are applied to each matched entity, in order. Each carries a
+	// zero Name; the executor fills it in per entity.
+	Actions []*AlterEntityStmt
+}
+
+func (s *AlterEntitiesStmt) isStatement() {}
+
 // ============================================================================
 // View Entity Statements
 // ============================================================================

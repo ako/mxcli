@@ -243,6 +243,46 @@ profile with `sync Sales.Audit never` still *names* that entity, so renaming or
 dropping it leaves the configuration dangling — which is precisely what a
 reference edge exists to reveal.
 
+### Entity event handlers
+
+`CATALOG.ENTITY_EVENT_HANDLERS` — one row per entity event handler: which
+moment, which event, and which microflow runs.
+
+```sql
+select EntityQualifiedName, Moment, Event, Microflow
+  from CATALOG.ENTITY_EVENT_HANDLERS
+ where Moment = 'Before' and Event = 'Commit';
+```
+
+`CATALOG.ENTITIES.HasEventHandlers` says some exist and nothing else — the same
+shape `NavigationProfile.OfflineEntityCount` had. The distinction the flag loses
+is the one that matters: a `Before` handler with `RaiseErrorOnFalse` can **veto**
+the commit, an `After` handler cannot.
+
+`Moment` is `Before` or `After`. `Event` is the value Mendix stores, not the
+caption Studio Pro shows: `Create`, `Commit`, `Delete`, `RollBack` — note the
+**capital B**, which `generated/metamodel` confirms
+(`DomainModelsEventRollBack = "RollBack"`) and which disagrees with every
+neighbouring enum in that file, where the same word is `Rollback`. A query
+spelling it the expected way returns zero rows rather than an error.
+
+A handler also produces an `event` row in `CATALOG.REFS`, so a microflow that
+runs only as a handler has callers:
+
+```sql
+select SourceName, TargetName from CATALOG.REFS where RefKind = 'event';
+```
+
+Without that edge the handler microflow was reported dead from three directions
+at once — `show callers` said `(no callers found)`, `CATALOG.GRAPH_DEAD_ASSETS`
+listed it, and `mxcli lint` emitted **QUAL004** "is not called from anywhere"
+with the suggestion *Remove if unused* — on code that runs on every commit
+([mendixlabs/mxcli#1127](https://github.com/mendixlabs/mxcli/issues/1127)).
+
+The edge carries neither the moment nor the event; `refs` has no column for
+them, and a kind per combination would put eight kinds into every consumer's
+list to say one thing. Which moment and which event is this table's question.
+
 ## Graph-Analysis Tables
 
 The dependency graph (`CATALOG.REFS`, full refresh) is analysed by a family of

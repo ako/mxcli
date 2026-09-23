@@ -24,6 +24,9 @@ showStatement
     | showOrList NANOFLOWS (IN (qualifiedName | IDENTIFIER))?
     | showOrList RULES (IN (qualifiedName | IDENTIFIER))?
     | showOrList WORKFLOWS (IN (qualifiedName | IDENTIFIER))?
+    // The project-level workflow groups (App Settings > Workflows > Groups),
+    // not a per-module listing: they are settings, so there is no IN <module>.
+    | showOrList WORKFLOW GROUPS
     | showOrList PAGES (IN (qualifiedName | IDENTIFIER))?
     | showOrList SNIPPETS (IN (qualifiedName | IDENTIFIER))?
     | showOrList BUILDING BLOCKS (IN (qualifiedName | IDENTIFIER))?

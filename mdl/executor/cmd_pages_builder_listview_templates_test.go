@@ -113,7 +113,7 @@ func TestBuildListViewTemplateRejections(t *testing.T) {
 		{
 			"entity is not a specialization of the list view's entity",
 			[]*ast.WidgetV3{templateWidget("Pages.Unrelated", "x")},
-			"is not Pages.Vehicle or a specialization of it",
+			"is not a specialization of Pages.Vehicle",
 		},
 		{
 			"two templates for one specialization",
@@ -144,16 +144,68 @@ func TestBuildListViewTemplateRejections(t *testing.T) {
 	}
 }
 
-// TestBuildListViewTemplateOnTheListEntityItself is allowed: a template for the
-// list view's own entity is the base case Mendix permits, and
-// entityIsOrDescendsFrom returns true for the entity itself.
-func TestBuildListViewTemplateOnTheListEntityItself(t *testing.T) {
+// ako/mxcli#514. This test used to assert the opposite — "a template for the
+// list view's own entity is the base case Mendix permits" — on the strength of
+// entityIsOrDescendsFrom returning true for the entity itself. That was never
+// measured, and it is false. Mendix requires a STRICT specialization; the list
+// view's own body is already what renders an object no template matches, so a
+// template for the base entity would be a second, unreachable default.
+//
+// Measured on a blank Mendix 11.12.2 project, list view over MyFirstModule.Vehicle:
+//
+//	template for MyFirstModule.Car      -> mx check: 0 errors     (a real specialization)
+//	template for MyFirstModule.Vehicle  -> mx check: 1 error
+//	  [CE0543] "The entity of the list view template is 'MyFirstModule.Vehicle' and
+//	           this is not a specialization of the entity of the list view."
+//
+// mxcli check passed and exec wrote the page in both cases, so the guard existed
+// and was one case too generous — the wording "or a specialization of it" was
+// itself the bug.
+func TestBuildListViewTemplateOnTheListEntityItselfIsRefused(t *testing.T) {
 	pb := newVehiclePB()
-	lv, err := pb.buildListViewV3(listViewWidget(templateWidget("Pages.Vehicle", "base")))
+	_, err := pb.buildListViewV3(listViewWidget(templateWidget("Pages.Vehicle", "base")))
+	if err == nil {
+		t.Fatal("a template for the list view's own entity was accepted; mxbuild refuses it with CE0543")
+	}
+	// The old wording — "is not <listEntity> or a specialization of it" — named
+	// the very case Mendix refuses as one of the accepted ones.
+	if strings.Contains(err.Error(), "is not Pages.Vehicle or a specialization of it") {
+		t.Errorf("the message still offers the case it now refuses: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "own entity") {
+		t.Errorf("the message does not say why this one is different: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "Pages.Vehicle") {
+		t.Errorf("the message does not name the entity: %q", err.Error())
+	}
+}
+
+// The control, and the reason the fix is not "refuse every template": a genuine
+// specialization still builds. Without this the test above passes against a
+// guard that rejects everything.
+func TestBuildListViewTemplateOnASpecializationIsAccepted(t *testing.T) {
+	pb := newVehiclePB()
+	lv, err := pb.buildListViewV3(listViewWidget(templateWidget("Pages.Bus", "bus")))
 	if err != nil {
-		t.Fatalf("a template for the list view's own entity was refused: %v", err)
+		t.Fatalf("a template for a real specialization was refused: %v", err)
 	}
 	if len(lv.Templates) != 1 {
 		t.Fatalf("got %d template(s), want 1", len(lv.Templates))
+	}
+}
+
+// A grandchild is still a specialization. entityIsOrDescendsFrom walked the
+// whole chain and the strict form must keep doing so — dropping to "is my
+// immediate generalization" would refuse a legal two-level hierarchy.
+func TestBuildListViewTemplateOnAGrandchildIsAccepted(t *testing.T) {
+	pb := newVehiclePB()
+	pb.execCache.domainModels[0].Entities = append(pb.execCache.domainModels[0].Entities,
+		&domainmodel.Entity{
+			BaseElement:       model.BaseElement{ID: model.ID("e-Minibus")},
+			Name:              "Minibus",
+			GeneralizationRef: "Pages.Bus",
+		})
+	if _, err := pb.buildListViewV3(listViewWidget(templateWidget("Pages.Minibus", "mini"))); err != nil {
+		t.Fatalf("a template for a grandchild specialization was refused: %v", err)
 	}
 }

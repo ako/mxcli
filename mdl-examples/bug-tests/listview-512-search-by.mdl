@@ -1,0 +1,56 @@
+-- ako/mxcli#512 — a List View's "Search attributes" had no MDL spelling.
+--
+-- Before: `SearchAttributes: [Name]` on the widget was MDL-WIDGET07
+-- ("not recognized and will be silently dropped on write"), so the search bar
+-- could only be configured in Studio Pro.
+--
+-- Stored as Forms$ListViewSearch.SearchRefs — a list of
+-- DomainModels$AttributeRef, the same element a Forms$GridSortItem carries.
+-- Pinned against a Studio Pro-authored sort bar in a blank 11.12.2 project
+-- (System.Language.Description), since no marketplace module ships a populated
+-- ListViewSearch: all 18 in a blank app are empty.
+--
+-- Syntax mirrors `sort by` — same position on the database source, same comma
+-- list — and takes no direction, because a search attribute is only a name.
+-- List view only: Forms$ListViewXPathSource is the source type that declares
+-- Search; the grid sources do not.
+--
+-- Measured on 11.12.2:
+--     exec      -> Replaced page MyFirstModule.SearchBy
+--     describe  -> ... sort by Brand asc search by Brand, Model
+--     re-exec   -> Unchanged page       <- the emitted MDL rebuilds the stored
+--                                          document exactly
+--     mx check  -> The app contains: 0 errors.
+--
+-- Two known deviations from the Studio Pro reference, both PRE-EXISTING and
+-- inherited from the shared attributeRefToGen that `sort by` already uses — so
+-- this writes exactly what a sort bar has always written:
+--   * typed-array marker 3 where Studio Pro writes 2 (mxcli's own sort bars do
+--     the same; compare CLAUDE.md's note on Forms$Page.AllowedModuleRoles)
+--   * no `EntityRef: null` key, which Studio Pro's AttributeRef carries
+-- mxbuild accepts both. Changing the shared helper would alter every existing
+-- sort bar, so it is left alone and recorded rather than fixed here.
+--
+-- Also unchanged and worth knowing: neither `sort by` nor `search by` is
+-- reference-checked, so a nonexistent attribute passes `mxcli check
+-- --references` and reaches mxbuild as CE1613 ("The selected attribute
+-- 'Mod.Entity.Attr' no longer exists"). Measured on both clauses — `search by`
+-- behaves exactly like its sibling, so this is not a new gap.
+
+create persistent entity MyFirstModule.Vehicle (
+  Brand: string(100),
+  Model: string(100)
+);
+
+create or replace page MyFirstModule.SearchBy (
+  title: 's', layout: 'Atlas_Core.Atlas_Default'
+) {
+  listview lvS (
+    DataSource: database from MyFirstModule.Vehicle
+                  where [Brand != '']
+                  sort by Brand asc
+                  search by Brand, Model
+  ) {
+    dynamictext dt (Content: 'x')
+  }
+};

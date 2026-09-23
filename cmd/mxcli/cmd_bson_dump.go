@@ -40,7 +40,7 @@ Examples:
   mxcli bson dump -p app.mpr --type page --object "PgTest.MyPage"
 
   # Compare two objects (outputs both as JSON for diff)
-  mxcli bson dump -p app.mpr --type page --compare "PgTest.Broken" "PgTest.Fixed"
+  mxcli bson dump -p app.mpr --type page --compare "PgTest.Broken,PgTest.Fixed"
 
   # Save dump to file
   mxcli bson dump -p app.mpr --type page --object "PgTest.MyPage" > mypage.json

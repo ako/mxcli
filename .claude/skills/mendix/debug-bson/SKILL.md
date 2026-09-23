@@ -45,14 +45,14 @@ Symptoms that indicate BSON serialization issues:
 
 ### Step 3: Dump Both BSON Structures
 
-Use the `mxcli dump-bson` command to extract and compare:
+Use the `mxcli bson dump` command to extract and compare:
 
 ```bash
 # Dump the SDK-generated object (the broken one)
-mxcli dump-bson -p app.mpr -o "PgTest.BrokenPage" > broken.json
+mxcli bson dump -p app.mpr -o "PgTest.BrokenPage" > broken.json
 
 # Dump the Studio Pro-generated object (the fixed one)
-mxcli dump-bson -p app.mpr -o "PgTest.FixedPage" > fixed.json
+mxcli bson dump -p app.mpr -o "PgTest.FixedPage" > fixed.json
 
 # Compare the two
 diff broken.json fixed.json
@@ -60,7 +60,7 @@ diff broken.json fixed.json
 
 Or use the `--compare` flag:
 ```bash
-mxcli dump-bson -p app.mpr --compare "PgTest.BrokenPage" "PgTest.FixedPage"
+mxcli bson dump -p app.mpr --compare "PgTest.BrokenPage,PgTest.FixedPage"
 ```
 
 ### Step 4: Identify Differences
@@ -77,10 +77,14 @@ Look for differences in:
 
 ### Step 5: Fix the Serialization Code
 
-The serialization code lives in `sdk/mpr/writer_*.go` files:
-- `writer_widgets.go` - Page widget serialization
-- `writer_microflows.go` - Microflow activity serialization
-- `writer_entities.go` - Entity/attribute serialization
+The serialization code lives in `mdl/backend/modelsdk/*_write.go`:
+- `widget_write.go` - Page widget serialization
+- `page_write.go` - Page document (header, parameters, layout call)
+- `microflow_write.go` - Microflow activity serialization
+- `domainmodel_write.go` - Entity/attribute serialization
+
+The encoder and decoder underneath them are `modelsdk/codec/encoder.go` and
+`modelsdk/codec/decoder.go`.
 
 ## Part 2: Common BSON Patterns
 
@@ -185,52 +189,40 @@ func serializeClientTemplate(ct *pages.ClientTemplate) bson.D {
 
 ## Part 4: Debugging Tools
 
-### Go Program for Raw BSON Dump
+### Dumping Raw BSON
 
-Create a temporary Go program to inspect raw BSON:
-
-```go
-package main
-
-import (
-    "encoding/json"
-    "fmt"
-    "os"
-
-    "github.com/mendix/modelsdk-go/sdk/mpr"
-)
-
-func main() {
-    reader, _ := mpr.NewReader(os.Args[1])
-    defer reader.Close()
-
-    docs, _ := reader.GetDocuments()
-    for _, doc := range docs {
-        if doc.Name == os.Args[2] { // Target object name
-            pretty, _ := json.MarshalIndent(doc.RawBSON, "", "  ")
-            fmt.Println(string(pretty))
-        }
-    }
-}
-```
-
-### Using mxcli dump-bson
+`mxcli bson dump` reads the raw unit and prints it as JSON — no Go program needed:
 
 ```bash
+# what is in there
+mxcli bson dump -p app.mpr --type page --list
+
+# one object
+mxcli bson dump -p app.mpr --type page --object "MyModule.MyPage"
+
+# the comparison that actually finds the bug: Studio Pro's vs mxcli's
+mxcli bson dump -p app.mpr --type page --compare "MyModule.Broken,MyModule.Working"
+
+# a byte-exact baseline to diff against later
+mxcli bson dump -p app.mpr --type page --object "MyModule.MyPage" --format bson > baseline.mxunit
+```
+
+`--type` also takes `microflow`, `nanoflow`, `enumeration`, `snippet`, `layout`
+and `constant`.
 # list all pages in project
-mxcli dump-bson -p app.mpr --type page --list
+mxcli bson dump -p app.mpr --type page --list
 
 # list all microflows
-mxcli dump-bson -p app.mpr --type microflow --list
+mxcli bson dump -p app.mpr --type microflow --list
 
 # Dump specific page as json
-mxcli dump-bson -p app.mpr --type page --object "PgTest.MyPage"
+mxcli bson dump -p app.mpr --type page --object "PgTest.MyPage"
 
 # Save dump to file for comparison
-mxcli dump-bson -p app.mpr --type page --object "PgTest.MyPage" > mypage.json
+mxcli bson dump -p app.mpr --type page --object "PgTest.MyPage" > mypage.json
 
 # Compare two objects (outputs both as json)
-mxcli dump-bson -p app.mpr --type page --compare "PgTest.Broken,PgTest.Fixed"
+mxcli bson dump -p app.mpr --type page --compare "PgTest.Broken,PgTest.Fixed"
 
 # Supported types: page, microflow, nanoflow, enumeration, snippet, layout
 ```
@@ -282,7 +274,7 @@ When creating nested `WidgetObject` instances (e.g., DataGrid2 columns), creatin
 
 ```bash
 # Compare mxcli-generated vs Studio Pro-generated
-mxcli dump-bson -p app.mpr --compare "PgTest.MDLPage,PgTest.StudioProPage"
+mxcli bson dump -p app.mpr --compare "PgTest.MDLPage,PgTest.StudioProPage"
 
 # Look for property count differences:
 # ~ properties: array length differs (first: 5, second: 22)
@@ -302,8 +294,8 @@ When building columns, iterate through ALL `PropertyTypes` in the template's `Ob
 
 1. Count properties in both versions:
    ```bash
-   mxcli dump-bson -p app.mpr --type page --object "PgTest.BrokenPage" | grep "WidgetProperty" | wc -l
-   mxcli dump-bson -p app.mpr --type page --object "PgTest.FixedPage" | grep "WidgetProperty" | wc -l
+   mxcli bson dump -p app.mpr --type page --object "PgTest.BrokenPage" | grep "WidgetProperty" | wc -l
+   mxcli bson dump -p app.mpr --type page --object "PgTest.FixedPage" | grep "WidgetProperty" | wc -l
    ```
 
 2. Check the template for required properties:
@@ -570,7 +562,7 @@ This applies to any executor function that reads column headers, button captions
 ## Related Documentation
 
 - [BSON Mapping Specification](../../docs/05-mdl-specification/10-bson-mapping.md)
-- [Page Widget Serialization](../../sdk/mpr/writer_widgets.go)
+- [Page Widget Serialization](../../mdl/backend/modelsdk/widget_write.go)
 - [Create Page Skill](../create-page/SKILL.md)
 - [Widget Templates README](../../sdk/widgets/templates/README.md)
 
@@ -585,8 +577,8 @@ mxcli -p app.mpr -c "describe page PgTest.BrokenPage"
 # 2. create fixed version in Studio Pro, save project
 
 # 3. Dump both objects to json files
-mxcli dump-bson -p app.mpr --type page --object "PgTest.BrokenPage" > broken.json
-mxcli dump-bson -p app.mpr --type page --object "PgTest.FixedPage" > fixed.json
+mxcli bson dump -p app.mpr --type page --object "PgTest.BrokenPage" > broken.json
+mxcli bson dump -p app.mpr --type page --object "PgTest.FixedPage" > fixed.json
 
 # 4. Compare the json files
 diff broken.json fixed.json
@@ -603,7 +595,9 @@ go build ./... && mxcli exec test.mdl -p app.mpr
 
 | File | Purpose |
 |------|---------|
-| `sdk/mpr/writer_widgets.go` | Page widget BSON serialization |
-| `sdk/mpr/writer_microflows.go` | Microflow BSON serialization |
-| `sdk/mpr/writer_entities.go` | Entity BSON serialization |
+| `mdl/backend/modelsdk/widget_write.go` | Page widget BSON serialization |
+| `mdl/backend/modelsdk/microflow_write.go` | Microflow BSON serialization |
+| `mdl/backend/modelsdk/domainmodel_write.go` | Entity BSON serialization |
+| `modelsdk/codec/encoder.go` | Document → BSON |
+| `modelsdk/codec/decoder.go` | BSON → document |
 | `docs/05-mdl-specification/10-bson-mapping.md` | BSON format documentation |

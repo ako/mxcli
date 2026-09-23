@@ -16,7 +16,7 @@ Six page categories. Anything outside these belongs somewhere else.
    (e.g. association `ParentPointer`/`ChildPointer` inversion, storage names
    vs qualified names, version gating).
 3. **Design rationale** — *why* the project is shaped this way (e.g. why MDL
-   is SQL-shaped, why the executor must not import `sdk/mpr` for writes, why
+   is SQL-shaped, why the executor must not reach past `ctx.Backend` for writes, why
    pure-Go SQLite).
 4. **Project positioning** — how mxcli relates to its neighbours (TypeScript
    SDK, Mendix Studio Pro), what is intentionally not implemented.

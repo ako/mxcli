@@ -1051,6 +1051,26 @@ type WorkflowsSettings struct {
 	UserEntity                string `json:"userEntity,omitempty"`
 	DefaultTaskParallelism    int    `json:"defaultTaskParallelism,omitempty"`
 	WorkflowEngineParallelism int    `json:"workflowEngineParallelism,omitempty"`
+	// Groups are the workflow groups from App > Settings > Workflows > Groups.
+	// The runtime materialises one System.WorkflowGroup per entry, which is what
+	// a user task's group targeting selects from.
+	Groups []WorkflowGroup `json:"groups,omitempty"`
+	// GroupsIncomplete records that the stored Groups list held an element the
+	// read could not convert. The write path rebuilds the list from Groups, so
+	// rewriting it would drop that element; UpdateProjectSettings refuses
+	// instead (ADR-0005 guard-don't-drop).
+	GroupsIncomplete bool `json:"-"`
+}
+
+// WorkflowGroup represents a Settings$WorkflowGroup: one entry of the workflows
+// settings part's Groups list. Name and Description are the only two properties
+// the type declares (modelsdk/gen, generated/metamodel and mendixmodelsdk 4.115.0
+// all agree), and there is no separate identifier — Name is the group's identity,
+// which is how ALTER SETTINGS WORKFLOWS ... GROUP addresses one.
+type WorkflowGroup struct {
+	BaseElement
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
 }
 
 // JarDeploymentSettings represents Settings$JarDeploymentSettings.

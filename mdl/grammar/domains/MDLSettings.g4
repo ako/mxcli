@@ -19,17 +19,31 @@ options { tokenVocab = MDLLexer; }
  * ALTER SETTINGS LANGUAGE MODIFY 'ar_SD' (Key: Value, ...);
  * ALTER SETTINGS LANGUAGE REMOVE 'ar_SD';
  * ALTER SETTINGS WORKFLOWS Key = Value, ...;
+ * ALTER SETTINGS WORKFLOWS ADD [OR MODIFY] GROUP 'Approvers' [(Description: '...')];
+ * ALTER SETTINGS WORKFLOWS MODIFY GROUP 'Approvers' (Description: '...');
+ * ALTER SETTINGS WORKFLOWS REMOVE GROUP 'Approvers';
  *
  * ADD/REMOVE name the ENABLED languages — the list Studio Pro shows under
  * App Settings > Languages, and the only languages a build emits anything for.
  * A language is identified by its code alone: Studio Pro's "Arabic, Sudan" is
  * derived from `ar_SD` for display and is not stored (verified against a
  * Studio Pro-authored reference on 11.13.0).
+ *
+ * The GROUP forms name the workflow groups under App Settings > Workflows >
+ * Groups. They take the same four verbs, and for the same reason: a group is
+ * identified by its name alone (Settings$WorkflowGroup declares Name and
+ * Description and no identifier), so it is addressed the way a language is.
+ * The GROUP keyword is what separates the two — without it the clause is about
+ * languages, which is the only other thing ALTER SETTINGS adds and removes.
  */
 alterSettingsClause
-    : settingsSection ADD OR MODIFY STRING_LITERAL languageOptions?
-    | settingsSection ADD STRING_LITERAL languageOptions?
-    | settingsSection MODIFY STRING_LITERAL languageOptions
+    : settingsSection ADD OR MODIFY GROUP STRING_LITERAL settingsItemOptions?
+    | settingsSection ADD GROUP STRING_LITERAL settingsItemOptions?
+    | settingsSection MODIFY GROUP STRING_LITERAL settingsItemOptions
+    | settingsSection REMOVE GROUP STRING_LITERAL
+    | settingsSection ADD OR MODIFY STRING_LITERAL settingsItemOptions?
+    | settingsSection ADD STRING_LITERAL settingsItemOptions?
+    | settingsSection MODIFY STRING_LITERAL settingsItemOptions
     | settingsSection REMOVE STRING_LITERAL
     | settingsSection settingsAssignment (COMMA settingsAssignment)*
     | CONSTANT STRING_LITERAL (VALUE settingsValue | DROP) (IN CONFIGURATION STRING_LITERAL)?
@@ -47,16 +61,22 @@ settingsAssignment
     : IDENTIFIER EQUALS settingsValue
     ;
 
-// The optional properties of an added language, in the ( key: value ) form every
-// other MDL statement uses. All five are what Texts$Language stores; omitting
-// them reproduces what Studio Pro's Add Language dialog writes.
+// The optional properties of an added language or workflow group, in the
+// ( key: value ) form every other MDL statement uses. For a language all five
+// are what Texts$Language stores; omitting them reproduces what Studio Pro's Add
+// Language dialog writes. For a workflow group the only option is Description.
 //   ( CheckCompleteness: true, CustomDateFormat: 'yyyy-MM-dd' )
-languageOptions
-    : LPAREN languageOption (COMMA languageOption)* RPAREN
+//   ( Description: 'Primary approval group' )
+settingsItemOptions
+    : LPAREN settingsItemOption (COMMA settingsItemOption)* RPAREN
     ;
 
-languageOption
-    : IDENTIFIER COLON settingsValue
+// The key is identifierOrKeyword, not IDENTIFIER: `Description` is an MDL
+// keyword (DESCRIPTION, from the security statements), so a group's only option
+// would otherwise be a parse error — "mismatched input 'Description' expecting
+// IDENTIFIER" — on the one statement the feature exists for.
+settingsItemOption
+    : identifierOrKeyword COLON settingsValue
     ;
 
 settingsValue
@@ -238,8 +258,34 @@ linkMapping
     | identifierOrKeyword TO identifierOrKeyword                          # linkDirect
     ;
 
+/**
+ * HELP [topic], EXIT, QUIT
+ *
+ * The topic reaches the same registry `mxcli syntax` reads, so it takes the
+ * same spellings: plain words (`help workflow user task`), the hyphenated
+ * segments the listing prints (`help workflow user-task`), and the dotted
+ * path it prints them AS (`help workflow.user-task.targeting`). A hyphen is
+ * its own token (HYPHENATED_ID) and a dot is DOT, so both have to be named
+ * here — copying a printed path into HELP was a parse error until they were
+ * (mendixlabs/mxcli#1025).
+ *
+ * The DOT must follow a topic word, and that shape is load-bearing rather
+ * than tidy. This rule is the grammar's catch-all — a statement that is just
+ * an IDENTIFIER and some words — so anything it can swallow, it swallows from
+ * the statement that should have had it. With a leading `DOT?` in the loop,
+ * `Sec.ApiUser` became a complete statement of its own, and
+ * `create module role Sec.ApiUser` therefore parsed as CREATE MODULE (named
+ * "role") followed by a help topic: two statements, no module role, no parse
+ * error. Requiring a word first leaves `.ApiUser` unconsumable, so the
+ * CREATE MODULE ROLE alternative wins as it did before.
+ */
 helpStatement
-    : IDENTIFIER (identifierOrKeyword)*  // HELP [topic words...]
+    : IDENTIFIER (helpTopicWord (DOT? helpTopicWord)*)?  // HELP [topic]
+    ;
+
+helpTopicWord
+    : identifierOrKeyword
+    | HYPHENATED_ID
     ;
 
 /**
@@ -591,7 +637,7 @@ keyword
 
     // Query / SQL
     | SELECT | FROM | WHERE | JOIN | LEFT | RIGHT | INNER | OUTER | FULL | CROSS
-    | ORDER_BY | GROUP_BY | SORT_BY | HAVING | LIMIT | OFFSET | FIRST | AS | ON
+    | ORDER_BY | GROUP_BY | SORT_BY | SEARCH_BY | HAVING | LIMIT | OFFSET | FIRST | AS | ON
     | AND | OR | NOT | NULL | IN | LIKE | BETWEEN | TRUE | FALSE
     | COUNT | SUM | AVG | MIN | MAX | DISTINCT | ALL
     | ASC | DESC | UNION | INTERSECT | SUBTRACT | EXISTS
@@ -647,6 +693,9 @@ keyword
     | PHONEWIDTH | TABLETWIDTH | READONLY | RENDERMODE | REQUIRED | NULLABLE
     | SELECTION | STYLE | STYLING | TABINDEX | TITLE | TOOLTIP
     | URL | POSITION | VISIBLE | WIDTH | HEIGHT | WIDGETTYPE
+    // Microflow document properties — keywords only inside a microflow header,
+    // so they must stay usable as element names everywhere else.
+    | HIDDEN_KW | ALLOW | DISALLOW | CONCURRENT | EXECUTION
     | VARIABLES_KW
 
     // Button actions
@@ -662,7 +711,12 @@ keyword
     | ACCESS | APPLY | AUTH | AUTHENTICATION | BASIC | DEMO
     | DESCRIPTION | GRANT | GUEST | LEVEL | MANAGE | MATRIX
     | OFF | OWNER | PASSWORD | PRODUCTION | PROTOTYPE
-    | REVOKE | ROLE | ROLES | SECURITY | SESSION | USER | USERNAME | USERS
+    | REVOKE | ROLE | ROLES | SECURITY | SESSION | STRICT | USER | USERNAME | USERS
+    // MODE is listed here rather than left reserved because `mode` is an
+    // entirely plausible attribute or widget-property name, and a new keyword
+    // that is not in this rule silently breaks every model that already uses
+    // the word.
+    | MODE
 
     // Validation
     | CONSTRAINT | FEEDBACK | PATTERN | RANGE | REGEX | RULE | VALIDATION | WITHOUT

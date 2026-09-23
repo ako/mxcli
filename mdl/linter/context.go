@@ -168,6 +168,13 @@ type Entity struct {
 	ValidationRuleCount int
 	HasEventHandlers    bool
 	IsExternal          bool
+	// The four audit members. Mendix stores these as booleans on the entity's
+	// generalization node rather than as attributes, so they are not in
+	// AttributeCount and a rule cannot find them by walking Attributes().
+	HasCreatedDate bool
+	HasChangedDate bool
+	HasOwner       bool
+	HasChangedBy   bool
 }
 
 // Entities returns an iterator over all entities (excluding system modules).
@@ -183,7 +190,8 @@ func (ctx *LintContext) Entities() iter.Seq[Entity] {
 			       END,
 			       e.Description, e.Generalization, e.AttributeCount,
 			       e.AccessRuleCount, e.ValidationRuleCount,
-			       e.HasEventHandlers, e.IsExternal
+			       e.HasEventHandlers, e.IsExternal,
+			       e.HasCreatedDate, e.HasChangedDate, e.HasOwner, e.HasChangedBy
 			FROM entities e
 			LEFT JOIN modules m ON e.ModuleName = m.Name
 			WHERE %s
@@ -199,10 +207,17 @@ func (ctx *LintContext) Entities() iter.Seq[Entity] {
 			var e Entity
 			var desc, gen, folder sql.NullString
 			var hasEventHandlers, isExternal int
+			// Nullable on purpose: a row written before these columns existed,
+			// or any fixture that does not name them, scans as NULL, and NULL
+			// into a plain int fails the whole query -- which the iterator
+			// reports as "no entities" and every rule then reads as "nothing
+			// to flag". A silent green run, not an error.
+			var hasCreatedDate, hasChangedDate, hasOwner, hasChangedBy sql.NullInt64
 			err := rows.Scan(&e.ID, &e.Name, &e.QualifiedName, &e.ModuleName, &folder,
 				&e.EntityType, &desc, &gen, &e.AttributeCount,
 				&e.AccessRuleCount, &e.ValidationRuleCount,
-				&hasEventHandlers, &isExternal)
+				&hasEventHandlers, &isExternal,
+				&hasCreatedDate, &hasChangedDate, &hasOwner, &hasChangedBy)
 			if err != nil {
 				ctx.recordQueryError("Entities (row scan)", err)
 				continue
@@ -212,6 +227,10 @@ func (ctx *LintContext) Entities() iter.Seq[Entity] {
 			e.Generalization = gen.String
 			e.HasEventHandlers = hasEventHandlers == 1
 			e.IsExternal = isExternal == 1
+			e.HasCreatedDate = hasCreatedDate.Int64 == 1
+			e.HasChangedDate = hasChangedDate.Int64 == 1
+			e.HasOwner = hasOwner.Int64 == 1
+			e.HasChangedBy = hasChangedBy.Int64 == 1
 
 			if ctx.IsExcluded(e.ModuleName) {
 				continue
@@ -1136,6 +1155,127 @@ func (ctx *LintContext) DatabaseConnections() iter.Seq[DatabaseConnection] {
 	}
 }
 
+// RestClient represents a consumed REST service document from the
+// rest_clients table.
+type RestClient struct {
+	ID             string
+	Name           string
+	QualifiedName  string
+	ModuleName     string
+	Folder         string
+	BaseUrl        string
+	AuthScheme     string
+	OperationCount int
+	Documentation  string
+}
+
+// RestClients returns an iterator over all consumed REST services
+// (excluding platform modules).
+//
+// Backed by the catalog rather than the reader, like DatabaseConnections.
+func (ctx *LintContext) RestClients() iter.Seq[RestClient] {
+	return func(yield func(RestClient) bool) {
+		rows, err := ctx.db.Query(fmt.Sprintf(`
+			SELECT rc.Id, rc.Name, rc.QualifiedName, rc.ModuleName, rc.Folder,
+			       rc.BaseUrl, rc.AuthScheme, rc.OperationCount, rc.Documentation
+			FROM rest_clients rc
+			LEFT JOIN modules m ON rc.ModuleName = m.Name
+			WHERE %s
+			ORDER BY rc.ModuleName, rc.Name
+		`, notPlatformModule("m")))
+		if err != nil {
+			ctx.recordQueryError("RestClients", err)
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var rc RestClient
+			var folder, baseURL, authScheme, documentation sql.NullString
+			err := rows.Scan(&rc.ID, &rc.Name, &rc.QualifiedName, &rc.ModuleName, &folder,
+				&baseURL, &authScheme, &rc.OperationCount, &documentation)
+			if err != nil {
+				ctx.recordQueryError("RestClients (row scan)", err)
+				continue
+			}
+			rc.Folder = folder.String
+			rc.BaseUrl = baseURL.String
+			rc.AuthScheme = authScheme.String
+			rc.Documentation = documentation.String
+
+			if ctx.IsExcluded(rc.ModuleName) {
+				continue
+			}
+
+			if !yield(rc) {
+				return
+			}
+		}
+	}
+}
+
+// RestOperation represents one operation on a consumed REST service.
+type RestOperation struct {
+	ID                   string
+	ServiceID            string
+	ServiceQualifiedName string
+	Name                 string
+	HttpMethod           string
+	Path                 string
+	ParameterCount       int
+	HasBody              bool
+	ResponseType         string
+	// Timeout is the configured timeout in milliseconds; 0 when none is set.
+	Timeout    int
+	ModuleName string
+}
+
+// RestOperations returns an iterator over all consumed REST operations
+// (excluding platform modules).
+func (ctx *LintContext) RestOperations() iter.Seq[RestOperation] {
+	return func(yield func(RestOperation) bool) {
+		rows, err := ctx.db.Query(fmt.Sprintf(`
+			SELECT ro.Id, ro.ServiceId, ro.ServiceQualifiedName, ro.Name,
+			       ro.HttpMethod, ro.Path, ro.ParameterCount, ro.HasBody,
+			       ro.ResponseType, ro.Timeout, ro.ModuleName
+			FROM rest_operations ro
+			LEFT JOIN modules m ON ro.ModuleName = m.Name
+			WHERE %s
+			ORDER BY ro.ServiceQualifiedName, ro.Name
+		`, notPlatformModule("m")))
+		if err != nil {
+			ctx.recordQueryError("RestOperations", err)
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var ro RestOperation
+			var hasBody int
+			var httpMethod, path, responseType sql.NullString
+			err := rows.Scan(&ro.ID, &ro.ServiceID, &ro.ServiceQualifiedName, &ro.Name,
+				&httpMethod, &path, &ro.ParameterCount, &hasBody,
+				&responseType, &ro.Timeout, &ro.ModuleName)
+			if err != nil {
+				ctx.recordQueryError("RestOperations (row scan)", err)
+				continue
+			}
+			ro.HttpMethod = httpMethod.String
+			ro.Path = path.String
+			ro.ResponseType = responseType.String
+			ro.HasBody = hasBody != 0
+
+			if ctx.IsExcluded(ro.ModuleName) {
+				continue
+			}
+
+			if !yield(ro) {
+				return
+			}
+		}
+	}
+}
+
 // Activity represents an activity from the activities table (FULL catalog mode).
 type Activity struct {
 	ID                     string
@@ -1147,6 +1287,11 @@ type Activity struct {
 	MicroflowQualifiedName string
 	ModuleName             string
 	EntityRef              string
+	// ServiceRef is the called service document (REST/web service/OData
+	// client); ActionRef the operation or action within it. Both are stored
+	// by the catalog builder and are empty for activities that call neither.
+	ServiceRef string
+	ActionRef  string
 }
 
 // ActivitiesFor returns an iterator over all activities for a given microflow.
@@ -1154,7 +1299,8 @@ func (ctx *LintContext) ActivitiesFor(microflowQualifiedName string) iter.Seq[Ac
 	return func(yield func(Activity) bool) {
 		rows, err := ctx.db.Query(`
 			SELECT Id, Name, Caption, ActivityType, ActionType,
-			       MicroflowId, MicroflowQualifiedName, ModuleName, EntityRef
+			       MicroflowId, MicroflowQualifiedName, ModuleName, EntityRef,
+			       ServiceRef, ActionRef
 			FROM activities
 			WHERE MicroflowQualifiedName = ?
 			ORDER BY Sequence
@@ -1168,8 +1314,10 @@ func (ctx *LintContext) ActivitiesFor(microflowQualifiedName string) iter.Seq[Ac
 		for rows.Next() {
 			var a Activity
 			var name, caption, actionType, entityRef sql.NullString
+			var serviceRef, actionRef sql.NullString
 			err := rows.Scan(&a.ID, &name, &caption, &a.ActivityType, &actionType,
-				&a.MicroflowID, &a.MicroflowQualifiedName, &a.ModuleName, &entityRef)
+				&a.MicroflowID, &a.MicroflowQualifiedName, &a.ModuleName, &entityRef,
+				&serviceRef, &actionRef)
 			if err != nil {
 				ctx.recordQueryError("ActivitiesFor (row scan)", err)
 				continue
@@ -1178,6 +1326,8 @@ func (ctx *LintContext) ActivitiesFor(microflowQualifiedName string) iter.Seq[Ac
 			a.Caption = caption.String
 			a.ActionType = actionType.String
 			a.EntityRef = entityRef.String
+			a.ServiceRef = serviceRef.String
+			a.ActionRef = actionRef.String
 
 			if !yield(a) {
 				return

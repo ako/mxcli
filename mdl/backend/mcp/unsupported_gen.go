@@ -1132,6 +1132,11 @@ func (unsupportedBackend) SetProjectSecurityLevel(_ model.ID, _ string) (err0 er
 	return
 }
 
+func (unsupportedBackend) SetProjectStrictMode(_ model.ID, _ bool) (err0 error) {
+	err0 = errUnsupported("SetProjectStrictMode")
+	return
+}
+
 func (unsupportedBackend) UpdateAgentEditorAgent(_ *agenteditor.Agent) (err0 error) {
 	err0 = errUnsupported("UpdateAgentEditorAgent")
 	return
@@ -1239,6 +1244,11 @@ func (unsupportedBackend) UpdateJavaScriptAction(_ *types.JavaScriptAction) (err
 
 func (unsupportedBackend) UpdateJsonStructure(_ *types.JsonStructure) (err0 error) {
 	err0 = errUnsupported("UpdateJsonStructure")
+	return
+}
+
+func (unsupportedBackend) UpdateLayout(_ *pages.Layout) (err0 error) {
+	err0 = errUnsupported("UpdateLayout")
 	return
 }
 
@@ -1368,5 +1378,10 @@ func (unsupportedBackend) WriteJavaScriptSourceFile(_ string, _ string, _ string
 
 func (unsupportedBackend) WriteJavaSourceFile(_ string, _ string, _ string, _ []*types.JavaActionParameter, _ types.CodeActionReturnType, _ []string, _ string) (err0 error) {
 	err0 = errUnsupported("WriteJavaSourceFile")
+	return
+}
+
+func (unsupportedBackend) WriteViewEntitySourceDocument(_ model.ID, _ string, _ string, _ string, _ string) (r0 model.ID, err1 error) {
+	err1 = errUnsupported("WriteViewEntitySourceDocument")
 	return
 }

@@ -134,6 +134,9 @@ func validateRule(name string, body []ast.MicroflowStatement, retType *ast.Micro
 		allErrors = append(allErrors, msg)
 	}
 	allErrors = append(allErrors, validateRuleBody(body)...)
+	if msg := raiseErrorOutsideHandlerRuleError(body); msg != "" {
+		allErrors = append(allErrors, msg)
+	}
 
 	if len(allErrors) == 0 {
 		return ""

@@ -1,0 +1,94 @@
+-- @version: 11.0+
+-- ============================================================================
+-- ako/mxcli#550 — `describe page` → `exec` over a Studio Pro page silently
+-- dropped six things. The one that matters:
+--
+--   …/Widgets/[1]/IsPasswordBox   True → False
+--
+-- a password field round-trips into a PLAINTEXT text box, with `mx check` at 0
+-- errors on both sides. CLAUDE.md makes describe → rename → exec the copy
+-- operation, so copying a login or change-password page lost it silently.
+--
+-- Measured on ako/TestApp's Administration.ChangePasswordForm at Mendix
+-- 11.14.0. Each had a different cause, established before any code was written:
+--
+--   IsPasswordBox     model + writer carried it; nothing parsed it, nothing
+--                     emitted it
+--   Validation        widgetValidationToGen() wrote a DEFAULT EMPTY validation
+--                     over whatever was stored
+--   ReadOnlyStyle     wired for checkbox only; a DataView's was accepted by
+--                     MDL-WIDGET07 (that list is a union across widget types,
+--                     not per-type) and then dropped
+--   PopupCloseAction  pageToGen wrote "" unconditionally
+--   ParameterMappings marker 3 where Studio Pro writes 2 (220 of 220 lists)
+--   OutputMappings    never emitted; present on 91 of 91 MicroflowSettings
+--
+-- Result: 17 differences → 9, and all 9 remaining are ako/mxcli#549, a separate
+-- carry problem (a stored DisabledDuringExecution: false overwritten with true).
+--
+-- EXPECTED: `mx check` reports 0 errors, and `describe page` of the page below
+-- re-emits Password, Validation, ValidationMessage, ReadOnlyStyle and
+-- PopupCloseAction rather than dropping them.
+--
+-- NOTE, as on the #541 bug-test: this file is a reproduction scaffold, not a
+-- detector. mxcli round-tripping its OWN output cannot catch this class — the
+-- constants agree with themselves. The evidence is the Go tests (each run
+-- against a stubbed-out fix) plus the measurement on ako/TestApp, where the
+-- pre-fix binary turns both stored password boxes into plaintext ones.
+-- ============================================================================
+
+create module Issue550;
+
+@position(100, 100)
+create persistent entity Issue550.Account (
+  UserName: string(200),
+  Password: string(200)
+);
+
+create microflow Issue550.ACT_ChangePassword ($Account: Issue550.Account)
+returns boolean
+begin
+  commit $Account;
+  return true;
+end
+
+create or replace page Issue550.ChangePasswordForm (
+  title: 'Change Password',
+  layout: Atlas_Core.PopupLayout,
+  params: { $Account: Issue550.Account },
+  -- Names the widget whose action closes the pop-up. Written as "" before.
+  PopupCloseAction: cancelButton1
+)
+{
+  layoutgrid layoutGrid1 {
+    row row1 {
+      column col1 (DesktopWidth: AutoFill) {
+        -- A DataView's own read-only style: Control is Studio Pro's default
+        -- here (47 of 56 measured), so Text is the value that gets lost.
+        dataview dvAccount (datasource: $Account, ReadOnlyStyle: Text) {
+          -- The control: an ordinary field, which must NOT gain a password
+          -- clause on the round trip.
+          textbox tbUserName (label: 'User name', attribute: UserName)
+
+          -- The reported case. Both properties on one widget.
+          textbox tbPassword (
+            label: 'Password',
+            attribute: Password,
+            Password: true,
+            Validation: 'length(toString($value)) > 0',
+            ValidationMessage: 'The password cannot be empty.'
+          )
+
+          footer footerButtons {
+            actionbutton okButton1 (caption: 'OK', action: microflow Issue550.ACT_ChangePassword)
+            actionbutton cancelButton1 (caption: 'Cancel', action: cancel_changes close_page)
+          }
+        }
+      }
+    }
+  }
+}
+
+-- Emitted so the round trip can be inspected by hand; see the NOTE above about
+-- what this does and does not prove.
+describe page Issue550.ChangePasswordForm;

@@ -47,6 +47,13 @@ var topicAliases = map[string]string{
 	"constants":       "domain-model.constant",
 	"association":     "domain-model.association",
 	"associations":    "domain-model.association",
+	// "view" alone is deliberately absent: GRANT VIEW ON PAGE owns that word in
+	// MDL, so the alias has to carry "entity" to be unambiguous.
+	"view-entity":   "domain-model.view-entity",
+	"view_entity":   "domain-model.view-entity",
+	"viewentity":    "domain-model.view-entity",
+	"view-entities": "domain-model.view-entity",
+	"viewentities":  "domain-model.view-entity",
 	// Plural aliases
 	"microflows": "microflow",
 	"pages":      "page",

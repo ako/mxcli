@@ -51,7 +51,13 @@ ALTER PAGE Module.EditPage {
 ### SET -- Page-Level Properties
 
 Omit the `ON` clause to set page-level properties. These names are case-sensitive:
-`Title`, `Class`, `Style`, `PopupWidth`, `PopupHeight`, `PopupResizable`.
+`Title`, `Documentation`, `Class`, `Style`, `PopupWidth`, `PopupHeight`,
+`PopupResizable`.
+
+`Documentation` is the same property the `/** … */` doc comment on `CREATE PAGE`
+writes. Before it was settable here, documenting an existing page meant re-running
+its create — which for a real page means re-emitting its whole widget tree. Setting
+it to `''` clears it.
 
 ```sql
 ALTER PAGE Module.EditPage {

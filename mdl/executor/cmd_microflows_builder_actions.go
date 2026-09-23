@@ -425,7 +425,7 @@ func (fb *flowBuilder) addEnumSplit(s *ast.EnumSplitStmt) model.ID {
 
 	branchWidth := 0
 	for _, br := range branches {
-		w := fb.measurer.measureStatements(br.body).Width
+		w := fb.measurer.measureBranch(br.body).Width
 		if w > branchWidth {
 			branchWidth = w
 		}
@@ -433,7 +433,7 @@ func (fb *flowBuilder) addEnumSplit(s *ast.EnumSplitStmt) model.ID {
 	if branchWidth == 0 {
 		branchWidth = HorizontalSpacing / 2
 	}
-	mergeX := splitX + SplitWidth + HorizontalSpacing/2 + branchWidth + HorizontalSpacing/2
+	mergeX := splitX + SplitWidth + HorizontalSpacing/2 + branchWidth
 	mergeX, mergeY := mergePosition(s.Annotations, mergeX, centerY)
 	var merge *microflows.ExclusiveMerge
 	ensureMerge := func() *microflows.ExclusiveMerge {
@@ -475,6 +475,14 @@ func (fb *flowBuilder) addEnumSplit(s *ast.EnumSplitStmt) model.ID {
 		}
 	}
 
+	origins := enumSplitOriginAnchors(branchYs, centerY)
+	slot := func(i int) splitCaseSlot {
+		if origins == nil {
+			return splitCaseSlot{order: i, origin: -1}
+		}
+		return splitCaseSlot{order: i, origin: origins[i]}
+	}
+
 	savedEndsWithReturn := fb.endsWithReturn
 	allBranchesReturn := len(branches) > 0
 	for i, br := range branches {
@@ -498,7 +506,7 @@ func (fb *flowBuilder) addEnumSplit(s *ast.EnumSplitStmt) model.ID {
 					fb.pendingJoin = nil
 					fb.labels().handled++
 					m := fb.mergeForLabel(label)
-					fb.addGroupedEnumSplitFlows(splitID, m.ID, br.values, i, splitX+SplitWidth+HorizontalSpacing/4, branchY)
+					fb.addGroupedEnumSplitFlows(splitID, m.ID, br.values, slot(i), splitX+SplitWidth+HorizontalSpacing/4, branchY)
 				} else {
 					fb.takePendingJoin(lastID, pendingCase, prevAnchor)
 				}
@@ -513,7 +521,7 @@ func (fb *flowBuilder) addEnumSplit(s *ast.EnumSplitStmt) model.ID {
 				fb.pendingAnnotations = nil
 			}
 			if lastID == "" {
-				fb.addGroupedEnumSplitFlows(splitID, actID, br.values, i, splitX+SplitWidth+HorizontalSpacing/4, branchY)
+				fb.addGroupedEnumSplitFlows(splitID, actID, br.values, slot(i), splitX+SplitWidth+HorizontalSpacing/4, branchY)
 				// The first statement in a case can carry @anchor(from:…,
 				// to:…) that should apply to the split→firstActivity flow.
 				// addGroupedEnumSplitFlows appends one flow per case value;
@@ -552,13 +560,18 @@ func (fb *flowBuilder) addEnumSplit(s *ast.EnumSplitStmt) model.ID {
 		}
 		allBranchesReturn = false
 		if lastID == "" {
-			fb.addGroupedEnumSplitFlows(splitID, ensureMerge().ID, br.values, i, splitX+SplitWidth+HorizontalSpacing/4, branchY)
+			fb.addGroupedEnumSplitFlows(splitID, ensureMerge().ID, br.values, slot(i), splitX+SplitWidth+HorizontalSpacing/4, branchY)
 		} else {
+			var tail *microflows.SequenceFlow
 			if pendingCase != "" {
-				fb.flows = append(fb.flows, newHorizontalFlowWithCase(lastID, ensureMerge().ID, pendingCase))
+				tail = newHorizontalFlowWithCase(lastID, ensureMerge().ID, pendingCase)
 			} else {
-				fb.flows = append(fb.flows, newHorizontalFlow(lastID, ensureMerge().ID))
+				tail = newHorizontalFlow(lastID, ensureMerge().ID)
 			}
+			if origins != nil {
+				tail.DestinationConnectionIndex = mergeSideFor(fb.objectPosition(lastID), fb.objectPosition(ensureMerge().ID))
+			}
+			fb.flows = append(fb.flows, tail)
 		}
 	}
 
@@ -793,9 +806,9 @@ func (fb *flowBuilder) addStructuredInheritanceSplit(s *ast.InheritanceSplitStmt
 	return splitID
 }
 
-func (fb *flowBuilder) addGroupedEnumSplitFlows(originID, destinationID model.ID, values []string, order int, mergeX, mergeY int) {
+func (fb *flowBuilder) addGroupedEnumSplitFlows(originID, destinationID model.ID, values []string, slot splitCaseSlot, mergeX, mergeY int) {
 	if len(values) <= 1 {
-		fb.addEnumSplitFlows(originID, destinationID, values, order)
+		fb.addEnumSplitFlows(originID, destinationID, values, slot)
 		return
 	}
 	branchMerge := &microflows.ExclusiveMerge{
@@ -806,21 +819,117 @@ func (fb *flowBuilder) addGroupedEnumSplitFlows(originID, destinationID model.ID
 		},
 	}
 	fb.objects = append(fb.objects, branchMerge)
-	fb.addEnumSplitFlows(originID, branchMerge.ID, values, order)
+	fb.addEnumSplitFlows(originID, branchMerge.ID, values, slot)
 	fb.flows = append(fb.flows, newHorizontalFlow(branchMerge.ID, destinationID))
 }
 
-func (fb *flowBuilder) addEnumSplitFlows(originID, destinationID model.ID, values []string, order int) {
+func (fb *flowBuilder) addEnumSplitFlows(originID, destinationID model.ID, values []string, slot splitCaseSlot) {
+	split, target := fb.objectPosition(originID), fb.objectPosition(destinationID)
 	if len(values) == 0 {
 		flow := newHorizontalFlow(originID, destinationID)
-		applySplitCaseOrder(flow, order)
+		slot.apply(flow, split, target)
 		fb.flows = append(fb.flows, flow)
 		return
 	}
 	for _, value := range values {
 		flow := newHorizontalFlowWithEnumCase(originID, destinationID, value)
-		applySplitCaseOrder(flow, order)
+		slot.apply(flow, split, target)
 		fb.flows = append(fb.flows, flow)
+	}
+}
+
+// splitCaseSlot says how one case's flow leaves the split. origin is the side of
+// the split it leaves from, or -1 for a split of up to three cases, which keeps the
+// pair table below (top, right, bottom — the same sides, as it happens).
+type splitCaseSlot struct {
+	order  int
+	origin int
+}
+
+// apply sets the flow's sides. split and target are where the two ends actually are,
+// which is not where the stack was planned once a branch carries @position: a line is
+// only sent out of the top corner towards something above the split, and out of the
+// bottom towards something below, whatever third the case was counted into.
+func (slot splitCaseSlot) apply(flow *microflows.SequenceFlow, split, target model.Point) {
+	if flow == nil {
+		return
+	}
+	if slot.origin < 0 {
+		applySplitCaseOrder(flow, slot.order)
+		return
+	}
+	origin := slot.origin
+	if origin == AnchorTop && target.Y >= split.Y || origin == AnchorBottom && target.Y <= split.Y {
+		origin = AnchorRight
+	}
+	flow.OriginConnectionIndex = origin
+	flow.DestinationConnectionIndex = AnchorLeft
+}
+
+// objectPosition returns where an already-built object stands.
+func (fb *flowBuilder) objectPosition(id model.ID) model.Point {
+	for i := len(fb.objects) - 1; i >= 0; i-- {
+		if o := fb.objects[i]; o != nil && o.GetID() == id {
+			return o.GetPosition()
+		}
+	}
+	return model.Point{}
+}
+
+// enumSplitOriginAnchors picks the side of the split each case leaves from, for a
+// split of four or more cases: the upper third from the top corner, the middle
+// third from the right, the lower third from the bottom. It returns nil for three
+// cases or fewer, which the pair table already draws that way.
+//
+// The pair table was written to store the case ORDER (see splitCaseOrder), and past
+// the third case it does so with sides no drawing would choose: the fourth case
+// leaves the split's LEFT corner, the fifth to eighth arrive on top of their
+// activity, the ninth onwards on its far side. Seven cases drawn that way cross each
+// other and the activities they pass. Grouped, no two lines cross: the branches are
+// stacked top to bottom in case order, so a line from the top corner only ever goes
+// up and one from the bottom only down.
+//
+// A third is by count, the remainder going to the middle (7 cases: 2/3/2) or, when
+// it is two, one each to top and bottom (8 cases: 3/2/3). A branch is only given the
+// top corner if it really is above the split, and the bottom only if below, so a
+// stack made lopsided by one tall branch never gets a line that leaves upwards to
+// reach something underneath.
+func enumSplitOriginAnchors(branchYs []int, centerY int) []int {
+	n := len(branchYs)
+	if n <= 3 {
+		return nil
+	}
+	top, bottom := n/3, n/3
+	if n%3 == 2 {
+		top++
+		bottom++
+	}
+	origins := make([]int, n)
+	for i, y := range branchYs {
+		switch {
+		case i < top && y < centerY:
+			origins[i] = AnchorTop
+		case i >= n-bottom && y > centerY:
+			origins[i] = AnchorBottom
+		default:
+			origins[i] = AnchorRight
+		}
+	}
+	return origins
+}
+
+// mergeSideFor is the side of the closing merge a branch arrives on: an upper branch
+// comes down onto its top corner and a lower one up onto its bottom, instead of all of
+// them converging on the left corner. It goes by where the branch's last element
+// actually stands, so a branch moved with @position still arrives from its own side.
+func mergeSideFor(last, merge model.Point) int {
+	switch {
+	case last.Y < merge.Y:
+		return AnchorTop
+	case last.Y > merge.Y:
+		return AnchorBottom
+	default:
+		return AnchorLeft
 	}
 }
 
@@ -1100,7 +1209,19 @@ func (fb *flowBuilder) addRetrieveAction(s *ast.RetrieveStmt) model.ID {
 				// Resolve attribute path - if just a simple name, prefix with entity
 				attrPath := col.Attribute
 				var entityRefSteps []microflows.EntityRefStep
-				if !strings.Contains(attrPath, ".") {
+				if len(col.Associations) > 0 {
+					// The script SPELLS the hops. Take them as written rather than
+					// inferring: inference cannot tell two associations reaching the
+					// same entity apart, and picking the wrong one is a model that
+					// builds cleanly and sorts by the wrong thing
+					// (mendixlabs/mxcli#1152).
+					resolved, finalQN, err := fb.resolveSortAssociationPath(entityQN, col.Associations, col.Attribute)
+					if err != nil {
+						fb.addError("sort by %s: %s", sortColumnText(col), err.Error())
+						continue // Skip this sort column but continue processing others
+					}
+					entityRefSteps, attrPath = resolved, finalQN
+				} else if !strings.Contains(attrPath, ".") {
 					// Qualify with the entity that DECLARES the attribute, which is
 					// not always the one being retrieved. Mendix resolves a sort
 					// reference against the declaring entity, so qualifying an
@@ -1247,44 +1368,235 @@ func retrieveXPathConstraint(expr ast.Expression) string {
 	return visitor.FormatXPathConstraint("[" + xpath + "]")
 }
 
+// inferSortEntityRefSteps finds the one association hop that reaches the entity
+// DECLARING the sort attribute, for a `sort by Module.Entity.Attribute` whose
+// entity is neither the retrieved one nor an ancestor of it.
+//
+// Mendix stores such a sort as an AttributeRef whose AttributeQualifiedName
+// names the far entity plus an EntityRef carrying one EntityRefStep per hop.
+// DESCRIBE emits only the attribute's qualified name — MDL has no spelling for
+// the hop — so replaying a described retrieve has to re-derive the step, and
+// the whole round trip rests on that derivation.
+//
+// The association is not necessarily declared on the retrieved entity, nor in
+// its module. `Administration.Account` reaches `System.Language` through
+// `System.User_Language`, which is declared on the ANCESTOR `System.User` and
+// stored in the SYSTEM module's domain model. Searching only the retrieved
+// entity's own module for associations whose parent is the retrieved entity
+// itself found nothing, so a retrieve `mxcli describe` had just emitted was
+// refused by `exec` with "does not belong to entity" while `mxcli check` passed
+// — mendixlabs/mxcli#1152. Same shape as the inherited-attribute defect
+// (CapTrackV2 §13): the resolver that walks the generalization chain existed,
+// and this path did not call it.
+//
+// So the walk is over the generalization chain, and each ancestor is looked up
+// in ITS OWN module — which is also where the association's qualified name
+// comes from. Qualifying with the retrieved entity's module is what the
+// same-module case made look right, and it is wrong exactly in the case that
+// was broken.
+//
+// The destination end is matched with entityIsSubtypeOf rather than by equality,
+// because an association may point at a SPECIALIZATION of the entity that
+// declares the attribute; Mendix stores the declaring entity in the path either
+// way.
+//
+// Limitation, stated because the round trip depends on it: where several
+// associations reach the same entity, MDL cannot say which one was stored, and
+// the nearest entity's first association wins. The order is deterministic (both
+// the chain walk and dm.Associations are ordered), so a replay is stable — but
+// a model with two hops to one entity can still round-trip to the other one.
+// Spelling the hop would need grammar, and is a language change, not a fix.
 func (fb *flowBuilder) inferSortEntityRefSteps(sourceEntityQN, attrPath string) []microflows.EntityRefStep {
 	attrEntityQN := entityQualifiedNameFromAttribute(attrPath)
 	if attrEntityQN == "" || attrEntityQN == sourceEntityQN {
 		return nil
 	}
-	parts := strings.SplitN(sourceEntityQN, ".", 2)
-	if len(parts) != 2 || parts[0] == "" {
+	if fb == nil || fb.backend == nil {
 		return nil
 	}
-	if fb.backend == nil {
-		return nil
-	}
-	mod, err := fb.backend.GetModuleByName(parts[0])
-	if err != nil || mod == nil {
-		return nil
-	}
-	dm, err := fb.backend.GetDomainModel(mod.ID)
-	if err != nil || dm == nil {
-		return nil
-	}
-	entityNames := make(map[model.ID]string, len(dm.Entities))
-	for _, e := range dm.Entities {
-		entityNames[e.ID] = parts[0] + "." + e.Name
-	}
-	for _, assoc := range dm.Associations {
-		parentQN := entityNames[assoc.ParentID]
-		childQN := entityNames[assoc.ChildID]
-		if parentQN == sourceEntityQN && childQN == attrEntityQN {
-			return []microflows.EntityRefStep{{Association: parts[0] + "." + assoc.Name, DestinationEntity: childQN}}
+	seen := make(map[string]bool)
+	for currentQN := sourceEntityQN; currentQN != ""; {
+		if seen[currentQN] {
+			return nil
 		}
-	}
-	for _, assoc := range dm.CrossAssociations {
-		parentQN := entityNames[assoc.ParentID]
-		if parentQN == sourceEntityQN && assoc.ChildRef == attrEntityQN {
-			return []microflows.EntityRefStep{{Association: parts[0] + "." + assoc.Name, DestinationEntity: assoc.ChildRef}}
+		seen[currentQN] = true
+
+		parts := strings.SplitN(currentQN, ".", 2)
+		if len(parts) != 2 || parts[0] == "" {
+			return nil
 		}
+		moduleName := parts[0]
+		mod, err := fb.backend.GetModuleByName(moduleName)
+		if err != nil || mod == nil {
+			return nil
+		}
+		dm, err := fb.backend.GetDomainModel(mod.ID)
+		if err != nil || dm == nil {
+			return nil
+		}
+		entityNames := make(map[model.ID]string, len(dm.Entities))
+		for _, e := range dm.Entities {
+			entityNames[e.ID] = moduleName + "." + e.Name
+		}
+		for _, assoc := range dm.Associations {
+			if entityNames[assoc.ParentID] != currentQN {
+				continue
+			}
+			childQN := entityNames[assoc.ChildID]
+			if childQN != "" && fb.entityIsSubtypeOf(childQN, attrEntityQN) {
+				return []microflows.EntityRefStep{{Association: moduleName + "." + assoc.Name, DestinationEntity: childQN}}
+			}
+		}
+		for _, assoc := range dm.CrossAssociations {
+			if entityNames[assoc.ParentID] != currentQN {
+				continue
+			}
+			if assoc.ChildRef != "" && fb.entityIsSubtypeOf(assoc.ChildRef, attrEntityQN) {
+				return []microflows.EntityRefStep{{Association: moduleName + "." + assoc.Name, DestinationEntity: assoc.ChildRef}}
+			}
+		}
+
+		entity := dm.FindEntityByName(parts[1])
+		if entity == nil {
+			return nil
+		}
+		currentQN = entity.GeneralizationRef
 	}
 	return nil
+}
+
+// sortColumnText renders a sort column the way it was authored, for messages.
+func sortColumnText(col ast.SortColumnDef) string {
+	if len(col.Associations) == 0 {
+		return col.Attribute
+	}
+	return strings.Join(append(append([]string{}, col.Associations...), col.Attribute), "/")
+}
+
+// resolveSortAssociationPath turns an authored `Assoc/…/Attribute` sort column
+// into the EntityRefSteps Mendix stores alongside the attribute, plus the
+// attribute's fully-qualified name.
+//
+// This is the spelling that exists because inference cannot be made correct:
+// where two associations reach the same entity — `Order_ShipTo` and
+// `Order_BillTo`, both `Order → Address`, an ordinary shape — the stored hop is
+// not recoverable from the attribute name alone, and DESCRIBE emitted nothing
+// else. Measured on 11.12.3: a microflow sorting by the billing address came
+// back from `describe → exec` sorting by the shipping one, at 0 errors on both
+// sides (mendixlabs/mxcli#1152).
+//
+// Everything here is refused rather than guessed. A hop that does not resolve,
+// one that starts nowhere near the entity in hand, or a final attribute on an
+// entity the last hop does not reach are each an error — a step written with an
+// empty DestinationEntity is the one outcome worse than a refusal, since it
+// makes the project unopenable (System.ArgumentNullException at
+// EntityRefStep.set_DestinationEntityId) rather than merely wrong.
+func (fb *flowBuilder) resolveSortAssociationPath(sourceEntityQN string, hops []string, attrName string) ([]microflows.EntityRefStep, string, error) {
+	if sourceEntityQN == "" {
+		return nil, "", fmt.Errorf("the retrieved entity is unknown, so the association path cannot be resolved")
+	}
+	if fb == nil || fb.backend == nil {
+		return nil, "", fmt.Errorf("no project is open, so the association path cannot be resolved")
+	}
+
+	steps := make([]microflows.EntityRefStep, 0, len(hops))
+	current := sourceEntityQN
+	for _, hop := range hops {
+		assocQN, info := fb.lookupSortHop(current, hop)
+		if info == nil {
+			return nil, "", fmt.Errorf("association '%s' was not found", hop)
+		}
+		var dest string
+		switch {
+		case fb.entityIsSubtypeOf(current, info.parentEntityQN):
+			dest = info.childEntityQN
+		case fb.entityIsSubtypeOf(current, info.childEntityQN):
+			dest = info.parentEntityQN
+		default:
+			return nil, "", fmt.Errorf("association '%s' connects %s and %s, neither of which is %s",
+				assocQN, info.parentEntityQN, info.childEntityQN, current)
+		}
+		if dest == "" {
+			return nil, "", fmt.Errorf("association '%s' has an unresolved end, so the entity it reaches is unknown", assocQN)
+		}
+		steps = append(steps, microflows.EntityRefStep{Association: assocQN, DestinationEntity: dest})
+		current = dest
+	}
+
+	// The final attribute is qualified with the entity that DECLARES it, which
+	// for an inherited attribute is an ancestor of the last hop's destination —
+	// the same rule (and the same CE1613 when broken) as a sort with no hops.
+	if strings.Count(attrName, ".") >= 2 {
+		owner := attrName[:strings.LastIndex(attrName, ".")]
+		if !fb.entityIsSubtypeOf(current, owner) {
+			return nil, "", fmt.Errorf("attribute '%s' does not belong to %s, which is where the association path ends",
+				attrName, current)
+		}
+		return steps, attrName, nil
+	}
+	if declared, ok := fb.resolveAttributeInEntityHierarchy(current, attrName); ok {
+		return steps, declared, nil
+	}
+	return nil, "", fmt.Errorf("entity %s has no attribute '%s'", current, attrName)
+}
+
+// lookupSortHop resolves one segment of a sort column's association path. A
+// qualified segment names its module outright; a bare one is looked for in the
+// modules of the entity in hand and of its ancestors, because an association is
+// stored in the module of the entity that DECLARES it — which for an inherited
+// one is not the module of the entity being sorted (mendixlabs/mxcli#1152).
+func (fb *flowBuilder) lookupSortHop(currentEntityQN, hop string) (string, *assocLookupResult) {
+	if i := strings.LastIndex(hop, "."); i > 0 {
+		if info := fb.lookupAssociation(hop[:i], hop[i+1:]); info != nil {
+			return hop, info
+		}
+		return hop, nil
+	}
+	for _, moduleName := range fb.entityChainModules(currentEntityQN) {
+		if info := fb.lookupAssociation(moduleName, hop); info != nil {
+			return moduleName + "." + hop, info
+		}
+	}
+	return hop, nil
+}
+
+// entityChainModules lists the modules of an entity and of its ancestors,
+// nearest first and without repeats.
+func (fb *flowBuilder) entityChainModules(entityQN string) []string {
+	var out []string
+	seenModule := make(map[string]bool)
+	seenEntity := make(map[string]bool)
+	for currentQN := entityQN; currentQN != ""; {
+		if seenEntity[currentQN] {
+			break
+		}
+		seenEntity[currentQN] = true
+		parts := strings.SplitN(currentQN, ".", 2)
+		if len(parts) != 2 || parts[0] == "" {
+			break
+		}
+		if !seenModule[parts[0]] {
+			seenModule[parts[0]] = true
+			out = append(out, parts[0])
+		}
+		if fb.backend == nil {
+			break
+		}
+		mod, err := fb.backend.GetModuleByName(parts[0])
+		if err != nil || mod == nil {
+			break
+		}
+		dm, err := fb.backend.GetDomainModel(mod.ID)
+		if err != nil || dm == nil {
+			break
+		}
+		entity := dm.FindEntityByName(parts[1])
+		if entity == nil {
+			break
+		}
+		currentQN = entity.GeneralizationRef
+	}
+	return out
 }
 
 func entityQualifiedNameFromAttribute(attrPath string) string {

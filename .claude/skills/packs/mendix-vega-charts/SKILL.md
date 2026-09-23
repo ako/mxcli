@@ -64,14 +64,59 @@ is fetched; the payload arrives with the page.
 }
 ```
 
-The widget needs no change for this — with no data bound it passes the spec
+The spec needs no change for this — with no data bound the widget passes it
 through untouched and Vega's own loader does the fetch. Verified end to end
 against an endpoint served by the app itself: one `200`, six marks, no error, and
 `format.property` unwrapping the `{"value": […]}` envelope OData returns.
 
-Same-origin requests carry the session cookie, so an endpoint authenticated by
-session is reachable from a chart on a page of the same app without any token
-handling.
+### A session-authenticated endpoint needs `X-Csrf-Token`
+
+Same-origin requests carry the session cookie, and **the cookie alone is not
+enough.** Mendix refuses a session-authenticated request without the session's
+CSRF token — on a *read*, not just a write, and on `/odata/` as well as `/xas/`.
+Measured on 11.14.0 against one URL, four requests:
+
+| request | result |
+|---|---|
+| no credentials | `401` |
+| session cookie only | `401` |
+| session cookie **+ `X-Csrf-Token`** | `200`, correct payload |
+| basic auth | `200`, correct payload |
+
+Vega reports the `401` body as an empty dataset, so the chart draws its axes and
+a full legend with **no marks and no error** — measured through this widget's own
+loader: 0 marks and 3 axes without the token, 1 mark with it.
+
+**The widget shipped here supplies the header** ([`widget/src/csrf.ts`](widget/src/csrf.ts)),
+reading the token from `mx.session.getConfig("csrftoken")` — it is not a cookie
+and cannot ride along by itself. A widget built from an earlier copy of this pack
+does not, and needs that loader added:
+
+```ts
+const instance = vegaLoader();
+const fetchHttp = instance.http.bind(instance);
+instance.http = (uri, options) => fetchHttp(uri, withCsrfHeader(uri, options, location.href, token));
+```
+
+**Same-origin only**, and the check is a resolution rather than a string test:
+the token authenticates this session against this app, so sending it to a
+third-party host hands that host a working credential. Resolving the URI against
+the page settles the two cases a `/^[a-z][a-z0-9+.-]*:\/\//i` test on the raw
+string gets wrong — a protocol-relative `//elsewhere.example/rows.json` carries
+no scheme and goes to another host, and an absolute URL naming the app's own
+origin *is* the app.
+
+Two things that send a diagnosis the wrong way:
+
+- **`document.cookie` shows only `originURI=/login.html`.** That reads like a
+  missing session cookie and starts a hunt for a cookie problem that does not
+  exist — `XASSESSIONID` and `xasid` are `httpOnly`, so the browser sends them
+  and JavaScript cannot see them.
+- **Basic auth on the same URL returns the data,** which looks like proof the
+  endpoint is fine and the chart is broken. Both are fine; the header is missing.
+
+The wider rule, and what each authentication method costs, is in
+[`.claude/skills/mendix/odata-data-sharing/reference/errors-and-auth.md`](../../mendix/odata-data-sharing/reference/errors-and-auth.md).
 
 ### Which to use
 

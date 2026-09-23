@@ -132,16 +132,7 @@ func PageWireframeJSON(ctx *ExecContext, name string) error {
 	qualifiedName := modName + "." + foundPage.Name
 
 	// Extract page metadata
-	title := ""
-	if foundPage.Title != nil {
-		title = foundPage.Title.GetTranslation("en_US")
-		if title == "" {
-			for _, text := range foundPage.Title.Translations {
-				title = text
-				break
-			}
-		}
-	}
+	title := pickTextTranslation(foundPage.Title, describeDefaultLanguage(ctx))
 
 	layoutName := ""
 	rawData, _ := ctx.Backend.GetRawUnit(foundPage.ID)

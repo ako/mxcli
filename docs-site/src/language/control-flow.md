@@ -211,6 +211,33 @@ COMMIT $Order ON ERROR ROLLBACK;
 
 > **Note:** `ON ERROR` is not supported on `EXECUTE DATABASE QUERY` activities.
 
+### RAISE ERROR (handler-only)
+
+`RAISE ERROR` builds Mendix's **error event**, which re-raises the error currently
+being handled. Mendix allows one only where an error is in scope, so it belongs
+inside an `ON ERROR { ... }` block:
+
+```sql
+CALL MICROFLOW Integration.CallExternalAPI (Payload = $Body) ON ERROR {
+  LOG ERROR NODE 'Integration' 'API call failed, re-raising';
+  RAISE ERROR;
+};
+```
+
+On the **main flow** it is refused as **MDL084**, at any nesting depth — inside an
+`IF`, inside a `LOOP`, or as the whole body. Studio Pro will not draw that shape,
+and mxbuild rejects it with **CE0710** *"The main flow cannot join an error flow or
+end in an error event."* The same applies inside a rule, which the same flow builder
+produces.
+
+Mendix has no main-flow "throw" activity. To fail deliberately from the normal path,
+call a Java action that throws:
+
+```sql
+CREATE JAVA ACTION Module.JA_RaiseTechnicalError (Message: String NOT NULL) RETURNS Boolean AS
+$$ throw new com.mendix.systemwideinterfaces.MendixRuntimeException(Message); $$;
+```
+
 ## CASE (Enum Split)
 
 `CASE` branches on an **enumeration** and compiles to a Mendix enum split. It is not a

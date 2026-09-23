@@ -66,7 +66,7 @@ If you're not sure whether the logic belongs in a microflow or a nanoflow, read 
 | **JavaScript actions** | Not supported | Supported |
 | **SYNCHRONIZE** | Not available | Available (offline sync) |
 | **File downloads** | Supported | Not supported |
-| **Error handling** | Full `ON ERROR` blocks + `RAISE ERROR` | Per-action `ON ERROR` supported; `RAISE ERROR` / `ErrorEvent` forbidden |
+| **Error handling** | Full `ON ERROR` blocks; `RAISE ERROR` **inside a handler only** (main flow = MDL084 / CE0710) | Per-action `ON ERROR` supported; `RAISE ERROR` / `ErrorEvent` forbidden |
 | **Offline** | Not available | Available |
 | **Binary return type** | Supported | Not supported |
 
@@ -388,8 +388,8 @@ toString($value)           -- Convert to string
 >
 > **MDL044 also blocks `mxcli exec`**, not just `check`: a call to a name Mendix
 > has no built-in for is CE0117 at build time, so exec refuses to write the
-> microflow rather than leaving you to find out from mxbuild. Two names that
-> look plausible and are not real: `currentDeviceType()` and `trunc()` (use
+> microflow or nanoflow (log messages included). Not real: `currentDeviceType()`,
+> `[%CurrentDeviceType%]` (a CE0117 `check` misses) and `trunc()` (use
 > `round`/`floor`/`ceil`). If exec rejects a function you believe IS a Mendix
 > built-in, build it once and — if mxbuild accepts it — add it to `funcTable` in
 > `mdl/exprcheck/func_checker.go`; that table is the rule's only allow-list.

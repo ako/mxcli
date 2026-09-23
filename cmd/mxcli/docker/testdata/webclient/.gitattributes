@@ -1,0 +1,3 @@
+# Byte-for-byte as mxbuild writes them (CRLF included) — these are evidence, not
+# source. Normalising them would quietly edit the fixture the tests are pinned to.
+*.html -text

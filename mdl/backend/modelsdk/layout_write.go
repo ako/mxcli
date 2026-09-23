@@ -221,8 +221,55 @@ func (b *Backend) CreateLayout(layout *pages.Layout) error {
 	return nil
 }
 
-// DeleteLayout removes a Forms$Layout unit. CREATE OR REPLACE LAYOUT is a
-// delete followed by a create, so this is on the write path, not a convenience.
+// UpdateLayout rewrites an existing Forms$Layout unit in place.
+//
+// CREATE OR REPLACE LAYOUT used to be DeleteLayout + CreateLayout, and a create
+// goes through InsertUnit under a freshly minted id. So an identical re-run
+// replaced the unit under a new GUID every time: measured on 11.14.0, three
+// runs of one idempotent statement produced three different .mxunit files, a
+// delete plus an untracked add each run, and `git status` never cleared
+// (ako/mxcli#600).
+//
+// The storage layer's own net for delete+insert recreates (#556,
+// carryIdentityFromRemovedUnit) cannot help there, because it keys on the unit
+// id and that path re-mints it. Going through UpdateRawUnit instead reaches
+// canon.Reconcile, so an identical rewrite is elided outright and a real one
+// keeps the stored element $IDs.
+//
+// It also leaves the unit's ROW alone, which is what keeps a foldered layout in
+// its folder: there is no FOLDER clause on CREATE LAYOUT, so the rebuilt layout
+// always carries the module root as its container.
+//
+// The same encoder as CreateLayout, deliberately: two encoders for one document
+// is how the two drift into writing different BSON for the same layout.
+func (b *Backend) UpdateLayout(layout *pages.Layout) error {
+	if layout == nil {
+		return fmt.Errorf("UpdateLayout: nil layout")
+	}
+	if b.writer == nil {
+		return fmt.Errorf("UpdateLayout: not connected for writing")
+	}
+	if layout.ID == "" {
+		return fmt.Errorf("UpdateLayout: layout %q has no id — an in-place rewrite needs the stored unit", layout.Name)
+	}
+	g, err := layoutToGen(layout)
+	if err != nil {
+		return err
+	}
+	g.SetID(element.ID(layout.ID))
+	contents, err := (&codec.Encoder{}).Encode(g)
+	if err != nil {
+		return fmt.Errorf("UpdateLayout: encode: %w", err)
+	}
+	if err := b.writer.UpdateRawUnit(string(layout.ID), contents); err != nil {
+		return fmt.Errorf("UpdateLayout: update: %w", err)
+	}
+	return nil
+}
+
+// DeleteLayout removes a Forms$Layout unit. Still on the write path rather than
+// a convenience: DROP LAYOUT uses it, and so does a rewrite that has to clear a
+// duplicate or move the layout to another container.
 func (b *Backend) DeleteLayout(id model.ID) error {
 	if b.writer == nil {
 		return fmt.Errorf("DeleteLayout: not connected for writing")

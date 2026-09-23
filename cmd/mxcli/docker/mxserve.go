@@ -26,10 +26,16 @@ import (
 
 // ServeOptions configures StartServe.
 type ServeOptions struct {
-	// MxBuildPath is the mxbuild binary. When empty it is resolved from Version
-	// (CachedMxBuildPath) or the newest cached mxbuild (AnyCachedMxBuildPath).
+	// MxBuildPath is the mxbuild binary, and is what every local caller sets —
+	// resolved once, for this host, by ResolveMxBuildForLocal.
+	//
+	// When empty, resolution falls back to the cache: the entry for Version if
+	// there is one, and the newest cached entry only when no Version is given. It
+	// will NOT substitute a different version for a named one; see
+	// resolveServeMxBuild.
 	MxBuildPath string
-	// Version is the Mendix version used to resolve mxbuild when MxBuildPath is empty.
+	// Version is the Mendix version used to resolve mxbuild when MxBuildPath is
+	// empty, and to refuse a cache entry that cannot build this project.
 	Version string
 	// JavaHome is the JDK home. When empty it is resolved for JavaMajor.
 	JavaHome string
@@ -186,19 +192,73 @@ func verifyMxBuildCache(mxbuildPath string) error {
 	return nil
 }
 
+// serveOptionsFor builds the ServeOptions for the local loop's build server.
+//
+// It exists so that the two local entry points — `run --local` (RunLocal) and
+// `test --local` (StartLocalApp) — cannot construct these options differently.
+// Each resolves the mxbuild this host can execute (ResolveMxBuildForLocal) and
+// then has to hand it on; both used to omit it, so StartServe re-resolved from
+// the cache and could start a DIFFERENT mxbuild than the one the caller had just
+// chosen. On macOS that was the normal case, not an edge one: the caller picked
+// Studio Pro's binary and the serve process got whatever the cache held, which
+// is either a Linux download or another version entirely (#1122).
+//
+// MxBuildPath is the load-bearing field. The rest is plumbing.
+func serveOptionsFor(mxbuildPath, version string, javaMajor, servePort int) ServeOptions {
+	return ServeOptions{
+		MxBuildPath: mxbuildPath,
+		Version:     version,
+		JavaMajor:   javaMajor,
+		Host:        "127.0.0.1",
+		Port:        servePort,
+	}
+}
+
+// resolveServeMxBuild decides which mxbuild `--serve` runs.
+//
+// A caller-supplied path wins, and is the path every local caller takes. When
+// there is none, an exactly-matching cache entry is used — and, crucially, NOT a
+// near miss: substituting another version here is how a project pinned to 11.12.2
+// came to be built by 11.14.0, a mismatch mxbuild itself only reports minutes
+// later, after a cold model load. The unversioned fallback survives because a
+// caller that names no version has nothing to be mismatched against.
+func resolveServeMxBuild(opts ServeOptions) string {
+	if opts.MxBuildPath != "" {
+		return opts.MxBuildPath
+	}
+	if opts.Version != "" {
+		return CachedMxBuildPath(opts.Version)
+	}
+	return AnyCachedMxBuildPath()
+}
+
+// noServeMxBuildError explains a failed resolution in the terms the user can act
+// on. It names the version that was asked for and what the cache does hold,
+// because the two being different is the whole defect — and it does not send a
+// macOS user to `setup mxbuild`, which on a host with Studio Pro installed
+// reports the path and caches nothing, leaving them exactly where they started
+// (#1124).
+func noServeMxBuildError(version string) error {
+	if version == "" {
+		return fmt.Errorf("mxbuild not found; run 'mxcli setup mxbuild -p <app.mpr>' or pass --mxbuild-path")
+	}
+	msg := fmt.Sprintf("no mxbuild for Mendix %s", version)
+	if cached := AnyCachedMxBuildPath(); cached != "" {
+		msg += fmt.Sprintf("\n  The cache holds %s, which cannot build a %s project:\n    %s",
+			versionFromPath(cached), version, cached)
+	}
+	return fmt.Errorf("%s\n"+
+		"  Install Mendix Studio Pro %[2]s (its bundled mxbuild is used automatically on macOS and Windows),\n"+
+		"  point mxcli at one with --mxbuild-path, or on Linux run 'mxcli setup mxbuild --version %[2]s'.", msg, version)
+}
+
 // StartServe launches `mxbuild --serve` and blocks until the build API responds.
 // Call Stop() to shut it down. The first Build() loads the model (cold, ~10-15s);
 // subsequent builds are incremental (~1s).
 func StartServe(opts ServeOptions) (*ServeServer, error) {
-	mxbuildPath := opts.MxBuildPath
-	if mxbuildPath == "" && opts.Version != "" {
-		mxbuildPath = CachedMxBuildPath(opts.Version)
-	}
+	mxbuildPath := resolveServeMxBuild(opts)
 	if mxbuildPath == "" {
-		mxbuildPath = AnyCachedMxBuildPath()
-	}
-	if mxbuildPath == "" {
-		return nil, fmt.Errorf("mxbuild not found; run 'mxcli setup mxbuild -p <app.mpr>' or pass ServeOptions.MxBuildPath")
+		return nil, noServeMxBuildError(opts.Version)
 	}
 	if err := verifyMxBuildCache(mxbuildPath); err != nil {
 		return nil, err
@@ -325,12 +385,16 @@ func (s *ServeServer) Build(req BuildRequest) (*BuildResult, error) {
 	return &res, nil
 }
 
-// alive reports whether the serve process is still running (Linux: signal 0).
+// alive reports whether the serve process is still running.
+//
+// Delegates to processAlive: Signal(0) is a correct liveness test on POSIX but
+// returns EWINDOWS on Windows, where it made waitReady() treat a just-started
+// mxbuild as dead.
 func (s *ServeServer) alive() bool {
 	if s.cmd == nil || s.cmd.Process == nil {
 		return false
 	}
-	return s.cmd.Process.Signal(syscall.Signal(0)) == nil
+	return processAlive(s.cmd.Process)
 }
 
 // Log returns the captured mxbuild --serve output (for diagnostics).

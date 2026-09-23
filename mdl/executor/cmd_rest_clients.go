@@ -374,9 +374,9 @@ func createRestClient(ctx *ExecContext, stmt *ast.CreateRestClientStmt) error {
 	}
 
 	var preservedID model.ID
-	// Where the service currently sits. A rest client is rewritten as
-	// delete+create, so its container is re-applied on every statement and an
-	// unset value files a foldered service back into the module root (#932).
+	// Where the service currently sits. Its container is re-applied on every
+	// statement, and an unset value files a foldered service back into the
+	// module root (#932).
 	var preservedContainerID model.ID
 	var preservedDocumentation string
 	wasModified := false
@@ -388,13 +388,10 @@ func createRestClient(ctx *ExecContext, stmt *ast.CreateRestClientStmt) error {
 				// Preserve the existing ID so SEND REST REQUEST references stay valid after replace.
 				preservedID = existing.ID
 				preservedContainerID = existing.ContainerID
-				// The rewrite is a delete+create, so the stored documentation
-				// has to be captured before the delete or it is gone (#1018).
+				// A rewrite that carried no doc comment keeps the stored one, so
+				// it has to be read before anything replaces the unit (#1018).
 				preservedDocumentation = existing.Documentation
 				wasModified = true
-				if err := ctx.Backend.DeleteConsumedRestService(existing.ID); err != nil {
-					return mdlerrors.NewBackend("delete existing rest client", err)
-				}
 			} else {
 				return mdlerrors.NewAlreadyExistsMsg("rest client", moduleName+"."+stmt.Name.Name, fmt.Sprintf("rest client already exists: %s.%s (use create or modify to overwrite)", moduleName, stmt.Name.Name))
 			}
@@ -478,7 +475,7 @@ func createRestClient(ctx *ExecContext, stmt *ast.CreateRestClientStmt) error {
 	}
 
 	// Write to project
-	if err := ctx.Backend.CreateConsumedRestService(svc); err != nil {
+	if err := saveConsumedRestService(ctx, svc, preservedID, preservedContainerID); err != nil {
 		return mdlerrors.NewBackend("create rest client", err)
 	}
 
@@ -486,8 +483,40 @@ func createRestClient(ctx *ExecContext, stmt *ast.CreateRestClientStmt) error {
 	if wasModified {
 		verb = "Modified"
 	}
-	fmt.Fprintf(ctx.Output, "%s rest client: %s.%s (%d operations)\n", verb, moduleName, stmt.Name.Name, len(svc.Operations))
+	ctx.ReportMutation(verb, "rest client: %s.%s (%d operations)",
+		moduleName, stmt.Name.Name, len(svc.Operations))
 	return nil
+}
+
+// saveConsumedRestService writes a consumed REST client, rewriting the stored
+// unit IN PLACE when the statement is a modification that leaves it where it is.
+//
+// The obvious implementation — delete the old unit, insert a new one under the
+// preserved ID — is what made `create or modify rest client` churn. An insert
+// does not pass through the storage layer's reconciliation, so an identical
+// re-run rewrote nine element $IDs in the document, dirtied the .mpr, and did it
+// again on every run (ako/mxcli#556: 143 bytes of a 1,128-byte unit, all of them
+// $IDs). An update does pass through it, and is elided outright when the
+// rebuild means the same thing as what is stored.
+//
+// Delete+create survives for the one thing an in-place rewrite cannot express:
+// moving the document to another folder, which lives in the unit's ROW rather
+// than in its contents.
+//
+// Deferring the delete to here is also strictly safer than doing it while
+// scanning: building the service from the AST can fail, and the old code had
+// already deleted the stored one by then.
+func saveConsumedRestService(ctx *ExecContext, svc *model.ConsumedRestService, preservedID, preservedContainerID model.ID) error {
+	if preservedID == "" {
+		return ctx.Backend.CreateConsumedRestService(svc)
+	}
+	if svc.ContainerID == preservedContainerID {
+		return ctx.Backend.UpdateConsumedRestService(svc)
+	}
+	if err := ctx.Backend.DeleteConsumedRestService(preservedID); err != nil {
+		return fmt.Errorf("delete existing rest client: %w", err)
+	}
+	return ctx.Backend.CreateConsumedRestService(svc)
 }
 
 // buildRestClientOperation converts an AST RestOperationDef to a model RestClientOperation.
@@ -847,6 +876,7 @@ func createRestClientFromSpec(ctx *ExecContext, stmt *ast.CreateRestClientStmt) 
 		return mdlerrors.NewBackend("build hierarchy", err)
 	}
 	openAPIWasModified := false
+	var openAPIPreservedID, openAPIPreservedContainerID model.ID
 	for _, existing := range existingServices {
 		existModID := h.FindModuleID(existing.ContainerID)
 		existModName := h.GetModuleName(existModID)
@@ -860,9 +890,8 @@ func createRestClientFromSpec(ctx *ExecContext, stmt *ast.CreateRestClientStmt) 
 					svc.ContainerID = existing.ContainerID
 				}
 				openAPIWasModified = true
-				if err := ctx.Backend.DeleteConsumedRestService(existing.ID); err != nil {
-					return mdlerrors.NewBackend("delete existing rest client", err)
-				}
+				openAPIPreservedID = existing.ID
+				openAPIPreservedContainerID = existing.ContainerID
 			} else {
 				return mdlerrors.NewAlreadyExistsMsg("rest client", moduleName+"."+stmt.Name.Name,
 					fmt.Sprintf("rest client already exists: %s.%s (use create or modify to overwrite)", moduleName, stmt.Name.Name))
@@ -870,7 +899,7 @@ func createRestClientFromSpec(ctx *ExecContext, stmt *ast.CreateRestClientStmt) 
 		}
 	}
 
-	if err := ctx.Backend.CreateConsumedRestService(svc); err != nil {
+	if err := saveConsumedRestService(ctx, svc, openAPIPreservedID, openAPIPreservedContainerID); err != nil {
 		return mdlerrors.NewBackend("create rest client", err)
 	}
 
@@ -878,8 +907,8 @@ func createRestClientFromSpec(ctx *ExecContext, stmt *ast.CreateRestClientStmt) 
 	if openAPIWasModified {
 		openAPIVerb = "Modified"
 	}
-	fmt.Fprintf(ctx.Output, "%s rest client: %s.%s (%d operations from OpenAPI spec)\n",
-		openAPIVerb, moduleName, stmt.Name.Name, len(svc.Operations))
+	ctx.ReportMutation(openAPIVerb, "rest client: %s.%s (%d operations from OpenAPI spec)",
+		moduleName, stmt.Name.Name, len(svc.Operations))
 	return nil
 }
 

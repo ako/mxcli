@@ -53,6 +53,10 @@ type CreatePageStmtV3 struct {
 	PopupWidth     *int
 	PopupHeight    *int
 	PopupResizable *bool
+	// PopupCloseAction names the widget on this page whose action closes it when
+	// shown as a pop-up (Forms$Page.PopupCloseAction). Set on 9 of ako/TestApp's
+	// 67 pages; a rewrite wrote "" over it (ako/mxcli#550).
+	PopupCloseAction string
 }
 
 func (s *CreatePageStmtV3) isStatement() {}
@@ -191,6 +195,10 @@ type DataSourceV3 struct {
 	Args            []FlowArgV3     // Arguments for microflow/nanoflow calls
 	Where           string          // XPath constraint (for database source)
 	OrderBy         []OrderByItemV3 // Sort order (for database source)
+	// SearchAttributes are the attributes a List View's search bar filters on
+	// (Forms$ListViewSearch.SearchRefs). Names only — a search attribute has no
+	// direction, which is why this is []string and not []OrderByItemV3.
+	SearchAttributes []string
 }
 
 // FlowArgV3 represents an argument for microflow/nanoflow/page calls.
@@ -201,8 +209,11 @@ type FlowArgV3 struct {
 
 // OrderByItemV3 represents a sort column.
 type OrderByItemV3 struct {
-	Attribute string // Attribute path
-	Direction string // "ASC" or "DESC"
+	Attribute string // Attribute path — the FINAL segment
+	// Associations holds one qualified association name per `/` hop, in order.
+	// See ast.SortColumnDef.Associations.
+	Associations []string
+	Direction    string // "ASC" or "DESC"
 }
 
 // ActionV3 represents a V3 action expression.

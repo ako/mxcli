@@ -4,7 +4,7 @@ category: glossary
 last-synced: 4e185f73
 sources:
   - CLAUDE.md
-  - sdk/mpr/parser_microflow.go
+  - mdl/backend/modelsdk/microflow_read_actions.go
   - README.md
 ---
 

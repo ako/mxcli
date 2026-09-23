@@ -1,0 +1,30 @@
+-- mendixlabs/mxcli#1152 — "roundtrip for retrieve DB with sorting over
+-- association does not work".
+--
+-- `mxcli describe` emitted this retrieve, `mxcli check` reported no errors, and
+-- `mxcli exec` refused it:
+--
+--   Error: microflow 'ExamplesModule.ACT_sort_test ' has validation errors:
+--   sort by attribute 'System.Language.Code' does not belong to entity
+--   'Administration.Account'
+--
+-- The hop that reaches System.Language is System.User_Language, declared on the
+-- ANCESTOR System.User and stored in the SYSTEM module's domain model. The
+-- executor searched only the retrieved entity's own module, for associations
+-- whose parent was the retrieved entity itself, so it found nothing.
+--
+-- Measured on 11.12.3 in a blank app: with the hop written, `mx check` is
+-- 0 errors. With the hop dropped but the attribute path kept — the shape a
+-- half-fix produces — mxbuild reports CE7247 "Cannot sort on attribute
+-- 'System.Language.Code'. Attribute 'System.Language.Code' is not an attribute
+-- of entity 'Administration.Account'."
+
+create or modify microflow MyFirstModule.ACT_sort_test ()
+begin
+    @start(96, 200)
+    @position(236, 200)
+    retrieve $AccountList from Administration.Account
+        sort by System.Language.Code asc;
+    @position(700, 200)
+    return;
+end;

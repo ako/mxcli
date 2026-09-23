@@ -1881,6 +1881,34 @@ type ReferenceSet
 owner both;
 /
 
+-- ############################################################################
+-- LEVEL 13: BULK ALTER — one statement for a whole module
+-- ############################################################################
+--
+-- ALTER ENTITIES replaces one ALTER ENTITY per entity. Only ADD ATTRIBUTE is
+-- offered: drop and rename aimed at a set are destructive by a typo.
+--
+-- IF NOT EXISTS is what makes it re-runnable, and this file is re-run on every
+-- doctype pass — the second run must skip rather than fail.
+
+-- Give every persistent entity in the module an audit trail.
+alter entities in DmTest
+  add attribute if not exists AuditCreated: AutoCreatedDate,
+  add attribute if not exists AuditChanged: AutoChangedDate
+  where persistent;
+/
+
+-- The non-persistent half of the module, addressed on its own.
+alter entities in DmTest
+  add attribute if not exists ScratchNote: String(40)
+  where non-persistent;
+/
+
+-- No filter: every entity in the module, view entities included.
+alter entities in DmTest
+  add attribute if not exists BulkTouched: Boolean;
+/
+
 -- Verify generalized entities appear in listings
 show entities in DmTest;
 describe entity DmTest.Attachment;

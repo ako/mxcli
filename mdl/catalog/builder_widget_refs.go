@@ -61,11 +61,11 @@ func insertWidgetRefs(tx CatalogTx, projectID, snapshotID string) (int, error) {
 	res, err := tx.Exec(
 		`INSERT INTO refs (SourceType, SourceId, SourceName, TargetType, TargetId, TargetName, RefKind, ModuleName, ProjectId, SnapshotId)
 		 SELECT DISTINCT w.ContainerType, '', w.ContainerQualifiedName,
-		        'WIDGET', d.WidgetId, d.MdlName, ?, w.ModuleName, ?, ?
+		        ?, d.WidgetId, d.MdlName, ?, w.ModuleName, ?, ?
 		 FROM widgets_data w
 		 JOIN widget_definitions_data d ON d.WidgetId = w.WidgetType
 		 WHERE w.ContainerQualifiedName != '' AND d.MdlName != ''`,
-		RefKindWidget, projectID, snapshotID)
+		RefObjectWidget, RefKindWidget, projectID, snapshotID)
 	if err != nil {
 		return 0, err
 	}

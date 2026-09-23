@@ -1,0 +1,44 @@
+-- mendixlabs/mxcli#1030 (the legal form): `raise error;` inside an ON ERROR
+-- handler, which is the only place Mendix allows an error event.
+--
+-- This is the CONTROL for MDL084: the identical statement, one nesting level
+-- different, must keep passing check, exec and the build. Measured on mxbuild
+-- 11.13.0 against a blank app: 0 errors, the same baseline the four main-flow
+-- shapes in microflow-1030-raise-error-main-flow.fail.mdl take to 4x CE0710.
+--
+--   mxcli exec mdl-examples/bug-tests/microflow-1030-raise-error-main-flow.mdl -p app.mpr
+--   mxcli docker check -p app.mpr     -- 0 errors
+
+create or modify module RaiseProbe;
+
+create or replace microflow RaiseProbe.MF_Inner ()
+begin
+  log info node 'RaiseProbe' 'inner';
+end;
+/
+
+-- The error flow out of the call ends in the error event: an error IS in scope,
+-- so re-raising it is exactly what the event is for.
+create or replace microflow RaiseProbe.MF_Handled ()
+begin
+  call microflow RaiseProbe.MF_Inner ()
+  on error {
+    log error node 'RaiseProbe' 'failed';
+    raise error;
+  };
+end;
+/
+
+-- Nested a branch deeper inside the handler — still an error flow.
+create or replace microflow RaiseProbe.MF_HandledIf ($Retry: Boolean)
+begin
+  call microflow RaiseProbe.MF_Inner ()
+  on error {
+    if $Retry then
+      log warning node 'RaiseProbe' 'retrying';
+    else
+      raise error;
+    end if;
+  };
+end;
+/

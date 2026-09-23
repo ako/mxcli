@@ -351,7 +351,7 @@ The CE0463 fix methodology used for 11.9 generalizes. Steps:
   `defaultEmptyAppearance` helper) — for the CustomWidget envelope mxcli
   constructs around filter widgets inside DataGrid columns.
 
-- **WidgetValueType serializer**: `sdk/mpr/writer_widgets_custom.go`
+- **WidgetValueType serializer**: `mdl/backend/modelsdk/widget_pluggable_write.go`
   (`serializeWidgetValueType`) — for the structured-data path (not the
   RawType clone path) when building widget BSON from typed inputs.
 

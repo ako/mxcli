@@ -36,7 +36,25 @@ func init() {
 			"exposed as", "expose as microflow action", "expose as workflow action",
 			"toolbox", "icon", "image",
 		},
-		Syntax:  "CREATE MICROFLOW Module.Name ($P1: String, $P2: Integer)\n  RETURNS Type AS $Result\n  [FOLDER 'FolderPath']\n  [EXPOSED AS MICROFLOW ACTION 'Caption' IN 'Category'\n     [ICON 'icon.png'] [ICON DARK 'icon-dark.png']\n     [IMAGE 'image.png'] [IMAGE DARK 'image-dark.png']]\n  [EXPOSED AS WORKFLOW ACTION 'Caption' IN 'Category']\n  [NOT EXPOSED AS MICROFLOW|WORKFLOW ACTION]\nBEGIN\n  <statements>\nEND;\n\nEXPOSED AS puts the microflow in Studio Pro's toolbox, so whoever drags it in\ndoes not need to know it is a microflow. There are two toolboxes — the\nmicroflow editor's and the workflow editor's — so the clause names which.\nThe icon is a 64x64 PNG and the image a 256x192 PNG, read from disk relative\nto the .mdl file's own directory. An OMITTED clause preserves what is stored, so\nremoving an entry is NOT EXPOSED and clearing one bitmap is DROP ICON/IMAGE.",
+		Syntax: "CREATE MICROFLOW Module.Name ($P1: String, $P2: Integer)\n  RETURNS Type AS $Result\n  [FOLDER 'FolderPath']\n  [EXPOSED AS MICROFLOW ACTION 'Caption' IN 'Category'\n     [ICON 'icon.png'] [ICON DARK 'icon-dark.png']\n     [IMAGE 'image.png'] [IMAGE DARK 'image-dark.png']]\n  [EXPOSED AS WORKFLOW ACTION 'Caption' IN 'Category']\n  [NOT EXPOSED AS MICROFLOW|WORKFLOW ACTION]\nBEGIN\n  <statements>\nEND;\n\nEXPOSED AS puts the microflow in Studio Pro's toolbox, so whoever drags it in\ndoes not need to know it is a microflow. There are two toolboxes — the\nmicroflow editor's and the workflow editor's — so the clause names which.\nThe icon is a 64x64 PNG and the image a 256x192 PNG, read from disk relative\nto the .mdl file's own directory. An OMITTED clause preserves what is stored, so\nremoving an entry is NOT EXPOSED and clearing one bitmap is DROP ICON/IMAGE.\n\n" +
+			"Three document properties have their own header clauses:\n\n" +
+			"  URL 'item/{Key}'                 the deep link (Mendix 10.6+)\n" +
+			"  URL SEARCH PARAMETERS ($Filter)  parameters passed as query arguments\n" +
+			"  DROP URL                         remove the deep link and its search params\n" +
+			"  EXPORT LEVEL API | HIDDEN        the module's public surface on export\n" +
+			"  DISALLOW CONCURRENT EXECUTION ERROR MESSAGE 'text'\n" +
+			"  DISALLOW CONCURRENT EXECUTION ERROR MICROFLOW Module.Name\n" +
+			"  ALLOW CONCURRENT EXECUTION\n\n" +
+			"An OMITTED clause PRESERVES what is stored — the same rule as EXPOSED AS and\n" +
+			"@applyentityaccess — so a rewrite that only changes the body leaves all of\n" +
+			"them alone. DROP URL / EXPORT LEVEL HIDDEN / ALLOW are the explicit forms.\n\n" +
+			"Three platform rules, each checked before the write rather than at build:\n" +
+			"  MDL-MF01  every {Name} must name a parameter of this microflow\n" +
+			"  MDL-MF02  a PATH parameter may not also be a SEARCH parameter  (CE5612)\n" +
+			"  MDL-MF03  DISALLOW needs an error message or microflow         (CE4899)\n" +
+			"and with a project, a URL another microflow already owns         (CE0570).\n\n" +
+			"`Mark as used` still has no clause and is carried, as all of these were\n" +
+			"before they were authorable (mendixlabs/mxcli#1120).",
 		Example: "CREATE MICROFLOW MyModule.ACT_CreateOrder (\n  $CustomerCode: String,\n  $Quantity: Integer\n)\nRETURNS MyModule.Order AS $NewOrder\nFOLDER 'Orders'\nEXPOSED AS MICROFLOW ACTION 'Create order' IN 'Orders'\n  ICON 'assets/order-64.png'\nBEGIN\n  $NewOrder = CREATE MyModule.Order (\n    OrderNumber = 'ORD-001',\n    Quantity = $Quantity\n  );\n  COMMIT $NewOrder;\n  RETURN $NewOrder;\nEND;",
 		SeeAlso: []string{"microflow.nanoflow", "microflow.variables"},
 	})
@@ -66,20 +84,27 @@ func init() {
 		},
 		// Retrieve-by-association was missing here, so it read as unsupported
 		// even though it works and the write-microflows skill documents it.
-		Syntax: "-- From the database\nRETRIEVE $Var FROM Module.Entity\n  [WHERE condition]\n  [SORT BY attr ASC|DESC]\n  [LIMIT n] [OFFSET n];\n\n-- Over an association, from an object you already have\nRETRIEVE $Var FROM $Object/Module.Association;",
+		Syntax: "-- From the database\nRETRIEVE $Var FROM Module.Entity\n  [WHERE condition]\n  [SORT BY attr ASC|DESC]\n  [LIMIT n] [OFFSET n];\n\n-- Sort over an association: one `/` per hop, the last segment is the attribute\nRETRIEVE $Var FROM Module.Entity\n  SORT BY Module.Assoc/Module.Other.Attr ASC;\n\n-- Over an association, from an object you already have\nRETRIEVE $Var FROM $Object/Module.Association;",
 		Example: "-- LIMIT 1 binds a single OBJECT (Mendix's \"First object\" range), not a\n" +
 			"-- one-element list — hence the singular variable name here.\n" +
 			"RETRIEVE $Customer FROM MyModule.Customer\n  WHERE Code = $CustomerCode\n  LIMIT 1;\n\n" +
 			"-- Any other LIMIT is a bounded range, which is a list.\n" +
 			"RETRIEVE $Orders FROM MyModule.Order\n  WHERE Status = 'Pending'\n  SORT BY CreateDate DESC\n  LIMIT 10 OFFSET 0;\n\n" +
 			"-- Follow an association rather than querying the database\nRETRIEVE $Orders FROM $Customer/MyModule.Order_Customer;\nRETRIEVE $Customer FROM $Order/MyModule.Order_Customer;\n\n" +
+			"-- Sort on an attribute of an associated entity. Name the association\n" +
+			"-- when two of them reach the same entity.\n" +
+			"RETRIEVE $Orders FROM MyModule.Order\n  SORT BY MyModule.Order_BillTo/MyModule.Address.City ASC;\n\n" +
 			"-- Notes:\n" +
 			"--   * LIMIT 1 with no OFFSET is the one form that binds an object. HEAD(),\n" +
 			"--     COUNT() or a LOOP over it is CE0097 at build time; mxcli reports it as\n" +
 			"--     MDL-RETRIEVE01 at check time.\n" +
 			"--   * LIMIT 1 OFFSET n is a bounded range, so that one IS a list.\n" +
 			"--   * `import from mapping … limit 1` means the opposite — a one-element\n" +
-			"--     list — and `… first` is its object form.",
+			"--     list — and `… first` is its object form.\n" +
+			"--   * SORT BY may navigate associations. Name the hop when more than one\n" +
+			"--     reaches the same entity — mxcli infers a single hop, but it cannot\n" +
+			"--     tell Order_ShipTo from Order_BillTo, and the wrong one builds\n" +
+			"--     cleanly and sorts by the wrong thing.",
 		SeeAlso: []string{"microflow.object-operations", "xpath"},
 	})
 
@@ -160,8 +185,15 @@ func init() {
 			"-- path (CE0108). End the handler, or expect that.\n" +
 			"--\n" +
 			"-- An EMPTY handler `{ }` is not a no-op: it means \"on error, do whatever\n" +
-			"-- the enclosing branch does next\". Say where the path goes with JOIN.",
-		Example: "COMMIT $Order ON ERROR {\n  LOG ERROR 'Failed to save order';\n  RETURN empty;\n};\n\n" +
+			"-- the enclosing branch does next\". Say where the path goes with JOIN.\n" +
+			"--\n" +
+			"-- RAISE ERROR re-raises the error being handled, so it belongs INSIDE an\n" +
+			"-- ON ERROR handler and nowhere else. On the main flow it is MDL084:\n" +
+			"-- Mendix needs an error in scope to re-raise, Studio Pro will not draw\n" +
+			"-- the shape, and mxbuild rejects it with CE0710 \"The main flow cannot\n" +
+			"-- join an error flow or end in an error event.\". To fail deliberately\n" +
+			"-- from the main flow, call a Java action that throws.",
+		Example: "COMMIT $Order ON ERROR {\n  LOG ERROR 'Failed to save order';\n  RAISE ERROR;\n};\n\n" +
 			"COMMIT $Batch ON ERROR WITHOUT ROLLBACK {\n  LOG WARNING 'Batch save failed, continuing';\n};\n\n" +
 			"DECLARE $Name String = 'default' ON ERROR {\n  RETURN 'could not initialise';\n};",
 		SeeAlso: []string{"microflow.control-flow"},
@@ -359,14 +391,42 @@ func init() {
 
 	Register(SyntaxFeature{
 		Path:    "microflow.nanoflow",
-		Summary: "CREATE NANOFLOW — client-side logic, same syntax as microflow",
+		Summary: "CREATE NANOFLOW — client-side logic; microflow syntax minus the server-only half",
 		Keywords: []string{
-			"nanoflow", "create nanoflow", "client-side",
-			"offline", "client logic",
+			"nanoflow", "create nanoflow", "client-side", "runs in the browser",
+			"offline", "client logic", "disallowed in nanoflow", "nanoflow restrictions",
 		},
-		Syntax:  "CREATE NANOFLOW Module.Name ($Param: Type) RETURNS Type AS $Result\nBEGIN\n  <statements>\nEND;",
-		Example: "CREATE NANOFLOW MyModule.NF_ValidateInput ($Input: String)\nRETURNS Boolean AS $IsValid\nBEGIN\n  IF $Input = empty THEN\n    VALIDATION FEEDBACK $Input MESSAGE 'Required';\n    RETURN false;\n  END IF;\n  RETURN true;\nEND;",
-		SeeAlso: []string{"microflow.create"},
+		Syntax: "CREATE [OR REPLACE] NANOFLOW Module.Name ($Param: Type)\n" +
+			"RETURNS Type AS $Result\nBEGIN\n  <statements>\nEND;\n\n" +
+			"The body is microflow syntax — every topic under `microflow` applies —\n" +
+			"MINUS what cannot run in the browser. `mxcli check` refuses each of these\n" +
+			"before a build, nested inside IF/LOOP/WHILE and error-handler bodies too:\n\n" +
+			"  RAISE ERROR                    ErrorEvent has no nanoflow equivalent\n" +
+			"  CALL JAVA ACTION               server-side\n" +
+			"  EXECUTE DATABASE QUERY         server-side\n" +
+			"  CALL EXTERNAL ACTION           server-side\n" +
+			"  CALL REST SERVICE / SEND REST REQUEST\n" +
+			"  IMPORT FROM MAPPING / EXPORT TO MAPPING\n" +
+			"  TRANSFORM JSON\n" +
+			"  DOWNLOAD FILE\n" +
+			"  SHOW HOME PAGE\n" +
+			"  every WORKFLOW action (call, open, set task outcome, notify, lock, …)\n\n" +
+			"A Binary RETURN type is not allowed either.\n\n" +
+			"ON ERROR is not universal here. Six activities reject it — change, log,\n" +
+			"show page, close page, show message, validation feedback — because Mendix\n" +
+			"answers CE6035 \"Error handling type is not supported\"; a nanoflow activity\n" +
+			"aborts the flow on error by default, so drop the clause. The other\n" +
+			"activities (create, commit, retrieve, the calls, declare, set) take it.\n\n" +
+			"SYNCHRONIZE is the mirror image: allowed ONLY in a nanoflow (MDL057 flags\n" +
+			"it in a microflow) — see microflow.synchronize.\n\n" +
+			"Security is the same shape as a microflow's:\n" +
+			"  GRANT EXECUTE ON NANOFLOW Module.Name TO Module.Role;",
+		Example: "CREATE NANOFLOW MyModule.NF_ValidateInput ($Input: String)\nRETURNS Boolean AS $IsValid\nBEGIN\n  IF $Input = empty THEN\n    VALIDATION FEEDBACK $Input MESSAGE 'Required';\n    RETURN false;\n  END IF;\n  RETURN true;\nEND;\n\n" +
+			"-- Server-side work belongs behind a microflow call, which IS allowed\n" +
+			"CREATE NANOFLOW MyModule.NF_Submit ($Order: Sales.Order)\nBEGIN\n" +
+			"  CALL MICROFLOW MyModule.ACT_SubmitOrder (Order = $Order);\n" +
+			"  CLOSE PAGE;\nEND;",
+		SeeAlso: []string{"microflow.create", "microflow.synchronize", "microflow.error-handling"},
 	})
 
 	Register(SyntaxFeature{
@@ -440,6 +500,15 @@ func init() {
 			"pixel offset from its end of the line. (0, 0) at both ends is straight.\n" +
 			"@position on a split belongs to the SPLIT, so its end-if join has its own\n" +
 			"annotation. Container Size is still computed, not authorable.\n\n" +
+			"WITHOUT @position the builder places everything. The main line runs left to\n" +
+			"right and wraps onto a new row past 2880px; the line joining two rows leaves\n" +
+			"the bottom of one and arrives on top of the next. A guard (if … return; end\n" +
+			"if) drops its branch into the lane below and the main line carries straight\n" +
+			"on over it. A CASE of four or more branches leaves the split in three groups\n" +
+			"— top, right, bottom — so its lines do not cross. A statement that carries\n" +
+			"@position is never moved, and starts the row for what follows it. Prefer no\n" +
+			"@position at all to a few: hand-placed statements are not measured against\n" +
+			"what the builder puts around them. (#1154)\n\n" +
 			"@start and @merge position the two nodes that have no statement of their\n" +
 			"own, so each is written on the statement it belongs to. Omit @start and the\n" +
 			"start is placed one spacing unit left of the first activity, on its centre\n" +

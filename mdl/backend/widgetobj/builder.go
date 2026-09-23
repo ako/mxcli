@@ -737,9 +737,38 @@ func (ob *Builder) PrimitiveValues() map[string]string {
 // Object list defaults
 // ---------------------------------------------------------------------------
 
-func (ob *Builder) EnsureRequiredObjectLists() {
-	ob.object = ensureRequiredObjectLists(ob.object, ob.propertyTypeIDs)
-}
+// EnsureRequiredObjectLists is intentionally a no-op: mxcli does not seed a
+// placeholder row into an object list the author never wrote.
+//
+// It used to auto-populate any object list whose nested properties were all
+// "simple" (nothing Attribute/Expression/TextTemplate/Widgets/DataSource).
+// Studio Pro leaves such a list EMPTY, so the seeded row made the stored
+// instance disagree with the installed .mpk — CE0463, "the definition of this
+// widget has changed".
+//
+// Measured against the 31 shipped widget templates, the old heuristic fired on
+// exactly two properties and helped neither:
+//
+//	barcodescanner  barcodeFormats  required, nested {Enumeration}
+//	                -> seeded one row carrying the enum default AZTEC; three
+//	                   Barcode Scanners on two pages each raised CE0463 and the
+//	                   app would not deploy until Studio Pro's "Update widget"
+//	                   deleted exactly that row.
+//	htmlelement     events          optional, nested {Action,Boolean,Enumeration}
+//	                -> seeded a phantom event handler Studio Pro never writes.
+//
+// The MCP write path (mdl/backend/mcp.(*mcpWidgetBuilder)) has always had this
+// as a no-op, so removing the seeding also makes the two engines agree rather
+// than making the model depend on which one authored it.
+//
+// This is NOT the sibling fix for issue #891. That one fills an *authored*
+// object-list item's required TextTemplate with the widget's shipped
+// translations, lives in buildObjectListItemBSON, and still applies — an absent
+// `required` attribute in widget XML still means required (mpk.go:
+// `Required: p.Required != "false"`). Nothing here changes that.
+//
+// The method is kept so backend.WidgetBuilder keeps its shape.
+func (ob *Builder) EnsureRequiredObjectLists() {}
 
 // ---------------------------------------------------------------------------
 // Property visibility (#574)
@@ -1409,95 +1438,6 @@ func createDefaultClientTemplateBSON(text string) bson.D {
 // ---------------------------------------------------------------------------
 // Default object lists
 // ---------------------------------------------------------------------------
-
-func ensureRequiredObjectLists(obj bson.D, propertyTypeIDs map[string]pages.PropertyTypeIDEntry) bson.D {
-	// Sort keys for deterministic BSON output.
-	keys := make([]string, 0, len(propertyTypeIDs))
-	for k := range propertyTypeIDs {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	for _, propKey := range keys {
-		entry := propertyTypeIDs[propKey]
-		if entry.ObjectTypeID == "" || len(entry.NestedPropertyIDs) == 0 {
-			continue
-		}
-		if !entry.Required {
-			hasNestedDS := false
-			for _, nested := range entry.NestedPropertyIDs {
-				if nested.ValueType == "DataSource" {
-					hasNestedDS = true
-					break
-				}
-			}
-			if hasNestedDS {
-				continue
-			}
-		}
-		// Skip auto-populate when any nested property has a complex ValueType
-		// (Attribute / Expression / TextTemplate / Widgets / DataSource).
-		// Complex types have no sensible empty default — Studio Pro flags an
-		// auto-generated entry with empty Expression/Attribute as CE0463/CE0566.
-		// This also avoids over-populating mode-dependent required lists such as
-		// Combobox optionsSourceStaticDataSource (only used when source=static).
-		hasComplexNested := false
-		for _, nested := range entry.NestedPropertyIDs {
-			switch nested.ValueType {
-			case "Attribute", "Expression", "TextTemplate", "Widgets", "DataSource":
-				hasComplexNested = true
-			}
-			if hasComplexNested {
-				break
-			}
-		}
-		if hasComplexNested {
-			continue
-		}
-		obj = updateWidgetPropertyValue(obj, propertyTypeIDs, propKey, func(val bson.D) bson.D {
-			for _, elem := range val {
-				if elem.Key == "Objects" {
-					if arr, ok := elem.Value.(bson.A); ok && len(arr) <= 1 {
-						defaultObj := createDefaultWidgetObject(entry.ObjectTypeID, entry.NestedPropertyIDs)
-						newArr := bson.A{int32(2), defaultObj}
-						result := make(bson.D, 0, len(val))
-						for _, e := range val {
-							if e.Key == "Objects" {
-								result = append(result, bson.E{Key: "Objects", Value: newArr})
-							} else {
-								result = append(result, e)
-							}
-						}
-						return result
-					}
-				}
-			}
-			return val
-		})
-	}
-	return obj
-}
-
-func createDefaultWidgetObject(objectTypeID string, nestedProps map[string]pages.PropertyTypeIDEntry) bson.D {
-	propsArr := bson.A{int32(2)}
-	// Sort keys for deterministic BSON output.
-	nestedKeys := make([]string, 0, len(nestedProps))
-	for k := range nestedProps {
-		nestedKeys = append(nestedKeys, k)
-	}
-	sort.Strings(nestedKeys)
-	for _, k := range nestedKeys {
-		entry := nestedProps[k]
-		prop := createDefaultWidgetProperty(entry)
-		propsArr = append(propsArr, prop)
-	}
-	return bson.D{
-		{Key: "$ID", Value: types.UUIDToBlob(types.GenerateID())},
-		{Key: "$Type", Value: "CustomWidgets$WidgetObject"},
-		{Key: "TypePointer", Value: types.UUIDToBlob(objectTypeID)},
-		{Key: "Properties", Value: propsArr},
-	}
-}
 
 func createDefaultWidgetProperty(entry pages.PropertyTypeIDEntry) bson.D {
 	return bson.D{

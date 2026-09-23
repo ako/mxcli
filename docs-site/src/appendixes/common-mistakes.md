@@ -113,7 +113,7 @@ Mendix uses different "storage names" in BSON `$Type` fields than the "qualified
 When adding new types, always verify the storage name by:
 1. Examining existing MPR files with the `mx` tool or SQLite browser
 2. Checking the reflection data in the `reference/mendixmodellib/reflection-data/` directory
-3. Looking at the parser cases in `sdk/mpr/parser_microflow.go`
+3. Looking at the read cases in `mdl/backend/modelsdk/microflow_read_actions.go`
 
 ## Mendix Expression String Escaping
 

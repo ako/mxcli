@@ -13,7 +13,32 @@ import (
 )
 
 // Encoder serializes Element trees back to BSON bytes.
-type Encoder struct{}
+type Encoder struct {
+	// OmitKeys suppresses BSON keys, per $Type, for this encoder only.
+	//
+	// It exists for **version-floored properties**. Mendix introduces properties
+	// over time, and a key introduced after the project's own version is one that
+	// project's metamodel does not declare. mxbuild's deserializer tolerates an
+	// unknown property — measured on 10.24.25, `mx check` reports 0 errors with
+	// one present — while Studio Pro resolves every stored property against the
+	// type's property list and throws InvalidOperationException at MprProperty.cs.
+	// So the build is not a safety net and the suppression has to be deliberate.
+	//
+	// It is per-encoder rather than part of RegisterTypeDefaults because that
+	// registry is global, keyed by $Type alone, and cannot see a project version.
+	//
+	// Outer map: $Type. Inner map: BSON key -> true. A nil map suppresses nothing,
+	// so the zero Encoder behaves exactly as before.
+	OmitKeys map[string]map[string]bool
+}
+
+// omits reports whether this encoder must drop a key for the given $Type.
+func (e *Encoder) omits(typeName, key string) bool {
+	if e.OmitKeys == nil {
+		return false
+	}
+	return e.OmitKeys[typeName][key]
+}
 
 // Encode serializes an element to []byte.
 // Clean elements passthrough raw bytes unchanged.
@@ -142,6 +167,9 @@ func (e *Encoder) buildDoc(elem element.Element) (bson.D, error) {
 				return nil, err
 			}
 			if val != nil {
+				if e.omits(elem.TypeName(), prop.Name()) {
+					continue
+				}
 				doc = append(doc, bson.E{Key: prop.Name(), Value: val})
 				emitted[prop.Name()] = true
 			}
@@ -155,7 +183,7 @@ func (e *Encoder) buildDoc(elem element.Element) (bson.D, error) {
 				doc = append(doc, bson.E{Key: "GUID", Value: idToBinarySubtype0(elem.ID())})
 			}
 			for _, name := range d.MandatoryLists {
-				if !emitted[name] {
+				if !emitted[name] && !e.omits(elem.TypeName(), name) {
 					doc = append(doc, bson.E{Key: name, Value: bson.A{int32(3)}})
 				}
 			}
@@ -179,6 +207,11 @@ func (e *Encoder) buildDoc(elem element.Element) (bson.D, error) {
 			for _, name := range d.EmptyStringFields {
 				if !emitted[name] {
 					doc = append(doc, bson.E{Key: name, Value: ""})
+				}
+			}
+			for _, name := range d.FalseFields {
+				if !emitted[name] {
+					doc = append(doc, bson.E{Key: name, Value: false})
 				}
 			}
 			for _, name := range d.ZeroGUIDFields {

@@ -28,7 +28,7 @@ ENTRY_PAGE_PATTERNS = ["Home", "Login", "Index", "Dashboard"]
 # Reference kinds that mean "something causes this microflow to run". These are
 # catalog RefKind values (mdl/catalog/builder_references.go); a kind missing here
 # turns a live document into a false "not called from anywhere" finding.
-MICROFLOW_ENTRY_KINDS = ["call", "schedule", "datasource", "action", "calculate", "settings"]
+MICROFLOW_ENTRY_KINDS = ["call", "schedule", "publish", "datasource", "action", "calculate", "settings", "event"]
 
 # Reference kinds that mean "something opens this page".
 PAGE_ENTRY_KINDS = ["show_page", "home_page", "login_page", "menu_item", "action"]

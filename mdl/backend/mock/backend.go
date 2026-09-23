@@ -77,6 +77,7 @@ type MockBackend struct {
 	DeleteAssociationFunc                      func(domainModelID model.ID, assocID model.ID) error
 	DeleteCrossAssociationFunc                 func(domainModelID model.ID, assocID model.ID) error
 	CreateViewEntitySourceDocumentFunc         func(moduleID model.ID, moduleName, docName, oqlQuery, documentation string) (model.ID, error)
+	WriteViewEntitySourceDocumentFunc          func(moduleID model.ID, moduleName, docName, oqlQuery, documentation string) (model.ID, error)
 	DeleteViewEntitySourceDocumentFunc         func(id model.ID) error
 	DeleteViewEntitySourceDocumentByNameFunc   func(moduleName, docName string) error
 	FindViewEntitySourceDocumentIDFunc         func(moduleName, docName string) (model.ID, error)
@@ -120,6 +121,7 @@ type MockBackend struct {
 	PageLayoutNameFunc     func(id model.ID) (string, error)
 	GetLayoutFunc          func(id model.ID) (*pages.Layout, error)
 	CreateLayoutFunc       func(layout *pages.Layout) error
+	UpdateLayoutFunc       func(layout *pages.Layout) error
 	DeleteLayoutFunc       func(id model.ID) error
 	ListSnippetsFunc       func() ([]*pages.Snippet, error)
 	CreateSnippetFunc      func(snippet *pages.Snippet) error
@@ -149,6 +151,7 @@ type MockBackend struct {
 	GetProjectSecurityFunc               func() (*security.ProjectSecurity, error)
 	SetProjectSecurityLevelFunc          func(unitID model.ID, level string) error
 	SetProjectDemoUsersEnabledFunc       func(unitID model.ID, enabled bool) error
+	SetProjectStrictModeFunc             func(unitID model.ID, enabled bool) error
 	SetProjectGuestAccessFunc            func(unitID model.ID, enabled bool, guestUserRole string) error
 	AddUserRoleFunc                      func(unitID model.ID, name string, moduleRoles []string, manageAllRoles bool) error
 	AlterUserRoleModuleRolesFunc         func(unitID model.ID, userRoleName string, add bool, moduleRoles []string) error

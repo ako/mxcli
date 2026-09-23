@@ -216,7 +216,7 @@ func TestTwoNotesOnOneActivity_BothSurvive(t *testing.T) {
 // and it is only sound because both sides go through
 // defaultAnnotationGeometry — see the test below.
 func TestUnsharedNoteAtTheDefault_KeepsTheShortForm(t *testing.T) {
-	pos, size := defaultAnnotationGeometry(model.Point{X: 100, Y: 100}, 0)
+	pos, size := defaultAnnotationGeometry(model.Point{X: 100, Y: 100}, 0, ActivityHeight)
 	mf := mfWithNotes([]*microflows.AnnotationFlow{
 		{BaseElement: model.BaseElement{ID: "af1"}, OriginID: "n1", DestinationID: "a1"},
 	}, note("n1", "plain note", pos, size))
@@ -264,7 +264,7 @@ func TestMovedNote_CarriesItsGeometryThroughTheRoundTrip(t *testing.T) {
 func TestAnnotationGeometryDefaultIsSharedByBothSides(t *testing.T) {
 	activity := model.Point{X: 640, Y: 320}
 	for index := 0; index < 3; index++ {
-		wantPos, wantSize := defaultAnnotationGeometry(activity, index)
+		wantPos, wantSize := defaultAnnotationGeometry(activity, index, ActivityHeight)
 
 		fb := &flowBuilder{posX: 100, posY: 100, spacing: HorizontalSpacing,
 			varTypes: map[string]string{}, declaredVars: map[string]string{}}

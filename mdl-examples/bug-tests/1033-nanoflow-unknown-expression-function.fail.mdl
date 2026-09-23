@@ -1,0 +1,29 @@
+-- ============================================================================
+-- Issue #1033 — MDL044 ran for CREATE MICROFLOW only, not CREATE NANOFLOW
+-- ============================================================================
+--
+-- NEGATIVE TEST (.fail.mdl): `mxcli check` MUST reject this file. An
+-- unexpected pass means MDL044 no longer reaches nanoflow bodies (or log
+-- messages).
+--
+-- The reported repro. Two gaps let it through: MDL044 was wired to microflows
+-- alone (#828), and a `log` message was never walked for MDL044 in either
+-- flow type. `check` passed, `exec` wrote it, and the build failed:
+--
+--   [error] [CE0117] "Error(s) in expression."
+--                    at Log message activity 'Log message (info)'
+--
+-- Verified against mxbuild 11.13.0: exec'd by the pre-fix binary, the project
+-- checks with that error; with the fix, check and exec both refuse it.
+--
+-- NOT a workaround: `[%CurrentDeviceType%]`, suggested in the report, is also
+-- CE0117 on 11.13.0, in a nanoflow and in a microflow. It is not a token.
+--
+-- The accepted counterpart is 1033-nanoflow-log-expressions-ok.mdl.
+-- ============================================================================
+
+create nanoflow MyFirstModule.NF_Dev ()
+begin
+  log info 'device: ' + currentDeviceType();
+end;
+/

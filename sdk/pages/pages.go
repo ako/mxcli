@@ -23,6 +23,9 @@ type Page struct {
 	PopupWidth     int              `json:"popupWidth,omitempty"`
 	PopupHeight    int              `json:"popupHeight,omitempty"`
 	PopupResizable bool             `json:"popupResizable,omitempty"`
+	// PopupCloseAction names the widget whose action closes this page when shown
+	// as a pop-up (Forms$Page.PopupCloseAction).
+	PopupCloseAction string `json:"popupCloseAction,omitempty"`
 	// Class / Style are the page's Forms$Appearance CSS class and inline style
 	// (issue #714).
 	Class      string `json:"class,omitempty"`

@@ -20,8 +20,8 @@ import (
 // connect to the merge. When both branches end with RETURN, no merge is created.
 func (fb *flowBuilder) addIfStatement(s *ast.IfStmt) model.ID {
 	// First, measure the branches to know how much space they need
-	thenBounds := fb.measurer.measureStatements(s.ThenBody)
-	elseBounds := fb.measurer.measureStatements(s.ElseBody)
+	thenBounds := fb.measurer.measureBranch(s.ThenBody)
+	elseBounds := fb.measurer.measureBranch(s.ElseBody)
 
 	// Calculate branch width (max of both branches)
 	branchWidth := max(thenBounds.Width, elseBounds.Width)
@@ -111,7 +111,11 @@ func (fb *flowBuilder) addIfStatement(s *ast.IfStmt) model.ID {
 	}
 
 	// Calculate merge position (after the longest branch)
-	mergeX := splitX + SplitWidth + HorizontalSpacing/2 + branchWidth + HorizontalSpacing/2
+	// thenStartX (below) is the CENTRE of the branch's first activity and branchWidth
+	// is measured edge to edge, so the branch ends at thenStartX - ActivityWidth/2 +
+	// branchWidth. The merge goes one ordinary gap past that; a further half pitch used
+	// to be added here, which left 120px before every merge against 40px elsewhere.
+	mergeX := splitX + SplitWidth + HorizontalSpacing/2 + branchWidth
 
 	// Determine if the merge would have 2+ incoming edges (non-redundant).
 	// Skip merge when only one branch flows into it (the other returns).
@@ -496,12 +500,17 @@ func (fb *flowBuilder) addIfStatement(s *ast.IfStmt) model.ID {
 	} else {
 		// No merge: the split's continuing branch connects directly to the next activity.
 		// Position after the split, past the downward branch's horizontal extent.
-		afterSplit := splitX + SplitWidth + HorizontalSpacing
+		afterSplit := splitX + HorizontalSpacing
 		afterBranch := thenStartX + thenBounds.Width + HorizontalSpacing/2
 		if !hasElseBody {
-			fb.posX = max(afterSplit, afterBranch)
+			// A guard: the branch is in the lane below and ends there, so the main
+			// line resumes right after the split — in the column the branch starts
+			// in, so the two line up — and the lane is marked taken.
+			fb.posX = thenStartX
+			fb.reserveLowerLane(centerY, thenStartX-ActivityWidth/2+thenBounds.Width+laneGap)
 		} else {
 			fb.posX = max(afterSplit, afterBranch)
+			fb.reserveLowerLane(centerY, thenStartX-ActivityWidth/2+branchWidth+laneGap)
 		}
 		fb.posY = centerY
 		if noMergeExitID != "" {
@@ -592,10 +601,19 @@ func (fb *flowBuilder) addLoopStatement(s *ast.LoopStmt) model.ID {
 	// Inner positioning: activities start after the iterator icon on the left,
 	// and are centred vertically within the loop box so that branching content
 	// (IF/CASE) centred on innerStartY stays within [0, loopHeight].
-	innerStartX := LoopPadding + iteratorSpace
+	//
+	// A position is a CENTRE, so the first activity has to start half its own
+	// width past the iterator column; at LoopPadding+iteratorSpace its left edge
+	// landed 60px inside that column, on top of the iterator's icon and the list
+	// variable's label.
+	innerStartX := LoopPadding + iteratorSpace + ActivityWidth/2
 	innerStartY := loopHeight / 2
 
-	loopLeftX := fb.posX
+	// posX is where the builder would CENTRE the next element. A loop box placed
+	// with its left edge there started 100px after the previous activity, where a
+	// neighbouring activity would have started 40px after it; half an activity to
+	// the left puts the box's edge where an activity's edge would be.
+	loopLeftX := fb.posX - ActivityWidth/2
 	loopCenterX := loopLeftX + loopWidth/2
 	if s.Annotations != nil && s.Annotations.Position != nil {
 		loopCenterX = s.Annotations.Position.X
@@ -739,7 +757,11 @@ func (fb *flowBuilder) addLoopStatement(s *ast.LoopStmt) model.ID {
 		fb.applyAnnotations(loop.ID, savedLoopAnnotations)
 	}
 
-	fb.posX = loopLeftX + loopWidth + HorizontalSpacing
+	// The next element is centred on posX, so an activity placed a full
+	// HorizontalSpacing past the box's right edge sat 100px away from it, against
+	// the 40px that separates two activities. Half an activity plus that same gap
+	// puts it where a neighbour on the main line would be.
+	fb.posX = loopLeftX + loopWidth + ActivityWidth/2 + (HorizontalSpacing - ActivityWidth)
 
 	return loop.ID
 }
@@ -944,7 +966,11 @@ func (fb *flowBuilder) addWhileStatement(s *ast.WhileStmt) model.ID {
 	innerStartX := LoopPadding
 	innerStartY := LoopPadding + ActivityHeight/2
 
-	loopLeftX := fb.posX
+	// posX is where the builder would CENTRE the next element. A loop box placed
+	// with its left edge there started 100px after the previous activity, where a
+	// neighbouring activity would have started 40px after it; half an activity to
+	// the left puts the box's edge where an activity's edge would be.
+	loopLeftX := fb.posX - ActivityWidth/2
 	loopCenterX := loopLeftX + loopWidth/2
 	if s.Annotations != nil && s.Annotations.Position != nil {
 		loopCenterX = s.Annotations.Position.X
@@ -1066,7 +1092,11 @@ func (fb *flowBuilder) addWhileStatement(s *ast.WhileStmt) model.ID {
 		fb.applyAnnotations(loop.ID, savedWhileAnnotations)
 	}
 
-	fb.posX = loopLeftX + loopWidth + HorizontalSpacing
+	// The next element is centred on posX, so an activity placed a full
+	// HorizontalSpacing past the box's right edge sat 100px away from it, against
+	// the 40px that separates two activities. Half an activity plus that same gap
+	// puts it where a neighbour on the main line would be.
+	fb.posX = loopLeftX + loopWidth + ActivityWidth/2 + (HorizontalSpacing - ActivityWidth)
 
 	return loop.ID
 }

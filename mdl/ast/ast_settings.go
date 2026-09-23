@@ -23,6 +23,18 @@ type AlterSettingsStmt struct {
 	// its languages.
 	UpsertLanguage bool
 	RemoveLanguage bool
+	// For WORKFLOWS ADD/MODIFY/REMOVE GROUP: the group's name. A
+	// Settings$WorkflowGroup declares Name and Description and no identifier, so
+	// the name is the group's identity — the same reason a language is addressed
+	// by its code.
+	GroupName   string
+	AddGroup    bool
+	ModifyGroup bool
+	// UpsertGroup is ADD OR MODIFY: add the group when it is not there, change
+	// its description when it is. It is what DESCRIBE emits, so a described
+	// project re-executes against a project that already has some of its groups.
+	UpsertGroup bool
+	RemoveGroup bool
 }
 
 func (s *AlterSettingsStmt) isStatement() {}

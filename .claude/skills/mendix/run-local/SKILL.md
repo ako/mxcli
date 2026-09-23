@@ -82,8 +82,10 @@ association catalog only at startup; behavioural changes are hot-reloaded.
   The Mendix CDN publishes **Linux archives only** (the URL varies by architecture,
   not by OS), so a cached download on a Mac is a Linux `aarch64` ELF — the arch
   matches, which is why it looks fine until exec.
-- `--mxbuild-path` overrides both, and is now honoured by the local loop (it used
-  to be documented and ignored — #916).
+- `--mxbuild-path` overrides both. It is honoured by the local loop (#916) *and*
+  accepted by `run --local` (#1125) — between those two fixes the skill said the
+  first and the command rejected the flag, so the advertised workaround did not
+  exist on the platform that needed it.
 
 If nothing runnable is found, the command says so up front instead of failing with
 `fork/exec …: exec format error`:
@@ -557,3 +559,19 @@ read-back to check against. Do not reach for
 `--runtime-setting 'MicroflowConstants={…}'`: it replaces the map mxcli built
 rather than adding to it, and at boot there is nothing to fall back on for
 `BasePath`/`DatabaseName`. Use `--constant`.
+
+## Warm local dev loop (`mxcli run --local [--watch] [--screenshot]`)
+
+Docker-free `mxbuild --serve` + standalone runtime, hot `reload_model` for behavioural changes and restart+DDL for structural ones (chosen from the serve build's `restartRequired`). Bundles the browser client (`web/dist/` via mxbuild's rollup runner, which the serve Deploy target skips) so Mendix 11.x apps render in a browser. `--watch` keeps an incremental rollup bundler hot (CHOKIDAR_USEPOLLING for container fs; ~3-4s page re-bundle, skipped for model-only edits) and watches only model source (`.mpr`+`mprcontents/`). `--ensure-db` provisions the local Postgres + app database if missing; `--setup` does the non-blocking prerequisites (cache mxbuild+runtime, ensure DB) and exits — `mxcli init` wires it into a Claude Code SessionStart hook so a fresh/reaped web session self-bootstraps, and `docs-site/src/tools/bootstrap-prompt.md` is the empty-repo seed prompt. `--screenshot` captures a Playwright PNG each change (pixel-perfect page loop), with `--screenshot-url` deep links (repeatable for multi-page sets, one PNG per page) and `--screenshot-user`/`--screenshot-password` form login (session saved as Playwright storage state, reused via `screenshot --load-storage`). See `docs/11-proposals/PROPOSAL_mxcli_dev_warm_loop.md`
+
+## External browser preview (`mxcli run --hub <url>` + `mxcli tunnel-hub`)
+
+the app stays local and reverse-tunnels out over a single 443 connection (embedded chisel) to a static relay, so it is reachable in a browser at a public URL — works from egress-only environments (Claude Code web), verified live through the session's MITM egress proxy. `run --hub` implies `--local`, boots the runtime with `ApplicationRootUrl` set to the assigned URL (so the SPA/`originURI` work under the public origin), resolves the control proxy honouring `NO_PROXY`, and retries forever. `mxcli tunnel-hub --domain <base>` is the **multi-tenant** relay: a registry keyed by prefix/project/solution/branch/worktree (stable URLs on reconnect) fronts many previews at per-subdomain hosts (`[prefix-]project[-branch].<base>`; main collapses to the project) over one 443 with per-subdomain autocert, a registration API (`/api/register|status|deregister|backends|sessions`), and an availability overview at `hub.<base>/` **grouped by Claude Code session** (`/api/sessions`): each session lists the endpoints it exposed and links back to its `claude.ai/code` conversation. Client identity flags: `--hub-prefix`/`--hub-project`/`--hub-solution`/`--hub-branch`/`--hub-worktree` (project + branch auto-detected); `--hub-session` groups a session's endpoints (auto-detected from `CLAUDE_CODE_REMOTE_SESSION_ID`). Past sessions are retained: a durable per-session endpoint history (`--sessions-file`, default `~/.mxcli/hub-sessions.json`) survives restarts and reaping, and is pruned after `--session-retention` (default 30d) — so the overview shows offline sessions too (`SessionLog` in `cmd/mxcli/tunnelhub/sessions.go`). Package: `cmd/mxcli/tunnelhub/`. See `docs/11-proposals/PROPOSAL_mxcli_dev_warm_loop.md` (slices 3–4)
+
+## Tunnel-hub GitHub authentication (opt-in, gated on `--github-oauth-client-id`; absent = today's open hub)
+
+**viewer plane** — GitHub OAuth web flow + HMAC-signed SSO session cookie (`Domain=.<domain>`), owner-checked previews (`--require-auth` default on → 302 to login / 403 non-owner; soft mode filters the listing only), `/api/backends` filtered to the viewer (unauthenticated → 401), admin "signed in as" via `/api/whoami`. **Registration plane** — durable, hashed hub API keys (`--keys-file`, default `~/.mxcli/hub-keys.json`, survive restarts) presented as `X-Hub-Key` → stamps `Backend.Owner`; shared `X-Hub-Secret` still works as an owner-less fallback. **Key issuance** — the hub's `/cli` browser page mints a key from the session cookie (no PAT; the device flow was removed as Claude Code containers block GitHub's device endpoints), rotate-by-default + count + revoke-all; `mxcli auth hub login --token <pat>` is the headless path; `run --hub` reads `MXCLI_HUB_KEY` (env → `~/.mxcli/auth.json`) and degrades to local-only if registration fails. Append-only JSONL audit trail (`--audit-log`, no secrets). Packages: `cmd/mxcli/tunnelhub/` (+`audit/`), `cmd/mxcli/hubauth/`. See `docs/11-proposals/PROPOSAL_hub_authentication.md`
+
+## Runtime metrics + settings passthrough (`mxcli run --local --metrics` / `--runtime-setting Key=Value`)
+
+`--metrics` registers a Prometheus Micrometer registry at boot (served at `http://127.0.0.1:<admin-port>/prometheus`); `--runtime-setting` merges arbitrary runtime config (e.g. `Metrics.Registries` for otlp/influx/statsd, or `OpenTelemetry._RuntimeSpanFilters`) into mxcli's **single** boot `update_configuration` call — the admin action replaces rather than merges, so folding settings into the one boot call is the only safe way. OTel traces via `--trace` attach the bundled `opentelemetry-javaagent` to the runtime JVM (console exporter → the tee'd runtime log) and ship default `OpenTelemetry._RuntimeSpanFilters` (unfiltered per-activity tracing is ~10× slower); `--trace-service` sets `OTEL_SERVICE_NAME`. The console exporter omits timestamps/parent span IDs (no flame charts), so `--trace-otlp <endpoint>` (implies `--trace`) switches to the OTLP exporter (protocol `http/protobuf`) pointed at a collector; user-set `OTEL_*` env still takes precedence.

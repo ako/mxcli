@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A $metadata document whose entity type uses a ComplexType declared in a
+  DIFFERENT Schema namespace — the shape in mendixlabs/mxcli#1118, and the shape
+  Mendix's own documentation uses for its example (an `Employee` with a
+  `HomeAddress` of type `Lato.Address`).
+
+  Studio Pro imports Definition as five attributes: Id, and one per leaf of each
+  complex property, named `<property>_<leaf>` and read over `<property>/<leaf>`.
+-->
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
+  <edmx:DataServices>
+    <Schema Namespace="Shared.Uom" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+      <ComplexType Name="Quantity">
+        <Property Name="UoMNId" Type="Edm.String" MaxLength="40"/>
+        <Property Name="QuantityValue" Type="Edm.Decimal"/>
+      </ComplexType>
+    </Schema>
+    <Schema Namespace="App.Model" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+      <EntityType Name="Definition">
+        <Key><PropertyRef Name="Id"/></Key>
+        <Property Name="Id" Type="Edm.String" Nullable="false" MaxLength="36"/>
+        <Property Name="MaxQty" Type="Shared.Uom.Quantity"/>
+        <Property Name="MaxWeight" Type="Shared.Uom.Quantity"/>
+      </EntityType>
+      <EntityContainer Name="Container">
+        <EntitySet Name="Definition" EntityType="App.Model.Definition"/>
+      </EntityContainer>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

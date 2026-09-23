@@ -4,7 +4,7 @@ category: mental-model
 last-synced: 4e185f73
 sources:
   - CLAUDE.md
-  - sdk/mpr/parser_microflow.go
+  - mdl/backend/modelsdk/microflow_read_actions.go
 ---
 
 > **Do not duplicate**: the full storage-name mapping table (CLAUDE.md is canonical), the TypeCacheUnknownTypeException fix recipe (symptom table), or reflection-data structure (read the JSON).
@@ -26,6 +26,6 @@ When adding a new type, never assume the SDK name is the storage name. Verify ag
 ## See also
 
 - [../../CLAUDE.md](../../CLAUDE.md) — canonical qualified-name → storage-name table ("BSON Storage Names vs Qualified Names")
-- [../../sdk/mpr/parser_microflow.go](../../sdk/mpr/parser_microflow.go) — `microflowActionParsers` registers both names per handler
+- [../../mdl/backend/modelsdk/microflow_read_actions.go](../../mdl/backend/modelsdk/microflow_read_actions.go) — `actionFromGen` dispatches on both names per handler
 - [[models/association-pointers]] — another counter-intuitive BSON naming invariant
 - [[bug-patterns/widget-type-object-drift]] — a related "looks valid, fails on open" failure mode

@@ -422,7 +422,42 @@ func inferCaseType(expr string) ast.DataType {
 func passthroughStringLengthMismatch(declared, inferred ast.DataType, sourceAttr string) bool {
 	return sourceAttr != "" &&
 		declared.Kind == ast.TypeString && inferred.Kind == ast.TypeString &&
+		// A source length of 0 means mxcli does not KNOW the length, not that the
+		// source is unbounded — today that is every System.* string, because the
+		// metadata carries none (ako/mxcli#584). Judging against 0 refused every
+		// declaration except `String`, which is the one spelling that definitely
+		// fails the build. Measured on mxbuild 11.14.0 against System.User.Name,
+		// which is String(100):
+		//
+		//	String(200)  check: refused   mxbuild: CE6770
+		//	String(100)  check: refused   mxbuild: 0 errors   ← the correct one
+		//	String       check: passed    mxbuild: CE6770
+		//
+		// So the rule blocked the right answer and waved through the wrong one.
+		// It now declines to judge what it cannot measure; #584 restores the
+		// judgement by giving it the lengths.
+		inferred.Length > 0 &&
 		declared.Length != inferred.Length
+}
+
+// passthroughLengthError words the pass-through length refusal, for the only
+// case the rule now fires in: a source length mxcli actually knows.
+//
+// The unknown case used to be worded from the same string, reporting "inherits
+// length 0" as though 0 were the source's length and then prescribing a
+// hardcoded String(200) from formatDataTypeForMDL — which, for System.User.Name
+// on 11.14.0, is precisely the value mxbuild rejects (ako/mxcli#585). It is
+// no longer reachable: passthroughStringLengthMismatch declines an unknown
+// length rather than guessing at it.
+//
+// The hardcoded String(200) in formatDataTypeForMDL is untouched and still
+// right where it is used: a DERIVED string column is String(200) by rule
+// whatever its source.
+func passthroughLengthError(attrName string, declared, inferred ast.DataType, expression, sourceEntity, sourceAttr string) string {
+	return fmt.Sprintf(
+		"attribute '%s': declared as %s but pass-through column '%s' inherits length %d from source attribute %s.%s — Mendix requires an exact length match (CE6770 \"View Entity out of sync\"). Fix: change to '%s: %s'",
+		attrName, formatDataTypeForError(declared), expression, inferred.Length,
+		sourceEntity, sourceAttr, attrName, formatDataTypeForMDL(inferred))
 }
 
 // validateViewEntityTypes validates that declared attribute types match inferred OQL types.
@@ -466,15 +501,8 @@ func validateViewEntityTypes(ctx *ExecContext, stmt *ast.CreateViewEntityStmt) [
 		// set only for direct attribute references, never for aggregates/derived
 		// expressions. (ledger finding #36)
 		if passthroughStringLengthMismatch(attr.Type, col.InferredType, col.SourceAttr) {
-			errors = append(errors, fmt.Sprintf(
-				"attribute '%s': declared as %s but pass-through column '%s' inherits length %d from source attribute %s.%s — Mendix requires an exact length match (CE6770 \"View Entity out of sync\"). Fix: change to '%s: %s'",
-				attr.Name,
-				formatDataTypeForError(attr.Type),
-				col.Expression,
-				col.InferredType.Length,
-				col.SourceEntity, col.SourceAttr,
-				attr.Name,
-				formatDataTypeForMDL(col.InferredType)))
+			errors = append(errors, passthroughLengthError(
+				attr.Name, attr.Type, col.InferredType, col.Expression, col.SourceEntity, col.SourceAttr))
 			continue
 		}
 

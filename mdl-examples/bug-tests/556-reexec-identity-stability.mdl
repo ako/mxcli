@@ -1,0 +1,61 @@
+-- ============================================================================
+-- ako/mxcli#556 — re-exec is not identity-stable
+-- ============================================================================
+--
+-- The regression case for the two named instances. Both are IDEMPOTENT scripts:
+-- running this file twice must leave the project byte-identical, so a `git
+-- status` after the second run comes back clean. Before the fix neither did.
+--
+-- 1) A VALIDATION RULE on an entity that a later `create or modify entity` also
+--    names. The entity body can only spell `not null` and `unique`, so it was
+--    overwriting the whole ValidationRules list and DELETING the RegEx rule;
+--    the next statement put an identical one back under four fresh element
+--    identities. Measured on the v1 fixture: the unit came back the same size
+--    (1,368 bytes) with 62 bytes differing, at
+--      ValidationRules/1/$ID, .../Message/$ID, .../Message/Items/1/$ID,
+--      .../RuleInfo/$ID
+--    Splitting the two statements is what says which one moves: the entity
+--    rewrite ALONE takes the unit from 1,368 to 947 bytes.
+--
+-- 2) A REST CLIENT, which `create or modify` implemented as delete + insert
+--    under the preserved unit ID. An insert does not reach the storage layer's
+--    reconciliation, so the rebuild's fresh $IDs went straight to disk.
+--    Measured on a real 11.14.0 project: 143 bytes of a 1,128-byte unit, in 9
+--    runs, every one an element $ID.
+--
+-- Both are `mx check`-silent. Measured on 11.14.0, the faulted build reports
+-- "The app contains: 0 errors." on every run — a recreated rule is a valid
+-- rule, so nothing downstream ever complains. That is what makes the version-
+-- control diff the only signal there was.
+-- ============================================================================
+
+CREATE MODULE BugReexecIdentity;
+
+CREATE OR MODIFY PERSISTENT ENTITY BugReexecIdentity.LithoSystem (
+  SerialNumber: String(100),
+  Model: String(50)
+);
+
+CREATE OR MODIFY REGULAR EXPRESSION BugReexecIdentity.SerialPattern (
+  pattern: '^[A-Z]{3}-[0-9]{4}$',
+  caseSensitive: true
+);
+
+-- Instance 1: the entity above is rewritten on every run, and must not take
+-- this rule with it.
+CREATE VALIDATION RULE FOR BugReexecIdentity.LithoSystem.SerialNumber
+  REGEX BugReexecIdentity.SerialPattern
+  FEEDBACK 'Serial must look like ABC-1234';
+
+-- Instance 2: a consumed REST client, rewritten in place rather than recreated.
+CREATE OR MODIFY REST CLIENT BugReexecIdentity.PartsAvailabilityAPI (
+  BaseUrl: 'https://parts.example.com/api',
+  Authentication: NONE
+)
+{
+  OPERATION GetPart {
+    Method: GET,
+    Path: '/parts/{id}',
+    Parameters: ($id: String)
+  }
+};

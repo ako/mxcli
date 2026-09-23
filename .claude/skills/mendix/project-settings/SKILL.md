@@ -13,7 +13,7 @@ Use this skill when the user wants to:
 - Change the after-startup or before-shutdown microflows
 - Modify hash algorithms, Java versions, or rounding modes
 - View or modify language settings
-- Configure workflow settings (user entity, parallelism)
+- Configure workflow settings (user entity, parallelism, groups)
 
 ## Commands
 
@@ -230,6 +230,47 @@ alter settings workflows
   DefaultTaskParallelism = 3;
 ```
 
+### Workflow Groups (Mendix 11.2+)
+
+The named buckets under App Settings ▸ Workflows ▸ Groups that a user task's
+group targeting selects from.
+
+```sql
+alter settings workflows add group 'Approvers' (Description: 'Primary approval group');
+alter settings workflows add group 'Reviewers';
+
+-- the upsert, and what `describe settings` emits
+alter settings workflows add or modify group 'Approvers' (Description: 'Approves budget requests');
+
+-- changes only the options it names
+alter settings workflows modify group 'Reviewers' (Description: 'Second-line review');
+
+alter settings workflows remove group 'Reviewers';
+
+show workflow groups;
+```
+
+Four things worth knowing:
+
+- **`Description` is the only option.** A `Settings$WorkflowGroup` stores `Name`
+  and `Description` and nothing else, so there is no identifier to set and the
+  **name is the group's identity** — which is what MODIFY and REMOVE address, and
+  why a second group differing only in case is refused rather than created.
+- **The version floor is 11.2, not 11.6.** `Settings$WorkflowGroup` and the
+  `groups` property were both introduced in the 11.2 metamodel; Mendix's release
+  notes call the feature GA in 11.6, which is a different question from whether
+  the document loads. On an earlier version the statement is refused with the
+  floor.
+- **An edit keeps the group's runtime identity.** Booting the app materialises one
+  `System.WorkflowGroup` row per entry, keyed on the group's element id — so
+  changing a description updates that row in place rather than replacing it, and
+  the group memberships and assigned user tasks survive.
+- **Nothing in the model points at a group.** A user task targets groups through a
+  microflow or an XPath returning `System.WorkflowGroup` objects, never by a
+  reference to the settings entry, so REMOVE has no dangling reference to check
+  for. What it does mean is that the removed group's runtime row stops being
+  maintained while the user tasks already assigned to it keep their association.
+
 ## Common Patterns
 
 ### PostgreSQL Configuration
@@ -262,3 +303,9 @@ alter settings configuration 'Default'
 - [ ] Model setting key names are case-sensitive (e.g., `JavaVersion`, not `javaversion`)
 - [ ] Configuration names are case-insensitive (e.g., `'default'` matches `'default'`)
 - [ ] Integer / Boolean settings must parse — `mxcli check` reports MDL-SET01 / MDL-SET02 before the write
+
+## AfterStartupMicroflow Must Return Boolean
+
+A microflow wired as the project's **after-startup** microflow must return `Boolean` — Mendix build fails with **CE0142** on a void (no-return) microflow. A common trip-up: a seed/demo-data microflow wired to after-startup will not build until it ends with a `return true` (Boolean).
+
+`mxcli check` now reports it (**MDL073**), which it could not before: #274 made `ALTER SETTINGS` resolve the qualified names it writes, but the name here *resolves* — the constraint is on the thing it names, not on the reference. The check runs with **no project** when the script creates the microflow itself (the usual shape), and against the stored return type when it does not. A microflow whose return type cannot be established is left alone rather than guessed at. `BeforeShutdownMicroflow` and `HealthCheckMicroflow` are deliberately **not** type-checked — their rules have not been measured here.

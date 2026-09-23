@@ -61,13 +61,19 @@ var widgetKindsWithoutStoredNames = map[string]bool{
 	"column": true,
 }
 
-// objectListContainerKinds returns the lowercased MDL container keywords the
+// unstoredContainerKinds returns the lowercased MDL container keywords the
 // widget's definition declares as object lists (a BarChart's `series`, an
-// Accordion's `group`). Children with one of those types are ITEMS, not widgets.
+// Accordion's `group`) or as child slots (a Gallery's `template` and `filter`).
+// Children with one of those types are ITEMS or SLOT BLOCKS, not widgets: an
+// object-list item is a WidgetObject with no name, and applyChildSlots builds
+// only a slot block's children into the slot property, discarding the block's
+// own name. Either way the model holds no name for it — which is why DESCRIBE
+// synthesises `series1` and `template1` — so it cannot be a CE0495 duplicate
+// (upstream #978: four galleries described as `template template1 { … }`).
 //
 // Returns nil for anything that does not resolve — a built-in widget, an unknown
 // name, or no registry at all — so the caller's behaviour is unchanged there.
-func objectListContainerKinds(registry *WidgetRegistry, w *ast.WidgetV3) map[string]bool {
+func unstoredContainerKinds(registry *WidgetRegistry, w *ast.WidgetV3) map[string]bool {
 	if registry == nil || w == nil {
 		return nil
 	}
@@ -82,7 +88,20 @@ func objectListContainerKinds(registry *WidgetRegistry, w *ast.WidgetV3) map[str
 		}
 	}
 	// WidgetMode carries no ObjectLists — object lists are declared once on the
-	// definition — so there is nothing mode-scoped to add here.
+	// definition — but it does carry ChildSlots. Every mode's slots count: which
+	// mode applies depends on properties the builder evaluates, and a slot
+	// keyword is a slot block in whichever mode declares it.
+	addSlots := func(slots []ChildSlotMapping) {
+		for _, s := range slots {
+			if s.MDLContainer != "" {
+				out[strings.ToLower(s.MDLContainer)] = true
+			}
+		}
+	}
+	addSlots(def.ChildSlots)
+	for i := range def.Modes {
+		addSlots(def.Modes[i].ChildSlots)
+	}
 	return out
 }
 
@@ -98,7 +117,9 @@ func objectListContainerKinds(registry *WidgetRegistry, w *ast.WidgetV3) map[str
 // `series series1 (…)`, because the stored WidgetObject carries no name and
 // DESCRIBE has to synthesise one. Measured on mxbuild 11.6.6, three charts on
 // one page each holding a `series s` is 0 errors; mxcli called it CE0495 and,
-// since a reference error fails the run, refused to execute the script.
+// since a reference error fails the run, refused to execute the script. And so
+// are CHILD-SLOT BLOCKS — a gallery's `template` and `filter` — whose name
+// applyChildSlots discards (see unstoredContainerKinds).
 //
 // registry may be nil (check runs with no project in CI). Then no parent
 // resolves, itemKinds is empty everywhere, and the rule behaves as it did
@@ -115,13 +136,16 @@ func checkDuplicateWidgetNames(widgets []*ast.WidgetV3, registry *WidgetRegistry
 	walk = func(ws []*ast.WidgetV3, itemKinds map[string]bool) {
 		for _, w := range ws {
 			kind := strings.ToLower(w.Type)
-			if w.Name != "" && !widgetKindsWithoutStoredNames[kind] && !itemKinds[kind] {
+			// `container <slotName> { … }` is the other spelling of a slot block:
+			// applyChildSlots routes it by NAME, and stores no name for it either.
+			slotByName := kind == "container" && itemKinds[strings.ToLower(w.Name)]
+			if w.Name != "" && !widgetKindsWithoutStoredNames[kind] && !itemKinds[kind] && !slotByName {
 				if counts[w.Name] == 0 {
 					order = append(order, w.Name)
 				}
 				counts[w.Name]++
 			}
-			walk(w.Children, objectListContainerKinds(registry, w))
+			walk(w.Children, unstoredContainerKinds(registry, w))
 		}
 	}
 	walk(widgets, nil)

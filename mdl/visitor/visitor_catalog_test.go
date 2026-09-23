@@ -80,6 +80,16 @@ func TestSelectFromCatalog(t *testing.T) {
 		// change that splits it is caught here.
 		{"scheduled events table", "SELECT * FROM CATALOG.SCHEDULED_EVENTS;"},
 		{"scheduled events with where", "SELECT Name FROM CATALOG.SCHEDULED_EVENTS WHERE Enabled = 1;"},
+		// ENTITY_EVENT_HANDLERS starts with the ENTITY keyword but lexes as one
+		// IDENTIFIER (maximal munch), so it needs no catalogTableName entry —
+		// asserted so a lexer change that splits it is caught here rather than
+		// as the silent no-output QUEUES went through.
+		{"entity event handlers table", "SELECT * FROM CATALOG.ENTITY_EVENT_HANDLERS;"},
+		// `Event` is an MDL lexer keyword (EVENT), and the column is named Event
+		// — so this pins the keyword reaching both a select list and a WHERE.
+		// The QUEUES precedent is why: a keyword the grammar does not expect
+		// parsed to NOTHING, with no error and no output.
+		{"entity event handlers with keyword column", "SELECT Microflow FROM CATALOG.ENTITY_EVENT_HANDLERS WHERE Moment = 'Before' AND Event = 'Commit';"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

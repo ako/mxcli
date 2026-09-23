@@ -429,16 +429,21 @@ func describeEnumeration(ctx *ExecContext, name ast.QualifiedName) error {
 				return nil
 			}
 
+			// A caption is a Texts$Text, and Mendix has no language-neutral text:
+			// on a project whose default language is not en_US the only stored
+			// translation carries that language code, so asking for "en_US"
+			// reported every caption as empty (mendixlabs/mxcli#1113). Read the
+			// language CREATE writes (authoringLanguage), or describe -> exec
+			// round-trips a real caption into ''.
+			lang := describeDefaultLanguage(ctx)
+
 			fmt.Fprintf(ctx.Output, "create or modify enumeration %s.%s (\n", modName, enum.Name)
 			for i, v := range enum.Values {
 				comma := ","
 				if i == len(enum.Values)-1 {
 					comma = ""
 				}
-				caption := ""
-				if v.Caption != nil {
-					caption = v.Caption.GetTranslation("en_US")
-				}
+				caption := pickTextTranslation(v.Caption, lang)
 				fmt.Fprintf(ctx.Output, "  %s '%s'%s\n", v.Name, caption, comma)
 			}
 			// Emit the module folder so a moved enumeration round-trips (Bug 12b).

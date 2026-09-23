@@ -553,6 +553,6 @@ func TestFormatErrorHandlingSuffix_RollbackIsNotEmitted(t *testing.T) {
 // note, so this test exercises the SHORT emit form rather than accidentally
 // asserting escaping on the parameterised one.
 func mustDefaultAnnotationPos(activity model.Point, index int) model.Point {
-	pos, _ := defaultAnnotationGeometry(activity, index)
+	pos, _ := defaultAnnotationGeometry(activity, index, ActivityHeight)
 	return pos
 }

@@ -1,0 +1,72 @@
+-- ============================================================================
+-- Upstream #1028: a primitive-typed SNIPPET parameter was taken for an entity
+-- ============================================================================
+--
+--   create snippet Test.SNIPPET_Label ( params: { $Label: string } )
+--   { dynamictext dt (content: $Label) };
+--
+-- passed `mxcli check` and failed at exec with
+--
+--   Error: failed to build snippet: failed to resolve entity string:
+--          entity not found: string
+--
+-- naming a type nobody spelled. `snippetParameter` was a byte-identical
+-- duplicate of the `pageParameter` grammar rule with its own, lesser visitor:
+-- it never called buildDataType, so a primitive never reached the AST and the
+-- executor took the source text for an entity name. (The same duplication had
+-- produced the quoted-name bug fixed just before this one.) The duplicate rule
+-- is gone — a snippet's Params clause IS pageParameterList.
+--
+-- The obvious repair is the wrong one. Storage would take a primitive:
+-- Forms$SnippetParameter's ParameterType is the polymorphic DataTypes$DataType,
+-- exactly as Forms$PageParameter's is. mxbuild will not. Measured on 11.13.0:
+--
+--   create snippet S.Label ( params: { $Label: string } )
+--     -> [error] [CE0046] "Invalid data type 'String'." at Snippet 'S.Label'
+--   ... one CE0046 per primitive parameter, quoting Studio Pro's caption
+--       ('String', 'Integer/Long', 'Decimal', 'Boolean', 'Date and time')
+--
+-- and the control, in the same run and the same project: a PAGE declaring all
+-- six of those primitives as parameters builds at 0 ERRORS. The restriction is
+-- on snippet parameters, not on primitives.
+--
+-- So a primitive snippet parameter is refused, by one rule that `mxcli check`
+-- (MDL087) and `exec` both call. This script is the form that works.
+--
+-- Verified on Mendix 11.13.0: 0 errors.
+-- ============================================================================
+
+create module S1028;
+create persistent entity S1028.Order (Code: String(20), Label: String(100));
+
+-- The reported snippet, in the shape Mendix accepts: the value travels on an
+-- object. `create snippet S1028.SNIPPET_Label ( params: { $Label: string } )`
+-- is refused as MDL087 — see 1028-snippet-primitive-parameter.fail.mdl.
+create snippet S1028.SNIPPET_Label ( params: { $Order: S1028.Order } ) {
+  layoutgrid gl { row rl { column cl (desktopwidth: autofill) {
+    dataview dvLabel (datasource: $Order) {
+      textbox tbLabel (attribute: Label, label: 'Label')
+    }
+  } } }
+}
+
+-- The primitives belong on the calling PAGE, which accepts every one of them.
+-- Long is stored as DataTypes$IntegerType (storage has no LongType; Studio
+-- Pro's type is the single "Integer/Long"), so `describe` re-emits it as
+-- Integer — which is why this page is here rather than only in a unit test.
+create page S1028.PagePrimitives (
+  params: {
+    $Order: S1028.Order,
+    $Label: String,
+    $Count: Long,
+    $Rank: Integer,
+    $Amount: Decimal,
+    $Active: Boolean,
+    $Due: DateTime
+  },
+  title: 'Primitives', layout: Atlas_Core.Atlas_Default
+) {
+  layoutgrid g { row r { column c (desktopwidth: 12) {
+    snippetcall scLabel (snippet: S1028.SNIPPET_Label, params: {Order: $Order})
+  } } }
+}

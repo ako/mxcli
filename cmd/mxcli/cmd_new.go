@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/mendixlabs/mxcli/cmd/mxcli/docker"
 	"github.com/mendixlabs/mxcli/cmd/mxcli/theme"
@@ -83,6 +84,25 @@ Examples:
 		if entries, err := os.ReadDir(absDir); err == nil && len(entries) > 0 {
 			fmt.Fprintf(os.Stderr, "Error: directory %s already exists and is not empty\n", absDir)
 			os.Exit(1)
+		}
+
+		// A hand-typed version may name no CDN artifact: Mendix 9 and 10 publish a
+		// build number the release notes never mention, so the release called
+		// "10.24.25" is mxbuild-10.24.25.122571.tar.gz and every probe of the
+		// three-part name 404s. Resolve before anything else, because the
+		// resolved string is what the rest of the command must use — the
+		// postcondition below compares the created project's stamp against it,
+		// and mx stamps the four-part version.
+		if resolved, rerr := docker.ResolveCDNVersion(mendixVersion, runtime.GOARCH); rerr != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", rerr)
+			if avail := docker.CDNReleasesFor(majorMinorOf(mendixVersion), runtime.GOARCH); len(avail) > 0 {
+				fmt.Fprintf(os.Stderr, "  Published for %s: %s\n",
+					majorMinorOf(mendixVersion), strings.Join(avail[:minInt(len(avail), 8)], ", "))
+			}
+			os.Exit(1)
+		} else if resolved != mendixVersion {
+			fmt.Printf("Resolved Mendix %s to %s\n", mendixVersion, resolved)
+			mendixVersion = resolved
 		}
 
 		// Step 1: Resolve mx binary.

@@ -249,6 +249,7 @@ type Executor struct {
 	cache          *executorCache
 	catalog        *catalog.Catalog
 	quiet          bool                               // suppress connection and status messages
+	tally          *mutationTally                     // collapses a program run's "Unchanged" reports into one line
 	format         OutputFormat                       // output format (table, json)
 	logger         *diaglog.Logger                    // session diagnostics logger (nil = no logging)
 	tracer         *backend.Tracer                    // MCP tool-call tracer (--mcp-trace; nil = off)
@@ -360,6 +361,10 @@ func (e *Executor) Execute(stmt ast.Statement) error {
 
 // ExecuteProgram runs all statements in a program.
 func (e *Executor) ExecuteProgram(prog *ast.Program) error {
+	if e.beginTally() {
+		defer e.flushTally()
+	}
+
 	// Collect all names defined in the script for forward-reference hints.
 	allDefined := newScriptContext()
 	allDefined.collectDefinitions(prog)
@@ -392,6 +397,10 @@ type ExecuteProgramResult struct {
 // visible (the caller is expected to exit non-zero when Failed > 0). ErrExit is
 // honoured (stops the run) and returned, so `exit`/`quit` still work.
 func (e *Executor) ExecuteProgramContinueOnError(prog *ast.Program, w io.Writer) (ExecuteProgramResult, error) {
+	if e.beginTally() {
+		defer e.flushTally()
+	}
+
 	allDefined := newScriptContext()
 	allDefined.collectDefinitions(prog)
 	created := newScriptContext()
@@ -550,4 +559,19 @@ func consumeDroppedNanoflow(ctx *ExecContext, qualifiedName string) *droppedUnit
 	}
 	delete(ctx.Cache.droppedNanoflows, qualifiedName)
 	return info
+}
+
+// beginTally starts collapsing this program run's "Unchanged" reports, and
+// reports whether this call owns the tally (see mutationTally.begin).
+func (e *Executor) beginTally() bool {
+	if e.tally == nil {
+		e.tally = &mutationTally{}
+	}
+	return e.tally.begin()
+}
+
+// flushTally writes the run's one-line summary and stands the tally down.
+func (e *Executor) flushTally() {
+	e.tally.flush(e.output)
+	e.tally.end()
 }

@@ -307,6 +307,7 @@ commit $Product;
 - `@annotation` before activity-binding metadata such as `@position`, `@caption`, `@color`, `@excluded`, or `@anchor` stays free-floating when later metadata binds the following activity
 - `@annotation` at the end (no following activity) creates a free-floating note
 - Escape single quotes by doubling: `@annotation 'Don''t forget'`
+- **Leave `@position` out unless you are reproducing a hand-made diagram.** Without it the builder lays the flow out itself: the main line wraps onto rows past two canvas widths, a guard's branch drops into the lane below while the main line carries on above it, and a `case` of four or more branches leaves the decision in three groups so its lines do not cross. A statement with `@position` is never moved and is not measured against what is placed around it, so a few hand-placed statements in an otherwise automatic flow are what produces overlaps (mendixlabs/mxcli#1154)
 - `@position` always appears in DESCRIBE output; `@caption` only when custom; `@color` only when not Default
 - DESCRIBE MICROFLOW shows `@` annotations before their activities
 - `@start(x, y)` positions the **start event** and goes on the first statement, because the start has no statement of its own. Omit it and the start is derived — one spacing unit (160) left of the first activity, on its centre line — and a rewrite re-derives it so the start follows the activities when they move. A start that is not at the derived spot was placed by hand (in Studio Pro or with `@start`): it survives a rewrite that does not mention it, and DESCRIBE emits `@start` for it. An explicit `@start` overrides both (#951)
@@ -352,6 +353,41 @@ commit $Order on error without rollback {
 | `on error rollback` | Rollback database changes, propagate error |
 | `on error { ... }` | Execute handler block, then continue (with rollback) |
 | `on error without rollback { ... }` | Execute handler block, keep database changes |
+
+### RAISE ERROR is handler-only
+
+`raise error;` builds Mendix's **error event**, which *re-raises the error
+currently being handled*. Mendix therefore allows one only where an error is in
+scope — that is, inside an `on error { ... }` block. Studio Pro will not even
+let you draw the connection from the normal flow to an error event.
+
+```mdl
+-- ✅ inside a handler: an error IS in scope
+call microflow Module.RiskyOperation()
+on error {
+  log error node 'Module' 'failed, re-raising';
+  raise error;
+};
+
+-- ❌ on the main flow: MDL084, and mxbuild rejects it with
+--    CE0710 "The main flow cannot join an error flow or end in an error event."
+create microflow Module.Fail ()
+begin
+  raise error;
+end;
+```
+
+Nesting does not change this: a `raise error;` inside an `if` or a `loop` on the
+main flow is still on the main flow, and one inside a branch of a handler body is
+still on the error flow.
+
+Mendix has **no main-flow "throw" activity**. To fail deliberately from the normal
+path, call a Java action that throws:
+
+```mdl
+create java action Module.JA_RaiseTechnicalError(Message: string not null) returns boolean as
+$$ throw new com.mendix.systemwideinterfaces.MendixRuntimeException(Message); $$;
+```
 
 ### When to Use Each Type
 

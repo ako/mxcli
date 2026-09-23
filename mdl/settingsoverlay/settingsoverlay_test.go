@@ -412,3 +412,134 @@ func TestSetJavaVersion_ConvertsToStoredDialect(t *testing.T) {
 		t.Errorf("%s = %#v, want %q", JavaVersionEnumKey, got, "Java17")
 	}
 }
+
+// TestWorkflowGroups_ShapePinnedToStudioPro pins the document mxcli writes for a
+// workflow group against what a real Mendix project stores.
+//
+// The reference is a blank 11.13.0 project created with `mxcli new`: its
+// workflows settings part stores `Groups: [2]` — an empty typed array whose
+// marker is 2, not the 3 the other settings child lists use. Settings$WorkflowGroup
+// declares exactly Name and Description (modelsdk/gen, generated/metamodel and
+// mendixmodelsdk 4.115.0 all agree, and nothing else appears in the type), so a
+// group document is those two keys plus $ID and $Type and nothing more. Writing a
+// key the type does not declare is the mendixlabs/mxcli#759 failure shape: mxbuild
+// accepts it and Studio Pro cannot open the project.
+func TestWorkflowGroups_ShapePinnedToStudioPro(t *testing.T) {
+	raw := map[string]any{
+		"$Type":                     "Settings$WorkflowsProjectSettingsPart",
+		"DefaultTaskParallelism":    int64(3),
+		"Groups":                    bson.A{int32(2)},
+		"OnWorkflowEvent":           bson.A{int32(2)},
+		"UserEntity":                "System.User",
+		"WorkflowEngineParallelism": int64(5),
+	}
+	ws := &model.WorkflowsSettings{
+		Groups: []model.WorkflowGroup{{Name: "Approvers", Description: "Primary approval group"}},
+	}
+
+	out := WorkflowGroups(ws, raw)
+
+	groups, ok := out["Groups"].(bson.A)
+	if !ok || len(groups) != 2 {
+		t.Fatalf("Groups = %#v, want a 2-element array (marker + one group)", out["Groups"])
+	}
+	if groups[0] != int32(2) {
+		t.Errorf("Groups marker = %#v, want int32(2) — the marker the stored list carried", groups[0])
+	}
+	g, ok := groups[1].(map[string]any)
+	if !ok {
+		t.Fatalf("group = %#v, want a document", groups[1])
+	}
+	if g["$Type"] != "Settings$WorkflowGroup" {
+		t.Errorf("$Type = %v, want Settings$WorkflowGroup", g["$Type"])
+	}
+	if g["Name"] != "Approvers" || g["Description"] != "Primary approval group" {
+		t.Errorf("group = %#v, want Name/Description from the model", g)
+	}
+	if g["$ID"] == nil {
+		t.Error("a new group got no $ID")
+	}
+	// Exactly the four keys and no fifth: a property Settings$WorkflowGroup does
+	// not declare makes a document Studio Pro refuses to open, and mxbuild — which
+	// tolerates unknown properties — would never report it.
+	for k := range g {
+		switch k {
+		case "$ID", "$Type", "Name", "Description":
+		default:
+			t.Errorf("group carries undeclared key %q = %#v", k, g[k])
+		}
+	}
+	// Every other key of the settings part passes through untouched.
+	if out["UserEntity"] != "System.User" || out["OnWorkflowEvent"] == nil {
+		t.Errorf("overlay disturbed a sibling key: %#v", out)
+	}
+}
+
+// TestWorkflowGroups_PreservesStoredIdentityAndUnknownKeys covers the overlay half
+// of guard-don't-drop: a group that is already on disk keeps its $ID and any key
+// mxcli does not model, so MODIFY rewrites a description rather than replacing the
+// element. A fresh $ID here would make Studio Pro paint the group as new.
+func TestWorkflowGroups_PreservesStoredIdentityAndUnknownKeys(t *testing.T) {
+	raw := map[string]any{
+		"$Type": "Settings$WorkflowsProjectSettingsPart",
+		"Groups": bson.A{int32(2), map[string]any{
+			"$ID":           "stored-id-sentinel",
+			"$Type":         "Settings$WorkflowGroup",
+			"Name":          "Approvers",
+			"Description":   "old",
+			"SomeFutureKey": "keep me",
+		}},
+	}
+	ws := &model.WorkflowsSettings{
+		Groups: []model.WorkflowGroup{{Name: "Approvers", Description: "new"}},
+	}
+
+	groups := WorkflowGroups(ws, raw)["Groups"].(bson.A)
+	g := groups[1].(map[string]any)
+	if g["$ID"] != "stored-id-sentinel" {
+		t.Errorf("$ID = %v, want the stored one preserved", g["$ID"])
+	}
+	if g["Description"] != "new" {
+		t.Errorf("Description = %v, want the modelled value", g["Description"])
+	}
+	if g["SomeFutureKey"] != "keep me" {
+		t.Errorf("a key mxcli does not model was dropped: %#v", g)
+	}
+}
+
+// TestWorkflowGroups_MatchesStoredGroupCaseInsensitively mirrors how the executor
+// addresses a group. Two groups differing only in case would be one group as far
+// as every statement is concerned, so the overlay must not treat them as two
+// documents and mint a second $ID.
+func TestWorkflowGroups_MatchesStoredGroupCaseInsensitively(t *testing.T) {
+	raw := map[string]any{
+		"Groups": bson.A{int32(2), map[string]any{
+			"$ID": "stored-id-sentinel", "$Type": "Settings$WorkflowGroup", "Name": "Approvers",
+		}},
+	}
+	ws := &model.WorkflowsSettings{Groups: []model.WorkflowGroup{{Name: "APPROVERS"}}}
+	g := WorkflowGroups(ws, raw)["Groups"].(bson.A)[1].(map[string]any)
+	if g["$ID"] != "stored-id-sentinel" {
+		t.Errorf("$ID = %v, want the stored group matched case-insensitively", g["$ID"])
+	}
+}
+
+// TestWorkflowGroups_RemovedGroupLeavesTheList is the REMOVE half: the list is
+// rebuilt from the model, so a group the model no longer carries must not survive
+// in the preserved document.
+func TestWorkflowGroups_RemovedGroupLeavesTheList(t *testing.T) {
+	raw := map[string]any{
+		"Groups": bson.A{int32(2),
+			map[string]any{"$Type": "Settings$WorkflowGroup", "Name": "Approvers"},
+			map[string]any{"$Type": "Settings$WorkflowGroup", "Name": "Reviewers"},
+		},
+	}
+	ws := &model.WorkflowsSettings{Groups: []model.WorkflowGroup{{Name: "Approvers"}}}
+	groups := WorkflowGroups(ws, raw)["Groups"].(bson.A)
+	if len(groups) != 2 {
+		t.Fatalf("Groups = %#v, want marker + one surviving group", groups)
+	}
+	if groups[1].(map[string]any)["Name"] != "Approvers" {
+		t.Errorf("wrong group survived: %#v", groups[1])
+	}
+}

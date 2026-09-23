@@ -151,20 +151,24 @@ classDiagram
 
 | Package | Purpose |
 |---------|---------|
-| `sdk/mpr/` | MPR file format handling (~18k lines across reader, writer, parser files split by domain) |
+| `modelsdk/` | The MPR engine: file format, BSON codec, canonical form |
+| `mdl/backend/modelsdk/` | Backend implementation — reads and writes documents through the codec |
 | `sdk/domainmodel` | Entity, Attribute, Association types |
 | `sdk/microflows` | Microflow, Activity types (60+ types) |
 | `sdk/pages` | Page, Widget types (50+ types) |
 | `sdk/widgets` | Embedded widget templates for pluggable widgets |
 
-The `sdk/mpr/` package is split by domain for maintainability:
+The engine is split across `modelsdk/`, with the per-document-type mapping in
+`mdl/backend/modelsdk/`:
 
-| File Pattern | Purpose |
-|--------------|---------|
-| `reader.go`, `reader_*.go` | Read-only MPR access, split by element type |
-| `writer.go`, `writer_*.go` | Read-write MPR modification (domainmodel, microflow, security, widgets, etc.) |
-| `parser.go`, `parser_*.go` | BSON parsing and deserialization (domainmodel, microflow, etc.) |
-| `utils.go` | UUID generation utilities |
+| Package / pattern | Purpose |
+|-------------------|---------|
+| `modelsdk/mpr/` | MPR file access: reader, writer, raw units, the write choke point |
+| `modelsdk/codec/` | Document ↔ BSON (`encoder.go`, `decoder.go`, type defaults, list markers) |
+| `modelsdk/canon/` | Canonical form, identity transplant, write elision ([ADR-0008](../../../docs/13-decisions/0008-identity-and-idempotence.md)) |
+| `modelsdk/gen/` | Vendored metamodel types |
+| `mdl/backend/modelsdk/*_write.go` | Semantic model → gen → BSON, per document type |
+| `mdl/backend/modelsdk/*_read.go` | BSON → gen → semantic model |
 
 ## 5. Model Layer (`model/`)
 

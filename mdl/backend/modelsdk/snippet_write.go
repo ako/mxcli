@@ -5,10 +5,10 @@ package modelsdkbackend
 import (
 	"fmt"
 
+	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
 	"github.com/mendixlabs/mxcli/modelsdk/element"
-	genDT "github.com/mendixlabs/mxcli/modelsdk/gen/datatypes"
 	genPg "github.com/mendixlabs/mxcli/modelsdk/gen/pages"
 	mmpr "github.com/mendixlabs/mxcli/modelsdk/mpr"
 	"github.com/mendixlabs/mxcli/sdk/pages"
@@ -19,6 +19,21 @@ func init() {
 	codec.RegisterTypeDefaults("Forms$Snippet", codec.TypeDefaults{
 		MandatoryLists: []string{"Parameters", "Variables"},
 	})
+}
+
+// encodeSnippet builds and serializes a Forms$Snippet for a project of this
+// version. Snippet.Variables shares the Forms$Page floor (10.17.0), and a
+// snippet never populates the list — so the only thing that could reach a
+// pre-10.17 project is the empty marker the defaults registry adds. Both
+// CreateSnippet and UpdateSnippet go through here so the guard cannot be applied
+// on one path and forgotten on the other.
+func encodeSnippet(snippet *pages.Snippet, pv *types.ProjectVersion) ([]byte, error) {
+	g, err := snippetToGen(snippet)
+	if err != nil {
+		return nil, err
+	}
+	g.SetID(element.ID(snippet.ID))
+	return docEncoder("Forms$Snippet", pv).Encode(g)
 }
 
 // CreateSnippet inserts a new Forms$Snippet document — a reusable widget tree with
@@ -39,12 +54,7 @@ func (b *Backend) CreateSnippet(snippet *pages.Snippet) error {
 	if snippet.ID == "" {
 		snippet.ID = model.ID(mmpr.GenerateID())
 	}
-	g, err := snippetToGen(snippet)
-	if err != nil {
-		return err
-	}
-	g.SetID(element.ID(snippet.ID))
-	contents, err := (&codec.Encoder{}).Encode(g)
+	contents, err := encodeSnippet(snippet, b.ProjectVersion())
 	if err != nil {
 		return fmt.Errorf("CreateSnippet: encode: %w", err)
 	}
@@ -68,12 +78,7 @@ func (b *Backend) UpdateSnippet(snippet *pages.Snippet) error {
 	if b.writer == nil {
 		return fmt.Errorf("UpdateSnippet: not connected for writing")
 	}
-	g, err := snippetToGen(snippet)
-	if err != nil {
-		return err
-	}
-	g.SetID(element.ID(snippet.ID))
-	contents, err := (&codec.Encoder{}).Encode(g)
+	contents, err := encodeSnippet(snippet, b.ProjectVersion())
 	if err != nil {
 		return fmt.Errorf("UpdateSnippet: encode: %w", err)
 	}
@@ -117,7 +122,13 @@ func snippetToGen(s *pages.Snippet) (*genPg.Snippet, error) {
 	return out, nil
 }
 
-// snippetParameterToGen builds a Forms$SnippetParameter (entity-typed).
+// snippetParameterToGen builds a Forms$SnippetParameter. Its ParameterType is
+// the same polymorphic DataTypes$DataType a page parameter carries, so it goes
+// through the same builder: p.Type holds a primitive's BSON $Type when the
+// parameter is primitive, and is empty for an entity parameter.
+//
+// It used to build a DataTypes$ObjectType unconditionally, so a primitive-typed
+// parameter was written pointing at an entity named "" (mendixlabs/mxcli#1028).
 func snippetParameterToGen(p *pages.SnippetParameter) *genPg.SnippetParameter {
 	gp := genPg.NewSnippetParameter()
 	if p.ID != "" {
@@ -125,9 +136,6 @@ func snippetParameterToGen(p *pages.SnippetParameter) *genPg.SnippetParameter {
 	}
 	assignID(gp)
 	gp.SetName(p.Name)
-	t := genDT.NewObjectType()
-	assignID(t)
-	t.SetEntityQualifiedName(p.EntityName)
-	gp.SetParameterType(t)
+	gp.SetParameterType(paramTypeToGen(p.Type, p.EntityName))
 	return gp
 }

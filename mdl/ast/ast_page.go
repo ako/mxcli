@@ -23,8 +23,16 @@ type PageVariable struct {
 
 // SortColumnDef represents a sort column: attribute ASC/DESC
 type SortColumnDef struct {
-	Attribute string // Qualified name or simple identifier
-	Order     string // "ASC" or "DESC"
+	Attribute string // Qualified name or simple identifier — the FINAL segment
+	// Associations holds one qualified association name per `/` hop, in order,
+	// for a sort that navigates to another entity
+	// (`Sales.Order_BillTo/Sales.Address.City`). Empty for a sort on the
+	// retrieved entity's own (or inherited) attribute. Consumers must resolve
+	// these into the AttributeRef's EntityRef — dropping them stores a sort
+	// Mendix cannot resolve (CE7247), and guessing them picks the wrong
+	// association wherever two reach the same entity (mendixlabs/mxcli#1152).
+	Associations []string
+	Order        string // "ASC" or "DESC"
 }
 
 // DataGridColumnDef represents a DataGrid2 column definition.

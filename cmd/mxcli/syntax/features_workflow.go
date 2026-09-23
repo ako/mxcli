@@ -32,7 +32,26 @@ func init() {
 			"create workflow", "new workflow", "define workflow",
 			"parameter", "overview page", "due date",
 		},
-		Syntax:  "CREATE [OR MODIFY] WORKFLOW Module.Name\n  [FOLDER 'path']\n  PARAMETER $Context: Module.Entity\n  [OVERVIEW PAGE Module.OverviewPage]\n  [DUE DATE '<expression>']\n  [ON WORKFLOW EVENTS (<type>, ...) MICROFLOW Module.Handler [AS '<description>']]...\n  [ON ANY WORKFLOW EVENT MICROFLOW Module.Handler [AS '<description>']]...\nBEGIN\n  <activities>\nEND WORKFLOW;",
+		Syntax: "CREATE [OR MODIFY] WORKFLOW Module.Name\n" +
+			"  [FOLDER 'path']\n" +
+			"  PARAMETER $Context: Module.Entity\n" +
+			"  [DISPLAY '<name>']\n" +
+			"  [DESCRIPTION '<text>']\n" +
+			"  [EXPORT LEVEL Hidden | API]\n" +
+			"  [OVERVIEW PAGE Module.OverviewPage]\n" +
+			"  [DUE DATE '<expression>']\n" +
+			"  [ON WORKFLOW EVENTS (<type>, ...) MICROFLOW Module.Handler [AS '<description>']]...\n" +
+			"  [ON ANY WORKFLOW EVENT MICROFLOW Module.Handler [AS '<description>']]...\n" +
+			"BEGIN\n  <activities>\nEND WORKFLOW;\n\n" +
+			"-- The header clauses are a SET: write them in ANY order, each at most\n" +
+			"-- once. (Before ako/mxcli#586 the order above was mandatory and writing\n" +
+			"-- one out of place was a token error naming neither the clause nor the\n" +
+			"-- rule.) The event handlers are the exception and may repeat.\n" +
+			"-- A clause written twice is reported by name, e.g.\n" +
+			"--   duplicate DISPLAY clause on workflow M.W (already given on line 3)\n\n" +
+			"-- The OVERVIEW PAGE must accept a System.Workflow parameter, or the\n" +
+			"-- build fails CE7410 \"The selected page should accept a parameter of\n" +
+			"-- type 'Workflow'\" (measured on mxbuild 11.6.6).",
 		Example: "CREATE WORKFLOW Module.ApprovalFlow\n  PARAMETER $Context: Module.Request\n  OVERVIEW PAGE Module.WF_Overview\nBEGIN\n  USER TASK ReviewTask 'Review the request'\n    PAGE Module.ReviewPage\n    OUTCOMES 'Approve' { } 'Reject' { };\nEND WORKFLOW;",
 		SeeAlso: []string{"workflow.user-task", "workflow.event-handlers", "workflow.decision", "workflow.drop"},
 	})
@@ -109,7 +128,11 @@ func init() {
 			"  [ENTITY Module.Entity]\n" +
 			"  [DUE DATE '<expression>']\n" +
 			"  [DESCRIPTION '<text>']\n" +
-			"  OUTCOMES '<outcome1>' { <activities> } '<outcome2>' { <activities> };\n\n" +
+			"  OUTCOMES '<outcome1>' { <activities> } '<outcome2>' { <activities> };\n\n" + "-- The clauses are a SET: write them in ANY order, each at most once\n" +
+			"-- (ako/mxcli#586). The two TARGETING spellings are ONE clause — a task\n" +
+			"-- stores one user source — so writing both is refused rather than\n" +
+			"-- letting the second silently win. OUTCOMES and BOUNDARY EVENT are\n" +
+			"-- list-valued and may repeat.\n\n" +
 			"-- The task page is opened with the TASK, not with the workflow's context\n" +
 			"-- object, so it must take a System.WorkflowUserTask parameter:\n" +
 			"--   page with no parameters              -> CE7410\n" +
@@ -187,7 +210,8 @@ func init() {
 			"-- veto needs its outcome (CE1867); both must name one of the task's outcomes\n" +
 			"-- (MDL-WF13). Omitted: all participants, consensus on the first outcome, not\n" +
 			"-- waiting. The build does not range-check thresholds or participant counts.\n" +
-			"-- Same page and targeting rules as USER TASK.",
+			"-- Same page and targeting rules as USER TASK, and the same clause rule:\n" +
+			"-- ANY order, each at most once (ako/mxcli#586).",
 		Example: "MULTI USER TASK ExpertAssessment 'Expert assessment'\n  PAGE MOC.AssessmentPage\n  TARGETING MICROFLOW MOC.GetAssessors\n  PARTICIPANTS 80 PERCENT\n  DECIDE BY THRESHOLD 60 PERCENT FALLBACK 'Reject'\n  AWAIT ALL USERS\n  OUTCOMES 'Approve' { } 'Reject' { };",
 		SeeAlso: []string{"workflow.user-task", "workflow.user-task.targeting"},
 	})

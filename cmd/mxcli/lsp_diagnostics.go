@@ -327,6 +327,7 @@ func (s *mdlServer) runSemanticValidation(text string) []protocol.Diagnostic {
 		// The editor reports an unusable parameter annotation for the same
 		// reason `check` does — a typo of @position parses and does nothing.
 		if nfStmt, ok := stmt.(*ast.CreateNanoflowStmt); ok {
+			violations = append(violations, executor.ValidateNanoflow(nfStmt)...)
 			violations = append(violations, executor.ValidateFlowParameterAnnotations(
 				"nanoflow '"+nfStmt.Name.String()+"'", nfStmt.Parameters)...)
 		}

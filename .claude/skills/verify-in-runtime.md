@@ -22,6 +22,47 @@ Use the layer where the symptom actually lives:
 we write, no unit or BSON test can prove the fix.** A page can serialize to perfectly
 correct-looking BSON and still render wrong.
 
+## Assert in Text; Screenshot Only When the Question Is Visual
+
+Reaching this skill says the *running app* is the layer. It does not say the answer
+has to be a picture, and usually it should not be.
+
+A screenshot costs roughly **1,500 tokens** to read against about **100** for a text
+verdict, and the cost is not a one-off: an image read into a conversation is re-read
+by every later model call, so one PNG early in a long session is charged hundreds of
+times (`docs/11-proposals/PROPOSAL_agent_loop_efficiency.md`).
+
+It is also the *weaker* instrument for the usual question. "Did the page render?",
+"is there an error banner?", "did the grid get rows?" are textual, and the commonest
+cause of a page that renders blank — a console error — **does not appear in a
+picture at all**.
+
+```bash
+./mxcli run --local --page-check -p app.mpr        # verdict, no PNG
+./mxcli run --local --screenshot -p app.mpr        # PNG *and* verdict
+./mxcli playwright verify tests/ -p app.mpr        # assertions; shoots only on failure
+```
+
+```
+page /p/customers  title="Customers"  h="Customer overview"  rows=12  text=812  console-errors=0
+page /p/customers  title="Customers"  NO VISIBLE TEXT  console-errors=1
+  ERR    Cannot read properties of undefined (reading 'items')
+```
+
+The second line is the blank-page symptom **with its cause named**. That class of bug
+took ~40 calls to trace in the session behind the proposal, every one of them looking
+at pixels that could not show it.
+
+So:
+
+- **Default to `--page-check` or `playwright verify`.** They answer the question and
+  leave the PNG unread.
+- **Take a screenshot when the question is genuinely about appearance** — layout,
+  spacing, colour, "does this look right" — and then take it **once**, at the end.
+- **Never screenshot to confirm something a verdict already reported.** If
+  `console-errors=0`, `rows=12` and the heading is right, the page rendered; a picture
+  adds cost and no information.
+
 Worked example — mendixlabs/mxcli#812. Every popup opened by an mxcli-authored button
 showed a blank caption. The BSON was structurally valid, `mx check` reported 0 errors,
 and MxBuild completed. Nothing below the browser could see the defect, because the

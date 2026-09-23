@@ -97,7 +97,7 @@ func TestAddLoopStatement_PreservesAnnotatedPosition(t *testing.T) {
 	if loop.Position.X != 350 || loop.Position.Y != 200 {
 		t.Fatalf("got loop position (%d, %d), want (350, 200)", loop.Position.X, loop.Position.Y)
 	}
-	wantNextX := 350 + loop.Size.Width/2 + HorizontalSpacing
+	wantNextX := 350 + loop.Size.Width/2 + ActivityWidth/2 + (HorizontalSpacing - ActivityWidth) // the next activity sits one activity-gap past the box
 	if fb.posX != wantNextX {
 		t.Fatalf("got next posX %d, want %d", fb.posX, wantNextX)
 	}
@@ -136,7 +136,7 @@ func TestAddWhileStatement_PreservesAnnotatedPosition(t *testing.T) {
 	if loop.Position.X != 420 || loop.Position.Y != 180 {
 		t.Fatalf("got while position (%d, %d), want (420, 180)", loop.Position.X, loop.Position.Y)
 	}
-	wantNextX := 420 + loop.Size.Width/2 + HorizontalSpacing
+	wantNextX := 420 + loop.Size.Width/2 + ActivityWidth/2 + (HorizontalSpacing - ActivityWidth) // the next activity sits one activity-gap past the box
 	if fb.posX != wantNextX {
 		t.Fatalf("got next posX %d, want %d", fb.posX, wantNextX)
 	}

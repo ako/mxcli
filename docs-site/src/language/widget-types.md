@@ -521,6 +521,43 @@ extracted yet:
 mxcli widget init -p app.mpr     # extract definitions for every widget in widgets/
 ```
 
+### Binding a text-template property
+
+Many pluggable widgets expose **text-template** properties — an Image's
+`ImageUrl` and `AlternativeText`, a TreeNode's `headerCaption`, a Timeline's
+`title` / `description` / `timeIndication`. They take *text*, so a bare value is
+stored as a literal and renders the same string on every row, with `check`,
+`exec` and `mx check` all clean.
+
+Bind one with the property's own `<Name>Params` companion:
+
+```sql
+image cardImage (
+  ImageType: imageUrl,
+  ImageUrl: '{1}',        ImageUrlParams: [{1} = PictureUrl],
+  AlternativeText: '{1}', AlternativeTextParams: [{1} = Name]
+)
+```
+
+The companion is the property's own name + `Params`, in whichever spelling the
+template itself was written. It takes the same per-parameter `format (...)`
+block a `dynamictext` does, and `DESCRIBE PAGE` emits both the template and its
+companion — for the Image and for every other pluggable widget — so describe →
+exec keeps the binding. Before ako/mxcli#575 the generic describe path read
+attribute references and primitives only, so a TreeNode's `headerCaption` and a
+Timeline's `title` were missing from its output altogether.
+
+Two shorter spellings remain:
+
+| Spelling | Use it for |
+|----------|-----------|
+| `'{AttrName}'` | one attribute, no formatting block |
+| `contentparams: [...]` | a widget with a **single** text template — it is one list shared by every template on the widget |
+
+Every `{N}` needs a matching parameter (Mendix rejects a shortfall with
+`CE0720`), and parameters with no `{N}` to fill are reported as MDL-WIDGET21
+rather than dropped in silence.
+
 ## Common Widget Properties
 
 These properties are shared across many widget types:

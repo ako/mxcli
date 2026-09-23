@@ -12,13 +12,18 @@ The `System` module is a built-in Mendix module present in every application. It
 **No project module can widen access to `System.User`, `System.Workflow` or
 `System.WorkflowUserTask`.** Their access comes from the System module's own roles,
 and a `grant` in your module cannot raise it — so any UI over them is
-Administrator-only unless the data is denormalised into your own entities or reached
-through a microflow data source (microflows bypass entity access by default).
+Administrator-only unless the data is denormalised into entities your own module owns.
+
+**A microflow data source is not the way out.** It moves the ROWS, not the MEMBERS:
+the retrieve is unconstrained, but the runtime re-applies entity access when it
+serializes those objects to the client, so the list is the right length and every
+field is blank (measured on 11.14.0, ako/mxcli#587). Read the members *inside* the
+microflow and return an object your module owns.
 
 It fails **silently**: a combo box over `System.User` lists the current user only, a
-grid over `System.Workflow` renders empty, and both `mx check` and `mxcli lint` pass.
-See the System-module ceiling section in [manage-security](../manage-security/SKILL.md)
-for the three ways around it.
+grid over `System.Workflow` renders empty, and `mx check`, `mxcli lint` and
+`mxcli report` all pass. See the System-module ceiling section in
+[manage-security](../manage-security/SKILL.md) for the measurement and the remedies.
 
 ## Reference files
 

@@ -35,7 +35,15 @@ The optional `Folder` property places the snippet in a subfolder within the modu
 :   The qualified name of the snippet (`Module.SnippetName`). The module must already exist.
 
 `Params: { ... }`
-:   Optional snippet parameters. Each parameter has a `$`-prefixed name and a type (entity or primitive).
+:   Optional snippet parameters. Each parameter has a `$`-prefixed name and an
+    **entity** type (`Module.Entity`).
+
+    A snippet parameter cannot be a primitive. Mendix rejects one with
+    **CE0046** *"Invalid data type 'String'."* — a *page* parameter may be a
+    primitive, a snippet parameter may not — so `mxcli check` refuses it as
+    **MDL087** rather than letting it reach a build. To parameterise a snippet
+    on a value, keep the primitive on the calling page's parameters, or pass an
+    object and read the member inside the snippet.
 
 `Folder: 'path'`
 :   Optional folder path within the module.

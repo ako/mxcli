@@ -65,7 +65,7 @@ gallery widgetName (
 ```
 
 **Properties:**
-- `datasource: database from entity sort by attr asc|desc` - Entity data source with optional sorting
+- `datasource: database from entity sort by attr asc|desc` - Entity data source with optional sorting; `sort by Assoc/Attr asc` sorts over an association
 - `selection: single` - Selection mode (Single for master-detail)
 - Template content inside TEMPLATE widget (requires name)
 
@@ -168,6 +168,7 @@ template template1 {
 | Database source | `datasource: database from Module.Entity` |
 | Selection binding | `datasource: selection widgetName` |
 | Sort by | `datasource: database from entity sort by Name asc` |
+| Sort over an association | `datasource: database from entity sort by Order_BillTo/City asc` — one `/` per hop, last segment is the attribute. Name the hop when two associations reach the same entity; inference cannot tell them apart (mendixlabs/mxcli#1152) |
 | Where filter | `datasource: database from entity where [IsActive = true]` |
 | Selection mode | `selection: single` |
 | Attribute binding | `attribute: attributename` |

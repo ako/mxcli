@@ -39,15 +39,76 @@ jobs:
         #
         # -run can pass vacuously if the tests are renamed or deleted, so assert that
         # the expected number actually ran.
+        #
+        # `tee` rather than a command substitution: the runner's shell is
+        # `bash -e -o pipefail`, so capturing into `out=$(go test ...)` aborts the
+        # step AT THE ASSIGNMENT when go test fails, and the `echo "$out"` below
+        # never runs. The log then holds nothing but "Process completed with exit
+        # code 1" — no test name, no failure message, no way to tell a real break
+        # from a flake. Write the output as it is produced, then judge it.
         run: |
-          out=$(go test -v -count=1 -run 'Unsupported' ./cmd/mxcli/docker/... ./cmd/mxcli/tunnelhub/...)
-          echo "$out"
-          n=$(printf '%s\n' "$out" | grep -c '^--- PASS: Test.*Unsupported' || true)
+          set +e
+          go test -v -count=1 -run 'Unsupported' ./cmd/mxcli/docker/... ./cmd/mxcli/tunnelhub/... 2>&1 | tee go-test-output.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          n=$(grep -c '^--- PASS: Test.*Unsupported' go-test-output.txt || true)
           echo "seam tests executed: $n"
+          if [ "$status" -ne 0 ]; then
+            echo "FAIL: go test exited $status. Its output is above."
+            exit "$status"
+          fi
           if [ "$n" -lt 4 ]; then
             echo "FAIL: expected at least 4 tunnel-seam tests to run, -run matched $n."
             echo "      The !linux stubs in cmd/mxcli/docker and cmd/mxcli/tunnelhub"
             echo "      must each keep a test whose name contains 'Unsupported'."
+            exit 1
+          fi
+
+  # The Windows process helpers (cmd/mxcli/docker/procgroup_windows.go) cannot be
+  # exercised by the ubuntu job: Signal(0) succeeds on Linux and there is no
+  # process tree to reap. `mxcli run --local` hung forever on Windows at
+  # "Starting mxbuild --serve..." because alive() asked Signal(0) (unsupported on
+  # Windows, so a live mxbuild read as dead) and Stop() killed only the wrapper,
+  # leaving mxbuild's Deno web-ext worker holding the stdout pipe so cmd.Wait()
+  # blocked. This job runs the Windows-only regression tests on a real Windows
+  # runner so neither half can come back.
+  windows-process-regression:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26.6'
+      - name: Test the Windows process helpers
+        shell: bash
+        # Scoped with -run: the rest of the docker package's tests assert POSIX
+        # file modes and shell out to `sh`, so the full package does not pass on
+        # Windows (tracked in #897). The test binary is still COMPILED for this
+        # platform, so a Windows build break in the package is caught too.
+        #
+        # -run can pass vacuously if the tests are renamed or deleted, so assert
+        # that the expected number actually ran.
+        #
+        # `tee` rather than a command substitution — see the tunnel-seam job above.
+        # This job is where it bit: a run of these tests failed with the log holding
+        # only "Process completed with exit code 1", so the failing test could not be
+        # named and the leftover `ping` in the runner's orphan-process cleanup was
+        # the only evidence of WHICH test had tripped (ako/mxcli#594).
+        run: |
+          set +e
+          go test -v -count=1 -run 'TestProcessAlive|TestKillProcessGroup|TestServeServer_AliveTracksProcess|TestLocalRuntime_AliveTracksProcess' ./cmd/mxcli/docker/ 2>&1 | tee go-test-output.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          n=$(grep -c '^--- PASS: Test' go-test-output.txt || true)
+          echo "windows process tests executed: $n"
+          if [ "$status" -ne 0 ]; then
+            echo "FAIL: go test exited $status. Its output is above."
+            exit "$status"
+          fi
+          if [ "$n" -lt 5 ]; then
+            echo "FAIL: expected at least 5 Windows process tests to run, -run matched $n."
+            echo "      procgroup_windows_test.go must keep its processAlive / tree-kill /"
+            echo "      alive() tests, or the Windows local-boot regression is unguarded."
             exit 1
           fi
 
@@ -86,6 +147,12 @@ jobs:
         # honouring the pre-existing-failure SKIP list). Previously this step only
         # iterated doctype-tests/, so bug-test regression fixtures had no CI gate.
         run: make check-mdl
+      - name: Check skill pack JavaScript
+        # Nothing else in this repo compiles a pack's widget — it is built in
+        # the user's project — so logic shipped there is otherwise ungated. The
+        # #574 case: the widget must attach the session's CSRF token to
+        # same-origin fetches and never to any other host.
+        run: make check-skill-pack-js
       - name: Check bug findings
         # One JSON object per line, an area, a date, and either the four
         # structured fields or a raw row. DuckDB rejects a whole file on one bad

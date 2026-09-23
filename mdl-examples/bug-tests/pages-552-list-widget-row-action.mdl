@@ -1,0 +1,53 @@
+-- ako/mxcli#552 — MDL-PAGEARG01 refused a list widget's OWN row action.
+--
+-- `onClick` on a data grid, list view or gallery fires per row, so the row the
+-- widget renders IS the context object. The #1029 guard judged every widget's
+-- own action in the context its PARENT supplies, so each statement below was
+-- refused at `check` — and, since exec refuses a script whose check errors,
+-- could not be applied at all. mxbuild accepts the stored pages at 0 errors.
+--
+-- On a list view the refusal contradicted itself: "widget `lvCars` is not
+-- inside a data view, list view or grid row".
+--
+-- This file is a CHECK-time regression: `mxcli check` must report 0 errors.
+-- The control lives beside it — 1029-showpage-arg-without-context.fail.mdl is
+-- the contextless page-level button, which must STILL be refused.
+
+create module Mod;
+
+create entity Mod.Car (
+  Name: String(100)
+);
+
+create page Mod.Detail (Title: 'Car', Layout: Atlas_Core.Atlas_Default, Params: { $Car: Mod.Car }) {
+  dataview dvCar (DataSource: $Car) {
+    textbox tbName (Label: 'Name', Attribute: Name)
+  }
+};
+
+-- A data grid's own onClick: the clicked row is the context object.
+create page Mod.Grid (Title: 'Cars', Layout: Atlas_Core.Atlas_Default) {
+  datagrid dgCars (
+    DataSource: DATABASE Mod.Car,
+    onClick: SHOW_PAGE Mod.Detail(Car: $currentObject)
+  ) {
+    column colName (Caption: 'Name', Attribute: Name)
+  }
+};
+
+-- A list view's own onClick, same rule.
+create page Mod.List (Title: 'Cars', Layout: Atlas_Core.Atlas_Default) {
+  listview lvCars (
+    DataSource: DATABASE Mod.Car,
+    onClick: SHOW_PAGE Mod.Detail(Car: $currentObject)
+  ) {
+    dynamictext dtName (Content: '{1}', ContentParams: [{1} = Name])
+  }
+};
+
+-- NOT a case for this file: the bare-entity shorthand `DataSource: Mod.Car` on a
+-- data grid is SILENTLY DROPPED (the stored widget has no data source at all),
+-- so mxbuild reports CE0488 and then a real CE1571. The guard still stands down
+-- on it — it refuses only what it can prove is discarded, and a source it cannot
+-- read is unknown, not absent — but that case belongs to the shorthand bug, not
+-- here. Measured on mxbuild 11.14.0; see ako/mxcli#576.

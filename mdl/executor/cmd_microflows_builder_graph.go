@@ -77,6 +77,9 @@ func (fb *flowBuilder) buildFlowGraph(stmts []ast.MicroflowStatement, returns *a
 	lastID := startEvent.ID
 
 	fb.posX += fb.spacing
+	// The main line starts here, at the first statement's column. Rows wrap back to
+	// it (layout_rows.go); a flow that never reaches MaxRowWidth never notices.
+	fb.noteRowStart()
 
 	// Process each statement
 	// pendingCase holds the case value for the NEXT flow (set by merge-less splits)
@@ -97,6 +100,18 @@ func (fb *flowBuilder) buildFlowGraph(stmts []ast.MicroflowStatement, returns *a
 		// fall-through edge from whatever came before — that path already ended,
 		// and wiring it produced a duplicate flow into the merge.
 		pathOpen := !fb.endsWithReturn
+
+		// Wrap the main line before placing a statement that would run past the
+		// readable width. A statement carrying its own @position places itself, so
+		// it is left alone and becomes the start of the current row instead.
+		if x, ok := ownPositionX(stmt); ok {
+			// The statement places itself, so this is where the current row now
+			// begins; wrapping measures from here on.
+			fb.row.startX = x
+			fb.row.firstObject = len(fb.objects)
+		} else if fb.shouldWrap(stmt, stmts[i:]) {
+			fb.wrapRow(startsWithNote(stmt))
+		}
 
 		activityID := fb.addStatement(stmt)
 		if fb.takePendingJoin(lastID, pendingCase, fb.previousStmtAnchor) {
@@ -142,6 +157,14 @@ func (fb *flowBuilder) buildFlowGraph(stmts []ast.MicroflowStatement, returns *a
 			// overrides its own To.
 			originAnchor, destAnchor := pendingFlowAnchors(fb.previousStmtAnchor, pendingFlowAnchor, stmtAnchor)
 			pendingFlowAnchor = nil
+			// An edge that crosses from one row to the next leaves the bottom of
+			// the last element and enters the left of the first — anchored right
+			// to left it is drawn straight back across the row above, through
+			// whatever sits between the two columns.
+			if from, to, wraps := fb.takeWrapAnchors(); wraps && originAnchor == nil && destAnchor == nil {
+				flow.OriginConnectionIndex = from
+				flow.DestinationConnectionIndex = to
+			}
 			applyUserAnchors(flow, originAnchor, destAnchor)
 			fb.flows = append(fb.flows, flow)
 			fb.addPendingErrorHandlerFlowForStatement(lastID, activityID, stmt, statementsReferenceVar(stmts[i+1:], fb.errorHandlerSkipVar))
@@ -237,6 +260,10 @@ func (fb *flowBuilder) buildFlowGraph(stmts []ast.MicroflowStatement, returns *a
 	// after mergeOverConnectedEndEvents — a join lands on a merge, never on an
 	// end event, so it cannot create the over-connection that pass fixes.
 	fb.resolveJoins()
+
+	// Rows last: every object exists and every container has its final size, so
+	// this is the first point where a row's real depth is known.
+	fb.separateRows()
 
 	return &microflows.MicroflowObjectCollection{
 		BaseElement:     model.BaseElement{ID: model.ID(types.GenerateID())},
@@ -571,6 +598,8 @@ func (fb *flowBuilder) addStatement(stmt ast.MicroflowStatement) model.ID {
 	if fb.pendingAnnotations != nil && fb.pendingAnnotations.Position != nil {
 		fb.posX = fb.pendingAnnotations.Position.X
 		fb.posY = fb.pendingAnnotations.Position.Y
+	} else {
+		fb.clearLowerLane(stmt)
 	}
 	if fb.pendingAnnotations != nil {
 		for _, note := range fb.pendingAnnotations.FreeNotes {

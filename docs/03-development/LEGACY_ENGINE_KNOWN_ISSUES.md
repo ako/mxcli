@@ -1,6 +1,14 @@
 # Legacy Engine — Known Issues
 
-**Status:** tracking list (living document)
+> **Superseded — historical record.** The `sdk/mpr` engine this tracks was deleted
+> ([ADR-0004](../13-decisions/0004-full-codec-engine.md),
+> `docs/plans/2026-09-14-retire-legacy-engine.md`); `--engine` / `MXCLI_ENGINE`
+> survive only as a warning-only no-op. Every `sdk/mpr/...` path below names code
+> that is gone. Kept because it records what that engine got wrong, which is still
+> useful when a construct looks suspicious — but nothing here is actionable, and
+> nothing should be added to it.
+
+**Status:** superseded (kept as a record)
 **Related:** [ADR-0004: Route all document types through the codec engine](../13-decisions/0004-full-codec-engine.md), [ADR-0002: Backend abstraction](../13-decisions/0002-backend-abstraction.md), [`MODELSDK_ENGINE_ARCHITECTURE.md`](MODELSDK_ENGINE_ARCHITECTURE.md)
 
 ## Purpose

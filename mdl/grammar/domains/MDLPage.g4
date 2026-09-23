@@ -59,13 +59,11 @@ pageParameter
     : (IDENTIFIER | VARIABLE | QUOTED_IDENTIFIER) COLON dataType
     ;
 
-snippetParameterList
-    : snippetParameter (COMMA snippetParameter)*
-    ;
-
-snippetParameter
-    : (IDENTIFIER | VARIABLE | QUOTED_IDENTIFIER) COLON dataType
-    ;
+// A snippet parameter is a page parameter. There used to be a byte-identical
+// `snippetParameterList` rule here with its own visitor, and the two drifted
+// twice from the same clause: a quoted entity name reached the resolver with
+// its quotes, and a primitive type was taken for an entity
+// (mendixlabs/mxcli#1028). One rule, one conversion.
 
 variableDeclarationList
     : variableDeclaration (COMMA variableDeclaration)*
@@ -75,8 +73,26 @@ variableDeclaration
     : VARIABLE COLON dataType EQUALS STRING_LITERAL     // $varName: Boolean = 'expression'
     ;
 
+// A sort column. The name may navigate associations, one `/` per hop, with the
+// final segment naming the attribute:
+//
+//   sort by Name asc
+//   sort by Sales.Order.Name asc
+//   sort by Sales.Order_BillTo/Sales.Address.City asc
+//
+// Mendix stores the hops as the AttributeRef's EntityRef, and without a spelling
+// for them `describe` had to drop them and `exec` had to guess — which silently
+// picked the wrong association wherever two reach the same entity
+// (mendixlabs/mxcli#1152). `qualifiedName SLASH qualifiedName` is the same shape
+// MDLCatalog.g4 uses for `Association/Entity`.
 sortColumn
-    : (qualifiedName | IDENTIFIER) (ASC | DESC)?
+    : (qualifiedName (SLASH qualifiedName)* | IDENTIFIER) (ASC | DESC)?
+    ;
+
+// One attribute of a List View's search bar. No direction — unlike a sort
+// column, a search attribute is only a name.
+searchAttribute
+    : (qualifiedName | IDENTIFIER)
     ;
 
 xpathConstraint
@@ -240,7 +256,7 @@ snippetHeaderV3
     ;
 
 snippetHeaderPropertyV3
-    : PARAMS COLON LBRACE snippetParameterList RBRACE              // Params: { $Customer: Entity }
+    : PARAMS COLON LBRACE pageParameterList RBRACE                 // Params: { $Customer: Module.Entity } — entities only (MDL087)
     | VARIABLES_KW COLON LBRACE variableDeclarationList RBRACE     // Variables: { $show: Boolean = 'true' }
     | FOLDER COLON STRING_LITERAL                                  // Folder: 'Snippets/Common'
     ;
@@ -585,6 +601,7 @@ dataSourceExprV3
     | DATABASE FROM? qualifiedName                    // DATABASE [FROM] Entity [WHERE ...] [SORT BY ...]
       (WHERE (xpathConstraint (andOrXpath? xpathConstraint)* | expression))?
       (SORT_BY sortColumn (COMMA sortColumn)*)?
+      (SEARCH_BY searchAttribute (COMMA searchAttribute)*)?
     | MICROFLOW qualifiedName microflowArgsV3?        // MICROFLOW Module.Flow
     | NANOFLOW qualifiedName microflowArgsV3?         // NANOFLOW Module.Flow
     | ASSOCIATION associationPathV3                   // ASSOCIATION Module.Assoc (explicit form)

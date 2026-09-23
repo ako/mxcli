@@ -31,6 +31,13 @@ func TestCallerRefKinds(t *testing.T) {
 		"home_page",  // navigation
 		"login_page", //
 		"menu_item",  //
+		"schedule",   // entry point: a scheduled event runs the microflow
+		"publish",    // entry point: a published REST operation runs the microflow (#1126)
+		"settings",   // entry point: after-startup / before-shutdown / health check
+		// An entity event handler runs its microflow on every create/commit/
+		// delete of the entity. Omitting it reported the hottest code in the
+		// app as uncalled (mendixlabs/mxcli#1127).
+		"event",
 	} {
 		if !in[k] {
 			t.Errorf("%q means one document invokes another and must count as a caller — "+
@@ -44,6 +51,9 @@ func TestCallerRefKinds(t *testing.T) {
 	for _, k := range []string{
 		"datasource", "parameter", "return", "retrieve",
 		"create", "change", "delete", "associate", "generalize", "layout",
+		// `sync` reads as an entry point and is not one: an offline profile
+		// names an ENTITY it downloads, which is a use of a type.
+		"sync",
 	} {
 		if in[k] {
 			t.Errorf("%q is a use of a type or layout, not an invocation — including it "+

@@ -11,28 +11,35 @@ import (
 // TextBox represents a text input widget.
 type TextBox struct {
 	BaseWidget
-	Label          string          `json:"label,omitempty"`
-	AttributePath  string          `json:"attributePath,omitempty"`
-	FormattingInfo *FormattingInfo `json:"formattingInfo,omitempty"`
-	Placeholder    *model.Text     `json:"placeholder,omitempty"`
-	MaxLength      int             `json:"maxLength,omitempty"`
-	IsPassword     bool            `json:"isPassword,omitempty"`
-	ReadOnly       bool            `json:"readOnly,omitempty"`
-	OnChangeAction ClientAction    `json:"onChangeAction,omitempty"`
-	OnEnterAction  ClientAction    `json:"onEnterAction,omitempty"`
+	Label             string             `json:"label,omitempty"`
+	AttributePath     string             `json:"attributePath,omitempty"`
+	AttributeRefSteps []AttributeRefStep `json:"attributeRefSteps,omitempty"` // association hops when the attribute is reached over associations (AttributeRef.EntityRef)
+	FormattingInfo    *FormattingInfo    `json:"formattingInfo,omitempty"`
+	Placeholder       *model.Text        `json:"placeholder,omitempty"`
+	MaxLength         int                `json:"maxLength,omitempty"`
+	IsPassword        bool               `json:"isPassword,omitempty"`
+	// ValidationExpression / ValidationMessage are the two fields of the widget's
+	// Forms$WidgetValidation. Without them a rewrite wrote the empty default over
+	// whatever Studio Pro had stored (ako/mxcli#550).
+	ValidationExpression string       `json:"validationExpression,omitempty"`
+	ValidationMessage    string       `json:"validationMessage,omitempty"`
+	ReadOnly             bool         `json:"readOnly,omitempty"`
+	OnChangeAction       ClientAction `json:"onChangeAction,omitempty"`
+	OnEnterAction        ClientAction `json:"onEnterAction,omitempty"`
 }
 
 // TextArea represents a multi-line text input widget.
 type TextArea struct {
 	BaseWidget
-	Label          string       `json:"label,omitempty"`
-	AttributePath  string       `json:"attributePath,omitempty"`
-	Placeholder    *model.Text  `json:"placeholder,omitempty"`
-	MaxLength      int          `json:"maxLength,omitempty"`
-	CounterMessage *model.Text  `json:"counterMessage,omitempty"`
-	Rows           int          `json:"rows,omitempty"`
-	ReadOnly       bool         `json:"readOnly,omitempty"`
-	OnChangeAction ClientAction `json:"onChangeAction,omitempty"`
+	Label             string             `json:"label,omitempty"`
+	AttributePath     string             `json:"attributePath,omitempty"`
+	AttributeRefSteps []AttributeRefStep `json:"attributeRefSteps,omitempty"` // association hops when the attribute is reached over associations (AttributeRef.EntityRef)
+	Placeholder       *model.Text        `json:"placeholder,omitempty"`
+	MaxLength         int                `json:"maxLength,omitempty"`
+	CounterMessage    *model.Text        `json:"counterMessage,omitempty"`
+	Rows              int                `json:"rows,omitempty"`
+	ReadOnly          bool               `json:"readOnly,omitempty"`
+	OnChangeAction    ClientAction       `json:"onChangeAction,omitempty"`
 }
 
 // FormattingInfo represents formatting configuration.
@@ -49,22 +56,24 @@ type FormattingInfo struct {
 // DatePicker represents a date picker widget.
 type DatePicker struct {
 	BaseWidget
-	Label          string       `json:"label,omitempty"`
-	AttributePath  string       `json:"attributePath,omitempty"`
-	Placeholder    *model.Text  `json:"placeholder,omitempty"`
-	DateFormat     string       `json:"dateFormat,omitempty"`
-	ReadOnly       bool         `json:"readOnly,omitempty"`
-	OnChangeAction ClientAction `json:"onChangeAction,omitempty"`
+	Label             string             `json:"label,omitempty"`
+	AttributePath     string             `json:"attributePath,omitempty"`
+	AttributeRefSteps []AttributeRefStep `json:"attributeRefSteps,omitempty"` // association hops when the attribute is reached over associations (AttributeRef.EntityRef)
+	Placeholder       *model.Text        `json:"placeholder,omitempty"`
+	DateFormat        string             `json:"dateFormat,omitempty"`
+	ReadOnly          bool               `json:"readOnly,omitempty"`
+	OnChangeAction    ClientAction       `json:"onChangeAction,omitempty"`
 }
 
 // DropDown represents a drop-down selection widget.
 type DropDown struct {
 	BaseWidget
-	Label          string       `json:"label,omitempty"`
-	AttributePath  string       `json:"attributePath,omitempty"`
-	EmptyOption    *model.Text  `json:"emptyOption,omitempty"`
-	ReadOnly       bool         `json:"readOnly,omitempty"`
-	OnChangeAction ClientAction `json:"onChangeAction,omitempty"`
+	Label             string             `json:"label,omitempty"`
+	AttributePath     string             `json:"attributePath,omitempty"`
+	AttributeRefSteps []AttributeRefStep `json:"attributeRefSteps,omitempty"` // association hops when the attribute is reached over associations (AttributeRef.EntityRef)
+	EmptyOption       *model.Text        `json:"emptyOption,omitempty"`
+	ReadOnly          bool               `json:"readOnly,omitempty"`
+	OnChangeAction    ClientAction       `json:"onChangeAction,omitempty"`
 }
 
 // ReferenceSelector represents a reference selector widget.
@@ -112,9 +121,10 @@ type ReferenceSetSelector struct {
 // CheckBox represents a checkbox widget.
 type CheckBox struct {
 	BaseWidget
-	Label         string `json:"label,omitempty"`
-	AttributePath string `json:"attributePath,omitempty"`
-	ReadOnly      bool   `json:"readOnly,omitempty"`
+	Label             string             `json:"label,omitempty"`
+	AttributePath     string             `json:"attributePath,omitempty"`
+	AttributeRefSteps []AttributeRefStep `json:"attributeRefSteps,omitempty"` // association hops when the attribute is reached over associations (AttributeRef.EntityRef)
+	ReadOnly          bool               `json:"readOnly,omitempty"`
 	// ReadOnlyStyle is Mendix's "Read-only style": Inherit, Control or Text.
 	// Empty means unset — the writer keeps the stored default (Inherit), so a
 	// script that never mentions it produces the document it always did.
@@ -130,11 +140,12 @@ type CheckBox struct {
 // RadioButtons represents a radio button group widget.
 type RadioButtons struct {
 	BaseWidget
-	Label           string          `json:"label,omitempty"`
-	AttributePath   string          `json:"attributePath,omitempty"`
-	RenderDirection RenderDirection `json:"renderDirection,omitempty"`
-	ReadOnly        bool            `json:"readOnly,omitempty"`
-	OnChangeAction  ClientAction    `json:"onChangeAction,omitempty"`
+	Label             string             `json:"label,omitempty"`
+	AttributePath     string             `json:"attributePath,omitempty"`
+	AttributeRefSteps []AttributeRefStep `json:"attributeRefSteps,omitempty"` // association hops when the attribute is reached over associations (AttributeRef.EntityRef)
+	RenderDirection   RenderDirection    `json:"renderDirection,omitempty"`
+	ReadOnly          bool               `json:"readOnly,omitempty"`
+	OnChangeAction    ClientAction       `json:"onChangeAction,omitempty"`
 }
 
 // RenderDirection represents the direction for rendering.

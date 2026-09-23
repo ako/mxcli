@@ -184,6 +184,21 @@ func (b *Backend) SetProjectDemoUsersEnabled(unitID model.ID, enabled bool) erro
 	return b.persistUnit(unitID, ps)
 }
 
+// SetProjectStrictMode toggles security strict mode.
+//
+// StrictMode is a plain bool declared by BOTH generated sources — gen binds it
+// as property.NewPrimitive[bool]("StrictMode") and generated/metamodel declares
+// it on ProjectSecurity — and mxcli already reads it back from real projects,
+// so this writes a property Studio Pro knows rather than one gen merely offers.
+func (b *Backend) SetProjectStrictMode(unitID model.ID, enabled bool) error {
+	ps, err := b.loadProjectSecurityGen(unitID)
+	if err != nil {
+		return err
+	}
+	ps.SetStrictMode(enabled)
+	return b.persistUnit(unitID, ps)
+}
+
 // SetProjectGuestAccess toggles anonymous (guest) access. An empty
 // guestUserRole leaves the stored role alone, so turning access off and back on
 // does not lose it.

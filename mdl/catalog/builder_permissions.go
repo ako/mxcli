@@ -8,6 +8,51 @@ import (
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 )
 
+// Element and access types recorded in the permissions table. Like the refs
+// vocabularies in builder_references.go these are a public vocabulary — Starlark
+// lint rules filter on them through `permission.element_type` /
+// `permission.access_type` — so they are named rather than repeated as literals,
+// and the write-lint-rules skill is checked against them (mendixlabs/mxcli#1027).
+const (
+	PermissionElementEntity       = "ENTITY"
+	PermissionElementMicroflow    = "MICROFLOW"
+	PermissionElementPage         = "PAGE"
+	PermissionElementODataService = "ODATA_SERVICE"
+
+	AccessTypeCreate      = "CREATE"
+	AccessTypeRead        = "READ"
+	AccessTypeWrite       = "WRITE"
+	AccessTypeDelete      = "DELETE"
+	AccessTypeExecute     = "EXECUTE" // microflow
+	AccessTypeView        = "VIEW"    // page
+	AccessTypeAccess      = "ACCESS"  // published OData service
+	AccessTypeMemberRead  = "MEMBER_READ"
+	AccessTypeMemberWrite = "MEMBER_WRITE"
+)
+
+// PermissionElementTypes and PermissionAccessTypes are the full vocabularies, in
+// the order buildPermissions produces them.
+var (
+	PermissionElementTypes = []string{
+		PermissionElementEntity,
+		PermissionElementMicroflow,
+		PermissionElementPage,
+		PermissionElementODataService,
+	}
+
+	PermissionAccessTypes = []string{
+		AccessTypeCreate,
+		AccessTypeRead,
+		AccessTypeWrite,
+		AccessTypeDelete,
+		AccessTypeExecute,
+		AccessTypeView,
+		AccessTypeAccess,
+		AccessTypeMemberRead,
+		AccessTypeMemberWrite,
+	}
+)
+
 // buildPermissions extracts security permissions from all documents.
 // This is only run in full mode as it requires parsing all documents.
 func (b *Builder) buildPermissions() error {
@@ -70,19 +115,19 @@ func (b *Builder) buildEntityPermissions(stmt *sql.Stmt, projectID, snapshotID s
 				for _, roleName := range roleNames {
 					// Entity-level permissions
 					if rule.AllowCreate {
-						stmt.Exec(roleName, "ENTITY", entityQN, nil, "CREATE", xpath, moduleName, projectID, snapshotID)
+						stmt.Exec(roleName, PermissionElementEntity, entityQN, nil, AccessTypeCreate, xpath, moduleName, projectID, snapshotID)
 						count++
 					}
 					if hasRead {
-						stmt.Exec(roleName, "ENTITY", entityQN, nil, "READ", xpath, moduleName, projectID, snapshotID)
+						stmt.Exec(roleName, PermissionElementEntity, entityQN, nil, AccessTypeRead, xpath, moduleName, projectID, snapshotID)
 						count++
 					}
 					if hasWrite {
-						stmt.Exec(roleName, "ENTITY", entityQN, nil, "WRITE", xpath, moduleName, projectID, snapshotID)
+						stmt.Exec(roleName, PermissionElementEntity, entityQN, nil, AccessTypeWrite, xpath, moduleName, projectID, snapshotID)
 						count++
 					}
 					if rule.AllowDelete {
-						stmt.Exec(roleName, "ENTITY", entityQN, nil, "DELETE", xpath, moduleName, projectID, snapshotID)
+						stmt.Exec(roleName, PermissionElementEntity, entityQN, nil, AccessTypeDelete, xpath, moduleName, projectID, snapshotID)
 						count++
 					}
 
@@ -142,11 +187,11 @@ func (b *Builder) emitMemberPermissions(stmt *sql.Stmt, rule *domainmodel.Access
 			}
 
 			if ma.AccessRights == domainmodel.MemberAccessRightsReadOnly || ma.AccessRights == domainmodel.MemberAccessRightsReadWrite {
-				stmt.Exec(roleName, "ENTITY", entityQN, memberName, "MEMBER_READ", xpath, moduleName, projectID, snapshotID)
+				stmt.Exec(roleName, PermissionElementEntity, entityQN, memberName, AccessTypeMemberRead, xpath, moduleName, projectID, snapshotID)
 				count++
 			}
 			if ma.AccessRights == domainmodel.MemberAccessRightsReadWrite {
-				stmt.Exec(roleName, "ENTITY", entityQN, memberName, "MEMBER_WRITE", xpath, moduleName, projectID, snapshotID)
+				stmt.Exec(roleName, PermissionElementEntity, entityQN, memberName, AccessTypeMemberWrite, xpath, moduleName, projectID, snapshotID)
 				count++
 			}
 		}
@@ -154,11 +199,11 @@ func (b *Builder) emitMemberPermissions(stmt *sql.Stmt, rule *domainmodel.Access
 		// Expand default to all attributes
 		for _, attr := range ent.Attributes {
 			if rule.DefaultMemberAccessRights == domainmodel.MemberAccessRightsReadOnly || rule.DefaultMemberAccessRights == domainmodel.MemberAccessRightsReadWrite {
-				stmt.Exec(roleName, "ENTITY", entityQN, attr.Name, "MEMBER_READ", xpath, moduleName, projectID, snapshotID)
+				stmt.Exec(roleName, PermissionElementEntity, entityQN, attr.Name, AccessTypeMemberRead, xpath, moduleName, projectID, snapshotID)
 				count++
 			}
 			if rule.DefaultMemberAccessRights == domainmodel.MemberAccessRightsReadWrite {
-				stmt.Exec(roleName, "ENTITY", entityQN, attr.Name, "MEMBER_WRITE", xpath, moduleName, projectID, snapshotID)
+				stmt.Exec(roleName, PermissionElementEntity, entityQN, attr.Name, AccessTypeMemberWrite, xpath, moduleName, projectID, snapshotID)
 				count++
 			}
 		}
@@ -188,7 +233,7 @@ func (b *Builder) buildMicroflowPermissions(stmt *sql.Stmt, projectID, snapshotI
 		for _, roleID := range mf.AllowedModuleRoles {
 			// AllowedModuleRoles are BY_NAME strings stored as model.ID
 			roleName := string(roleID)
-			stmt.Exec(roleName, "MICROFLOW", mfQN, nil, "EXECUTE", nil, moduleName, projectID, snapshotID)
+			stmt.Exec(roleName, PermissionElementMicroflow, mfQN, nil, AccessTypeExecute, nil, moduleName, projectID, snapshotID)
 			count++
 		}
 	}
@@ -217,7 +262,7 @@ func (b *Builder) buildPagePermissions(stmt *sql.Stmt, projectID, snapshotID str
 		for _, roleID := range pg.AllowedRoles {
 			// AllowedRoles are BY_NAME strings stored as model.ID
 			roleName := string(roleID)
-			stmt.Exec(roleName, "PAGE", pgQN, nil, "VIEW", nil, moduleName, projectID, snapshotID)
+			stmt.Exec(roleName, PermissionElementPage, pgQN, nil, AccessTypeView, nil, moduleName, projectID, snapshotID)
 			count++
 		}
 	}
@@ -244,7 +289,7 @@ func (b *Builder) buildODataServicePermissions(stmt *sql.Stmt, projectID, snapsh
 		svcQN := moduleName + "." + svc.Name
 
 		for _, roleName := range svc.AllowedModuleRoles {
-			stmt.Exec(roleName, "ODATA_SERVICE", svcQN, nil, "ACCESS", nil, moduleName, projectID, snapshotID)
+			stmt.Exec(roleName, PermissionElementODataService, svcQN, nil, AccessTypeAccess, nil, moduleName, projectID, snapshotID)
 			count++
 		}
 	}

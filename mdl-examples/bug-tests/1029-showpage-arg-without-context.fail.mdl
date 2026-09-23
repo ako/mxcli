@@ -1,0 +1,45 @@
+-- mendixlabs/mxcli#1029 — a widget `show_page` argument written where there is
+-- no context object.
+--
+-- A page-level `actionbutton` (outside any dataview) with
+-- `Action: show_page Page(Param: $Var)` silently dropped the argument: `mxcli
+-- check --references` said "All references valid", `exec` reported success, and
+-- `DESCRIBE PAGE` then printed `(Item: $currentObject)` on a page where
+-- $currentObject is unbound. mxbuild 11.13.0 rejected it with one
+--
+--   [CE1571] "No argument has been selected for parameter 'Item' and no default
+--            is available."
+--
+-- per parameter of the target page. mxcli stores this action with an EMPTY
+-- ParameterMappings array and lets Mendix infer the argument from the enclosing
+-- widget's context object (#296: an explicit mapping is CE0115), so with no
+-- enclosing data widget there is nothing to infer and every argument is lost —
+-- a variable, a literal and an association path alike.
+--
+-- MDL-PAGEARG01 now refuses it at check time. This script must FAIL check.
+create module Probe1029;
+
+create persistent entity Probe1029.Item (
+  Name: String(200)
+);
+
+create page Probe1029.Detail (
+  params: { $Item: Probe1029.Item },
+  title: 'Detail',
+  layout: Atlas_Core.Atlas_Default
+) {
+  dataview dv (datasource: $Item) {
+    textbox txt (label: 'Name', attribute: 'Name')
+  }
+};
+
+create page Probe1029.List (
+  params: { $SomeRef: Probe1029.Item },
+  title: 'List',
+  layout: Atlas_Core.Atlas_Default
+) {
+  actionbutton btnOpen (
+    caption: 'Open',
+    action: show_page Probe1029.Detail(Item: $SomeRef)
+  )
+};

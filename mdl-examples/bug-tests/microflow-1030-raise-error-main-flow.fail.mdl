@@ -1,0 +1,52 @@
+-- mendixlabs/mxcli#1030 (refusals): `raise error;` on a microflow's MAIN flow.
+--
+--   mxcli check mdl-examples/bug-tests/microflow-1030-raise-error-main-flow.fail.mdl
+--
+-- reports MDL084 once per microflow below. Before the fix all four passed check,
+-- were written by exec, and were rejected by the build — measured on mxbuild
+-- 11.13.0 against a blank app with a 0-error baseline:
+--
+--   [error] [CE0710] "The main flow cannot join an error flow or end in an error
+--                     event." at Sequence flow   (x4, one per microflow)
+--
+-- An error event re-raises the error being handled, so Mendix allows one only
+-- where an error is in scope; Studio Pro will not draw this shape at all. The
+-- legal form is in microflow-1030-raise-error-main-flow.mdl beside this file,
+-- which builds at 0 errors.
+
+create or modify module RaiseProbe;
+
+-- The entire body is the error event.
+create or replace microflow RaiseProbe.MF_RaiseOnly ()
+begin
+  raise error;
+end;
+/
+
+-- Same, with a typed return: the AS clause does not make it a main flow's end.
+create or replace microflow RaiseProbe.MF_RaiseTyped () returns Boolean as $Result
+begin
+  raise error;
+end;
+/
+
+-- Both branches individually terminal — the error event is still on the main flow.
+create or replace microflow RaiseProbe.MF_RaiseIf ($X: Boolean) returns Boolean as $Result
+begin
+  if $X then
+    return true;
+  else
+    raise error;
+  end if;
+end;
+/
+
+-- Guard clause: one branch raises, execution continues past the if.
+create or replace microflow RaiseProbe.MF_RaiseGuard ($X: Boolean) returns Boolean as $Result
+begin
+  if $X = false then
+    raise error;
+  end if;
+  return true;
+end;
+/

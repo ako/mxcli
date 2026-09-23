@@ -30,6 +30,54 @@ type Microflow struct {
 	// MarkAsUsed (#723 §A).
 	ApplyEntityAccess bool `json:"applyEntityAccess"`
 
+	// ConcurrencyErrorMessage and ConcurrencyErrorMicroflow are what Mendix does
+	// when a second invocation arrives while one is already running and
+	// AllowConcurrentExecution is false — show this (translatable) message, or
+	// run this microflow. Mendix requires one of them in that case (CE4899).
+	//
+	// Neither has MDL syntax, and neither did AllowConcurrentExecution or
+	// MarkAsUsed, so the executor's rebuild wrote its own defaults over all
+	// four. The direction matters: the rebuild hardcoded `true`, so a microflow
+	// that DISALLOWED concurrent execution came back allowing it — the app's
+	// concurrency protection removed — and because "allow" needs no error
+	// message, CE4899 does not fire and nothing reports it. The error message
+	// and microflow went with it, translations included.
+	ConcurrencyErrorMessage   *model.Text `json:"concurrencyErrorMessage,omitempty"`
+	ConcurrencyErrorMicroflow string      `json:"concurrencyErrorMicroflow,omitempty"`
+
+	// ExportLevel is Studio Pro's "Export level" — `Hidden` or `API`, the two
+	// members MicroflowsExportLevel declares. It decides whether the microflow
+	// is part of the module's public surface when the module is exported as a
+	// package, so losing it makes a protected module's API silently smaller.
+	//
+	// Carried, not authored: MDL has no syntax for it. Empty means "the stored
+	// document said nothing", and the writer defaults that to `Hidden` — never
+	// to the empty string, which is not a member of the enum.
+	//
+	// Measured across three real marketplace modules (Business Events 3.12.0,
+	// External Database Connector 6.2.3 and 6.3.0): every document of every
+	// type stores `Hidden`, because all three export at module level `Source`.
+	// So `Hidden` is the overwhelmingly common value and the right default —
+	// but it is a default, not the only value, and hardcoding it is what made
+	// this a drop rather than a no-op (#1120 follow-up).
+	ExportLevel string `json:"exportLevel,omitempty"`
+
+	// URL is the microflow's deep link (Mendix 10.6+) — Studio Pro's "URL"
+	// field, e.g. `item/{Key}`. MDL has no syntax for it, so it is carried
+	// across a rewrite rather than authored.
+	//
+	// The fourth property in this struct to be lost the way #723 §A describes,
+	// after AllowConcurrentExecution, MarkAsUsed and ApplyEntityAccess: the
+	// writer hardcoded "" and this struct had no field, so every rewrite
+	// deleted the deep link. Nothing reports it — `mxcli check` and `mx check`
+	// both pass, because a microflow without a URL is perfectly valid; the loss
+	// is only visible in Studio Pro, which is how it reached a user (#1120).
+	URL string `json:"url,omitempty"`
+	// URLSearchParameters names the microflow parameters supplied as query-string
+	// arguments of the deep link, as qualified names. Stored beside URL and lost
+	// with it.
+	URLSearchParameters []string `json:"urlSearchParameters,omitempty"`
+
 	// Return type
 	ReturnType         DataType `json:"returnType,omitempty"`
 	ReturnVariableName string   `json:"returnVariableName,omitempty"` // Variable name for return value (e.g., "$Result")
@@ -43,7 +91,10 @@ type Microflow struct {
 	// Allowed module roles for execution
 	AllowedModuleRoles []model.ID `json:"allowedModuleRoles,omitempty"`
 
-	// Concurrent execution settings
+	// Deprecated: never read and never written, and it does not describe what
+	// Mendix stores — there is no thread count in the model. The real
+	// concurrency state is AllowConcurrentExecution plus the two
+	// ConcurrencyError fields above. Kept only because the type is exported.
 	ConcurrentExecutionSettings *ConcurrentExecutionSettings `json:"concurrentExecutionSettings,omitempty"`
 
 	// Toolbox entries. A microflow can be exposed twice — once for the microflow
@@ -468,6 +519,9 @@ type ActionActivity struct {
 }
 
 // ConcurrentExecutionSettings represents settings for concurrent execution.
+// Deprecated: a fiction — nothing reads or writes it, and Mendix stores no
+// thread count. See Microflow.AllowConcurrentExecution and its
+// ConcurrencyErrorMessage / ConcurrencyErrorMicroflow siblings.
 type ConcurrentExecutionSettings struct {
 	model.BaseElement
 	Enabled         bool `json:"enabled"`

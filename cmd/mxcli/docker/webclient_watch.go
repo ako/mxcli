@@ -138,30 +138,23 @@ func StartWebClientWatch(opts WebClientOptions) (*WebClientWatcher, error) {
 		w = io.Discard
 	}
 	webDir := filepath.Join(opts.DeployDir, "web")
-	if fi, err := os.Stat(filepath.Join(webDir, "rollup.config.mjs")); err != nil || fi.IsDir() {
-		// The Mendix 11.14 shape, and the second copy of the gate that made
-		// mxcli unable to start any 11.14 app (ako/mxcli-ledger #146). That fix
-		// landed on BuildWebClient only, so `run --local` started working and
-		// `run --local --watch` kept failing on the absence of a file whose
-		// purpose 11.14 had served:
-		//
-		//   11.13.0   rollup.config.mjs PRESENT   dist/index.js ABSENT
-		//   11.14.0   rollup.config.mjs ABSENT    dist/index.js PRESENT
-		//
-		// When mxbuild bundles the client itself there is no incremental
-		// bundler to keep hot and nothing for it to do. A nil watcher says
-		// exactly that, and the loop treats it as "the serve build produces
-		// web/dist" — with ensureClientServed still guarding the result.
-		if WebClientBundled(opts.DeployDir) {
-			fmt.Fprintln(w, "  Web client bundled by mxbuild; no incremental bundler needed")
-			return nil, nil
-		}
-		return nil, fmt.Errorf("no rollup.config.mjs and no bundle at %s\n"+
-			"  Mendix 11.13 and earlier emit a rollup config for mxcli to run; 11.14+ writes\n"+
-			"  the bundle itself. Neither is present, so the build did not produce a client:\n"+
-			"  run a serve Deploy build first (or delete deployment/ if it was built by an\n"+
-			"  older Mendix version).",
-			webClientBundlePath(opts.DeployDir))
+	// This used to carry its own copy of BuildWebClient's gate, which is how the
+	// 11.14 fix reached one and not the other — `run --local` worked and `run
+	// --local --watch` did not. Both now switch on the same planWebClient.
+	//
+	// A nil watcher means "there is no incremental bundler to keep hot", which is
+	// true both when mxbuild writes web/dist itself and when the deployment is the
+	// classic client. Every watcher method is nil-safe, so the loop needs no
+	// branch, and ensureClientServed still guards the result.
+	switch plan := planWebClient(opts.DeployDir); plan {
+	case webClientPrebuilt:
+		fmt.Fprintln(w, "  Web client bundled by mxbuild; no incremental bundler needed")
+		return nil, nil
+	case webClientClassic:
+		fmt.Fprintln(w, "  Classic (Dojo) web client — no incremental bundler needed")
+		return nil, nil
+	case webClientMissing:
+		return nil, noWebClientError(opts.DeployDir)
 	}
 	nodeBin, runner, err := resolveNodeTooling(opts.MxBuildPath)
 	if err != nil {

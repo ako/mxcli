@@ -519,10 +519,12 @@ for key, val in data.items():
 
 | File | Purpose |
 |------|---------|
-| `sdk/mpr/writer_widgets.go` | Widget serialization to BSON |
-| `sdk/mpr/writer_pages.go` | Page serialization |
-| `sdk/mpr/reader_widgets.go` | Widget template extraction and cloning |
-| `sdk/mpr/parser_page.go` | Page deserialization |
+| `mdl/backend/modelsdk/widget_write.go` | Widget serialization to BSON |
+| `mdl/backend/modelsdk/page_write.go` | Page serialization |
+| `mdl/backend/modelsdk/widget_pluggable_write.go` | Pluggable widget templates |
+| `mdl/backend/modelsdk/page.go` | Page deserialization |
+| `modelsdk/codec/encoder.go` | Document → BSON |
+| `modelsdk/codec/decoder.go` | BSON → document |
 | `sdk/widgets/loader.go` | Embedded template loading |
 | `sdk/widgets/templates/mendix-11.6/*.json` | Embedded widget templates |
 | `sdk/pages/pages_widgets_advanced.go` | CustomWidget Go types |

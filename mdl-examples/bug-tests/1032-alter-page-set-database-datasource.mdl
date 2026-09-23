@@ -1,0 +1,106 @@
+-- mendixlabs/mxcli#1032 — `SET DataSource = DATABASE …` silently wiped a
+-- DataView's datasource
+--
+-- The reported statement
+--
+--   ALTER PAGE Test.MyPage { SET DataSource = DATABASE Test.Customer ON dvCust; };
+--
+-- passed `check`, ran to `Altered page …` with exit 0, and left the DataView
+-- with no usable datasource at all. `DESCRIBE PAGE` read the widget back as
+-- `dataview dvCust {` with the property gone, and the only other signal was
+-- CE7007 at build time — naming the widget, never the statement that broke it.
+--
+-- Cause: one mapping standing in for several. A DATABASE source has no single
+-- stored shape; the widget holding it decides which element Studio Pro writes —
+-- Forms$ListViewXPathSource on a list view, CustomWidgets$CustomWidgetXPathSource
+-- on a pluggable widget, Forms$GridXPathSource on a grid. A DATA VIEW has no
+-- database form at all: it binds to ONE object, which is why CREATE PAGE's own
+-- builder refuses that pairing. The mutator instead wrote a Forms$DataViewSource
+-- — the "data from context" source — with the entity in EntityRef and
+-- SourceVariable left null, which is neither shape and is why DESCRIBE (whose
+-- context reader needs a SourceVariable) rendered nothing.
+--
+-- Measured on a real Mendix 11.13.0 app, two copies of the same project:
+--
+--   with the fault      mxcli check --references → "Check passed!"
+--                       mxcli exec               → "Altered page …", exit 0
+--                       describe page            → dataview dvCust { … }   (no source)
+--                       mx check                 → 1 error, CE7007 at Data view 'dvCust'
+--
+--   with the fix        mxcli check --references → refused, exit 1
+--                       mxcli exec               → refused, exit 1
+--                       describe page            → datasource unchanged
+--                       mx check                 → 0 errors
+--
+-- The refusal lives once, in the mutator, so `check` (which dry-runs the SET
+-- against a throwaway copy of the stored document) and `exec` cannot disagree.
+-- It needs the document to know the widget's type, so it fires under `-p`; this
+-- file is therefore the PASSING shape, with the refused statements commented.
+--
+-- Run: mxcli check mdl-examples/bug-tests/1032-alter-page-set-database-datasource.mdl
+--      mxcli exec  mdl-examples/bug-tests/1032-alter-page-set-database-datasource.mdl -p app.mpr
+
+create module P1032;
+create persistent entity P1032.Customer (Name: String(200));
+
+create microflow P1032.MF_GetCustomer () returns P1032.Customer as $Result
+begin
+  retrieve $Result from P1032.Customer limit 1;
+end;
+
+create page P1032.CustomerPage (
+  params: { $Customer: P1032.Customer },
+  title: 'Customer',
+  layout: Atlas_Core.Atlas_Default
+) {
+  layoutgrid g { row r { column c (desktopwidth: 12) {
+    -- A LIST VIEW is where a database query belongs. Authored here through
+    -- CREATE PAGE, which builds the Forms$ListViewXPathSource the widget needs.
+    listview lvCustomers (datasource: database P1032.Customer) {
+      textbox tbListName (attribute: Name, label: 'Name')
+    }
+    -- The DataView from the report, on a microflow source.
+    dataview dvCust (datasource: microflow P1032.MF_GetCustomer) {
+      textbox tbName (attribute: Name, label: 'Name')
+    }
+  } } }
+}
+
+-- The sources a DataView really takes still retype through SET, unchanged by
+-- the refusal — the control that says this fixes #1032 rather than replacing it
+-- with a blanket "no".
+alter page P1032.CustomerPage {
+  set DataSource = $Customer on dvCust;
+}
+
+alter page P1032.CustomerPage {
+  set DataSource = microflow P1032.MF_GetCustomer on dvCust;
+}
+
+alter page P1032.CustomerPage {
+  set DataSource = selection lvCustomers on dvCust;
+}
+
+-- REFUSED, both by `check -p --references` and by `exec` (uncomment to see):
+--
+--   alter page P1032.CustomerPage {
+--     set DataSource = database P1032.Customer on dvCust;
+--   }
+--
+--     a data view cannot take a database datasource — a data view binds to a
+--     single object, so its source is a context parameter (`$Param`), a
+--     microflow, a nanoflow or `selection <widget>`; to show the result of a
+--     database query, use a list view or a data grid instead
+--
+-- The same statement against the LIST VIEW is refused too, but for the other
+-- reason and with the other remedy — a list view can hold a database source,
+-- SET just cannot build one, so the message names the path that can:
+--
+--   alter page P1032.CustomerPage {
+--     set DataSource = database P1032.Customer on lvCustomers;
+--   }
+--
+--     setting a database datasource on "lvCustomers" (Forms$ListView) is not
+--     supported by `set` — its stored shape depends on the widget and is built
+--     by the CREATE PAGE path; use `replace <widget> with …` instead, which
+--     rebuilds the widget through that path

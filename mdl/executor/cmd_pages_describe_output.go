@@ -136,6 +136,35 @@ func appendConditionalProps(props []string, w rawWidget) []string {
 // not reveal the CREATE-path loss reported in ako/mxcli-maintenance-2 — both
 // sides printed nothing, so the documents compared equal while the model was
 // wrong.
+// appendInputValidationProps emits the input-widget properties a round trip used
+// to drop: the password flag and the per-widget validation (ako/mxcli#550).
+//
+// Both are emitted only when set. `Password: false` is every ordinary text box,
+// and an empty validation is what Studio Pro stores on a widget that has none,
+// so emitting either would put a clause in the user's script that they never
+// wrote — the "invents" shape in docs-wiki/bug-patterns/describe-round-trip-gaps.md.
+//
+// The message rides with the expression rather than standing alone: Mendix has
+// nowhere to show a message for a validation that never fails.
+func appendInputValidationProps(props []string, w rawWidget) []string {
+	if w.IsPassword {
+		props = append(props, "Password: true")
+	}
+	if w.ValidationExpression != "" {
+		// Quoted, not bracketed. `[...]` is the XPath-constraint spelling and the
+		// grammar parses it as an ARRAY of expressions (propertyValueV3), so a
+		// bracketed expression comes back to the builder as []any and
+		// GetStringProp yields "" — the round trip looked right in the emitter's
+		// own test and still lost the value on a real page. mdlQuote doubles any
+		// embedded quote, which a Mendix expression over $value may well carry.
+		props = append(props, fmt.Sprintf("Validation: %s", mdlQuote(w.ValidationExpression)))
+		if w.ValidationMessage != "" {
+			props = append(props, fmt.Sprintf("ValidationMessage: %s", mdlQuote(w.ValidationMessage)))
+		}
+	}
+	return props
+}
+
 func appendAppearanceProps(props []string, w rawWidget) []string {
 	// Only when it deviates from Mendix's default, so unchanged widgets keep a
 	// quiet round-trip. Empty means the widget type has no editability at all.
@@ -422,7 +451,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			props = append(props, fmt.Sprintf("Caption: %s", mdlQuote(w.Caption)))
 		}
 		if len(w.Parameters) > 0 {
-			props = append(props, fmt.Sprintf("ContentParams: [%s]", strings.Join(formatParametersV3(w.Parameters), ", ")))
+			props = append(props, fmt.Sprintf("CaptionParams: [%s]", strings.Join(formatParametersV3(w.Parameters), ", ")))
 		}
 		if w.Action != "" {
 			props = append(props, fmt.Sprintf("Action: %s", w.Action))
@@ -472,6 +501,12 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		if hasFooter := dataViewHasFooterBlock(w); hasFooter != w.ShowFooter {
 			props = append(props, fmt.Sprintf("ShowFooter: %t", w.ShowFooter))
 		}
+		// A DataView has its own ReadOnlyStyle, distinct from a CheckBox's and
+		// wired nowhere until ako/mxcli#550. Inherit is Studio Pro's default, so
+		// only the other two are emitted.
+		if w.ReadOnlyStyle != "" && w.ReadOnlyStyle != "Inherit" {
+			props = append(props, fmt.Sprintf("ReadOnlyStyle: %s", w.ReadOnlyStyle))
+		}
 		props = appendAppearanceProps(props, w)
 		formatWidgetProps(ctx.Output, prefix, header, props, " {\n")
 		outputDataContainerContext(ctx.Output, prefix+"  ", w.Name, w.EntityContext, false)
@@ -495,6 +530,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		if w.OnChange != "" {
 			props = append(props, fmt.Sprintf("OnChange: %s", w.OnChange))
 		}
+		props = appendInputValidationProps(props, w)
 		props = appendAppearanceProps(props, w)
 		formatWidgetProps(ctx.Output, prefix, header, props, "\n")
 
@@ -662,11 +698,19 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			props = appendAppearanceProps(props, w)
 			formatWidgetProps(ctx.Output, prefix, header, props, "\n")
 		} else if (len(w.ExplicitProperties) > 0 || len(w.ObjectLists) > 0 || w.OnClick != "" ||
-			w.OnChange != "" || len(w.NamedActions) > 0) && w.WidgetID != "" {
+			w.OnChange != "" || len(w.NamedActions) > 0 || len(w.ChildSlots) > 0 ||
+			len(w.OmittedContainers) > 0) && w.WidgetID != "" {
 			// Generic pluggable widget with explicit properties, object-list child
 			// blocks (chart series/lines/scaleColors), and/or an onClick action.
 			// The widget's own MDL name where that round-trips, else the
 			// explicit id form. See pluggableWidgetHeader.
+			//
+			// Child slots and omitted containers count towards "has content"
+			// too: a widget whose only non-default content is a populated slot
+			// took the bare branch below, which emits a head and no body — so
+			// the slot's widgets, and even the note naming what could not be
+			// reconstructed, were dropped from the description
+			// (mendixlabs/mxcli#1057).
 			header := pluggableWidgetHeader(ctx.GetWidgetRegistry(), w.WidgetID, w.Name)
 			props := []string{}
 			if w.Caption != "" {
@@ -683,6 +727,12 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			props = appendWidgetDataSources(props, w)
 			for _, ep := range w.ExplicitProperties {
 				props = append(props, fmt.Sprintf("%s: %s", ep.Key, explicitPropValue(ep)))
+				// A `{1}` re-executed without its parameter is CE0720, so the
+				// companion travels with the text it belongs to (#575).
+				if len(ep.Params) > 0 {
+					props = append(props, fmt.Sprintf("%sParams: [%s]",
+						ep.Key, strings.Join(formatParametersV3(ep.Params), ", ")))
+				}
 			}
 			// onClick action (ledger #67 — reported on CustomChart)
 			if w.OnClick != "" {
@@ -821,6 +871,83 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			formatWidgetProps(ctx.Output, prefix, header, props, "\n")
 		}
 
+	case "Forms$StaticImageViewer", "Pages$StaticImageViewer":
+		// The `staticimage` keyword the executor has always dispatched, now with
+		// the one thing MDL had no spelling for: WHICH image it shows. Both
+		// halves are load-bearing — emitting the keyword without the reference
+		// turns a visible "NOT re-executable" note into a silent drop, which is
+		// what #512 and mxcli-formula1 FINDINGS §142 each cost a round to learn
+		// (mendixlabs/mxcli#1057).
+		header := fmt.Sprintf("staticimage %s", mdlIdent(w.Name))
+		props := []string{}
+		if w.ImageObject != "" {
+			props = append(props, fmt.Sprintf("Image: %s", mdlQuote(w.ImageObject)))
+		}
+		if w.ImageWidth != "" {
+			props = append(props, fmt.Sprintf("Width: %s", w.ImageWidth))
+		}
+		if w.WidthUnit != "" && w.WidthUnit != "auto" {
+			props = append(props, fmt.Sprintf("WidthUnit: %s", w.WidthUnit))
+		}
+		if w.ImageHeight != "" {
+			props = append(props, fmt.Sprintf("Height: %s", w.ImageHeight))
+		}
+		if w.HeightUnit != "" && w.HeightUnit != "auto" {
+			props = append(props, fmt.Sprintf("HeightUnit: %s", w.HeightUnit))
+		}
+		// Only the non-default is emitted: Responsive is true unless it was
+		// switched off, and printing a value the writer re-derives is the
+		// "invents" half of the describe failure class.
+		if w.Responsive == "false" {
+			props = append(props, "Responsive: false")
+		}
+		if w.Action != "" {
+			props = append(props, fmt.Sprintf("Action: %s", w.Action))
+		}
+		props = appendAppearanceProps(props, w)
+		formatWidgetProps(ctx.Output, prefix, header, props, "\n")
+
+	case "Forms$ImageViewer", "Pages$ImageViewer":
+		// The DYNAMIC image's sibling case. Property names are shared with the
+		// static and the pluggable image on purpose — Width/Height, the units,
+		// Responsive, DisplayAs, OnClickType — so one spelling means one thing
+		// across all three. `DefaultImage:` is its own, because the fallback is
+		// a different property from the image a static viewer shows.
+		header := fmt.Sprintf("dynamicimage %s", mdlIdent(w.Name))
+		props := []string{}
+		props = appendWidgetDataSources(props, w)
+		if w.DefaultImage != "" {
+			props = append(props, fmt.Sprintf("DefaultImage: %s", mdlQuote(w.DefaultImage)))
+		}
+		if w.ImageWidth != "" {
+			props = append(props, fmt.Sprintf("Width: %s", w.ImageWidth))
+		}
+		if w.WidthUnit != "" && w.WidthUnit != "auto" {
+			props = append(props, fmt.Sprintf("WidthUnit: %s", w.WidthUnit))
+		}
+		if w.ImageHeight != "" {
+			props = append(props, fmt.Sprintf("Height: %s", w.ImageHeight))
+		}
+		if w.HeightUnit != "" && w.HeightUnit != "auto" {
+			props = append(props, fmt.Sprintf("HeightUnit: %s", w.HeightUnit))
+		}
+		if w.Responsive == "false" {
+			props = append(props, "Responsive: false")
+		}
+		// Only the non-defaults: full size and no enlarge are Mendix's own, and
+		// the writer re-derives them.
+		if w.DisplayAs == "thumbnail" {
+			props = append(props, "DisplayAs: thumbnail")
+		}
+		if w.OnClickType == "enlarge" {
+			props = append(props, "OnClickType: enlarge")
+		}
+		if w.Action != "" {
+			props = append(props, fmt.Sprintf("Action: %s", w.Action))
+		}
+		props = appendAppearanceProps(props, w)
+		formatWidgetProps(ctx.Output, prefix, header, props, "\n")
+
 	case "Forms$SnippetCallWidget", "Pages$SnippetCallWidget":
 		header := fmt.Sprintf("snippetcall %s", mdlIdent(w.Name))
 		props := []string{}
@@ -855,6 +982,12 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		// Emit a non-default PageSize so it round-trips (Studio Pro's default is 20).
 		if w.PageSize != "" && w.PageSize != "20" {
 			props = append(props, fmt.Sprintf("PageSize: %s", w.PageSize))
+		}
+		// Pages$ListView.ClickAction. Written since ako/mxcli#512; without this
+		// the action is dropped on the next describe -> exec, which is the
+		// half-shell trap: valid BSON, clean build, construct silently gone.
+		if w.Action != "" {
+			props = append(props, fmt.Sprintf("Action: %s", w.Action))
 		}
 		props = appendAppearanceProps(props, w)
 		if len(w.Children) > 0 {
@@ -1422,13 +1555,9 @@ func extractPageParameters(ctx *ExecContext, settings map[string]any) string {
 			}
 		}
 
-		// Check for Variable reference (older format - Variable as a map with Name)
+		// Check for a Forms$PageVariable binding.
 		if value == "" {
-			if varRef, ok := mappingMap["Variable"].(map[string]any); ok && varRef != nil {
-				if varName := extractString(varRef["Name"]); varName != "" {
-					value = "$" + varName
-				}
-			}
+			value = pageVariableArgValue(mappingMap["Variable"])
 		}
 
 		if value != "" {
@@ -1483,13 +1612,9 @@ func extractMicroflowParameters(ctx *ExecContext, settings map[string]any) strin
 			}
 		}
 
-		// Check for Variable reference (older format - Variable as a map with Name)
+		// Check for a Forms$PageVariable binding.
 		if value == "" {
-			if varRef, ok := mappingMap["Variable"].(map[string]any); ok && varRef != nil {
-				if varName := extractString(varRef["Name"]); varName != "" {
-					value = "$" + varName
-				}
-			}
+			value = pageVariableArgValue(mappingMap["Variable"])
 		}
 
 		if value != "" {
@@ -1546,13 +1671,9 @@ func extractNanoflowParameters(ctx *ExecContext, action map[string]any) string {
 			}
 		}
 
-		// Check for Variable reference (older format - Variable as a map with Name)
+		// Check for a Forms$PageVariable binding.
 		if value == "" {
-			if varRef, ok := mappingMap["Variable"].(map[string]any); ok && varRef != nil {
-				if varName := extractString(varRef["Name"]); varName != "" {
-					value = "$" + varName
-				}
-			}
+			value = pageVariableArgValue(mappingMap["Variable"])
 		}
 
 		if value != "" {
@@ -1808,9 +1929,17 @@ func describeImageWidgetProps(w rawWidget) []string {
 	}
 	if w.ImageUrl != "" {
 		props = append(props, fmt.Sprintf("ImageUrl: %s", mdlQuote(w.ImageUrl)))
+		if len(w.ImageUrlParams) > 0 {
+			props = append(props, fmt.Sprintf("ImageUrlParams: [%s]",
+				strings.Join(formatParametersV3(w.ImageUrlParams), ", ")))
+		}
 	}
 	if w.AlternativeText != "" {
 		props = append(props, fmt.Sprintf("AlternativeText: %s", mdlQuote(w.AlternativeText)))
+		if len(w.AlternativeTextParams) > 0 {
+			props = append(props, fmt.Sprintf("AlternativeTextParams: [%s]",
+				strings.Join(formatParametersV3(w.AlternativeTextParams), ", ")))
+		}
 	}
 	if w.WidthUnit != "" && w.WidthUnit != "auto" {
 		props = append(props, fmt.Sprintf("WidthUnit: %s", w.WidthUnit))

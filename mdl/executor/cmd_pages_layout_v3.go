@@ -111,10 +111,11 @@ func execCreateLayout(ctx *ExecContext, s *ast.CreateLayoutStmt) error {
 			s.Name.String(), s.Name.Module))
 	}
 
+	// The stored layout this statement rewrites, if there is one, plus any
+	// duplicates of the same name to clear out.
 	existing, _ := ctx.Backend.ListLayouts()
-	var toDelete []model.ID
-	var existingLayoutDoc string
-	haveExistingLayout := false
+	var stored *pages.Layout
+	var duplicates []model.ID
 	for _, l := range existing {
 		modName := getModuleName(ctx, getModuleID(ctx, l.ContainerID))
 		if modName != s.Name.Module || l.Name != s.Name.Name {
@@ -123,11 +124,11 @@ func execCreateLayout(ctx *ExecContext, s *ast.CreateLayoutStmt) error {
 		if !s.IsReplace && !s.IsModify {
 			return mdlerrors.NewAlreadyExists("layout", s.Name.String())
 		}
-		if len(toDelete) == 0 {
-			existingLayoutDoc = l.Documentation
-			haveExistingLayout = true
+		if stored == nil {
+			stored = l
+			continue
 		}
-		toDelete = append(toDelete, l.ID)
+		duplicates = append(duplicates, l.ID)
 	}
 
 	pb := &pageBuilder{
@@ -142,6 +143,9 @@ func execCreateLayout(ctx *ExecContext, s *ast.CreateLayoutStmt) error {
 		fragments:        ctx.Fragments,
 		themeRegistry:    ctx.GetThemeRegistry(),
 		widgetBackend:    ctx.Backend,
+		// The root of a document that this pass walks in full: there is no
+		// enclosing data widget, so there is no context object. #1029.
+		argCtx: atDocumentRoot(),
 	}
 
 	// Built before the old one is deleted: a build failure must leave the
@@ -152,26 +156,50 @@ func execCreateLayout(ctx *ExecContext, s *ast.CreateLayoutStmt) error {
 	}
 
 	// A rewrite that carried no doc comment keeps the stored one (#1018).
-	if haveExistingLayout {
-		layout.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existingLayoutDoc)
+	if stored != nil {
+		layout.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, stored.Documentation)
 	}
 
-	for _, id := range toDelete {
+	// A duplicate of the same name is cleared; the FIRST stored layout is
+	// rewritten rather than deleted (see below), so it is not in this list.
+	for _, id := range duplicates {
 		if err := ctx.Backend.DeleteLayout(id); err != nil {
 			return mdlerrors.NewBackend("delete existing layout", err)
 		}
 	}
-	if err := ctx.Backend.CreateLayout(layout); err != nil {
+
+	verb := "Created"
+	if stored != nil {
+		verb = "Replaced"
+		// REWRITE THE STORED UNIT, do not replace it. A delete followed by a
+		// create goes through InsertUnit under a freshly minted id, so an
+		// identical re-run replaced the layout's unit under a NEW GUID every
+		// time — measured on 11.14.0, three runs produced three different
+		// .mxunit files, each run a delete plus an untracked add, and the tree
+		// never came back clean (ako/mxcli#600). The storage layer's net for
+		// delete+insert recreates (#556) keys on the unit id and so cannot
+		// catch a path that re-mints it; this has to be decided here.
+		//
+		// Carrying the stored container is the other half: there is no FOLDER
+		// clause on CREATE LAYOUT, so the rebuilt layout always names the
+		// module root, and an insert would file a foldered layout back into it
+		// (the defect #932 fixed for REST clients). UpdateLayout does not touch
+		// the unit's row at all.
+		layout.ID = stored.ID
+		layout.ContainerID = stored.ContainerID
+		if err := ctx.Backend.UpdateLayout(layout); err != nil {
+			return mdlerrors.NewBackend("update layout", err)
+		}
+	} else if err := ctx.Backend.CreateLayout(layout); err != nil {
 		return mdlerrors.NewBackend("create layout", err)
 	}
 
 	invalidateHierarchy(ctx)
 
-	verb := "Created"
-	if len(toDelete) > 0 {
-		verb = "Replaced"
-	}
-	fmt.Fprintf(ctx.Output, "%s layout %s\n", verb, s.Name.String())
+	// Through ReportMutation: the rewrite now reaches canon.Reconcile, so a
+	// statement that matches what is stored is elided and must say so rather
+	// than claiming a replacement that did not happen.
+	ctx.ReportMutation(verb, "layout %s", s.Name.String())
 	return nil
 }
 

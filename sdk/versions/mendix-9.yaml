@@ -27,11 +27,19 @@ features:
     synchronize_unsynchronized:
       min_version: "9.4.0"
       mdl: "SYNCHRONIZE UNSYNCHRONIZED  (nanoflow only)"
+    show_page_with_params:
+      min_version: "9.7.0"
+      mdl: "SHOW PAGE Module.PageName WITH PARAMS ..."
+      notes: "Pages$PageSettings.parameterMappings introduced in 9.7.0 (mendixmodelsdk StructureVersionInfo)"
 
   pages:
     basic:
       min_version: "9.0.0"
       mdl: "CREATE PAGE Module.Name (...) { ... }"
+    page_parameters:
+      min_version: "9.4.0"
+      mdl: "CREATE PAGE Module.Name (Params: ($P: Module.Entity)) { ... }"
+      notes: "Pages$PageParameter and Page.parameters introduced in 9.4.0 (mendixmodelsdk StructureVersionInfo)"
 
   security:
     module_roles:

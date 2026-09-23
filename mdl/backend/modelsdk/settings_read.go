@@ -109,6 +109,7 @@ func projectSettingsFromGen(g *genSet.ProjectSettings) *model.ProjectSettings {
 				DefaultTaskParallelism:    int(p.DefaultTaskParallelism()),
 				WorkflowEngineParallelism: int(p.WorkflowEngineParallelism()),
 			}
+			ps.Workflows.Groups, ps.Workflows.GroupsIncomplete = workflowGroupsFromGen(p)
 			setBase(&ps.Workflows.BaseElement, p, "Settings$WorkflowsProjectSettingsPart")
 		case *genSet.DistributionSettings:
 			ps.Distribution = &model.DistributionSettings{
@@ -287,4 +288,29 @@ func constantValueOf(cv *genSet.ConstantValue) string {
 func setBase(b *model.BaseElement, el interface{ ID() element.ID }, typeName string) {
 	b.ID = model.ID(el.ID())
 	b.TypeName = typeName
+}
+
+// workflowGroupsFromGen converts the Groups part-list of a workflows settings
+// part to the semantic model. The second return reports that some element of the
+// stored list did not decode as a Settings$WorkflowGroup: the write path rebuilds
+// the list from the returned slice, so such an element would be dropped by any
+// rewrite, and UpdateProjectSettings refuses rather than lose it.
+func workflowGroupsFromGen(p *genSet.WorkflowsProjectSettingsPart) ([]model.WorkflowGroup, bool) {
+	items := p.GroupsItems()
+	if len(items) == 0 {
+		return nil, false
+	}
+	groups := make([]model.WorkflowGroup, 0, len(items))
+	incomplete := false
+	for _, it := range items {
+		g, ok := it.(*genSet.WorkflowGroup)
+		if !ok {
+			incomplete = true
+			continue
+		}
+		wg := model.WorkflowGroup{Name: g.Name(), Description: g.Description()}
+		setBase(&wg.BaseElement, g, "Settings$WorkflowGroup")
+		groups = append(groups, wg)
+	}
+	return groups, incomplete
 }

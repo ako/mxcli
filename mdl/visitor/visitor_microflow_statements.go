@@ -1517,8 +1517,12 @@ func buildSortColumnMicroflow(ctx parser.ISortColumnContext) *ast.SortColumnDef 
 	// keeping the quotes produced a nonsense reference that only failed on write
 	// ("attribute does not belong to entity"), unlike everywhere else where quoting
 	// is safe (FINDINGS #13).
-	if qn := colCtx.QualifiedName(); qn != nil {
-		col.Attribute = unquoteQualifiedName(qn.GetText())
+	//
+	// Several qualifiedNames mean an association path: every segment but the last
+	// is a hop, the last is the attribute (mendixlabs/mxcli#1152).
+	if qns := colCtx.AllQualifiedName(); len(qns) > 0 {
+		col.Associations = sortColumnHops(qns)
+		col.Attribute = unquoteQualifiedName(qns[len(qns)-1].GetText())
 	} else if id := colCtx.IDENTIFIER(); id != nil {
 		col.Attribute = unquoteIdentifier(id.GetText())
 	}
@@ -1529,6 +1533,20 @@ func buildSortColumnMicroflow(ctx parser.ISortColumnContext) *ast.SortColumnDef 
 	}
 
 	return col
+}
+
+// sortColumnHops returns every segment of a sort column's association path but
+// the last — the last is the attribute. Shared by the microflow and page sort
+// column builders so the two cannot disagree about where the attribute is.
+func sortColumnHops(qns []parser.IQualifiedNameContext) []string {
+	if len(qns) < 2 {
+		return nil
+	}
+	hops := make([]string, 0, len(qns)-1)
+	for _, qn := range qns[:len(qns)-1] {
+		hops = append(hops, getQualifiedNameText(qn))
+	}
+	return hops
 }
 
 // buildIfStatement converts IF statement context to IfStmt.

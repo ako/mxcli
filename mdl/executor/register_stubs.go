@@ -70,6 +70,9 @@ func registerEntityHandlers(r *Registry) {
 	r.Register(&ast.AlterEntityStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
 		return execAlterEntity(ctx, stmt.(*ast.AlterEntityStmt))
 	})
+	r.Register(&ast.AlterEntitiesStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execAlterEntities(ctx, stmt.(*ast.AlterEntitiesStmt))
+	})
 	r.Register(&ast.DropEntityStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
 		return execDropEntity(ctx, stmt.(*ast.DropEntityStmt))
 	})
@@ -518,6 +521,9 @@ func registerLintHandlers(r *Registry) {
 func registerAlterPageHandlers(r *Registry) {
 	r.Register(&ast.AlterPageStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
 		return execAlterPage(ctx, stmt.(*ast.AlterPageStmt))
+	})
+	r.Register(&ast.AlterPagesStylingStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execAlterPagesStyling(ctx, stmt.(*ast.AlterPagesStylingStmt))
 	})
 	r.Register(&ast.AlterPagesLayoutStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
 		return execAlterPagesLayout(ctx, stmt.(*ast.AlterPagesLayoutStmt))

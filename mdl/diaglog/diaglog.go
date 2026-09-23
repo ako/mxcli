@@ -12,7 +12,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -21,9 +23,48 @@ import (
 type Logger struct {
 	slog      *slog.Logger
 	file      *os.File
+	pid       int
 	cmdCount  int
 	errCount  int
 	startTime time.Time
+	closed    bool
+}
+
+// parentPIDEnv names the mxcli process that spawned this one, when one did.
+// Set by Init and inherited by every child, so a self-spawned run is
+// distinguishable from a call the user or agent made (ako/mxcli#629).
+const parentPIDEnv = "MXCLI_SESSION_PID"
+
+// One session per process.
+//
+// `diag loop-report` counts session records, so a process that opened two would
+// count twice and one that opened none would be invisible. Init is called from
+// mxcli's main() for every command and again by each command that builds a
+// logged executor; the second call has to return the SAME logger (ako/mxcli#617).
+var (
+	mu      sync.Mutex
+	current *Logger
+)
+
+// CloseCurrent ends the process session, if one was started. It is called from
+// main() only when the command returned normally —
+// so a run that exits through os.Exit leaves no session_end, and that absence is
+// what `diag loop-report` reads as a non-zero exit.
+func CloseCurrent() {
+	mu.Lock()
+	l := current
+	mu.Unlock()
+	l.Close()
+}
+
+// resetForTest drops the process logger so a test can start a fresh session.
+func resetForTest() {
+	mu.Lock()
+	defer mu.Unlock()
+	if current != nil && current.file != nil {
+		current.file.Close()
+	}
+	current = nil
 }
 
 // Init creates the daily log file and writes a session header.
@@ -31,6 +72,11 @@ type Logger struct {
 func Init(version, mode string) *Logger {
 	if isDisabled() {
 		return nil
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if current != nil {
+		return current
 	}
 
 	logDir := logDirectory()
@@ -56,6 +102,24 @@ func Init(version, mode string) *Logger {
 		startTime: time.Now(),
 	}
 
+	current = l
+	l.pid = os.Getpid()
+
+	// mxcli spawns mxcli: `test` runs `-c DESCRIBE SETTINGS`, `-c SHOW MODULES`
+	// and an `exec` of the generated runner before a single test executes, and
+	// `new`, `eval`, `tui` and the LSP do the same. Each child logs a session of
+	// its own, so without a marker the report counts them as calls the agent made
+	// — 3 phantom calls per `mxcli test` — and shows the parent as never having
+	// closed, because a session_start used to end the open invocation.
+	//
+	// The marker rides the ENVIRONMENT rather than each spawn site: a child
+	// started with exec.Command inherits this process's environment (explicitly
+	// via os.Environ(), or implicitly when Cmd.Env is nil), so setting it once
+	// here covers all six self-spawn sites and any added later without touching
+	// them (ako/mxcli#629).
+	parent := os.Getenv(parentPIDEnv)
+	os.Setenv(parentPIDEnv, strconv.Itoa(l.pid))
+
 	// Write session header
 	l.slog.Info("session_start",
 		"version", version,
@@ -64,7 +128,8 @@ func Init(version, mode string) *Logger {
 		"arch", runtime.GOARCH,
 		"mode", mode,
 		"args", os.Args,
-		"pid", os.Getpid(),
+		"pid", l.pid,
+		"parent_pid", parent,
 	)
 
 	return l
@@ -75,10 +140,22 @@ func (l *Logger) Close() {
 	if l == nil {
 		return
 	}
+	// Each command that holds the process logger defers Close; only the first
+	// may end the session, or a run would be recorded as finishing early.
+	mu.Lock()
+	defer mu.Unlock()
+	if l.closed {
+		return
+	}
+	l.closed = true
 	l.slog.Info("session_end",
 		"commands_executed", l.cmdCount,
 		"errors_count", l.errCount,
 		"duration_s", int(time.Since(l.startTime).Seconds()),
+		// The pid is what pairs this with its session_start. Without it a reader
+		// can only guess by position, which is wrong the moment one mxcli runs
+		// another — and mxcli runs itself routinely (ako/mxcli#629).
+		"pid", l.pid,
 	)
 	l.file.Close()
 }
@@ -176,6 +253,10 @@ func isDisabled() bool {
 
 // logDirectory returns ~/.mxcli/logs/.
 func logDirectory() string {
+	// MXCLI_LOG_DIR keeps a test out of the user's real log directory.
+	if d := os.Getenv("MXCLI_LOG_DIR"); d != "" {
+		return d
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""

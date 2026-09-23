@@ -266,11 +266,11 @@ sequenceDiagram
 | `mdl/grammar` | ANTLR4 lexer/parser (generated from MDLLexer.g4 + MDLParser.g4) |
 | `mdl/ast` | AST node types for MDL statements |
 | `mdl/visitor` | ANTLR listener that builds AST from parse tree |
-| `mdl/executor` | Thin orchestrator: parses AST, calls `ctx.Backend.*`, formats output. Handles microflows, nanoflows, pages, workflows, domain models, security, and all other MDL document types. **No `sdk/mpr` imports.** |
+| `mdl/executor` | Thin orchestrator: parses AST, calls `ctx.Backend.*`, formats output. Handles microflows, nanoflows, pages, workflows, domain models, security, and all other MDL document types. **No storage-engine imports.** |
 | `mdl/backend` | Domain-specific backend interfaces (`FullBackend`, `PageMutator`, `WorkflowMutator`, `BackendFactory`) |
 | `mdl/backend/mpr` | MPR-backed implementation of all backend interfaces; owns all BSON mutation logic |
 | `mdl/backend/mock` | `MockBackend` with Func-field injection for unit testing without a `.mpr` file |
-| `mdl/types` | Shared domain types (`NavigationDocument`, `JavaAction`, `JsonStructure`, EDMX/AsyncAPI parsers, ID utilities) — no `sdk/mpr` dependency |
+| `mdl/types` | Shared domain types (`NavigationDocument`, `JavaAction`, `JsonStructure`, EDMX/AsyncAPI parsers, ID utilities) — no storage-engine dependency |
 | `mdl/bsonutil` | CGO-free BSON ID utilities (`IDToBsonBinary`, `BsonBinaryToID`, `NewIDBsonBinary`) |
 | `mdl/catalog` | SQLite-based catalog for querying project metadata (entities, microflows, references, permissions, source code) |
 | `mdl/linter` | Extensible linting framework with built-in rules and Starlark scripting support; includes report generation |
@@ -369,20 +369,24 @@ classDiagram
 
 | Package | Purpose |
 |---------|---------|
-| `sdk/mpr/` | MPR file format handling (~18k lines across reader, writer, parser files split by domain) |
+| `modelsdk/` | The MPR engine: file format, BSON codec, canonical form |
+| `mdl/backend/modelsdk/` | Backend implementation — semantic model ↔ gen/BSON, per document type |
 | `sdk/domainmodel` | Entity, Attribute, Association types |
 | `sdk/microflows` | Microflow, Activity types (60+ types) |
 | `sdk/pages` | Page, Widget types (50+ types) |
 | `sdk/widgets` | Embedded widget templates for pluggable widgets (ComboBox, DataGrid2, Gallery, etc.) |
 
-The `sdk/mpr/` package is split by domain for maintainability:
+The engine is split across `modelsdk/`, with the per-document-type mapping in
+`mdl/backend/modelsdk/`:
 
-| File Pattern | Purpose |
-|--------------|---------|
-| `reader.go`, `reader_*.go` | Read-only MPR access, split by element type (documents, widgets, etc.) |
-| `writer.go`, `writer_*.go` | Read-write MPR modification (domainmodel, microflow, security, widgets, etc.) |
-| `parser.go`, `parser_*.go` | BSON parsing and deserialization (domainmodel, microflow, etc.) |
-| `utils.go` | UUID generation utilities |
+| Package / pattern | Purpose |
+|-------------------|---------|
+| `modelsdk/mpr/` | MPR file access: reader, writer, raw units, the single write choke point |
+| `modelsdk/codec/` | Document ↔ BSON: `encoder.go`, `decoder.go`, type defaults, list markers |
+| `modelsdk/canon/` | Canonical form, identity transplant, write elision (ADR-0008) |
+| `modelsdk/gen/` | Vendored metamodel types |
+| `mdl/backend/modelsdk/*_write.go` | Semantic model → gen → BSON, per document type |
+| `mdl/backend/modelsdk/*_read.go` | BSON → gen → semantic model |
 
 ### 5. Model Layer (`model/`)
 
@@ -893,7 +897,7 @@ Key files: `sdk/widgets/augment.go` (augmentation logic), `sdk/widgets/mpk/mpk.g
 
 ### 11. Backend Abstraction + Dependency Inversion
 
-The executor **never imports `sdk/mpr`**. All project access goes through `ctx.Backend`, which implements `backend.FullBackend`. This enables:
+The executor **never reaches past `ctx.Backend`**. All project access goes through `ctx.Backend`, which implements `backend.FullBackend`. This enables:
 - Unit tests without a `.mpr` file (inject `MockBackend`)
 - Alternative storage backends (cloud, in-memory, etc.)
 - Isolated BSON mutation logic in `mdl/backend/mpr/`
@@ -930,7 +934,7 @@ flowchart LR
 2. Implement it in `mdl/backend/mpr/` operating on BSON/reader/writer
 3. Add a `Func`-field stub in `mdl/backend/mock/`
 4. Call `ctx.Backend.YourMethod()` from the executor handler
-5. Never call `sdk/mpr` types directly from the executor
+5. Never call storage-engine types (`modelsdk/mpr`, `modelsdk/codec`, `modelsdk/gen`) directly from the executor
 
 **Mutation pattern (ALTER PAGE / ALTER WORKFLOW):**
 
@@ -943,7 +947,7 @@ The mutator owns the document's lifecycle; the executor only describes *what* to
 
 **Shared types (`mdl/types/`):**
 
-Types used by both `mdl/` and `sdk/mpr` live in `mdl/types/`. The `sdk/mpr` package re-exports them as type aliases (`type JavaAction = types.JavaAction`) for backward compatibility. New shared types go in `mdl/types/`, not in `sdk/mpr/reader_types.go`.
+Types used by more than one layer live in `mdl/types/`, and the others alias them (`type JavaAction = types.JavaAction`). New shared types go in `mdl/types/` — never as a duplicate definition in a storage package. `modelsdk/mpr/version.ProjectVersion` is the cautionary case: it *duplicates* `types.ProjectVersion` instead of aliasing it, so the two are unrelated Go types printing under the same name.
 
 ## Future Architecture Considerations
 

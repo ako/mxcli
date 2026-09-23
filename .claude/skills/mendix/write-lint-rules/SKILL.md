@@ -57,6 +57,8 @@ silently return empty results (issue #721).
 | `widgets()` | list of widget | All non-system widgets |
 | `snippets()` | list of snippet | All non-system snippets |
 | `scheduled_events()` | list of scheduled_event | All non-system scheduled events (requires MPR reader) |
+| `rest_clients()` | list of rest_client | Consumed REST service documents (excluding platform modules) |
+| `rest_operations()` | list of rest_operation | Operations on consumed REST services, including their `timeout` |
 | `attributes_for(entity_qualified_name)` | list of attribute | Attributes for a specific entity |
 | `activities_for(microflow_qualified_name)` | list of activity | Activities for a microflow (requires FULL catalog) |
 | `permissions()` | list of permission | All permissions across all element types |
@@ -119,6 +121,33 @@ def check():
 
 ## Object Properties
 
+> **The example values below are the real ones — do not adapt their case or their
+> spelling.** A filter on a value the catalog never emits is silent: the rule
+> compiles, runs, matches nothing and reports a clean pass. Two traps in
+> particular:
+>
+> - **Case is not cosmetic.** Document and element kinds are upper-case
+>   (`"MICROFLOW"`, `"ENTITY"`, `"READ"`), attribute data types are TitleCase
+>   (`"String"`, `"DateTime"`), and `ref_kind` is lower-case (`"call"`,
+>   `"show_page"`). Guessing wrong matches zero rows.
+> - **`action_type` is the SDK name, never Mendix's BSON storage name.** The
+>   catalog reports `ShowPageAction` / `ClosePageAction` / `CreateObjectAction` /
+>   `CommitObjectsAction`; the storage names `ShowFormAction`, `CloseFormAction`,
+>   `CreateChangeAction` and `CommitAction` that appear in `.mpr` documents never
+>   reach a rule. A rule that allow-lists the storage names flags every microflow
+>   that opens a page — the inversion measured at 49% false positives in
+>   mendixlabs/mxcli#1027.
+>
+> To check a value against your own project rather than trusting any list:
+>
+> ```bash
+> sqlite3 .mxcli/catalog.db "SELECT DISTINCT ActionType FROM activities;"
+> sqlite3 .mxcli/catalog.db "SELECT DISTINCT SourceType, TargetType, RefKind FROM refs;"
+> ```
+>
+> Absence from your project means the construct is not used there; a value absent
+> from the tables below is one the catalog never produces anywhere.
+
 ### entity
 | Property | Type | Example |
 |----------|------|---------|
@@ -127,7 +156,7 @@ def check():
 | `qualified_name` | string | `"Sales.Customer"` |
 | `module_name` | string | `"Sales"` |
 | `folder` | string | `"DomainModel"` — folder path within module |
-| `entity_type` | string | `"persistent"`, `"NonPersistent"`, `"view"` |
+| `entity_type` | string | exactly `"Persistent"`, `"NonPersistent"` or `"View"` — any other spelling matches nothing and the rule silently reports nothing |
 | `description` | string | Documentation text |
 | `generalization` | string | Parent entity qualified name |
 | `attribute_count` | int | Number of attributes |
@@ -300,7 +329,7 @@ def count_not(node):
 | `entity_id` | string | Parent entity UUID |
 | `entity_qualified_name` | string | `"Sales.Customer"` |
 | `module_name` | string | `"Sales"` |
-| `data_type` | string | `"string"`, `"integer"`, `"datetime"`, etc. |
+| `data_type` | string | `"String"`, `"Integer"`, `"Long"`, `"Decimal"`, `"Boolean"`, `"DateTime"`, `"Date"`, `"Enumeration"`, `"AutoNumber"`, `"Binary"`, `"HashedString"` |
 | `length` | int | Field length (for strings) |
 | `is_unique` | bool | Has unique constraint |
 | `is_required` | bool | Is required |
@@ -314,12 +343,42 @@ def count_not(node):
 | `id` | string | Activity UUID |
 | `name` | string | Activity name |
 | `caption` | string | Activity caption |
-| `activity_type` | string | `"ActionActivity"`, `"ExclusiveSplit"`, `"LoopedActivity"`, etc. |
-| `action_type` | string | `"CreateChangeAction"`, `"CommitAction"`, `"ShowFormAction"`, etc. |
+| `activity_type` | string | `"ActionActivity"`, `"ExclusiveSplit"`, `"ExclusiveMerge"`, `"LoopedActivity"`, `"InheritanceSplit"`, `"StartEvent"`, `"EndEvent"` |
+| `action_type` | string | The action inside an `ActionActivity`: `"CreateObjectAction"`, `"ChangeObjectAction"`, `"CommitObjectsAction"`, `"DeleteObjectAction"`, `"RetrieveAction"`, `"MicroflowCallAction"`, `"ShowPageAction"`, `"ClosePageAction"`, `"LogMessageAction"`, `"JavaActionCallAction"`. Empty for an activity that is not an action |
 | `microflow_id` | string | Parent microflow UUID |
 | `microflow_qualified_name` | string | `"Sales.ACT_Customer_Create"` |
 | `module_name` | string | `"Sales"` |
 | `entity_ref` | string | Referenced entity qualified name |
+| `service_ref` | string | Called service document (REST / web service / OData client); empty when the activity calls none |
+| `action_ref` | string | Operation or action within that service; empty when the activity calls none |
+
+### rest_client
+| Property | Type | Example |
+|----------|------|---------|
+| `id` | string | Document UUID |
+| `name` | string | `"CustomerApi"` |
+| `qualified_name` | string | `"Sales.CustomerApi"` |
+| `module_name` | string | `"Sales"` |
+| `folder` | string | Folder path within module |
+| `base_url` | string | `"https://api.example.com/v1"` |
+| `auth_scheme` | string | Authentication scheme, empty when none |
+| `operation_count` | int | Number of operations on the service |
+| `documentation` | string | Documentation text |
+
+### rest_operation
+| Property | Type | Example |
+|----------|------|---------|
+| `id` | string | Operation UUID |
+| `service_id` | string | Owning service UUID |
+| `service_qualified_name` | string | `"Sales.CustomerApi"` |
+| `name` | string | `"GetCustomer"` |
+| `http_method` | string | `"GET"`, `"POST"`, … |
+| `path` | string | `"/customers/{id}"` |
+| `parameter_count` | int | Number of parameters |
+| `has_body` | bool | True when the request carries a body |
+| `response_type` | string | Response type name |
+| `timeout` | int | Configured timeout in milliseconds; `0` when none is set |
+| `module_name` | string | `"Sales"` |
 
 ### permission
 
@@ -328,11 +387,11 @@ Returned by `permissions()` (all types) or `permissions_for()` (entity-specific)
 | Property | Type | Example |
 |----------|------|---------|
 | `module_role_name` | string | `"Admin"` |
-| `element_type` | string | `"entity"`, `"microflow"`, `"page"`, `"ODATA_SERVICE"` (from `permissions()` only) |
+| `element_type` | string | `"ENTITY"`, `"MICROFLOW"`, `"PAGE"`, `"ODATA_SERVICE"` (from `permissions()` only) |
 | `element_name` | string | `"Sales.Customer"` |
 | `module_name` | string | `"Sales"` |
 | `entity_name` | string | `"Sales.Customer"` (from `permissions_for()` only) |
-| `access_type` | string | `"create"`, `"read"`, `"write"`, `"delete"`, `"execute"`, `"view"`, `"access"`, `"MEMBER_READ"`, `"MEMBER_WRITE"` |
+| `access_type` | string | `"CREATE"`, `"READ"`, `"WRITE"`, `"DELETE"` (entity), `"EXECUTE"` (microflow), `"VIEW"` (page), `"ACCESS"` (OData service), `"MEMBER_READ"`, `"MEMBER_WRITE"` |
 | `member_name` | string | Attribute name (for MEMBER_READ/MEMBER_WRITE) |
 | `xpath_constraint` | string | XPath constraint or empty |
 | `is_constrained` | bool | True if XPath constraint is set |
@@ -361,13 +420,13 @@ Returned by `permissions()` (all types) or `permissions_for()` (entity-specific)
 ### reference
 | Property | Type | Example |
 |----------|------|---------|
-| `source_type` | string | `"microflow"`, `"page"`, etc. |
+| `source_type` | string | The document the edge comes FROM, upper-case: `"MICROFLOW"`, `"NANOFLOW"`, `"RULE"`, `"PAGE"`, `"SNIPPET"`, `"ENTITY"`, `"ASSOCIATION"`, `"WORKFLOW"`, `"NAVIGATION"`, `"SCHEDULED_EVENT"`, `"PUBLISHED_REST_OPERATION"`, `"PROJECT_SETTINGS"` |
 | `source_id` | string | Source UUID |
 | `source_name` | string | `"Sales.ACT_Customer_Create"` |
-| `target_type` | string | `"entity"`, `"microflow"`, etc. |
+| `target_type` | string | What it points AT, upper-case: `"ENTITY"`, `"ASSOCIATION"`, `"MICROFLOW"`, `"NANOFLOW"`, `"RULE"`, `"PAGE"`, `"LAYOUT"`, `"WORKFLOW"`, `"WIDGET"`, `"JAVA_ACTION"`, `"REST_OPERATION"`, `"REGULAR_EXPRESSION"`. `LAYOUT` and `WIDGET` are only ever targets; `SCHEDULED_EVENT` and `PROJECT_SETTINGS` only ever sources |
 | `target_id` | string | Target UUID |
 | `target_name` | string | `"Sales.Customer"` |
-| `ref_kind` | string | Reference kind |
+| `ref_kind` | string | How it references: `"call"`, `"create"`, `"retrieve"`, `"change"`, `"delete"`, `"show_page"`, `"datasource"`, `"action"`, `"layout"`, `"parameter"`, `"return"`, `"generalize"`, `"associate"`, `"home_page"`, `"login_page"`, `"menu_item"`, `"calculate"`, `"schedule"`, `"validate"`, `"settings"`, `"widget"`, `"sync"`, `"publish"`, `"event"` — lower-case, unlike the types above |
 | `module_name` | string | Source module |
 
 ### project_security
@@ -416,7 +475,7 @@ SEVERITY = "warning"
 def check():
     violations = []
     for e in entities():
-        if e.entity_type == "persistent" and not e.is_external and e.access_rule_count == 0:
+        if e.entity_type == "Persistent" and not e.is_external and e.access_rule_count == 0:
             violations.append(violation(
                 message="persistent entity '{}' has no access rules".format(e.qualified_name),
                 location=location(module=e.module_name, document_type="entity", document_name=e.name),

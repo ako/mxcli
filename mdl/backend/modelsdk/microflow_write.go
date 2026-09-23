@@ -203,14 +203,35 @@ func microflowToGen(mf *microflows.Microflow, major int) *genMf.Microflow {
 	out.SetName(mf.Name)
 	out.SetDocumentation(mf.Documentation)
 	out.SetExcluded(mf.Excluded)
-	out.SetExportLevel("Hidden")
+	// Carried, not hardcoded — but defaulted, because "" is not a member of
+	// MicroflowsExportLevel and an enum-valued property must never be written
+	// with a value the metamodel does not declare. A fresh microflow and a
+	// stored document that says nothing both get "Hidden", which is what this
+	// line always wrote, so the default case is unchanged.
+	exportLevel := mf.ExportLevel
+	if exportLevel == "" {
+		exportLevel = "Hidden"
+	}
+	out.SetExportLevel(exportLevel)
 	out.SetAllowConcurrentExecution(mf.AllowConcurrentExecution)
 	// Carried, not hardcoded. This was `false` unconditionally, which silently
 	// turned a microflow's "apply entity access" OFF on every rewrite.
 	out.SetApplyEntityAccess(mf.ApplyEntityAccess)
 	out.SetMarkAsUsed(mf.MarkAsUsed)
-	out.SetConcurrencyErrorMicroflowQualifiedName("")
-	out.SetConcurrencyErrorMessage(genTexts.NewText()) // empty Texts$Text (Items=[3] via default)
+	// Carried, not hardcoded. These two are what Mendix does to a second caller
+	// when AllowConcurrentExecution is false, and Mendix requires one of them in
+	// that case (CE4899) — writing both empty on every rewrite deleted the
+	// answer along with the question. nil still yields the bare empty
+	// Texts$Text this line always wrote (Items=[3] via the registered default),
+	// so a microflow without a message is unchanged — semantically, which is
+	// the level that matters: the element's $ID is minted fresh on every encode,
+	// so it is canon.Equal that holds here, never bytes.Equal (ADR-0008).
+	out.SetConcurrencyErrorMicroflowQualifiedName(mf.ConcurrencyErrorMicroflow)
+	if mf.ConcurrencyErrorMessage != nil {
+		out.SetConcurrencyErrorMessage(textToGen(mf.ConcurrencyErrorMessage))
+	} else {
+		out.SetConcurrencyErrorMessage(genTexts.NewText())
+	}
 	out.SetAllowedModuleRolesQualifiedNames(moduleRoleNames(mf.AllowedModuleRoles))
 	out.SetMicroflowReturnType(microflowDataTypeToGen(mf.ReturnType))
 
@@ -241,10 +262,14 @@ func microflowToGen(mf *microflows.Microflow, major int) *genMf.Microflow {
 
 	if major >= 10 {
 		out.SetReturnVariableName(mf.ReturnVariableName)
-		out.SetUrl("")
+		// Carried, not hardcoded. These two were `""` and `nil` unconditionally,
+		// so every rewrite deleted the microflow's deep link (#1120). A fresh
+		// microflow has neither, so the empty values still come out empty —
+		// SetUrlSearchParametersQualifiedNames(nil) is the empty marker-1 list.
+		out.SetUrl(mf.URL)
 		// StableId is emitted as a fresh GUID binary via the registered default
 		// (the gen mistypes it as a string), not set here.
-		out.SetUrlSearchParametersQualifiedNames(nil) // empty marker-1 list
+		out.SetUrlSearchParametersQualifiedNames(mf.URLSearchParameters)
 	}
 	return out
 }
@@ -396,7 +421,10 @@ func annotationFlowToGen(af *microflows.AnnotationFlow, major int) element.Eleme
 	g.SetID(element.ID(af.ID))
 	g.SetOriginID(element.ID(af.OriginID))
 	g.SetDestinationID(element.ID(af.DestinationID))
-	g.SetOriginConnectionIndex(0)
+	// A note sits ABOVE the element it documents, so its line leaves the note's
+	// bottom edge and enters the element's top. Both indexes were 0 (top), which
+	// drew the line out of the top of the note and back down around it.
+	g.SetOriginConnectionIndex(2)
 	g.SetDestinationConnectionIndex(0)
 	if major <= 9 {
 		g.SetOriginBezierVector("0;0")

@@ -65,7 +65,15 @@ func (b *Backend) UpdateProjectSettings(ps *model.ProjectSettings) error {
 				rawPart["UserEntity"] = ps.Workflows.UserEntity
 				rawPart["DefaultTaskParallelism"] = settingsoverlay.SafeInt64(ps.Workflows.DefaultTaskParallelism)
 				rawPart["WorkflowEngineParallelism"] = settingsoverlay.SafeInt64(ps.Workflows.WorkflowEngineParallelism)
-				settings = append(settings, rawPart)
+				// The workflow groups, not just the scalars. Without this an
+				// ALTER SETTINGS WORKFLOWS ADD GROUP would report success and
+				// write nothing — the stored list was carried through from the
+				// preserved part and the new group dropped on the floor, the same
+				// shape as the enabled-language list above.
+				if err := guardWorkflowGroups(ps.Workflows); err != nil {
+					return err
+				}
+				settings = append(settings, settingsoverlay.WorkflowGroups(ps.Workflows, rawPart))
 			} else {
 				settings = append(settings, rawPart)
 			}
@@ -91,4 +99,19 @@ func (b *Backend) UpdateProjectSettings(ps *model.ProjectSettings) error {
 
 func overlayModelSettings(ms *model.ModelSettings, raw map[string]any) map[string]any {
 	return settingsoverlay.SetModelSettings(ms, raw)
+}
+
+// guardWorkflowGroups refuses a rewrite that would drop a stored group the read
+// path could not represent (ADR-0005 guard-don't-drop). The Groups list is
+// rebuilt from ws.Groups, so a stored element that did not decode as a
+// Settings$WorkflowGroup — a future variant of the part, say — would be silently
+// deleted by a statement that only meant to rename one group. Counting cannot
+// detect that, because REMOVE GROUP legitimately shortens the list; the read
+// flags it instead.
+func guardWorkflowGroups(ws *model.WorkflowsSettings) error {
+	if ws.GroupsIncomplete {
+		return fmt.Errorf("UpdateProjectSettings: the stored workflow group list holds an element mxcli " +
+			"could not read; refusing to rewrite Groups, which would drop it")
+	}
+	return nil
 }

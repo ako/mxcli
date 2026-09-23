@@ -9,6 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 
 	"github.com/mendixlabs/mxcli/mdl/backend"
+	"github.com/mendixlabs/mxcli/mdl/backend/bsonnav"
 )
 
 // A dry run, so `mxcli check` can refuse what `exec` refuses.
@@ -102,4 +103,27 @@ func (m *Mutator) WidgetPropertyKeys(widgetRef, columnRef string) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// WidgetStorageType returns what the STORED widget is, as two raw storage facts:
+// its BSON `$Type`, and — for a pluggable widget, whose `$Type` is always
+// `CustomWidgets$CustomWidget` — the widget id under `Type.WidgetId`.
+//
+// Raw facts, not a resolved answer, because which theme-registry key they map to
+// is a theme concern and this package holds storage. The executor owns that
+// mapping (`storedWidgetDesignPropsKey`), which keeps the one `$Type` → key
+// table it already has as the single place that decides (ako/mxcli#515).
+//
+// Both empty when the widget does not resolve, which the caller reads as "cannot
+// be established" rather than as a native widget.
+func (m *Mutator) WidgetStorageType(widgetRef string) (bsonType, widgetID string) {
+	result := m.widgetFinder(m.rawData, widgetRef)
+	if result == nil {
+		return "", ""
+	}
+	bsonType = bsonnav.DGetString(result.widget, "$Type")
+	if t := bsonnav.DGetDoc(result.widget, "Type"); t != nil {
+		widgetID = bsonnav.DGetString(t, "WidgetId")
+	}
+	return bsonType, widgetID
 }

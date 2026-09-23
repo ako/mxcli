@@ -24,7 +24,20 @@ func init() {
 			"--   OR REPLACE  discard the existing document and write a fresh one\n" +
 			"--   OR MODIFY   update the existing document in place\n" +
 			"-- Both reuse the existing element's ID, so references from other\n" +
-			"-- documents survive.",
+			"-- documents survive.\n" +
+			"--\n" +
+			"-- A rewrite rebuilds the document from the statement, so properties MDL\n" +
+			"-- cannot express are CARRIED OVER rather than reset — a microflow's URL\n" +
+			"-- and export level, a queued call's binding, translated captions, an\n" +
+			"-- entity's identity. Nothing would report the loss if they were not: the\n" +
+			"-- result is a valid document either way, so mxcli check, mx check and\n" +
+			"-- mxbuild all pass and only Studio Pro shows what went missing.\n" +
+			"--\n" +
+			"-- DROP followed by CREATE is a NEW document and keeps none of it, and so\n" +
+			"-- is a DESCRIBE -> rename -> exec copy. Where a property HAS a spelling,\n" +
+			"-- DESCRIBE emits it and the copy is faithful (see microflow.create);\n" +
+			"-- where it does not, DESCRIBE flags the gap as a comment rather than\n" +
+			"-- producing output that looks complete.",
 		Example: "CREATE OR REPLACE MICROFLOW MyModule.ACT_Recalculate ()\nBEGIN\n  RETURN;\nEND;\n\nCREATE OR MODIFY PERSISTENT ENTITY MyModule.Customer (\n  Name: String(200)\n);",
 		SeeAlso: []string{"microflow", "domain-model.entity", "page", "document-folder"},
 	})
@@ -361,6 +374,7 @@ create or modify translations in Administration for nl_NL (
 			"database type", "constant override", "language",
 			"add language", "remove language", "enable language", "translations",
 			"optimistic locking", "concurrency", "lost update",
+			"workflow group", "workflow groups", "add group", "task assignment",
 		},
 		Syntax: `ALTER SETTINGS MODEL <key> = <value>;
 ALTER SETTINGS CONFIGURATION '<name>' <key> = <value>, ...;
@@ -372,6 +386,9 @@ ALTER SETTINGS LANGUAGE ADD OR MODIFY '<code>' [(...)];
 ALTER SETTINGS LANGUAGE MODIFY '<code>' (CheckCompleteness: true, ...);
 ALTER SETTINGS LANGUAGE REMOVE '<code>';
 ALTER SETTINGS WORKFLOWS UserEntity = '<qualifiedName>';
+ALTER SETTINGS WORKFLOWS ADD [OR MODIFY] GROUP '<name>' [(Description: '<text>')];
+ALTER SETTINGS WORKFLOWS MODIFY GROUP '<name>' (Description: '<text>');
+ALTER SETTINGS WORKFLOWS REMOVE GROUP '<name>';
 CREATE [OR MODIFY] CONFIGURATION '<name>' [<key> = <value>, ...];
 DROP CONFIGURATION '<name>';`,
 		Example: `ALTER SETTINGS MODEL AfterStartupMicroflow = 'Module.MF_Startup';
@@ -422,6 +439,29 @@ ALTER SETTINGS LANGUAGE REMOVE 'de_DE';
 -- language that still carries translations is refused with the count, because
 -- removing it would strip work the statement does not name. Say it on purpose
 -- with: create or replace translations for <code> ( );
+
+-- WORKFLOW GROUPS are the named buckets under App Settings > Workflows > Groups
+-- that a user task's group targeting selects from. Mendix 11.2+ (the metamodel
+-- floor for Settings$WorkflowGroup — the release notes' "GA in 11.6" is a
+-- different question from whether the document loads).
+ALTER SETTINGS WORKFLOWS ADD GROUP 'Approvers' (Description: 'Primary approval group');
+ALTER SETTINGS WORKFLOWS ADD GROUP 'Reviewers';
+ALTER SETTINGS WORKFLOWS MODIFY GROUP 'Reviewers' (Description: 'Second-line review');
+ALTER SETTINGS WORKFLOWS REMOVE GROUP 'Reviewers';
+SHOW WORKFLOW GROUPS;
+
+-- Description is the ONLY option: a Settings$WorkflowGroup stores Name and
+-- Description and nothing else, so there is no identifier to set and the NAME is
+-- the group's identity — which is what MODIFY and REMOVE address, and why adding
+-- a second group differing only in case is refused. ADD OR MODIFY is the upsert
+-- and what DESCRIBE SETTINGS emits.
+--
+-- Nothing in the model references a group: a user task targets groups through a
+-- microflow or an XPath returning System.WorkflowGroup objects. The coupling is
+-- at RUNTIME, where Mendix materialises one System.WorkflowGroup row per entry,
+-- keyed on the group's element id — so MODIFY edits the row in place and REMOVE
+-- stops it being maintained, while user tasks already assigned to it keep their
+-- association.
 
 -- DatabaseType must be a Mendix database type:
 --   Db2, Hsqldb, MySql, Oracle, PostgreSql, SapHana, SqlServer

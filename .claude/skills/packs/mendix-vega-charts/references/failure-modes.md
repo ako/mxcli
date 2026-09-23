@@ -19,6 +19,46 @@ A mismatch leaves the spec's own (absent) data in place. No error either.
 empty string parses as nothing and the widget renders an empty chart rather than an
 error.
 
+**Cause D — the spec is URL-fed and the endpoint answered `401`.** See the next
+entry; this is the one that looks most like a spec problem and is not one.
+
+---
+
+## A URL-fed chart is empty — axes and a full legend, zero data points
+
+The fetch came back `401` and Vega read the error body as an empty dataset. No console
+error, no Vega warning, and the legend is *complete* — it is built from the spec's
+scales, not from rows — so the chart looks like one whose data happens to be missing
+rather than one whose request was refused.
+
+**Cause: Mendix refuses a session-authenticated request without the session's CSRF
+token, on reads too.** Not just writes, and not just `/xas/`. Measured on 11.14.0,
+one URL, requests differing in one header:
+
+| request | result |
+|---|---|
+| no credentials | `401` |
+| session cookie only | `401` |
+| session cookie **+ `X-Csrf-Token`** | `200`, correct payload |
+| basic auth | `200`, correct payload |
+
+and through the widget's own loader: **0 marks, 3 axes, no error** without the token;
+1 mark with it.
+
+Fix: the widget attaches the token to same-origin fetches
+([`widget/src/csrf.ts`](../widget/src/csrf.ts)). A widget built from a copy of this
+pack from before ako/mxcli#574 does not — check for that file before suspecting the
+spec.
+
+Two measurements that mislead here, both worth knowing before you start:
+
+- **`document.cookie` shows only `originURI=/login.html`.** It reads like the session
+  cookie is missing, and sends you after a cookie problem that does not exist:
+  `XASSESSIONID` and `xasid` are `httpOnly`. The browser is sending them.
+- **Basic auth on the same URL returns the data.** That looks like proof the endpoint
+  is fine and the chart is broken. The endpoint *is* fine. So is the chart. Isolate on
+  the header, not on the URL: two requests, one added header, everything else equal.
+
 ---
 
 ## Numbers in the chart are smaller than the numbers in the database

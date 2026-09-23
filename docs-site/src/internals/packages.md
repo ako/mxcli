@@ -169,7 +169,11 @@ github.com/mendixlabs/mxcli/
 | `sdk/microflows/` | Yes | Microflow, Nanoflow, 60+ activity types |
 | `sdk/pages/` | Yes | Page, Layout, 50+ widget types |
 | `sdk/widgets/` | Yes | Widget template loading and cloning |
-| `sdk/mpr/` | Yes | MPR reader, writer, BSON parser |
+| `modelsdk/mpr/` | Yes | MPR file format: reader, writer, raw unit access |
+| `modelsdk/codec/` | Yes | Document ↔ BSON encode/decode |
+| `modelsdk/canon/` | Yes | Canonical form, identity transplant, write elision |
+| `modelsdk/gen/` | Yes | Vendored metamodel types |
+| `mdl/backend/modelsdk/` | No | Backend implementation: semantic model ↔ gen/BSON |
 | `mdl/grammar/` | Yes | ANTLR4 generated lexer/parser |
 | `mdl/ast/` | Yes | AST node types for all MDL statements |
 | `mdl/visitor/` | Yes | Parse tree to AST conversion |

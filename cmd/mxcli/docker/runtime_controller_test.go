@@ -344,6 +344,8 @@ func TestNeedsDBUpdate(t *testing.T) {
 		{"clean", &M2EEResponse{}, false},
 		{"result3", &M2EEResponse{Result: 3}, true},
 		{"message", &M2EEResponse{Message: "The database has to be updated first"}, true},
+		{"result2", &M2EEResponse{Result: 2}, true},
+		{"no-existing-db-message", &M2EEResponse{Message: "The database to be used does not exist."}, true},
 		{"feedback", &M2EEResponse{RawFeedback: json.RawMessage(`{"synchronizationreason":"x"}`)}, true},
 		{"other-error", &M2EEResponse{Result: 1, Message: "unrelated"}, false},
 	}

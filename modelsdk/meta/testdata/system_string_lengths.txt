@@ -1,0 +1,139 @@
+# System module String attribute lengths, measured -- not transcribed.
+#
+# Source: the System module's domain model inside `deployment/model/model.mdp`,
+# the BSON document stream mxbuild writes for the runtime. It is the model the
+# runtime creates the System tables from, so it is what CE6770 -- and every
+# other length check Mendix applies to a System attribute -- is decided against.
+#
+# How to regenerate (ONE build, not one build per attribute):
+#
+#	mxcli new Probe --version <v> --theme none --layout none --skip-init
+#	go test ./modelsdk/meta -run TestSystemStringLengths \
+#	    -mdp Probe/deployment/model/model.mdp -update
+#
+# Measured on Mendix 11.14.0. Of the 115 attributes below, 108 also exist in
+# 10.24.4.77222 and ALL 108 carry the same length there -- so the lengths are
+# stable across a major-version boundary and one table serves every supported
+# version, rather than a per-version registry. (The 7 that do not appear in
+# 10.24.4 are Mendix 11 workflow additions.)
+#
+# A length of 0 is Mendix's own encoding of "unlimited", NOT "unmeasured". This
+# file lists every String attribute `SystemEntities` declares, so an unmeasured
+# one cannot exist without failing the test.
+#
+# entity	attribute	length
+AutoCommitEntry	SessionId	36
+BackgroundJob	Result	0
+ChangeHash	Attribute	200
+ChangeHash	Hash	200
+ConsumedODataConfiguration	ProxyHost	0
+ConsumedODataConfiguration	ProxyPassword	0
+ConsumedODataConfiguration	ProxyUsername	0
+ConsumedODataConfiguration	ServiceUrl	0
+Error	ErrorType	0
+Error	Message	0
+Error	Stacktrace	0
+FileDocument	Name	400
+HttpHeader	Key	0
+HttpHeader	Value	0
+HttpMessage	Content	0
+HttpMessage	HttpVersion	10
+HttpRequest	Uri	0
+HttpResponse	ReasonPhrase	0
+Image	PublicThumbnailPath	500
+Language	Code	20
+Language	Description	200
+OfflineCreatedGuids	Guid	200
+OfflineSynchronizationHistory	SyncId	200
+Paging	SortAttribute	200
+ProcessedQueueTask	Arguments	0
+ProcessedQueueTask	ContextData	0
+ProcessedQueueTask	ErrorMessage	0
+ProcessedQueueTask	MicroflowName	200
+ProcessedQueueTask	QueueId	36
+ProcessedQueueTask	QueueName	200
+ProcessedQueueTask	ScheduledEventName	200
+ProcessedQueueTask	UserActionName	200
+ProcessedQueueTask	XASId	50
+QueuedTask	Arguments	0
+QueuedTask	ContextData	0
+QueuedTask	MicroflowName	200
+QueuedTask	QueueId	36
+QueuedTask	QueueName	200
+QueuedTask	Retry	200
+QueuedTask	ScheduledEventName	200
+QueuedTask	UserActionName	200
+QueuedTask	XASId	50
+ScheduledEventInformation	Description	0
+ScheduledEventInformation	Name	200
+Session	CSRFToken	36
+Session	SessionId	50
+SoapFault	Code	0
+SoapFault	Detail	0
+SoapFault	Node	0
+SoapFault	Reason	0
+SoapFault	Role	0
+SynchronizationError	ObjectContent	0
+SynchronizationError	ObjectId	200
+SynchronizationError	ObjectType	1000
+SynchronizationError	Reason	0
+TaskQueueToken	QueueName	200
+TaskQueueToken	XASId	50
+TimeZone	Code	50
+TimeZone	Description	100
+TokenInformation	UserAgent	0
+UnreferencedFile	FileKey	36
+UnreferencedFile	TransactionId	36
+User	Name	100
+UserReportInfo	Hash	64
+UserRole	Description	1000
+UserRole	ModelGUID	36
+UserRole	Name	100
+Workflow	Description	0
+Workflow	Name	200
+Workflow	Reason	0
+WorkflowActivity	ActivityGUID	36
+WorkflowActivity	ActivityHash	200
+WorkflowActivity	Caption	0
+WorkflowActivity	DetailsJson	0
+WorkflowActivity	ModelGUID	36
+WorkflowActivity	Outcome	200
+WorkflowActivity	OutcomeModelGUID	36
+WorkflowActivity	Reason	0
+WorkflowActivityDetails	ActivityCaption	0
+WorkflowActivityDetails	ActivityId	50
+WorkflowActivityRecord	ActivityKey	200
+WorkflowActivityRecord	Caption	0
+WorkflowActivityRecord	MicroflowName	200
+WorkflowActivityRecord	ModelGUID	200
+WorkflowActivityRecord	Outcome	200
+WorkflowActivityRecord	PreviousActivityKey	200
+WorkflowActivityRecord	Reason	0
+WorkflowActivityRecord	TaskDescription	0
+WorkflowActivityRecord	TaskKey	200
+WorkflowActivityRecord	TaskName	0
+WorkflowActivityUserTaskOutcome	Outcome	200
+WorkflowDefinition	Name	200
+WorkflowDefinition	Title	200
+WorkflowEndedUserTask	Description	0
+WorkflowEndedUserTask	Name	0
+WorkflowEndedUserTask	Outcome	200
+WorkflowEndedUserTask	UserTaskKey	200
+WorkflowEndedUserTaskOutcome	Outcome	200
+WorkflowGroup	Description	0
+WorkflowGroup	Name	200
+WorkflowJumpToDetails	Error	0
+WorkflowRecord	Description	0
+WorkflowRecord	Name	200
+WorkflowRecord	Reason	0
+WorkflowRecord	WorkflowKey	200
+WorkflowUserTask	Description	0
+WorkflowUserTask	Name	0
+WorkflowUserTask	Outcome	200
+WorkflowUserTaskDefinition	Name	200
+WorkflowUserTaskOutcome	Outcome	200
+WorkflowVersion	ModelJSON	0
+WorkflowVersion	VersionHash	200
+XASInstance	CustomerName	200
+XASInstance	PartnerName	200
+XASInstance	XASId	50

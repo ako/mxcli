@@ -1,0 +1,148 @@
+-- ============================================================================
+-- mendixlabs/mxcli#1089: CE7252 with no MDL that clears it
+-- ============================================================================
+--
+-- Report, verbatim: "When a CALL EXTERNAL ACTION activity is linked to a
+-- consumed OData action whose parameter fingerprint (BSON hash) has become
+-- stale, mxbuild reports CE7252 [...] mxcli has no equivalent command." Four
+-- levers were tried — DROP + CREATE OR REPLACE MICROFLOW, CREATE OR MODIFY
+-- EXTERNAL ENTITIES, and two invented statements (UPDATE ODATA CLIENT, SYNC
+-- EXTERNAL ACTION) — and the request was for
+--
+--   REFRESH ODATA CLIENT Module.Client ACTIONS;
+--
+-- There is nothing to refresh. No fingerprint and no hash is stored: Mendix
+-- re-derives the alignment from the consumed service's cached contract on every
+-- build, so recreating the microflow really does rewrite everything the call
+-- holds. If CE7252 survives that, the call was rewritten just as wrong — or the
+-- contract makes the action uncallable, and no statement of any name helps.
+--
+-- Both turned out to be true, on different types.
+--
+-- ---------------------------------------------------------------------------
+-- THE MEASUREMENT. One action per type shape, each written by mxcli into a real
+-- 11.12.0 app (`mxcli new Repro1089 --version 11.12.0`) with the contract
+-- reproduced below served from `python3 -m http.server`, then `mxcli docker
+-- check` run on the result:
+--
+--   Edm.String Guid Boolean Byte SByte Int16 Int32 Int64      0 errors
+--   Edm.Decimal Double Single Date DateTime DateTimeOffset    0 errors
+--   an EnumType, an EntityType, Collection(EntityType)        0 errors
+--   Edm.TimeOfDay                                             CE7252 / CE7269
+--   Edm.Duration, Edm.Stream, Edm.Binary, Edm.Geography*      CE7255 (+CE7253)
+--   a ComplexType, a TypeDefinition, Collection(Edm.*)        CE7255 (+CE7253)
+--
+-- Two separate defects, and the table is what separates them:
+--
+--   1. Edm.TimeOfDay is the ONLY type that failed without Mendix also calling
+--      it unsupported. So it is our gap, not the platform's: mxcli's EDM table
+--      did not map it, the call was written with no ParameterType (CE7252) or
+--      no VariableDataType (CE7269), and no MDL reaches either field — both are
+--      derived from the contract, never typed by the developer. Typing it as
+--      DateTime clears both. Control on the same app: 2 errors with the mapping
+--      reverted, 0 with it in.
+--
+--   2. Everything Mendix answers with CE7255 "Action '<x>' of service '<svc>'
+--      is not supported" is beyond any write. mxcli accepted those statements
+--      silently and left a project that cannot build, which is precisely the
+--      dead end in the report. They are now refused, naming CE7255 and saying
+--      outright that no MDL clears it.
+--
+-- A third case sits between them: an entity-typed parameter whose external
+-- entity has not been imported. That one IS fixable, the remedy is one
+-- statement, and mxcli said it for a RETURN type and not for a PARAMETER — the
+-- parameter side being the one that reports as CE7252.
+--
+-- WHERE THE RULE IS APPLIED. Both `mxcli check --references` and the writer, from
+-- one function (external_action_types.go). Only the checker would have missed the
+-- reported workflow entirely: `mxcli exec` does not run the project-resolved
+-- reference pass, so the statement would still have executed and still have left
+-- CE7252 behind.
+--
+-- ---------------------------------------------------------------------------
+-- The contract this script assumes (import as Ext.Probe). Every unbound action
+-- needs an <ActionImport> or Mendix does not consider it callable at all
+-- (CE7251).
+-- ---------------------------------------------------------------------------
+--
+--   <EntityType Name="Person"> … </EntityType>
+--   <EntityType Name="Ghost">  … </EntityType>      <!-- never imported -->
+--   <ComplexType Name="Location"> … </ComplexType>
+--   <EnumType Name="Colour"> … </EnumType>
+--   <TypeDefinition Name="Alias" UnderlyingType="Edm.String"/>
+--
+--   <Action Name="PTimeOfDay"><Parameter Name="v" Type="Edm.TimeOfDay"/></Action>
+--   <Action Name="RTimeOfDay"><ReturnType Type="Edm.TimeOfDay"/></Action>
+--   <Action Name="PEnum"><Parameter Name="v" Type="Probe.Colour"/></Action>
+--   <Action Name="PEntity"><Parameter Name="v" Type="Probe.Person"/></Action>
+--   <Action Name="PDuration"><Parameter Name="v" Type="Edm.Duration"/></Action>
+--   <Action Name="PComplex"><Parameter Name="v" Type="Probe.Location"/></Action>
+--   <Action Name="PUnimported"><Parameter Name="v" Type="Probe.Ghost"/></Action>
+--
+-- Verify:
+--   mxcli exec <this file> -p app.mpr     -> the four blocks below execute
+--   mxcli docker check -p app.mpr         -> 0 errors
+--   then uncomment the REFUSED block      -> exec stops, naming CE7255/CE7252
+-- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- The fix: a TimeOfDay parameter and a TimeOfDay return. Both were CE7252 /
+-- CE7269 before, with no statement that cleared either.
+-- ---------------------------------------------------------------------------
+create or modify microflow Ext.ACT_1089_TimeOfDayParam ()
+begin
+  call external action Ext.Probe.PTimeOfDay(v = empty);
+  return;
+end;
+
+create or modify microflow Ext.ACT_1089_TimeOfDayReturn ()
+begin
+  $When = call external action Ext.Probe.RTimeOfDay();
+  return;
+end;
+
+-- ---------------------------------------------------------------------------
+-- The controls for the refusal. Both build at 0 errors and must keep doing so:
+-- an ENUM-typed parameter is written with no type at all, so "mxcli could not
+-- name a Mendix type for it" is not on its own grounds to refuse anything.
+-- ---------------------------------------------------------------------------
+create or modify microflow Ext.ACT_1089_EnumParam ()
+begin
+  call external action Ext.Probe.PEnum(v = empty);
+  return;
+end;
+
+create or modify microflow Ext.ACT_1089_EntityParam ()
+begin
+  call external action Ext.Probe.PEntity(v = empty);
+  return;
+end;
+
+-- ---------------------------------------------------------------------------
+-- REFUSED, deliberately — uncomment one at a time to see the message. These are
+-- what the report ran into. Left commented so the file executes end to end.
+--
+--   PDuration   Mendix does not support the type: CE7255, and nothing mxcli
+--               writes changes that. The message says so rather than leaving
+--               the reader looking for the refresh command that would fix it.
+--   PComplex    the same, for a ComplexType.
+--   PUnimported fixable, and the remedy is named:
+--                 create or modify external entities from Ext.Probe entities (Ghost)
+-- ---------------------------------------------------------------------------
+-- create or modify microflow Ext.ACT_1089_Refused_Duration ()
+-- begin
+--   call external action Ext.Probe.PDuration(v = empty);
+--   return;
+-- end;
+--
+-- create or modify microflow Ext.ACT_1089_Refused_Complex ()
+-- begin
+--   call external action Ext.Probe.PComplex(v = empty);
+--   return;
+-- end;
+--
+-- create or modify microflow Ext.ACT_1089_Refused_Unimported ()
+-- begin
+--   call external action Ext.Probe.PUnimported(v = empty);
+--   return;
+-- end;

@@ -55,7 +55,7 @@ When adding new types, always verify the storage name by:
 
 1. **Examining existing MPR files** with the `mx` tool or an SQLite browser
 2. **Checking the reflection data** in `reference/mendixmodellib/reflection-data/`
-3. **Looking at the parser cases** in `sdk/mpr/parser_microflow.go`
+3. **Looking at the read cases** in `mdl/backend/modelsdk/microflow_read_actions.go`
 
 ### Querying Reflection Data
 

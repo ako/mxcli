@@ -123,6 +123,72 @@ func (b *Backend) CreateViewEntitySourceDocument(moduleID model.ID, moduleName, 
 		return "", fmt.Errorf("CreateViewEntitySourceDocument: not connected for writing")
 	}
 	docID := model.ID(mmpr.GenerateID())
+	contents, err := encodeViewEntitySourceDocument(docID, docName, oqlQuery, documentation)
+	if err != nil {
+		return "", fmt.Errorf("CreateViewEntitySourceDocument: %w", err)
+	}
+	if err := b.writer.InsertUnit(string(docID), string(moduleID), "Documents", "DomainModels$ViewEntitySourceDocument", contents); err != nil {
+		return "", fmt.Errorf("CreateViewEntitySourceDocument: insert: %w", err)
+	}
+	return docID, nil
+}
+
+// WriteViewEntitySourceDocument stores the OQL source document backing a view
+// entity, KEEPING the unit already there when there is one.
+//
+// The executor used to delete the stored document and insert a fresh one on every
+// CREATE OR MODIFY, which cost two things at once (ako/mxcli#583):
+//
+//   - the unit was replaced under a new GUID on every run, even when the query
+//     was byte-identical, so an MDL-generated project could never come back clean
+//     in version control (#556 counted these units among the four that are
+//     replaced rather than rewritten);
+//   - an InsertUnit is not one of the write choke points WriteStats counts, so
+//     `exec` reported `Unchanged view entity: …` for a statement that had just
+//     rewritten the OQL — the domain-model unit was genuinely unchanged (the
+//     attribute list did not move) and the only write that landed was invisible.
+//
+// Updating in place puts the write back on the reconciling path (ADR-0008): an
+// identical query is elided, a changed one lands and is counted, and the unit id
+// survives either way.
+//
+// Extra documents under the same name — which the old delete-then-create existed
+// to clear up — are removed, keeping the oldest as the one to update. A duplicate
+// OQL document is a real hazard: the entity references its source by qualified
+// name, so a second one under that name is ambiguous.
+func (b *Backend) WriteViewEntitySourceDocument(moduleID model.ID, moduleName, docName, oqlQuery, documentation string) (model.ID, error) {
+	if b.writer == nil {
+		return "", fmt.Errorf("WriteViewEntitySourceDocument: not connected for writing")
+	}
+
+	ids, err := b.FindAllViewEntitySourceDocumentIDs(moduleName, docName)
+	if err != nil {
+		return "", fmt.Errorf("WriteViewEntitySourceDocument: find existing: %w", err)
+	}
+	if len(ids) == 0 {
+		return b.CreateViewEntitySourceDocument(moduleID, moduleName, docName, oqlQuery, documentation)
+	}
+	for _, extra := range ids[1:] {
+		if err := b.DeleteViewEntitySourceDocument(extra); err != nil {
+			return "", fmt.Errorf("WriteViewEntitySourceDocument: remove duplicate %s: %w", extra, err)
+		}
+	}
+
+	docID := ids[0]
+	contents, err := encodeViewEntitySourceDocument(docID, docName, oqlQuery, documentation)
+	if err != nil {
+		return "", err
+	}
+	if err := b.writer.UpdateRawUnit(string(docID), contents); err != nil {
+		return "", fmt.Errorf("WriteViewEntitySourceDocument: update: %w", err)
+	}
+	return docID, nil
+}
+
+// encodeViewEntitySourceDocument builds the stored form of an OQL source
+// document. Shared by the create and update paths so the two cannot drift into
+// writing different documents for the same query.
+func encodeViewEntitySourceDocument(docID model.ID, docName, oqlQuery, documentation string) ([]byte, error) {
 	d := genDm.NewViewEntitySourceDocument()
 	d.SetID(element.ID(docID))
 	d.SetName(docName)
@@ -132,12 +198,9 @@ func (b *Backend) CreateViewEntitySourceDocument(moduleID model.ID, moduleName, 
 	d.SetOql(oqlQuery)
 	contents, err := (&codec.Encoder{}).Encode(d)
 	if err != nil {
-		return "", fmt.Errorf("CreateViewEntitySourceDocument: encode: %w", err)
+		return nil, fmt.Errorf("encode view entity source document: %w", err)
 	}
-	if err := b.writer.InsertUnit(string(docID), string(moduleID), "Documents", "DomainModels$ViewEntitySourceDocument", contents); err != nil {
-		return "", fmt.Errorf("CreateViewEntitySourceDocument: insert: %w", err)
-	}
-	return docID, nil
+	return contents, nil
 }
 
 // MoveViewEntitySourceDocument reparents the OQL source document backing a moved

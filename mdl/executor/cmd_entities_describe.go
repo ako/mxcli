@@ -225,6 +225,8 @@ func describeEntity(ctx *ExecContext, name ast.QualifiedName) error {
 		return mdlerrors.NewBackend("get domain model", err)
 	}
 
+	lang := describeDefaultLanguage(ctx)
+
 	for _, entity := range dm.Entities {
 		if entity.Name == name.Name {
 			// Output JavaDoc documentation if present
@@ -290,20 +292,14 @@ func describeEntity(ctx *ExecContext, name ast.QualifiedName) error {
 				for _, vr := range attrValidations {
 					if vr.Type == "Required" {
 						constraints.WriteString(" not null")
-						if vr.ErrorMessage != nil {
-							errMsg := vr.ErrorMessage.GetTranslation("en_US")
-							if errMsg != "" {
-								constraints.WriteString(fmt.Sprintf(" error '%s'", errMsg))
-							}
+						if errMsg := pickTextTranslation(vr.ErrorMessage, lang); errMsg != "" {
+							constraints.WriteString(fmt.Sprintf(" error '%s'", errMsg))
 						}
 					}
 					if vr.Type == "Unique" {
 						constraints.WriteString(" unique")
-						if vr.ErrorMessage != nil {
-							errMsg := vr.ErrorMessage.GetTranslation("en_US")
-							if errMsg != "" {
-								constraints.WriteString(fmt.Sprintf(" error '%s'", errMsg))
-							}
+						if errMsg := pickTextTranslation(vr.ErrorMessage, lang); errMsg != "" {
+							constraints.WriteString(fmt.Sprintf(" error '%s'", errMsg))
 						}
 					}
 				}

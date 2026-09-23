@@ -2,7 +2,11 @@
 
 package modelsdkbackend
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/mendixlabs/mxcli/sdk/domainmodel"
+)
 
 // TestSystemDomainModel_UniqueAttrIDs guards the catalog PK invariant: the
 // virtual System module's attributes must each have a unique, non-empty ID.
@@ -21,6 +25,57 @@ func TestSystemDomainModel_UniqueAttrIDs(t *testing.T) {
 				t.Errorf("duplicate System attr ID %q: %s and System.%s.%s", id, prev, e.Name, a.Name)
 			}
 			seen[id] = "System." + e.Name + "." + a.Name
+		}
+	}
+}
+
+// TestSystemDomainModel_StringLengthsReachTheModel is ako/mxcli#584 at the layer
+// the reporter met it: the length has to survive meta.SystemAttrDef ->
+// domainmodel.StringAttributeType, because that is what `describe entity`
+// prints and what the view-entity pass-through rule (MDL031) compares a
+// declaration against.
+//
+// Before #584 every one of these read as 0 — "unlimited" — so `describe entity
+// System.User` said `Name: String(unlimited)` while mxbuild builds the table at
+// String(100), and a view entity selecting u.Name could not be declared in any
+// way that both passed check and built.
+func TestSystemDomainModel_StringLengthsReachTheModel(t *testing.T) {
+	// Measured on the 11.14.0 deployed model; see
+	// modelsdk/meta/testdata/system_string_lengths.txt.
+	want := map[string]int{
+		"User.Name":                 100,
+		"FileDocument.Name":         400,
+		"Image.PublicThumbnailPath": 500,
+		"Language.Code":             20,
+		"HttpMessage.HttpVersion":   10,
+		// 0 here is Mendix's "unlimited", and is measured too — it must not be
+		// mistaken for the unset value the whole table used to carry.
+		"Error.Message": 0,
+	}
+
+	dm := buildSystemDomainModel()
+	seen := map[string]bool{}
+	for _, e := range dm.Entities {
+		for _, a := range e.Attributes {
+			key := e.Name + "." + a.Name
+			expected, ok := want[key]
+			if !ok {
+				continue
+			}
+			seen[key] = true
+			st, isString := a.Type.(*domainmodel.StringAttributeType)
+			if !isString {
+				t.Errorf("System.%s: want a string attribute, got %T", key, a.Type)
+				continue
+			}
+			if st.Length != expected {
+				t.Errorf("System.%s: read as String(%d), mxbuild builds it as String(%d)", key, st.Length, expected)
+			}
+		}
+	}
+	for key := range want {
+		if !seen[key] {
+			t.Errorf("System.%s is not in the domain model at all", key)
 		}
 	}
 }

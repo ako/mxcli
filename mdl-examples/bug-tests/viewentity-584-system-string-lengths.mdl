@@ -1,0 +1,56 @@
+-- ako/mxcli#584 — the System module metadata declared a Length and populated it
+-- for none of its 115 String attributes, so every System string read as
+-- unlimited and mxcli's length checks disagreed with mxbuild's.
+--
+-- Measured on mxbuild 11.14.0 against a view entity over System.User.Name,
+-- which Mendix builds as String(100):
+--
+--   declared      mxcli check (before)  mxcli check (after)   mx check
+--   String(100)   refused               PASSES                0 errors
+--   String(200)   passed                refused, "use 100"    CE6770
+--   String        passed                refused, "use 100"    CE6770
+--
+-- Before, no declaration both passed check and built; the reporter worked round
+-- it with `cast(u.Name as string)`, where the derived-column rule fixes the
+-- length at 200 regardless of source. After, mxcli's verdict matches mxbuild's
+-- on all three.
+--
+-- WHAT THIS FILE CHECKS, AND WHAT IT DOES NOT. `make check-mdl` runs
+-- `mxcli check` with NO project, so it only proves these statements parse.
+-- Resolving System.User needs the project, so run it with -p to exercise the fix:
+--
+--   mxcli check mdl-examples/bug-tests/viewentity-584-system-string-lengths.mdl -p app.mpr --references
+--     -> Check passed!
+--
+-- The assertion that survives CI is modelsdk/meta/system_string_lengths_test.go,
+-- which holds SystemEntities to the measured table, plus
+-- mdl/backend/modelsdk/system_module_read_test.go, which proves the length
+-- reaches the model the rest of mxcli reads.
+
+create module Ve584;
+
+-- The declaration mxbuild accepts, and the one mxcli could not express before.
+create view entity Ve584.UserNames (
+  UserName: String(100)
+) as (
+  from System.User as u
+  select u.Name as UserName
+);
+
+-- A second System source with a different length, so a build that hardcoded one
+-- number would not pass this file. System.FileDocument.Name is String(400).
+create view entity Ve584.FileNames (
+  FileName: String(400)
+) as (
+  from System.FileDocument as f
+  select f.Name as FileName
+);
+
+-- The wrong declarations are NOT in this file, because they must fail
+-- `mxcli check -p`. They are:
+--
+--   create view entity Ve584.UserNames200 ( UserName: String(200) ) as (
+--     from System.User as u select u.Name as UserName );
+--   -> declared as String(200) but pass-through column 'u.Name' inherits
+--      length 100 from source attribute System.User.Name … change to
+--      'UserName: String(100)'     [and CE6770 from mxbuild, measured]

@@ -538,3 +538,73 @@ It is a **security** setting and it only ever narrows, so the rules mirror
   no such property. Writing it there is **MDL059**, not a silent no-op —
   the same rule that catches `@applyentityacces` and any other annotation the
   document does not read. The message names what that document does accept.
+
+## Document properties: authorable, and omitted still preserves
+
+Four microflow properties live in the header rather than the body:
+
+```mdl
+create or modify microflow Shop.ACT_ShowOrder ($Order: Shop.Order, $Tab: String)
+url 'order/{Order}'
+url search parameters ($Tab)
+export level api
+disallow concurrent execution error message 'This order is already being processed'
+begin
+  ...
+end;
+```
+
+- **`url`** is the deep link (Mendix **10.6+**), Studio Pro's URL field. `url search
+  parameters (...)` names the parameters passed as query arguments; `drop url`
+  removes both.
+- **`export level api | hidden`** decides whether the microflow is part of the
+  module's public surface when the module is exported.
+- **`disallow concurrent execution`** takes `error message 'text'` or
+  `error microflow Mod.Name`; `allow concurrent execution` is the default.
+
+**An omitted clause preserves what is stored.** Same rule as `@excluded`,
+`@applyentityaccess` and `EXPOSED AS`: a `create or modify` that only edits the
+body leaves all of them alone. That is the fix for #1120, and the clauses are the
+way to opt out of it deliberately — `drop url`, `export level hidden`,
+`allow concurrent execution`.
+
+### Four rules that used to surface only at build time
+
+| | Rule | Mendix reports |
+|---|---|---|
+| **MDL-MF01** | every `{Name}` must name a parameter of this microflow | — |
+| **MDL-MF02** | a parameter in the PATH may **not** also be a search parameter | CE5612 |
+| **MDL-MF03** | `disallow` needs an error message or microflow | CE4899 |
+| — | a URL another microflow already owns (needs `-p`) | CE0570 |
+
+MF02 is the one to remember: path parameters and query parameters are disjoint
+sets. `url 'item/{Key}'` with `url search parameters ($Key)` is rejected — use a
+different parameter for the query argument.
+
+A segment may carry an attribute path — `{Customer/Name}` binds the **Customer**
+parameter by one of its attributes — so the leading identifier is what must match.
+
+### Two things that do NOT get cleared
+
+- **`allow concurrent execution` leaves a stored error message.** Studio Pro greys
+  those fields rather than erasing them, so re-disallowing restores the message —
+  and `canon.CarryTranslations` would put it back regardless, because a rebuild
+  cannot distinguish "cleared on purpose" from "the statement could not say it".
+  An inert stored message breaks nothing: Mendix reads it only when execution is
+  disallowed.
+- **Other languages of an error message.** MDL states one string, but a rewrite
+  keeps the rest: measured, restating an English message left its Dutch
+  translation untouched. `describe` flags the languages a **copy** would not carry.
+
+### `Mark as used` still has no clause
+
+It is carried across a rewrite like the others were, and there is no way to set
+it from MDL. Nothing is lost by that — it only suppresses an editor warning.
+
+## `drop` + `create` is still a new document
+
+`drop microflow` followed by `create microflow` starts from nothing, so it keeps
+none of these unless the script restates them. Use `create or modify` to edit a
+microflow that carries any of them — and note that `describe` now emits all
+four clauses, so **describe → rename → exec copies them faithfully**. Give the
+copy a different `url`, though: two microflows may not share one (CE0570).

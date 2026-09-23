@@ -43,6 +43,66 @@ func extractSkillDescription(content []byte) string {
 	return "MDL skill"
 }
 
+// projectGate is one command in the ordered gate list the generated CLAUDE.md
+// publishes as a project's definition of done.
+//
+// It exists as data rather than as literal markdown lines because the same
+// sequence is stated in three places that must agree: this file (re-read into
+// every session, so it IS the default behaviour), the `bootstrap-app` skill
+// (which sets the project up and hands over), and the bootstrap-prompt docs
+// page that describes the skill. When they were three hand-kept copies,
+// `mxcli test` was named in the skill's ports note and on no gate list at all,
+// so testing was reachable only by a user asking for it by name.
+// TestBootstrapProcedureNamesEveryGate holds the three together.
+type projectGate struct {
+	// Cmd is the command as written, without the leading "./mxcli ".
+	// A %s is substituted with the project's .mpr path.
+	Cmd string
+	// Note is the trailing comment explaining what the gate buys and roughly
+	// what it costs.
+	Note string
+	// Ref is the substring that must also appear in the bootstrap skill and on
+	// the docs page for this gate to count as stated there.
+	Ref string
+	// Command is the cobra command path ("docker check" for a subcommand),
+	// checked to exist so a rename breaks a test rather than every project's
+	// onboarding.
+	Command string
+}
+
+// projectGates is the ordered, cheapest-first gate list. Adding one here adds
+// it to every generated CLAUDE.md, and requires naming it in the bootstrap
+// skill and docs page too.
+var projectGates = []projectGate{
+	{"check script.mdl -p %s", "syntax + references, no apply (~2s)", "mxcli check", "check"},
+	{"exec script.mdl -p %s", "apply", "mxcli exec", "exec"},
+	{"lint -p %s", "rules (~3s)", "mxcli lint", "lint"},
+	{"report -p %s", "scored quality report", "mxcli report", "report"},
+	{"docker check -p %s", "mxbuild, the slow one (~25s)", "mxcli docker check", "docker check"},
+	{"test tests/ -p %s --local", "microflow tests (~30s cold, ~2s warm)", "mxcli test", "test"},
+	{"run --local --watch -p %s", "the app, hot-reloading", "mxcli run --local", "run"},
+}
+
+// renderProjectGates writes the gate list as aligned shell lines, comments in
+// one column.
+func renderProjectGates(mprPath string) string {
+	lines := make([]string, len(projectGates))
+	width := 0
+	for i, g := range projectGates {
+		lines[i] = "./mxcli " + fmt.Sprintf(g.Cmd, mprPath)
+		if len(lines[i]) > width {
+			width = len(lines[i])
+		}
+	}
+	var sb strings.Builder
+	for i, g := range projectGates {
+		sb.WriteString(lines[i])
+		sb.WriteString(strings.Repeat(" ", width-len(lines[i])))
+		sb.WriteString("   # " + g.Note + "\n")
+	}
+	return sb.String()
+}
+
 func generateClaudeMD(projectName, mprFile string) string {
 	mprPath := mprFile
 	if mprPath == "" {
@@ -110,19 +170,24 @@ func generateClaudeMD(projectName, mprFile string) string {
 	// ── The gates ───────────────────────────────────────────────────
 	// Ordered cheapest-first on purpose: each one is only worth paying for
 	// once the one above it is clean.
+	//
+	// The list is projectGates rather than literal lines because the same set
+	// has to appear in the bootstrap procedure (the skill) and on the docs
+	// page that describes it. Three hand-kept copies is how `test` came to be
+	// in two of them and absent from the one that is re-read every session.
 	w("## The gates, in order\n\n")
-	w("Run them cheapest-first; each is only worth paying for once the one above is clean.\n\n")
+	w("Run them cheapest-first; each is only worth paying for once the one above is clean.\n")
+	w("**They are the definition of done, not a menu** — a change is finished when they have\n")
+	w("all been run and you have said what each one reported.\n\n")
+	w("**Once per change, not per edit** — a change being a coherent unit of work, not a\n")
+	w("statement and not a file write. Iterate with " + bt + "exec" + bt + ", then run the gates once over the\n")
+	w("result: the whole list after every edit proves nothing the one run at the end does not.\n\n")
 	w(bt3 + "bash\n")
-	w("./mxcli check script.mdl -p " + mprPath + " --references   # syntax + references (~2s)\n")
-	w("./mxcli exec script.mdl -p " + mprPath + "                 # apply\n")
-	w("./mxcli lint -p " + mprPath + "                            # rules (~3s)\n")
-	w("./mxcli report -p " + mprPath + "                          # scored best practices\n")
-	w("./mxcli docker check -p " + mprPath + "                    # mxbuild, the slow one (~25s)\n")
-	w("./mxcli run --local --watch -p " + mprPath + "             # the app, hot-reloading\n")
+	w(renderProjectGates(mprPath))
 	w(bt3 + "\n\n")
 	w("**" + bt + "lint" + bt + " printing no errors is not a pass** — read the warning count, and read\n")
-	w(bt + "report" + bt + "'s score. A green " + bt + "check" + bt + " proves nothing about how a page renders:\n")
-	w("anything visual or stateful needs the app actually running.\n\n")
+	w(bt + "report" + bt + "'s score. A green " + bt + "check" + bt + " proves nothing about behaviour or about how\n")
+	w("a page renders: logic needs " + bt + "test" + bt + ", and anything visual needs the app actually running.\n\n")
 	w("Set " + bt + "mx" + bt + " up once with " + bt + "./mxcli setup mxbuild -p " + mprPath + bt + ". To call it directly,\n")
 	w("name the version — " + bt + "~/.mxcli/mxbuild/<version>/modeler/mx" + bt + " — because a " + bt + "*" + bt + " glob\n")
 	w("breaks the moment two are cached.\n\n")
@@ -151,9 +216,30 @@ func generateClaudeMD(projectName, mprFile string) string {
 	w("  Quotes are stripped, so it is always safe, and it sidesteps every parser keyword.\n")
 	w("  It does **not** exempt names Mendix itself reserves (" + bt + "Type" + bt + ", " + bt + "ID" + bt + ", " + bt + "CreatedDate" + bt + ") —\n")
 	w("  those are rejected quoted or not.\n")
+	w("- **A business process with human steps is a " + bt + "WORKFLOW" + bt + "**, not a status attribute\n")
+	w("  plus microflows — you get the user-task inbox, assignment, timers and a definition\n")
+	w("  the business can read. " + bt + "mxcli syntax workflow" + bt + ", skill " + bt + "write-workflows" + bt + ".\n")
+	w("- **An aggregation is a " + bt + "VIEW ENTITY" + bt + "** (OQL, Mendix 10.18+) — not a microflow that\n")
+	w("  retrieves rows and counts them. The database does the work instead of pulling every\n")
+	w("  object into memory. " + bt + "mxcli syntax view-entity" + bt + ", skill " + bt + "write-oql-queries" + bt + ".\n")
 	w("- **A " + bt + "/** ... */" + bt + " comment before a statement sets that element's documentation.**\n")
 	w("- **" + bt + "@Position(x, y)" + bt + " is optional** — mxcli places microflow activities, and\n")
 	w("  " + bt + "./mxcli layout" + bt + " arranges the domain model.\n\n")
+
+	// ── Finishing a change ──────────────────────────────────────────
+	// The bootstrap created README.md, FINDINGS.md and the plan; without this
+	// they are written once and then quietly stop being true, and the
+	// bootstrap procedure and the steady state disagree about what a finished
+	// change looks like.
+	w("## Finishing a change\n\n")
+	w("Bootstrap set these up. They are only worth having if every change maintains them.\n\n")
+	w("1. **Run the gates above, in order**, and say what each reported — not \"it builds\".\n")
+	w("2. **Capture requirements as they arrive** — " + bt + "./mxcli brain capture \"<requirement>\"\n")
+	w("   --slice <slice> -a @Mod.Thing" + bt + ". Never tick anything off: " + bt + "brain plan" + bt + " derives what\n")
+	w("   is built from the model, so finishing the work is what moves the number.\n")
+	w("3. **Append to " + bt + "FINDINGS.md" + bt + "** — anything surprising or broken, and how you verified it.\n")
+	w("4. **Commit.** An idle session is reaped and its container goes with it; whatever is\n")
+	w("   uncommitted is gone, including the model.\n\n")
 
 	return sb.String()
 }

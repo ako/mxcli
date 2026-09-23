@@ -321,6 +321,7 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 			widget.EntityContext = inheritedCtx
 		}
 		widget.LabelWidth = extractDataViewLabelWidth(w)
+		widget.ReadOnlyStyle = extractReadOnlyStyle(ctx, w)
 		widget.ShowFooter, _ = w["ShowFooter"].(bool)
 		widget.Children = parseDataViewChildren(ctx, w, widget.EntityContext)
 		return []rawWidget{widget}
@@ -330,6 +331,8 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 		widget.Content = extractAttributeRef(ctx, w)
 		widget.Placeholder = extractPlaceholderText(ctx, w)
 		widget.Editable = extractEditable(ctx, w)
+		widget.IsPassword, _ = w["IsPasswordBox"].(bool)
+		widget.ValidationExpression, widget.ValidationMessage = extractWidgetValidation(ctx, w)
 		widget.OnChange = extractOnChangeAction(ctx, w)
 		return []rawWidget{widget}
 
@@ -523,6 +526,95 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 		}
 		return []rawWidget{widget}
 
+	case "Forms$StaticImageViewer", "Pages$StaticImageViewer":
+		// Mendix stores WHICH image on a by-name reference to Images$Image: the
+		// three-part Module.Collection.Image name of an entry in an image
+		// collection, as a plain string (unset is "", never null). This is the
+		// same reference the pluggable `image` widget carries on its
+		// WidgetValue, so it re-uses ImageObject and emits the same clause.
+		//
+		// The widget had no case here at all, so DESCRIBE fell through to the
+		// unknown-type note and a Selection helper's three mandatory custom
+		// slots came back empty — CE0642 on rebuild (mendixlabs/mxcli#1057).
+		if image, ok := w["Image"].(string); ok && image != "" {
+			widget.ImageObject = image
+		}
+		if width := extractInt(w["Width"]); width > 0 {
+			widget.ImageWidth = strconv.Itoa(width)
+		}
+		if height := extractInt(w["Height"]); height > 0 {
+			widget.ImageHeight = strconv.Itoa(height)
+		}
+		// The units and Responsive round-trip too, because the writer honours
+		// them as of this change. Emitting the widget WITHOUT them would trade
+		// the old visible note for a silent normalisation to Auto/responsive.
+		if u, ok := w["WidthUnit"].(string); ok {
+			widget.WidthUnit = strings.ToLower(u)
+		}
+		if u, ok := w["HeightUnit"].(string); ok {
+			widget.HeightUnit = strings.ToLower(u)
+		}
+		if responsive, ok := w["Responsive"].(bool); ok && !responsive {
+			widget.Responsive = "false"
+		}
+		// Forms$StaticImageViewer.ClickAction. The builder started filling it in
+		// ako/mxcli#512 and the writer already serialised it; nothing read it
+		// back, because nothing read this widget back at all.
+		if onClick := asActionMap(w["ClickAction"]); onClick != nil {
+			widget.Action = extractButtonAction(ctx, map[string]any{"Action": onClick})
+		}
+		return []rawWidget{widget}
+
+	case "Forms$ImageViewer", "Pages$ImageViewer":
+		// The DYNAMIC image. Its binding is a Forms$ImageViewerSource, which the
+		// shared datasource reader already knows (entityBackedSourceTypes), so
+		// the entity CE0489 asks for costs nothing to read back.
+		//
+		// Nothing read this widget at all before, and the writer bound it to no
+		// entity, so every dynamic image mxcli authored failed the build and
+		// every stored one was dropped by describe -> exec.
+		if ds, ok := w["DataSource"].(map[string]any); ok {
+			widget.DataSource = parseDataSource(ds)
+			if widget.DataSource != nil && widget.DataSource.Reference != "" {
+				widget.EntityContext = dataSourceEntityContext(ctx, widget.DataSource)
+			}
+		}
+		if widget.EntityContext == "" {
+			widget.EntityContext = inheritedCtx
+		}
+		// The fallback image, a by-name reference like the static image's.
+		if fallback, ok := w["DefaultImage"].(string); ok && fallback != "" {
+			widget.DefaultImage = fallback
+		}
+		if width := extractInt(w["Width"]); width > 0 {
+			widget.ImageWidth = strconv.Itoa(width)
+		}
+		if height := extractInt(w["Height"]); height > 0 {
+			widget.ImageHeight = strconv.Itoa(height)
+		}
+		if u, ok := w["WidthUnit"].(string); ok {
+			widget.WidthUnit = strings.ToLower(u)
+		}
+		if u, ok := w["HeightUnit"].(string); ok {
+			widget.HeightUnit = strings.ToLower(u)
+		}
+		if responsive, ok := w["Responsive"].(bool); ok && !responsive {
+			widget.Responsive = "false"
+		}
+		// ShowAsThumbnail and OnClickEnlarge reuse the vocabulary the PLUGGABLE
+		// image widget already describes with (DisplayAs, OnClickType), so one
+		// property name means one thing across all three image widgets.
+		if thumb, ok := w["ShowAsThumbnail"].(bool); ok && thumb {
+			widget.DisplayAs = "thumbnail"
+		}
+		if enlarge, ok := w["OnClickEnlarge"].(bool); ok && enlarge {
+			widget.OnClickType = "enlarge"
+		}
+		if onClick := asActionMap(w["ClickAction"]); onClick != nil {
+			widget.Action = extractButtonAction(ctx, map[string]any{"Action": onClick})
+		}
+		return []rawWidget{widget}
+
 	case "Forms$Label", "Pages$Label":
 		widget.Content = extractTextCaption(ctx, w)
 		return []rawWidget{widget}
@@ -568,6 +660,13 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 		// next describe → exec (ako/CapTrackV3 FINDINGS §6).
 		if editable, ok := w["Editable"].(bool); ok && editable {
 			widget.Editable = "true"
+		}
+		// "On click" — Pages$ListView.ClickAction. The write half landed without
+		// this and the action vanished on the next describe → exec, which is the
+		// half-shell trap this repo keeps recording: a construct written, valid,
+		// and silently dropped on read-back (ako/mxcli#512).
+		if onClick := asActionMap(w["ClickAction"]); onClick != nil {
+			widget.Action = extractButtonAction(ctx, map[string]any{"Action": onClick})
 		}
 		widget.Children = parseListViewContent(ctx, w, widget.EntityContext)
 		return []rawWidget{widget}
@@ -804,6 +903,31 @@ func extractEditable(ctx *ExecContext, w map[string]any) string {
 	return ""
 }
 
+// extractWidgetValidation reads the two fields of a Forms$WidgetValidation: the
+// expression Mendix evaluates over $value, and the message shown when it fails.
+//
+// An empty expression means the widget has no validation — Studio Pro stores the
+// element either way — so both come back empty and the describer emits nothing.
+// Emitting a clause for a stored-but-empty validation would be the "invents"
+// shape: it puts something in the user's script that they did not write.
+func extractWidgetValidation(ctx *ExecContext, w map[string]any) (expression, message string) {
+	v, ok := w["Validation"].(map[string]any)
+	if !ok || v == nil {
+		return "", ""
+	}
+	expression = extractString(v["Expression"])
+	if expression == "" {
+		return "", ""
+	}
+	// Message is a bare Texts$Text (Items[] of translations), not a
+	// Forms$ClientTemplate — extractTextFromTemplate's fallback branch handles
+	// exactly that shape.
+	if msg, ok := v["Message"].(map[string]any); ok {
+		message = extractTextFromTemplate(ctx, msg)
+	}
+	return expression, message
+}
+
 // extractReadOnlyStyle extracts the ReadOnlyStyle from an input widget.
 // Returns "Inherit", "Control", or "Text".
 func extractReadOnlyStyle(ctx *ExecContext, w map[string]any) string {
@@ -850,18 +974,32 @@ func shortAttributeName(attr string) string {
 	return attr
 }
 
-// extractAttributeRef extracts the attribute reference from an input widget.
-// Returns just the attribute name (last segment).
+// extractAttributeRef extracts the attribute reference from an input widget as
+// the short form MDL accepts: a bare name for an own attribute, or
+// `Assoc/.../Attr` when the binding navigates associations.
+//
+// This used to return the last segment of AttributeRef.Attribute and ignore
+// AttributeRef.EntityRef entirely, which silently dropped every association
+// hop. Measured on ako/TestApp's Rules.RuleAction_NewEdit, whose text box binds
+// Rules.BusinessRule.Name over Rules.RuleAction_BusinessRule: DESCRIBE emitted
+// `Attribute: Name`, and Rules.RuleAction has no Name — so a describe → exec
+// round trip rebound the widget to nothing. `check` stayed clean and the damage
+// surfaced at build time as CE1613, or in a browser as a blank field
+// (ako/mxcli#529).
+//
+// columnAttributeFromRef already did this correctly for DataGrid2 columns (bug
+// 7), so one page could round-trip a grid column and destroy a text box beside
+// it. Sharing that function is the point: two readers of one BSON shape is how
+// the halves drifted apart to begin with.
 func extractAttributeRef(ctx *ExecContext, w map[string]any) string {
 	attrRef, ok := w["AttributeRef"].(map[string]any)
 	if !ok {
 		return ""
 	}
-	attr, ok := attrRef["Attribute"].(string)
-	if !ok {
+	if _, ok := attrRef["Attribute"].(string); !ok {
 		return ""
 	}
-	return shortAttributeName(attr)
+	return columnAttributeFromRef(attrRef)
 }
 
 // parseGalleryContent extracts the content widget from a Gallery.

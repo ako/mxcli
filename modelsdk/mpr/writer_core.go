@@ -51,7 +51,30 @@ type Writer struct {
 	// non-unit writes (generated .java/.js source) to this total.
 	writesOffered int
 	writesLanded  int
+
+	// removedUnits holds what this session deleted, keyed by unit ID, so a unit
+	// RE-INSERTED under the same ID can be reconciled against what it replaced.
+	// See carryIdentityFromRemovedUnit.
+	removedUnits map[string]removedUnit
 }
+
+// removedUnit is everything about a deleted unit that a re-insert has to be
+// compared against: its bytes, its row, and the project's transaction id at the
+// moment it went. The last one is what lets a delete+insert that nets to nothing
+// leave the .mpr alone entirely.
+type removedUnit struct {
+	contents        []byte
+	containerID     []byte
+	containmentName string
+	transactionID   string
+}
+
+// maxRemovedUnitsRemembered caps the delete→insert carry. A script that drops a
+// module deletes thousands of units and re-inserts none of them, so the map is
+// bounded rather than allowed to hold a whole project in memory. Past the cap
+// nothing further is recorded and the carry degrades to the behaviour that
+// existed before it — a churned re-insert, not a wrong one.
+const maxRemovedUnitsRemembered = 1024
 
 // WriteStats reports how many unit writes this session offered to storage and
 // how many were not elided as no-ops.
@@ -515,6 +538,9 @@ func (w *Writer) insertUnit(unitID, containerID, containmentName, unitType strin
 		return fmt.Errorf("invalid container ID (not a valid UUID): %q", containerID)
 	}
 
+	contents, restoreTransactionID := w.carryIdentityFromRemovedUnit(
+		unitID, containerIDBlob, containmentName, contents)
+
 	if w.reader.version == MPRVersionV2 {
 		// Get swapped UUID for file path
 		swappedUUID := blobToUUIDSwapped(unitIDBlob)
@@ -547,6 +573,7 @@ func (w *Writer) insertUnit(unitID, containerID, containmentName, unitType strin
 		}
 		w.reader.InvalidateCache()
 		w.updateTransactionID()
+		w.restoreTransactionID(restoreTransactionID)
 		return nil
 	}
 
@@ -684,6 +711,95 @@ func (w *Writer) reconcileWithStored(unitID string, contents []byte, opts ...can
 	return out, unchanged, nil
 }
 
+// rememberRemovedUnit captures a unit's bytes on the way out, so an insert of
+// the same unit ID later in this session can be reconciled against them.
+//
+// Read before the row and file go, obviously, and best-effort: a unit whose
+// bytes cannot be read is simply not remembered, which costs a churned
+// re-insert and never a wrong one.
+func (w *Writer) rememberRemovedUnit(unitID string) {
+	if len(w.removedUnits) >= maxRemovedUnitsRemembered {
+		return
+	}
+	contents, err := w.reader.GetRawUnitBytes(unitID)
+	if err != nil || len(contents) == 0 {
+		return
+	}
+	rec := removedUnit{contents: append([]byte(nil), contents...)}
+	_ = w.reader.db.QueryRow(
+		`SELECT ContainerID, ContainmentName FROM Unit WHERE UnitID = ?`, uuidToBlob(unitID),
+	).Scan(&rec.containerID, &rec.containmentName)
+	_ = w.reader.db.QueryRow(`SELECT LastTransactionID FROM _Transaction`).Scan(&rec.transactionID)
+
+	if w.removedUnits == nil {
+		w.removedUnits = make(map[string]removedUnit)
+	}
+	w.removedUnits[unitID] = rec
+}
+
+// carryIdentityFromRemovedUnit applies the shared reconciliation policy to a
+// unit being re-inserted under the ID of one this session deleted.
+//
+// # Why an insert needs this at all
+//
+// Several `create or modify` handlers are implemented as delete + insert under
+// the preserved unit ID rather than as an update — the consumed REST client is
+// the measured one (ako/mxcli#556): re-running an identical statement rewrote 9
+// element $IDs in a 1,128-byte unit, on every run, forever. The document was
+// never different; canon was simply never asked, because updateUnit is where
+// Reconcile is called and a delete+insert does not go through it.
+//
+// # What it does and does not do
+//
+// It carries identity, translations and element $IDs exactly as updateUnit
+// does, so a re-inserted unit that means the same thing lands byte-identical.
+// It does NOT elide: the row and the file are already gone, so something has to
+// be written back whatever the bytes say. That asymmetry is the whole reason
+// this is a separate function from reconcileWithStored rather than a flag on it.
+//
+// The write is still counted, and counted as landed only when the bytes moved,
+// so ReportMutation can tell a real rewrite from one that restored what it
+// removed.
+//
+// A $Type that changed means the new unit is not the old one; canon's pairing
+// refuses to carry anything across that, so nothing special is needed here.
+func (w *Writer) carryIdentityFromRemovedUnit(
+	unitID string, containerID []byte, containmentName string, contents []byte,
+) (out []byte, restoreTransactionID string) {
+	prev, ok := w.removedUnits[unitID]
+	if !ok {
+		return contents, ""
+	}
+	delete(w.removedUnits, unitID)
+
+	w.writesOffered++
+	out, _ = canon.Reconcile(contents, prev.contents)
+
+	// A delete+insert that put back exactly what it removed changed nothing, so
+	// the project's transaction id — which is how Studio Pro decides there is
+	// something to re-sync — must not move either. The test is deliberately the
+	// strict one (identical bytes and an identical row), not canon's "unchanged":
+	// the file is written back regardless, so the only question worth asking is
+	// whether what landed is what was there.
+	if bytes.Equal(out, prev.contents) &&
+		bytes.Equal(containerID, prev.containerID) &&
+		containmentName == prev.containmentName {
+		return out, prev.transactionID
+	}
+	w.writesLanded++
+	return out, ""
+}
+
+// restoreTransactionID puts back the transaction id a no-op delete+insert bumped
+// twice. Best-effort, like updateTransactionID itself, and a no-op for v1
+// projects and for any insert that was not a recreate.
+func (w *Writer) restoreTransactionID(id string) {
+	if id == "" || w.reader.version != MPRVersionV2 {
+		return
+	}
+	_, _ = w.reader.db.Exec(`UPDATE _Transaction SET LastTransactionID = ?`, id)
+}
+
 // UpdateRawUnit saves raw BSON bytes for a unit, bypassing deserialization.
 // Used by ALTER PAGE to modify the BSON widget tree directly.
 func (w *Writer) UpdateRawUnit(unitID string, contents []byte) error {
@@ -769,6 +885,7 @@ func (w *Writer) deleteUnit(unitID string) error {
 	if unitIDBlob == nil {
 		return fmt.Errorf("invalid unit ID: %s", unitID)
 	}
+	w.rememberRemovedUnit(unitID)
 
 	if w.reader.version == MPRVersionV2 {
 		// Get swapped UUID for file path

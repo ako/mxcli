@@ -129,6 +129,17 @@ func (m *MockBackend) CreateViewEntitySourceDocument(moduleID model.ID, moduleNa
 	return "", nil
 }
 
+func (m *MockBackend) WriteViewEntitySourceDocument(moduleID model.ID, moduleName, docName, oqlQuery, documentation string) (model.ID, error) {
+	if m.WriteViewEntitySourceDocumentFunc != nil {
+		return m.WriteViewEntitySourceDocumentFunc(moduleID, moduleName, docName, oqlQuery, documentation)
+	}
+	// Mirrors CreateViewEntitySourceDocument above rather than the checklist's
+	// "not configured" error: a view-entity handler calls this on every write, so
+	// an error default would fail every executor test that does not care where
+	// the OQL document went.
+	return "", nil
+}
+
 func (m *MockBackend) DeleteViewEntitySourceDocument(id model.ID) error {
 	if m.DeleteViewEntitySourceDocumentFunc != nil {
 		return m.DeleteViewEntitySourceDocumentFunc(id)

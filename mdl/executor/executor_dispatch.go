@@ -94,6 +94,7 @@ func (e *Executor) newExecContext(ctx context.Context) *ExecContext {
 		Output:           e.output,
 		Format:           e.format,
 		Quiet:            e.quiet,
+		tally:            e.tally,
 		Logger:           e.logger,
 		Fragments:        e.fragments,
 		Catalog:          cat,

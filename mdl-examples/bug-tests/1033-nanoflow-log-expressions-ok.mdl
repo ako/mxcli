@@ -1,0 +1,28 @@
+-- ============================================================================
+-- Issue #1033 — the accepted counterpart: real functions in nanoflow logs
+-- ============================================================================
+--
+-- POSITIVE TEST: `mxcli check` MUST accept this file.
+--
+-- The #1033 fix runs MDL044 over nanoflow bodies and over log messages, node
+-- and template parameters, and MDL044 is an exec write barrier. Each flow
+-- below exercises one of those new sites with a real built-in or token, so a
+-- false positive shows up here as a refusal of valid MDL.
+--
+-- Verified against mxbuild 11.13.0: each exec'd into a blank 11.13 app checks
+-- with 0 errors.
+--
+-- The rejected counterpart is 1033-nanoflow-unknown-expression-function.fail.mdl.
+-- ============================================================================
+
+create nanoflow MyFirstModule.NF_LogTemplate ($x: String)
+begin
+  log info 'x: {1}' with ({1} = toUpperCase($x));
+end;
+/
+
+create nanoflow MyFirstModule.NF_LogToken ()
+begin
+  log info 'now: ' + toString([%CurrentDateTime%]);
+end;
+/

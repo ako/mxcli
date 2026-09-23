@@ -681,8 +681,19 @@ func (s *mdlServer) widgetPropertyCompletionItems(text, linePrefix string, curso
 		})
 	}
 
+	// A text-template property's `<Name>Params` companion is offered beside it:
+	// the template takes literal text, so without the companion the obvious
+	// completion is also the one that renders the same string on every row
+	// (ako/mxcli#575).
+	addTemplateParams := func(m executor.PropertyMapping, detail string) {
+		if m.Operation != "texttemplate" || m.PropertyKey == "" {
+			return
+		}
+		addProp(m.PropertyKey+"Params", detail+" — `{N}` bindings", protocol.CompletionItemKindProperty)
+	}
 	for _, m := range def.PropertyMappings {
 		addProp(m.PropertyKey, "Property ("+m.Operation+")", protocol.CompletionItemKindProperty)
+		addTemplateParams(m, "Parameters for `"+m.PropertyKey+"`")
 	}
 	for _, mode := range def.Modes {
 		for _, m := range mode.PropertyMappings {
@@ -691,6 +702,7 @@ func (s *mdlServer) widgetPropertyCompletionItems(text, linePrefix string, curso
 				detail += " [mode: " + mode.Name + "]"
 			}
 			addProp(m.PropertyKey, detail, protocol.CompletionItemKindProperty)
+			addTemplateParams(m, "Parameters for `"+m.PropertyKey+"`")
 		}
 	}
 	for _, m := range def.ChildSlots {

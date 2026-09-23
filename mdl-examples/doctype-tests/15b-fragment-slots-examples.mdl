@@ -128,4 +128,4 @@ describe page SlotTest.P001_Slot_Card;
 --
 -- For binding a fragment's datasource / action handler, see
 -- 15c-fragment-bindings-examples.mdl. For the full fragment feature set
--- (define/use/prefix/nested/snippets/ALTER), see 15-fragment-examples.test.mdl.
+-- (define/use/prefix/nested/snippets/ALTER), see 15-fragment-examples.mdl.

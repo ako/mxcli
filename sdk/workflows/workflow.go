@@ -19,9 +19,23 @@ type Workflow struct {
 	Excluded            bool     `json:"excluded"`
 	WorkflowName        string   `json:"workflowName,omitempty"`        // Template string for display name
 	WorkflowDescription string   `json:"workflowDescription,omitempty"` // Template string for description
-	OverviewPage        string   `json:"overviewPage,omitempty"`        // Qualified name of overview page
-	DueDate             string   `json:"dueDate,omitempty"`             // Due date expression
-	AdminPage           string   `json:"adminPage,omitempty"`           // Qualified name of admin page
+
+	// OverviewPage is the qualified name of the workflow's overview page — the
+	// `overview page` clause. It is stored under the BSON key **AdminPage**, as a
+	// Workflows$PageReference child: Mendix DELETED the `overviewPage` property
+	// in 9.11.0 and INTRODUCED `adminPage` in the same release (measured in the
+	// Model SDK's own StructureVersionInfo, mendixmodelsdk 4.115.0
+	// src/gen/workflows.js; generated/metamodel declares AdminPage and no
+	// OverviewPage at all).
+	//
+	// There used to be a second field, AdminPage, holding the same thing under
+	// the storage name. Nothing ever set it and nothing ever read this one back,
+	// so `create workflow … overview page X` reported success and stored
+	// nothing. One concept gets one field; the storage name stays in the storage
+	// adapter, per ADR-0005.
+	OverviewPage string `json:"overviewPage,omitempty"`
+
+	DueDate string `json:"dueDate,omitempty"` // Due date expression
 
 	// Annotation
 	Annotation string `json:"annotation,omitempty"` // Annotation description text

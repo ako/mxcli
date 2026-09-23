@@ -8,6 +8,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/grammar/parser"
+	"github.com/mendixlabs/mxcli/mdl/types"
 )
 
 func (b *Builder) ExitCreateMicroflowStatement(ctx *parser.CreateMicroflowStatementContext) {
@@ -36,6 +37,7 @@ func (b *Builder) ExitCreateMicroflowStatement(ctx *parser.CreateMicroflowStatem
 			if exposed := optCtx.MicroflowExposedClause(); exposed != nil {
 				stmt.Expose = append(stmt.Expose, buildExposeActionClause(exposed))
 			}
+			applyMicroflowDocumentProperty(stmt, optCtx)
 		}
 	}
 
@@ -445,4 +447,64 @@ func applyEntityAccessAnnotation(createStmt parser.ICreateStatementContext) *boo
 		return &value
 	}
 	return nil
+}
+
+// applyMicroflowDocumentProperty reads the URL / EXPORT LEVEL / concurrency
+// header clauses onto the statement.
+//
+// Every field it sets is a POINTER, and that is the whole design: an absent
+// clause must stay distinguishable from a stated one, because absent preserves
+// what is stored and stated overrides it (mendixlabs/mxcli#1120). A plain value
+// would make every rewrite that did not mention the clause reset the property —
+// exactly the bug that made these worth authoring in the first place.
+func applyMicroflowDocumentProperty(stmt *ast.CreateMicroflowStmt, optCtx *parser.MicroflowOptionContext) {
+	if u := optCtx.MicroflowUrlClause(); u != nil {
+		uc := u.(*parser.MicroflowUrlClauseContext)
+		switch {
+		case uc.DROP() != nil:
+			// DROP URL clears both halves: a search-parameter list without a URL
+			// is configuration for a deep link that no longer exists.
+			empty, none := "", []string{}
+			stmt.URL, stmt.URLSearchParameters = &empty, &none
+		case uc.SEARCH() != nil:
+			names := []string{}
+			if sp := uc.MicroflowUrlSearchParams(); sp != nil {
+				spCtx := sp.(*parser.MicroflowUrlSearchParamsContext)
+				for _, v := range spCtx.AllVARIABLE() {
+					names = append(names, strings.TrimPrefix(v.GetText(), "$"))
+				}
+			}
+			stmt.URLSearchParameters = &names
+		case uc.STRING_LITERAL() != nil:
+			url := unquoteString(uc.STRING_LITERAL().GetText())
+			stmt.URL = &url
+		}
+	}
+
+	if el := optCtx.MicroflowExportLevelClause(); el != nil {
+		elCtx := el.(*parser.MicroflowExportLevelClauseContext)
+		// The keyword, mapped to the member's stored spelling — never the user's
+		// casing, which is not what MicroflowsExportLevel declares.
+		level := types.ExportLevelHidden
+		if elCtx.API() != nil {
+			level = types.ExportLevelAPI
+		}
+		stmt.ExportLevel = &level
+	}
+
+	if c := optCtx.MicroflowConcurrencyClause(); c != nil {
+		cCtx := c.(*parser.MicroflowConcurrencyClauseContext)
+		clause := &ast.ConcurrencyClause{Allow: cCtx.ALLOW() != nil}
+		if e := cCtx.MicroflowConcurrencyError(); e != nil {
+			eCtx := e.(*parser.MicroflowConcurrencyErrorContext)
+			if eCtx.ERROR_MESSAGE() != nil && eCtx.STRING_LITERAL() != nil {
+				clause.ErrorMessage = unquoteString(eCtx.STRING_LITERAL().GetText())
+				clause.ErrorMessageSet = true
+			}
+			if qn := eCtx.QualifiedName(); qn != nil {
+				clause.ErrorMicroflow = buildQualifiedName(qn).String()
+			}
+		}
+		stmt.Concurrency = clause
+	}
 }

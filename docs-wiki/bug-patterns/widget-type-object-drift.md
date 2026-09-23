@@ -10,7 +10,7 @@ sources:
   - .claude/skills/diagnose-ce0463.md
   - .claude/skills/debug-bson.md
   - sdk/widgets/templates/README.md
-  - sdk/mpr/writer_widgets.go
+  - mdl/backend/modelsdk/widget_write.go
 ---
 
 > **Do not duplicate**: the elimination order, the two controls and the

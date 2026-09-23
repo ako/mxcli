@@ -8,7 +8,11 @@
 // e.g. the Dutch default "Tekst").
 package executor
 
-import "github.com/mendixlabs/mxcli/model"
+import (
+	"sort"
+
+	"github.com/mendixlabs/mxcli/model"
+)
 
 const fallbackLanguageCode = "en_US"
 
@@ -72,8 +76,9 @@ func selectTranslationText(items []any, preferredLang string) string {
 }
 
 // pickTextTranslation selects the best translation from a model.Text map: the
-// preferred language, else en_US, else the first non-empty. Mirrors
-// selectTranslationText for the model-level texts (e.g. page Title).
+// preferred language, else en_US, else the non-empty one with the lowest
+// language code. Mirrors selectTranslationText for the model-level texts (e.g.
+// page Title, enumeration value Caption).
 func pickTextTranslation(t *model.Text, preferredLang string) string {
 	if t == nil || len(t.Translations) == 0 {
 		return ""
@@ -86,8 +91,17 @@ func pickTextTranslation(t *model.Text, preferredLang string) string {
 	if v := t.Translations[fallbackLanguageCode]; v != "" {
 		return v
 	}
-	for _, v := range t.Translations {
-		if v != "" {
+	// Last resort: any stored translation beats reporting a caption Studio Pro
+	// plainly shows as empty. Pick it by sorted language code — iterating the map
+	// directly makes DESCRIBE output vary run to run, which breaks diffing and
+	// makes the describe -> exec round trip non-deterministic.
+	langs := make([]string, 0, len(t.Translations))
+	for lang := range t.Translations {
+		langs = append(langs, lang)
+	}
+	sort.Strings(langs)
+	for _, lang := range langs {
+		if v := t.Translations[lang]; v != "" {
 			return v
 		}
 	}

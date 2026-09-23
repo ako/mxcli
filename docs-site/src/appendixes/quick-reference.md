@@ -552,6 +552,7 @@ Cross-reference commands require `REFRESH CATALOG FULL` to populate reference da
 | Docker build | `mxcli docker build -p app.mpr` | Build with PAD patching |
 | Docker check | `mxcli docker check -p app.mpr` | Validate with `mx check` |
 | Diagnostics | `mxcli diag [--bundle]` | Session logs, version info |
+| Loop report | `mxcli diag loop-report [--json]` | Which mxcli commands a session actually ran, how often, how long |
 | New project | `mxcli new <name> --version X.Y.Z` | Create project from scratch with all tooling |
 | Init project | `mxcli init /path/to/project` | Add AI tooling to existing project |
 | Setup mxcli | `mxcli setup mxcli [--os linux]` | Download platform-specific mxcli binary |

@@ -1,0 +1,74 @@
+-- ============================================================================
+-- Issue mendixlabs/mxcli#1127 — entity event handler microflows read as dead
+-- ============================================================================
+--
+-- The file is named with a topic prefix rather than a bare `1127-`: the
+-- historical files here are named after mendixlabs/mxcli PR numbers, and the
+-- fork's issue numbers already collide with them on 261-266. The reference is
+-- written qualified everywhere for the same reason.
+--
+-- An entity event handler runs a microflow on every create/commit/delete of its
+-- entity. The catalog reduced the whole list to
+-- CATALOG.ENTITIES.HasEventHandlers — a flag saying some exist and nothing else
+-- — and emitted no `refs` row at all, so every consumer of the reference graph
+-- agreed the handler microflow was unreachable:
+--
+--   show callers of Mod.ACT_Order_Validate   → (no callers found)
+--   CATALOG.GRAPH_DEAD_ASSETS                → lists it
+--   mxcli lint                               → [QUAL004] "... is not called
+--                                              from anywhere. Remove if unused"
+--
+-- Measured on the v1 test project, one variable per run (the extractor stubbed
+-- to emit nothing is the control):
+--
+--   control (no `event` edge) → 2 dead microflows, "(no callers found)"
+--   after the fix            → 0 dead microflows, caller = Mod.EvOrder
+--
+-- Same class as the scheduled-event gap and worse in degree: a handler runs on
+-- every commit, so the false "dead" verdict lands on code hotter than most of
+-- what IS reported as live — and the lint suggestion is "Remove if unused".
+--
+-- ----------------------------------------------------------------------------
+-- Running this example
+--
+--   mxcli exec catalog-1127-entity-event-handler-refs.mdl -p app.mpr
+--   mxcli -p app.mpr -c "show callers of Sample.ACT_EvOrder_Validate"
+--       # Sample.EvOrder, depth 1 — the entity is the caller
+--   mxcli -p app.mpr -c "select EntityQualifiedName, Moment, Event, Microflow,
+--                        RaiseErrorOnFalse from CATALOG.ENTITY_EVENT_HANDLERS"
+--       # two rows: Before/Commit (RaiseErrorOnFalse 1) and After/Commit (0)
+--   mxcli -p app.mpr -c "select QualifiedName from CATALOG.GRAPH_DEAD_ASSETS
+--                        where ObjectType = 'MICROFLOW'"
+--       # neither handler is listed
+--
+-- The moment and the event live in CATALOG.ENTITY_EVENT_HANDLERS, not in the
+-- edge: `refs` has no column for them, and a kind per combination would put
+-- eight kinds into every consumer's list to say one thing. The distinction is
+-- not cosmetic — a Before handler with `raise error` can veto the commit, an
+-- After handler cannot.
+-- ============================================================================
+
+create entity Sample.EvOrder (
+  "Amount": decimal
+);
+/
+
+create microflow Sample.ACT_EvOrder_Validate ($Order: Sample.EvOrder)
+returns boolean
+begin
+  return true;
+end;
+/
+
+create microflow Sample.ACT_EvOrder_Notify ($Order: Sample.EvOrder)
+begin
+  log info 'committed';
+end;
+/
+
+-- The Before handler can veto the commit; the After one only observes it.
+alter entity Sample.EvOrder
+  add event handler on before commit call Sample.ACT_EvOrder_Validate($currentObject) raise error;
+
+alter entity Sample.EvOrder
+  add event handler on after commit call Sample.ACT_EvOrder_Notify($currentObject);

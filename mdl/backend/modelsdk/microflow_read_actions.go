@@ -1253,8 +1253,48 @@ func sortItemsFromRaw(doc bson.Raw) []*microflows.SortItem {
 		if ref, ok := sd.Lookup("AttributeRef").DocumentOK(); ok {
 			// The AttributeRef stores its by-name reference under "Attribute".
 			it.AttributeQualifiedName = rawStr(ref, "Attribute")
+			// …and the association hops, when the sort navigates to another
+			// entity, under EntityRef. Not reading them made the hop invisible to
+			// DESCRIBE, so a sort over an association could not be described and
+			// the replay had to guess which association was meant
+			// (mendixlabs/mxcli#1152).
+			it.EntityRefSteps = entityRefStepsFromRaw(ref)
 		}
 		out = append(out, it)
+	}
+	return out
+}
+
+// entityRefStepsFromRaw reads the association hops of a DomainModels$AttributeRef
+// — its EntityRef, a DomainModels$IndirectEntityRef whose Steps array holds one
+// DomainModels$EntityRefStep per hop. A DirectEntityRef (or no EntityRef at all)
+// is an own-entity attribute and yields no steps.
+//
+// The first Steps entry is the typed-array marker (an int, not a document) and is
+// skipped by the DocumentOK guard.
+func entityRefStepsFromRaw(ref bson.Raw) []microflows.EntityRefStep {
+	entityRef, ok := ref.Lookup("EntityRef").DocumentOK()
+	if !ok {
+		return nil
+	}
+	arr, ok := entityRef.Lookup("Steps").ArrayOK()
+	if !ok {
+		return nil
+	}
+	vals, err := arr.Values()
+	if err != nil {
+		return nil
+	}
+	var out []microflows.EntityRefStep
+	for _, v := range vals {
+		sd, ok := v.DocumentOK()
+		if !ok {
+			continue
+		}
+		out = append(out, microflows.EntityRefStep{
+			Association:       rawStr(sd, "Association"),
+			DestinationEntity: rawStr(sd, "DestinationEntity"),
+		})
 	}
 	return out
 }

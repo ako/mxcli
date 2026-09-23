@@ -101,32 +101,23 @@ func BuildWebClient(opts WebClientOptions) error {
 		w = io.Discard
 	}
 	webDir := filepath.Join(opts.DeployDir, "web")
-	if fi, err := os.Stat(filepath.Join(webDir, "rollup.config.mjs")); err != nil || fi.IsDir() {
+	switch plan := planWebClient(opts.DeployDir); plan {
+	case webClientPrebuilt:
 		// Mendix 11.14 closed this gap upstream: its build writes web/dist/
 		// itself and no longer emits a rollup config, because there is nothing
-		// left to configure. Measured on a blank app, same build target:
-		//
-		//   11.13.0   rollup.config.mjs PRESENT   dist/index.js ABSENT
-		//   11.14.0   rollup.config.mjs ABSENT    dist/index.js PRESENT
-		//
-		// The old gate tested for the config, so on 11.14 it failed on the
-		// absence of a file whose purpose had been served — fatally, at both
-		// call sites, for EVERY 11.14 app (ako/mxcli-ledger #146).
-		//
-		// Gate on the gap instead of on the shape one version happened to leave
-		// behind: if the bundle is already there, this step has nothing to do.
-		// The config is still required when it is NOT there, because then the
-		// rollup run is the only thing that can produce it.
-		if WebClientBundled(opts.DeployDir) {
-			fmt.Fprintln(w, "  Web client already bundled by mxbuild; skipping rollup step")
-			return nil
-		}
-		return fmt.Errorf("no rollup.config.mjs and no bundle at %s\n"+
-			"  Mendix 11.13 and earlier emit a rollup config for mxcli to run; 11.14+ writes\n"+
-			"  the bundle itself. Neither is present, so the build did not produce a client:\n"+
-			"  run a serve Deploy build first (or delete deployment/ if it was built by an\n"+
-			"  older Mendix version).",
-			webClientBundlePath(opts.DeployDir))
+		// left to configure (ako/mxcli-ledger #146).
+		fmt.Fprintln(w, "  Web client already bundled by mxbuild; skipping rollup step")
+		return nil
+	case webClientClassic:
+		// Settings > Web UI > OptimizedClient = No. The deployment's client is
+		// the Dojo one under web/, loaded from mxclientsystem and served as-is;
+		// there is no bundle to build and never was. Refusing here failed the
+		// whole run, claiming the build had produced no client while its client
+		// sat in the same directory (#1123).
+		fmt.Fprintln(w, "  Classic (Dojo) web client — no bundling step; skipping rollup")
+		return nil
+	case webClientMissing:
+		return noWebClientError(opts.DeployDir)
 	}
 	nodeBin, runner, err := resolveNodeTooling(opts.MxBuildPath)
 	if err != nil {
@@ -231,6 +222,12 @@ func ReportLostWebClientBundle(deployDir string, hadBundle bool, w io.Writer) bo
 func ensureWebClientBundle(deployDir string, w io.Writer, bundle func() error) (bool, error) {
 	if w == nil {
 		w = io.Discard
+	}
+	// A classic-client deployment has no bundle and never will, so "the bundle is
+	// missing" is its steady state rather than damage from the boot. Without this
+	// the guard would re-run the bundler after every boot of such an app.
+	if planWebClient(deployDir) == webClientClassic {
+		return false, nil
 	}
 	if WebClientBundled(deployDir) {
 		return false, nil

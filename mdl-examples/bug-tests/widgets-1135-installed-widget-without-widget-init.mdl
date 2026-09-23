@@ -1,0 +1,91 @@
+-- mendixlabs/mxcli#1135 — `mxcli check` refused MDL that `describe page` had
+-- just emitted, and `exec` then accepted.
+--
+-- Run against a project that has the HTML Element widget installed (every
+-- `mxcli new` project does) and has NEVER run `mxcli widget init`:
+--
+--     rm -rf .mxcli/widgets
+--     mxcli check  mdl-examples/bug-tests/widgets-1135-installed-widget-without-widget-init.mdl -p App.mpr --references
+--     mxcli exec   mdl-examples/bug-tests/widgets-1135-installed-widget-without-widget-init.mdl -p App.mpr
+--
+-- Before the fix, measured on a blank Mendix 11.12.2 project:
+--
+--     check --references -> `htmlelement` is not a widget in this project        [MDL-WIDGET25]
+--                           `attribute` is not a widget in this project          [MDL-WIDGET25]
+--                           `tagcontentcontainer` is not a widget in this project [MDL-WIDGET25]
+--                           exit 1, so exec refused to run the script
+--     exec --no-check    -> info: updated widget definitions for App.mpr
+--                           Created page MyFirstModule.HtmlDemo
+--
+-- check was STRICTER than exec, which is the inversion check exists to prevent:
+-- the script it blocked is one exec writes without complaint. The cause is that
+-- the two read different registries — the page builder calls
+-- RefreshStaleWidgetDefinitions before reading definitions, and
+-- LoadWidgetRegistry (check, lint, LSP) did not — so the validator knew the nine
+-- embedded widgets and nothing else.
+--
+-- The self-healing is what made it read as flaky: the first exec writes
+-- .mxcli/widgets/*.def.json, and every check after it passes. Delete that
+-- directory before reproducing, or the bug is invisible.
+--
+-- `describe page` on the result of this script emits these same three keywords,
+-- so before the fix `describe -> check` did not round-trip.
+
+create or replace page MyFirstModule.HtmlDemo (
+  title: 'Html',
+  layout: 'Atlas_Core.Atlas_Default'
+) {
+  htmlelement frame (tagName: 'div') {
+    attribute a1 (attributeName: 'data-x', attributeValue: 'y')
+    tagcontentcontainer body {
+      dynamictext dt (content: 'hi')
+    }
+  }
+};
+
+-- The second half of #1135: a design property on a NATIVE widget.
+--
+-- `alter page … set '<design property>' = … on <widget>` cannot write one — that
+-- is a real capability gap, still open. What is fixed is the dead end it used to
+-- be: the error said `property "Remove empty text" not found (widget has no
+-- pluggable Object)`, which names an mxcli internal and omits the route that
+-- exists. Run this against a page with a List View named lvThings to see it:
+--
+--     alter page MyFirstModule.ThingList { set 'Remove empty text' = off on lvThings };
+--     -> property "Remove empty text" is not a property of this built-in widget —
+--        `set` writes its own properties (…); for an Atlas design property use
+--        `alter styling on page|snippet <Module.Name> widget lvThings
+--          set 'Remove empty text' = <value>` instead
+--
+-- The three names in the report — 'Remove empty text', 'Remove loadmore button',
+-- 'Reset list style' — are NOT List View design properties in the Atlas that
+-- ships with Mendix 11. Measured on 11.12.2, a List View has SIX, and none of
+-- them is one of those three:
+--
+--     mxcli -p App.mpr -c "show design properties for listview"
+--     From: Widget (inherited)   Spacing, Align self, Hide on
+--     From: ListView             Style, Hover style, Row size
+--
+-- Count them from the registry, not from the design-properties.json key: three
+-- come from the `Widget` group, which applies to every widget, and reading only
+-- the `ListView` key says three. ThemeRegistry.GetPropertiesForWidget already
+-- prepends the inherited group, so a validator built on it gets all six for
+-- free; a validator built on the raw JSON key would reject Spacing, Align self
+-- and Hide on as unknown.
+--
+-- Writing one of the reported names through ALTER STYLING succeeds, and mxbuild
+-- then refuses the project:
+--
+--     alter styling … set 'Remove empty text' = on;   -> mx check: 1 error,
+--       [CE6083] "Design property Remove empty text is not supported by your
+--       theme." at List view 'lvThings'
+--     alter styling … set 'Row size' = 'Small';       -> mx check: 0 errors
+--
+-- So refusing the write was right and the reason given was wrong. Still open,
+-- tracked as ako/mxcli#509: MDL-WIDGET11 ("design property not defined for this
+-- widget type") covers CREATE PAGE / CREATE SNIPPET / ALTER PAGE INSERT|REPLACE
+-- and NOT `ALTER STYLING`, whose widget type lives only in the stored document.
+-- Until it does, an unsupported key here is silent until mxbuild says CE6083.
+
+alter styling on page MyFirstModule.ThingList widget lvThings
+  set 'Row size' = 'Small';

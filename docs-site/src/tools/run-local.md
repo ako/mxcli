@@ -77,6 +77,7 @@ so structural changes need a restart; behavioural changes do not.
 | `--app-port` | 8080 | App HTTP port |
 | `--admin-port` | 8090 | M2EE admin API port |
 | `--serve-port` | 6543 | `mxbuild --serve` port |
+| `--mxbuild-path` | resolved for this host | The mxbuild to build with, overriding resolution (Studio Pro on macOS/Windows, the cached CDN download on Linux) |
 | `--db-host` | 127.0.0.1:5432 | Database `host:port`; bracket IPv6 endpoints (`[::1]:5432`) |
 | `--db-name` | derived from project | Database name |
 | `--db-user` / `--db-password` | mendix / mendix | Database credentials |
@@ -378,6 +379,16 @@ not just headless checks.
 **Mendix 11.14+ bundles the client itself**, so there is no rollup step to run and
 no bundler to keep hot — `run --local` prints a line saying so and skips it. Both
 paths work; the bundle is mxbuild's rather than mxcli's.
+
+**Classic-client apps need no bundling at all.** With **Web UI Settings >
+OptimizedClient = No**, mxbuild puts Mendix's classic (Dojo) client in
+`deployment/web/` — loaded from `mxclientsystem` and served as-is — and parks the
+React client in `deployment/react-web/`. (With `Yes` it is the other way round:
+React in `web/`, Dojo in `dojo-web/`.) There is no rollup step and no `web/dist`,
+so `run --local` says so and skips it, under `--watch` too. mxcli reads this from
+the deployment's own `web/index.html` rather than from the model setting, since
+the deployment is what gets served and the two disagree right after the setting
+is changed.
 
 ### `--watch` on Mendix 11.14
 

@@ -1,0 +1,99 @@
+-- mendixlabs/mxcli#1057 — a Selection helper with renderStyle 'custom' has three
+-- MANDATORY child slots, and Studio Pro fills each with a Forms$StaticImageViewer.
+-- DESCRIBE PAGE could not spell that widget, so it emitted a note instead:
+--
+--     customallselected customallselected1 {
+--       -- Forms$StaticImageViewer (imgAll)  -- NOT re-executable: mxcli cannot
+--       author this widget, so re-running this script would drop it
+--     }
+--
+-- Re-running the description emptied all three slots, and the build said so:
+--
+--     [error] [CE0642] "Property 'All selected' is required."  at Widgets
+--             container 'All selected' of selection helper 'sh1'   (x3)
+--
+-- The reporter's workaround was an empty `dynamictext` per slot: structurally
+-- valid, and it loses the icons.
+--
+-- TWO halves, and the second is the one that hides. `staticimage` was already a
+-- keyword the executor dispatched, but MDL had no spelling for WHICH image it
+-- shows — staticImageToGen wrote Image as the empty string with a comment
+-- saying so. Emitting the keyword alone would have turned a visible note into a
+-- silent drop, which is exactly what ako/mxcli#512 and mxcli-formula1
+-- FINDINGS §142 each cost a round to learn on this same widget.
+--
+-- Forms$StaticImageViewer.Image is a by-name reference to Images$Image, so the
+-- value is the three-part qualified name of an image-collection entry —
+-- Module.Collection.Image, the same shape `Icon:` and the pluggable `image`
+-- widget already use.
+--
+-- Measured on a blank Mendix 11.12.1 project (mxbuild 11.12.1):
+--
+--     pre-fix  describe -> exec  -> CE0642 x3, the reported failure
+--     fixed    describe -> exec  -> Unchanged page   <- the emitted MDL
+--                                   rebuilds the stored document exactly
+--     writer reverted to Image:"" -> CE0436 "No image selected."
+--
+-- CE0582 ("Widget static image is not supported in React client") is reported by
+-- mxbuild 11.12.1 for a static image ANYWHERE, these slots included. That is
+-- Mendix's own deprecation advice, not an mxcli defect — mxcli's job here is to
+-- round-trip what the model stores. A new page should use the pluggable `image`
+-- widget, which has carried `Image:` since mxcli-formula1 FINDINGS §142.
+
+create or replace page MyFirstModule.SelectionHelperDemo (
+  Title: 'Selection helper demo', Layout: Atlas_Core.Atlas_Default
+) {
+  placeholder Main {
+    selectionhelper sh1 (renderStyle: 'custom') {
+      customallselected slot1 {
+        staticimage imgAll (Image: 'MyFirstModule.Images.gallery')
+      }
+      customsomeselected slot2 {
+        staticimage imgSome (Image: 'MyFirstModule.Images.combobox')
+      }
+      customnoneselected slot3 {
+        staticimage imgNone (Image: 'MyFirstModule.Images.dg2')
+      }
+    }
+  }
+};
+
+-- Making the widget describable is what puts its OTHER stored properties at
+-- risk: before, a static image described as a visible note; after, anything the
+-- emitter leaves out is normalised away on replay with no note at all — a loud
+-- loss traded for a quiet one. The writer hardcoded both size units to "Auto"
+-- and the builder hardcoded Responsive to true, so this widget round-tripped
+-- into an auto-sized responsive one until they were wired through.
+--
+--     describe -> exec  -> Unchanged page   (Mendix 11.12.1)
+
+create or replace page MyFirstModule.StaticImageFixedSize (
+  Title: 'Fixed size', Layout: Atlas_Core.Atlas_Default
+) {
+  placeholder Main {
+    staticimage imgFixed (
+      Image: 'MyFirstModule.Images.gallery',
+      Width: 300, WidthUnit: pixels,
+      Height: 50, HeightUnit: percentage,
+      Responsive: false
+    )
+  }
+};
+
+-- Two CONTROLS for the emitter, and they pull in opposite directions.
+--
+-- A static image with no reference must still describe as a `staticimage` with
+-- no `Image:` clause: emitting the clause unconditionally would satisfy every
+-- assertion above and invent a reference CE1613 then rejects. And Auto units
+-- with a responsive image are Studio Pro's defaults that the writer re-derives,
+-- so describing them would put clauses in the author's script they never wrote
+-- — the "invents" half of the describe failure class, where each round trip
+-- accumulates another default.
+
+create or replace page MyFirstModule.StaticImageNoReference (
+  Title: 'No reference', Layout: Atlas_Core.Atlas_Default
+) {
+  placeholder Main {
+    staticimage imgEmpty (Width: 64, Height: 64)
+  }
+};

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState, ReactElement } from "react";
 import embed, { Result as EmbedResult, VisualizationSpec } from "vega-embed";
+import { loader as vegaLoader } from "vega";
 
 import { VegaChartContainerProps } from "../typings/VegaChartProps";
+import { readCsrfToken, withCsrfHeader } from "./csrf";
 
 // Not decoration: a spec using `"width": "container"` measures this element, and
 // without the width rule below it measures zero and the chart draws nothing —
@@ -48,6 +50,26 @@ function cleanDatum(datum: Record<string, unknown>): Record<string, unknown> {
         }
     }
     return out;
+}
+
+/**
+ * A Vega loader that authenticates fetches going back to this app.
+ *
+ * Only a URL-fed spec reaches this — a spec fed from the `chartData` attribute
+ * fetches nothing. Mendix refuses a session-authenticated read without the
+ * session's CSRF token, and Vega reports the 401 body as an empty dataset, so
+ * without this the chart draws its axes and legend and no marks. The token goes
+ * to same-origin requests only; see `csrf.ts`. Built per embed rather than once
+ * at module load, because the token is not there until the session is.
+ */
+function createLoader(): ReturnType<typeof vegaLoader> {
+    const instance = vegaLoader();
+    const fetchHttp = instance.http.bind(instance);
+    const token = readCsrfToken();
+    const origin = typeof location === "undefined" ? "" : location.href;
+    instance.http = (uri: string, options?: RequestInit) =>
+        fetchHttp(uri, withCsrfHeader(uri, options, origin, token));
+    return instance;
 }
 
 export function VegaChart(props: VegaChartContainerProps): ReactElement {
@@ -108,6 +130,7 @@ export function VegaChart(props: VegaChartContainerProps): ReactElement {
         embed(hostRef.current, resolvedSpec, {
             actions: showActions,
             renderer,
+            loader: createLoader(),
             // The app supplies its own type scale and palette; letting Vega apply
             // a theme on top would fight it.
             config: { background: "transparent" }

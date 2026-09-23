@@ -668,3 +668,29 @@ Apache License 2.0 - See [LICENSE](LICENSE) for details.
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+## High-Level Fluent API (in api/)
+The `api/` package provides a simplified, fluent API inspired by Mendix Web Extensibility Model API:
+
+```go
+a, err := api.Open("/path/to/project.mpr")   // or api.New(b) over any backend
+defer a.Close()
+
+module, _ := a.Modules.Get("MyModule")
+a.SetModule(module)
+
+entity, _ := a.DomainModels.CreateEntity("Customer").
+    persistent().
+    WithStringAttribute("Name", 100).
+    WithIntegerAttribute("Age").
+    build()
+```
+
+Available namespaces: `DomainModels`, `enumerations`, `microflows`, `pages`, `modules`
+
+It takes a **`backend.FullBackend`, not a `*mpr.Writer`** — it used to hold a concrete legacy
+writer and so bypassed the backend abstraction entirely, which is why `AddAttribute` and
+`UpdateAttribute` sat unimplemented on the codec engine with `api/` as their only caller. The
+practical gain is that the same builders now run against any backend, including a live Studio Pro
+over MCP, which was unreachable before. `Open` owns the connection it makes; a backend passed to
+`New` belongs to the caller and `Close` leaves it alone.

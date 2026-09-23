@@ -1,0 +1,138 @@
+-- mendixlabs/mxcli#1140 — a page parameter passed as a nanoflow argument was not
+-- wired, so Studio Pro reported CE1571 on opening the page.
+--
+-- REPORTED SHAPE. A PANEL_ page with two parameters; the Save button sits inside
+-- a dataview bound to the first:
+--
+--   $Dto = $Dto               -> "correctly wired"
+--   $BufferDefinition = ...   -> NOT wired. Studio Pro: CE1571 "No argument has
+--                                been selected for parameter 'BufferDefinition'
+--                                and no default is available."
+--
+-- WHAT WAS ACTUALLY BROKEN — not what the asymmetry suggests. Both arguments were
+-- written identically, as a text Expression ("$Dto" / "$BufferDefinition"), and
+-- NEITHER was bound. Studio Pro supplies a default for the one that happens to be
+-- the dataview's object and reports the other, which is what "and no default is
+-- available" says. Chasing why $Dto worked is the wrong thread.
+--
+-- Mendix stores a flow argument two ways: a reference to a page parameter,
+-- snippet parameter or page variable goes in the mapping's Variable as a
+-- Forms$PageVariable; a literal or expression goes in Expression. mxcli only ever
+-- wrote the second. Measured on Workflow Commons 4.11.0 (Studio Pro-authored,
+-- 42 pages + 84 snippets): of 101 flow parameter mappings, 95 bind through
+-- Variable and 6 through Expression — and all 6 of those are Boolean literals.
+-- A $-prefixed Expression occurs zero times.
+--
+-- WHY NOTHING CAUGHT IT. `mx check` on this exact project reports **0 errors**
+-- both before and after the fix — mxbuild does not validate this binding, so the
+-- build is not a safety net and the reporter is right that the error appears only
+-- in Studio Pro. `mxcli check --references` and `mxcli lint` are silent for the
+-- same reason: the nanoflow and both parameters resolve.
+--
+-- REPRODUCING (the write side is BSON, so read it rather than building):
+--
+--   mxcli exec 1140-flow-arg-page-parameter.mdl -p app.mpr
+--   mxcli bson dump -p app.mpr --type page \
+--     --object CustomModule.PANEL_BufferDefinition_Edit | grep -A6 ParameterMapping
+--
+-- Before: {"$Type": "Forms$NanoflowParameterMapping", "Parameter": "….Dto",
+--          "Expression": "$Dto"}                                   <- unbound
+-- After:  {"$Type": "Forms$NanoflowParameterMapping", "Parameter": "….Dto",
+--          "Expression": "", "Variable": {"$Type": "Forms$PageVariable",
+--          "PageParameter": "Dto"}}                                <- bound
+--
+-- The read half was wrong too and hid the write half: the describe readers looked
+-- for a `Name` key on that sub-document, which Forms$PageVariable has not, so
+-- every argument in Studio Pro-authored content described as absent. Regression
+-- coverage: TestNanoflowActionBindsPageParameterThroughVariable
+-- (mdl/backend/modelsdk), TestClassifyFlowArgValue and TestPageVariableArgValue
+-- (mdl/executor).
+
+create module CustomModule;
+
+create persistent entity CustomModule.BufferDefinition (
+  Name: String(100)
+);
+
+create non-persistent entity CustomModule.UpdateBufferDefinition (
+  Name: String(100)
+);
+
+create or replace layout CustomModule.App_Default (
+  layouttype: 'Responsive'
+) {
+  scrollcontainer layoutContainer {
+    region center {
+      placeholder Main
+    }
+  }
+}
+
+create or replace nanoflow CustomModule.ACT_BufferDefinition_SaveEdit_NF
+  ($Dto: CustomModule.UpdateBufferDefinition,
+   $BufferDefinition: CustomModule.BufferDefinition)
+begin
+  change $BufferDefinition (Name = $Dto/Name);
+end;
+
+-- The reported page. Both arguments name a page parameter, and the one that is
+-- NOT the dataview's object is the one the report is about.
+create or replace page CustomModule.PANEL_BufferDefinition_Edit (
+  Title: 'Edit',
+  Layout: CustomModule.App_Default,
+  Params: { $Dto: CustomModule.UpdateBufferDefinition,
+            $BufferDefinition: CustomModule.BufferDefinition }
+) {
+  placeholder Main {
+    dataview dvEdit (DataSource: $Dto, FormOrientation: Vertical) {
+      footer footer1 {
+        actionbutton btnSave (
+          Caption: 'Save',
+          Action: nanoflow CustomModule.ACT_BufferDefinition_SaveEdit_NF(
+            $Dto = $Dto,
+            $BufferDefinition = $BufferDefinition
+          )
+        )
+      }
+    }
+  }
+}
+
+-- CONTROL 1 — a literal argument must stay an Expression. A fix that routed
+-- everything through Variable would clear the report and break this, which is the
+-- shape of all six Expression-bound mappings in the reference.
+create or replace nanoflow CustomModule.ACT_Flag_NF ($Keep: Boolean)
+begin
+  log info 'flag';
+end;
+
+-- CONTROL 2 — $currentObject is deliberately left as an expression: no Studio Pro
+-- reference for the bare form was measured, and mxcli's show_page handling already
+-- relies on the context object being inferred rather than named. PANEL_Controls
+-- declares a $Row page parameter it never uses, so the control also shows that a
+-- name in scope does not drag $currentObject into the Variable form.
+create or replace nanoflow CustomModule.ACT_Row_NF ($Row: CustomModule.BufferDefinition)
+begin
+  log info 'row';
+end;
+
+create or replace page CustomModule.PANEL_Controls (
+  Title: 'Controls',
+  Layout: CustomModule.App_Default,
+  Params: { $Row: CustomModule.BufferDefinition }
+) {
+  placeholder Main {
+    listview lvRows (DataSource: DATABASE CustomModule.BufferDefinition) {
+      container rowBox {
+        actionbutton btnFlag (
+          Caption: 'Flag',
+          Action: nanoflow CustomModule.ACT_Flag_NF($Keep = true)
+        )
+        actionbutton btnRow (
+          Caption: 'Row',
+          Action: nanoflow CustomModule.ACT_Row_NF($Row = $currentObject)
+        )
+      }
+    }
+  }
+}

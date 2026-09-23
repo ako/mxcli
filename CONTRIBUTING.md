@@ -437,7 +437,8 @@ If you're contributing from a fork, this is the full cycle:
 | Directory | Purpose |
 |-----------|---------|
 | `cmd/mxcli/` | CLI commands (Cobra) |
-| `sdk/mpr/` | MPR file reading/writing, BSON parsing |
+| `modelsdk/` | MPR file reading/writing, BSON codec, canonical form |
+| `mdl/backend/modelsdk/` | Backend implementation: semantic model ↔ BSON |
 | `sdk/microflows/`, `sdk/pages/`, etc. | Domain types |
 | `mdl/grammar/` | ANTLR4 grammar (`MDLParser.g4`, `MDLLexer.g4`) |
 | `mdl/ast/` | AST node types |

@@ -14,84 +14,86 @@ import (
 
 // ExitCreateWorkflowStatement handles CREATE WORKFLOW statements.
 func (b *Builder) ExitCreateWorkflowStatement(ctx *parser.CreateWorkflowStatementContext) {
-	names := ctx.AllQualifiedName()
-	if len(names) == 0 {
+	name := ctx.QualifiedName()
+	if name == nil {
 		return
 	}
 
 	stmt := &ast.CreateWorkflowStmt{
-		Name: buildQualifiedName(names[0]),
+		Name: buildQualifiedName(name),
 	}
 
-	// Parse PARAMETER $Var: Entity
-	if ctx.PARAMETER() != nil && ctx.VARIABLE() != nil {
-		stmt.ParameterVar = ctx.VARIABLE().GetText()
-		// The parameter entity is the second qualified name
-		if len(names) > 1 {
-			stmt.ParameterEntity = buildQualifiedName(names[1])
+	// Header clauses are a SET, not a sequence (ako/mxcli#586): each one is read
+	// off its own clause context, so nothing here depends on the order they were
+	// written in, and no clause's qualified name or string can be mistaken for
+	// another's. The rule this replaces read `names[1]` or `names[2]` for the
+	// overview page depending on whether PARAMETER was present — which is the
+	// shape of reading that made the order load-bearing in the first place.
+	b.checkWorkflowClausesAtMostOnce(ctx)
+	for _, clause := range ctx.AllWorkflowHeaderClause() {
+		hc, ok := clause.(*parser.WorkflowHeaderClauseContext)
+		if !ok {
+			continue
 		}
-	}
-
-	// Each optional string clause is read by its grammar LABEL, not by counting
-	// STRING_LITERALs. The positional version worked only while the clauses
-	// happened to be the rule's only strings: adding the FOLDER clause would
-	// have made allStrings[0] the folder path whenever one was given, so a
-	// foldered workflow would have silently taken its display name from it.
-	if tok := ctx.GetFolder(); tok != nil {
-		stmt.Folder = unquoteString(tok.GetText())
-	}
-	if tok := ctx.GetDisplay(); tok != nil {
-		stmt.DisplayName = unquoteString(tok.GetText())
-	}
-	if tok := ctx.GetDescription(); tok != nil {
-		stmt.Description = unquoteString(tok.GetText())
-	}
-
-	// EXPORT LEVEL (Identifier | API)
-	if ctx.EXPORT() != nil && ctx.LEVEL() != nil {
-		if ctx.IDENTIFIER() != nil {
-			stmt.ExportLevel = ctx.IDENTIFIER().GetText()
-		} else if ctx.API() != nil {
-			stmt.ExportLevel = "API"
+		switch {
+		case hc.FOLDER() != nil:
+			if tok := hc.GetFolder(); tok != nil {
+				stmt.Folder = unquoteString(tok.GetText())
+			}
+		case hc.PARAMETER() != nil:
+			if v := hc.VARIABLE(); v != nil {
+				stmt.ParameterVar = v.GetText()
+			}
+			if qn := hc.QualifiedName(); qn != nil {
+				stmt.ParameterEntity = buildQualifiedName(qn)
+			}
+		case hc.DISPLAY() != nil:
+			if tok := hc.GetDisplay(); tok != nil {
+				stmt.DisplayName = unquoteString(tok.GetText())
+			}
+		case hc.DESCRIPTION() != nil:
+			if tok := hc.GetDescription(); tok != nil {
+				stmt.Description = unquoteString(tok.GetText())
+			}
+		case hc.EXPORT() != nil && hc.LEVEL() != nil:
+			// HIDDEN_KW is read alongside IDENTIFIER because `Hidden` was an
+			// ordinary identifier here until the microflow header clauses made it
+			// a keyword — at which point this read silently produced "" and three
+			// tests caught it. Any rule taking a bare IDENTIFIER for a fixed
+			// vocabulary has the same fragility.
+			switch {
+			case hc.IDENTIFIER() != nil:
+				stmt.ExportLevel = hc.IDENTIFIER().GetText()
+			case hc.HIDDEN_KW() != nil:
+				stmt.ExportLevel = hc.HIDDEN_KW().GetText()
+			case hc.API() != nil:
+				stmt.ExportLevel = "API"
+			}
+		case hc.OVERVIEW() != nil && hc.PAGE() != nil:
+			if qn := hc.QualifiedName(); qn != nil {
+				stmt.OverviewPage = buildQualifiedName(qn)
+			}
+		case hc.DUE() != nil && hc.DATE_TYPE() != nil:
+			if tok := hc.GetDueDate(); tok != nil {
+				stmt.DueDate = unquoteString(tok.GetText())
+			}
+		case hc.WorkflowEventHandlerClause() != nil:
+			h, ok := hc.WorkflowEventHandlerClause().(*parser.WorkflowEventHandlerClauseContext)
+			if !ok {
+				continue
+			}
+			node := ast.WorkflowEventHandlerNode{AnyEvent: h.ANY() != nil}
+			if qn := h.QualifiedName(); qn != nil {
+				node.Microflow = buildQualifiedName(qn)
+			}
+			for _, id := range h.AllIDENTIFIER() {
+				node.EventTypes = append(node.EventTypes, id.GetText())
+			}
+			if str := h.STRING_LITERAL(); str != nil {
+				node.Description = unquoteString(str.GetText())
+			}
+			stmt.EventHandlers = append(stmt.EventHandlers, node)
 		}
-	}
-
-	// Parse OVERVIEW PAGE QualifiedName
-	overviewPageIdx := -1
-	if ctx.OVERVIEW() != nil && ctx.PAGE() != nil {
-		// Find the overview page qualified name
-		// It's either names[1] or names[2] depending on whether PARAMETER was present
-		startIdx := 1
-		if ctx.PARAMETER() != nil {
-			startIdx = 2
-		}
-		if len(names) > startIdx {
-			stmt.OverviewPage = buildQualifiedName(names[startIdx])
-			overviewPageIdx = startIdx
-		}
-	}
-	_ = overviewPageIdx
-
-	// Parse DUE DATE 'expression'
-	if tok := ctx.GetDueDate(); tok != nil {
-		stmt.DueDate = unquoteString(tok.GetText())
-	}
-
-	// Workflow event handlers: each clause carries its own qualified name, so
-	// they do not shift the header's name indices above.
-	for _, hc := range ctx.AllWorkflowEventHandlerClause() {
-		h := hc.(*parser.WorkflowEventHandlerClauseContext)
-		node := ast.WorkflowEventHandlerNode{AnyEvent: h.ANY() != nil}
-		if qn := h.QualifiedName(); qn != nil {
-			node.Microflow = buildQualifiedName(qn)
-		}
-		for _, id := range h.AllIDENTIFIER() {
-			node.EventTypes = append(node.EventTypes, id.GetText())
-		}
-		if s := h.STRING_LITERAL(); s != nil {
-			node.Description = unquoteString(s.GetText())
-		}
-		stmt.EventHandlers = append(stmt.EventHandlers, node)
 	}
 
 	// Parse CREATE OR MODIFY
@@ -124,6 +126,10 @@ func (b *Builder) exitAlterWorkflowStatement(ctx *parser.AlterStatementContext) 
 	stmt := &ast.AlterWorkflowStmt{
 		Name: buildQualifiedName(qn),
 	}
+
+	// ALTER's INSERT/REPLACE ACTIVITY take a whole workflow activity, user tasks
+	// included, so the at-most-once rule has to be applied here as well.
+	b.checkWorkflowClausesAtMostOnce(ctx)
 
 	for _, actionCtx := range ctx.AllAlterWorkflowAction() {
 		op := buildAlterWorkflowAction(actionCtx.(*parser.AlterWorkflowActionContext))
@@ -337,10 +343,14 @@ func buildWorkflowSetPropertyOp(ctx *parser.WorkflowSetPropertyContext) *ast.Set
 		op.Value = unquoteString(ctx.STRING_LITERAL().GetText())
 	} else if ctx.EXPORT() != nil {
 		op.Property = "export_level"
-		if ctx.API() != nil {
+		// HIDDEN_KW alongside IDENTIFIER — see the CREATE side above.
+		switch {
+		case ctx.API() != nil:
 			op.Value = "API"
-		} else if ctx.IDENTIFIER() != nil {
+		case ctx.IDENTIFIER() != nil:
 			op.Value = ctx.IDENTIFIER().GetText()
+		case ctx.HIDDEN_KW() != nil:
+			op.Value = ctx.HIDDEN_KW().GetText()
 		}
 	} else if ctx.DUE() != nil {
 		op.Property = "due_date"
@@ -504,6 +514,12 @@ func buildWorkflowActivityStmt(ctx parser.IWorkflowActivityStmtContext) ast.Work
 }
 
 // buildWorkflowUserTask builds a WorkflowUserTaskNode from the grammar context.
+//
+// Clauses are a SET (ako/mxcli#586), so each is read off its own clause context
+// in source order rather than by counting the statement's qualified names and
+// string literals. The counting version is what made the order load-bearing:
+// `on created microflow` had to sit between the targeting clauses and `entity`
+// or its qualified name landed on a different field.
 func buildWorkflowUserTask(ctx parser.IWorkflowUserTaskStmtContext) *ast.WorkflowUserTaskNode {
 	utCtx := ctx.(*parser.WorkflowUserTaskStmtContext)
 
@@ -517,97 +533,101 @@ func buildWorkflowUserTask(ctx parser.IWorkflowUserTaskStmtContext) *ast.Workflo
 	}
 
 	node := &ast.WorkflowUserTaskNode{
-		Name:          taskName,
-		IsMultiUser:   utCtx.MULTI() != nil,
-		AwaitAllUsers: utCtx.AWAIT() != nil,
-	}
-	if pc, ok := utCtx.WorkflowParticipantsClause().(*parser.WorkflowParticipantsClauseContext); ok && pc != nil {
-		node.Participants = buildWorkflowParticipants(pc)
-	}
-	if cc, ok := utCtx.WorkflowCompletionClause().(*parser.WorkflowCompletionClauseContext); ok && cc != nil {
-		node.Completion = buildWorkflowCompletionRule(cc)
+		Name:        taskName,
+		IsMultiUser: utCtx.MULTI() != nil,
 	}
 
-	// Caption is the first STRING_LITERAL
-	allStrings := utCtx.AllSTRING_LITERAL()
-	if len(allStrings) > 0 {
-		node.Caption = unquoteString(allStrings[0].GetText())
+	// The caption is the statement's own string literal; every other string now
+	// belongs to a clause.
+	if caption := utCtx.STRING_LITERAL(); caption != nil {
+		node.Caption = unquoteString(caption.GetText())
 	}
 
-	// Qualified names: PAGE, TARGETING MICROFLOW, ENTITY (in order)
-	names := utCtx.AllQualifiedName()
-	nameIdx := 0
-
-	if utCtx.PAGE() != nil && nameIdx < len(names) {
-		node.Page = buildQualifiedName(names[nameIdx])
-		nameIdx++
+	for _, clause := range utCtx.AllWorkflowUserTaskClause() {
+		applyWorkflowUserTaskClause(node, clause)
+	}
+	for _, clause := range utCtx.AllWorkflowMultiUserTaskClause() {
+		mc, ok := clause.(*parser.WorkflowMultiUserTaskClauseContext)
+		if !ok {
+			continue
+		}
+		switch {
+		case mc.WorkflowUserTaskClause() != nil:
+			applyWorkflowUserTaskClause(node, mc.WorkflowUserTaskClause())
+		case mc.WorkflowParticipantsClause() != nil:
+			if pc, ok := mc.WorkflowParticipantsClause().(*parser.WorkflowParticipantsClauseContext); ok {
+				node.Participants = buildWorkflowParticipants(pc)
+			}
+		case mc.WorkflowCompletionClause() != nil:
+			if cc, ok := mc.WorkflowCompletionClause().(*parser.WorkflowCompletionClauseContext); ok {
+				node.Completion = buildWorkflowCompletionRule(cc)
+			}
+		case mc.AWAIT() != nil:
+			node.AwaitAllUsers = true
+		}
 	}
 
-	// Determine if group targeting (TARGETING GROUPS vs TARGETING [USERS])
-	isGroupTargeting := len(utCtx.AllGROUPS()) > 0
+	return node
+}
 
-	// MICROFLOW appears in both TARGETING … MICROFLOW and ON CREATED MICROFLOW,
-	// so targeting is present when a MICROFLOW token is left over after the
-	// on-created one. Qualified names come in clause order: page, targeting,
-	// on-created, entity.
-	onCreated := utCtx.CREATED() != nil
-	targetingMicroflows := len(utCtx.AllMICROFLOW())
-	if onCreated {
-		targetingMicroflows--
+// applyWorkflowUserTaskClause folds one clause into the task node. Reading
+// TARGETING's USERS/GROUPS off the clause that carries it — rather than asking
+// whether the whole statement mentions GROUPS anywhere — is what lets the two
+// targeting clauses appear in either order without one borrowing the other's
+// audience.
+func applyWorkflowUserTaskClause(node *ast.WorkflowUserTaskNode, clause parser.IWorkflowUserTaskClauseContext) {
+	c, ok := clause.(*parser.WorkflowUserTaskClauseContext)
+	if !ok {
+		return
 	}
-
-	if targetingMicroflows > 0 && nameIdx < len(names) {
-		if isGroupTargeting {
+	switch {
+	case c.PAGE() != nil:
+		if qn := c.QualifiedName(); qn != nil {
+			node.Page = buildQualifiedName(qn)
+		}
+	case c.TARGETING() != nil && c.MICROFLOW() != nil:
+		if c.GROUPS() != nil {
 			node.Targeting.Kind = "group_microflow"
 		} else {
 			node.Targeting.Kind = "microflow"
 		}
-		node.Targeting.Microflow = buildQualifiedName(names[nameIdx])
-		nameIdx++
-	}
-
-	stringIdx := 1 // allStrings[0] is the caption
-	if utCtx.XPATH() != nil && stringIdx < len(allStrings) {
-		if isGroupTargeting {
+		if qn := c.QualifiedName(); qn != nil {
+			node.Targeting.Microflow = buildQualifiedName(qn)
+		}
+	case c.TARGETING() != nil && c.XPATH() != nil:
+		if c.GROUPS() != nil {
 			node.Targeting.Kind = "group_xpath"
 		} else {
 			node.Targeting.Kind = "xpath"
 		}
-		node.Targeting.XPath = unquoteString(allStrings[stringIdx].GetText())
-		stringIdx++
+		if str := c.STRING_LITERAL(); str != nil {
+			node.Targeting.XPath = unquoteString(str.GetText())
+		}
+	case c.ON() != nil && c.CREATED() != nil:
+		if qn := c.QualifiedName(); qn != nil {
+			node.OnCreated = buildQualifiedName(qn)
+		}
+	case c.ENTITY() != nil:
+		if qn := c.QualifiedName(); qn != nil {
+			node.Entity = buildQualifiedName(qn)
+		}
+	case c.DUE() != nil && c.DATE_TYPE() != nil:
+		if str := c.STRING_LITERAL(); str != nil {
+			node.DueDate = unquoteString(str.GetText())
+		}
+	case c.DESCRIPTION() != nil:
+		if str := c.STRING_LITERAL(); str != nil {
+			node.TaskDescription = unquoteString(str.GetText())
+		}
+	case c.OUTCOMES() != nil:
+		for _, outcomeCtx := range c.AllWorkflowUserTaskOutcome() {
+			node.Outcomes = append(node.Outcomes, buildWorkflowUserTaskOutcome(outcomeCtx))
+		}
+	case len(c.AllBOUNDARY()) > 0:
+		for _, beCtx := range c.AllWorkflowBoundaryEventClause() {
+			node.BoundaryEvents = append(node.BoundaryEvents, buildBoundaryEventNode(beCtx))
+		}
 	}
-
-	if onCreated && nameIdx < len(names) {
-		node.OnCreated = buildQualifiedName(names[nameIdx])
-		nameIdx++
-	}
-
-	if utCtx.ENTITY() != nil && nameIdx < len(names) {
-		node.Entity = buildQualifiedName(names[nameIdx])
-	}
-
-	if utCtx.DUE() != nil && utCtx.DATE_TYPE() != nil && stringIdx < len(allStrings) {
-		node.DueDate = unquoteString(allStrings[stringIdx].GetText())
-		stringIdx++
-	}
-
-	if utCtx.DESCRIPTION() != nil && stringIdx < len(allStrings) {
-		node.TaskDescription = unquoteString(allStrings[stringIdx].GetText())
-		stringIdx++
-	}
-
-	// Outcomes
-	for _, outcomeCtx := range utCtx.AllWorkflowUserTaskOutcome() {
-		outcome := buildWorkflowUserTaskOutcome(outcomeCtx)
-		node.Outcomes = append(node.Outcomes, outcome)
-	}
-
-	// BoundaryEvents (Issue #7)
-	for _, beCtx := range utCtx.AllWorkflowBoundaryEventClause() {
-		node.BoundaryEvents = append(node.BoundaryEvents, buildBoundaryEventNode(beCtx))
-	}
-
-	return node
 }
 
 // buildWorkflowUserTaskOutcome builds a WorkflowUserTaskOutcomeNode.

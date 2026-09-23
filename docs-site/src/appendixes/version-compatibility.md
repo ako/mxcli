@@ -28,13 +28,15 @@ which is authoritative -- this table names the minors only.
 ### v1 (Mendix < 10.18)
 
 - Single `.mpr` SQLite database file
-- All documents stored as BSON blobs in the `UnitContents` table
+- All documents stored as BSON blobs in the `Contents` column of the `Unit`
+  table -- there is no separate contents table
 - Self-contained -- one file holds the entire project
 
 ### v2 (Mendix >= 10.18)
 
-- `.mpr` SQLite file for metadata only
-- `mprcontents/` folder with individual `.mxunit` files for each document
+- `.mpr` SQLite file for metadata only -- the `Unit` table has no `Contents`
+  column
+- `mprcontents/<XX>/<YY>/<UUID>.mxunit` -- one file per document
 - Better suited for Git version control (smaller, per-document diffs)
 
 The library auto-detects the format. No configuration is needed.
@@ -76,9 +78,9 @@ The tables below show exactly which features are available on each Mendix versio
 | Conditional visibility | `Visible: [xpath]` | -- | -- | -- | Yes |
 | Conditional editability | `Editable: [xpath]` | -- | -- | -- | Yes |
 | Responsive column widths | `TabletWidth: 6, PhoneWidth: 12` | -- | -- | -- | Yes |
-| Page parameters (entity) | `Params: { $Item: Module.Entity }` | -- | -- | -- | Yes |
+| Page parameters (entity) | `Params: { $Item: Module.Entity }` | 9.4+ | Yes | Yes | Yes |
 | Page parameters (primitive) | `Params: { $Qty: Integer }` | -- | -- | -- | 11.6+ |
-| Page variables | `Variables: { ... }` | -- | -- | -- | Yes |
+| Page variables | `Variables: { ... }` | -- | 10.20+ | 10.20+ | Yes |
 | Design properties (Atlas v3) | `DesignProperties: [...]` | -- | -- | -- | Yes |
 
 ::: tip Widget Templates
@@ -146,9 +148,11 @@ The Mendix metamodel evolves across versions. The reflection data shows ~42% typ
 
 View entities exist in both 10.18+ and 11.x, but the BSON structure differs. In Mendix 10.x, the `OqlViewEntitySource` object has an `Oql` field that stores the OQL query inline (in addition to the separate `ViewEntitySourceDocument`). Mendix 11.0 removed the inline `Oql` field. The writer detects the project version and includes the inline field for 10.x projects.
 
-### Page Parameters (10.x vs 11.x)
+### Page Parameters (9.4+, with an 11.5 tail)
 
-Mendix 11.0 changed how page parameters are stored in BSON. The `Variable` property in page parameter mappings uses a different structure. Writing 11.x-style page parameters to a 10.x project causes an `InvalidOperationException`.
+Page parameters are not an 11.x feature. `Pages$PageParameter` and `Page.parameters` were introduced in **9.4.0**, and `Pages$PageSettings.parameterMappings` — the arguments a `SHOW PAGE` passes — in **9.7.0** (measured from the Mendix Model SDK's `StructureVersionInfo` records). mxcli refused them on 10.x until [mendixlabs/mxcli#1121](https://github.com/mendixlabs/mxcli/issues/1121); the 11.0 floor in the version registry came from an illustrative sample table in a proposal, not from a measurement.
+
+What *is* version-specific is the optional/default-value half: `PageParameter.IsRequired` and `PageParameter.DefaultValue` arrived in **11.5.0**. MDL cannot express either — every parameter it writes is required with no default — so the writer omits both below 11.5. Emitting them anyway is the "never invent a key" failure: mxbuild accepts unknown properties, and Studio Pro throws `InvalidOperationException` at `MprProperty.cs`.
 
 ### Design Properties (Atlas v2 vs v3)
 

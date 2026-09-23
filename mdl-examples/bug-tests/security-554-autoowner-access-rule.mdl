@@ -1,0 +1,69 @@
+-- ako/mxcli#554 — an access rule on an entity carrying AutoOwner (or
+-- AutoChangedBy) was written with a MemberAccess for the implicit System.owner /
+-- System.changedBy association, and mxbuild reported the whole module as
+--
+--   [CE0066] "Entity access is out of date. Please update security by clicking
+--   the 'Update security' button in the domain model editor."
+--            at Domain model of module 'Mod'
+--
+-- `UPDATE SECURITY` — the documented repair for exactly this error — reported
+-- "Reconciled 1 access rule(s)" and left the error standing, because it re-added
+-- the entry that caused it. A command that is confidently wrong costs more than
+-- one that says nothing, which is why the repair path is part of the fix.
+--
+-- The audit DATE members were already known to work the other way round (an entry
+-- is CE0066, no entry checks clean — issuetracker #20). These two were assumed to
+-- be the opposite case because they are ASSOCIATIONS rather than attributes, and
+-- Mendix really does add them implicitly. Measured on mxbuild 11.14.0, one entity,
+-- one rule, one variable at a time:
+--
+--   AutoOwner     + MemberAccess System.owner       CE0066
+--   AutoOwner     + no entry                        0 errors
+--   AutoChangedBy + MemberAccess System.changedBy   CE0066
+--   AutoChangedBy + no entry                        0 errors
+--
+-- Run with `mxcli exec`, then `mxcli docker check --no-update-widgets`: the
+-- project must report 0 errors at production security level.
+
+alter project security level production;
+
+create module Sec554;
+
+create module role Sec554.Administrator;
+create or modify user role Administrator (Sec554.Administrator, System.User);
+
+-- The owner half.
+create persistent entity Sec554.Fab (
+  FabName: String(100),
+  Owner: AutoOwner
+);
+
+-- The changedBy half.
+create persistent entity Sec554.Line (
+  LineName: String(100),
+  ChangedBy: AutoChangedBy
+);
+
+-- Both at once, plus the audit DATE members, which are the case this one was
+-- wrongly assumed to differ from.
+create persistent entity Sec554.Tool (
+  ToolName: String(100),
+  Owner: AutoOwner,
+  ChangedBy: AutoChangedBy,
+  CreatedDate: AutoCreatedDate,
+  ChangedDate: AutoChangedDate
+);
+
+-- The control: an entity with no audit members at all. Its rule is unaffected,
+-- and a build that wrote no members at all would fail this alongside the rest.
+create persistent entity Sec554.Customer (
+  CustomerName: String(100)
+);
+
+grant Sec554.Administrator on Sec554.Fab (create, delete, read *, write *);
+grant Sec554.Administrator on Sec554.Line (create, delete, read *, write *);
+grant Sec554.Administrator on Sec554.Tool (create, delete, read *, write *);
+grant Sec554.Administrator on Sec554.Customer (create, delete, read *, write *);
+
+-- Must be a no-op here, and must REPAIR a project an older mxcli damaged.
+update security;

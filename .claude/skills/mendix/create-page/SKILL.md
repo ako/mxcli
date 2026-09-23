@@ -66,6 +66,9 @@ Both are optional and can be changed later with `alter page … { set Class = '�
 | Properties | `(key: value, ...)` | `(title: 'Edit', layout: Atlas_Core.Atlas_Default)` |
 | Widget name | Required after type | `textbox txtName (...)` |
 | Attribute binding | `attribute: AttrName` | `textbox txt (label: 'Name', attribute: Name)` |
+| Attribute over an association | `attribute: Assoc/Attr` (bare association name, multi-hop OK) | `textbox txt (label: 'Rule', attribute: RuleAction_BusinessRule/Name)` |
+| Password field | `Password: true` | `textbox tbPw (attribute: Secret, Password: true)` |
+| Widget validation | `Validation: '<expr>'` + `ValidationMessage: '<text>'` | `Validation: 'length(toString($value)) > 0'` — quoted, not `[bracketed]` |
 | Variable binding | `datasource: $Var` | `dataview dv (datasource: $Product) { ... }` |
 | Action binding | `action: type` | `actionbutton btn (caption: 'Save', action: save_changes)` |
 | Database source | `datasource: database entity` | `datagrid dg (datasource: database Module.Entity)` |
@@ -432,6 +435,19 @@ DATAVIEW dv (DataSource: $Issue) {
 
 A bare association name is qualified with the module of the entity the widget
 sits on. On a ComboBox that matters: its `DataSource:` is the *option list*, but
+A text box that holds a secret needs `Password: true`. It is not cosmetic: without
+it the field renders the value in plaintext, and before ako/mxcli#550 a
+`describe page` → `exec` round trip silently turned every stored password field
+into an ordinary one — so copying a login or change-password page lost it.
+
+An input widget can also *traverse* an association to show a value from the
+other side: `attribute: Assoc/Attr` binds the far attribute and stores the hops,
+which is what Studio Pro does. It works on textbox, textarea, datepicker,
+dropdown, checkbox and radiobuttons, and on data grid columns, with the same
+bare-association spelling in each. Note what it is NOT: this shows a value from
+the associated object, it does not make it editable through the association —
+for editing the other object, nest a dataview over the association instead.
+
 `Association:` names a reference on the containing entity, so
 `Association: Issue_Assignee` resolves against the dataview's entity, not the
 option list's module.

@@ -194,11 +194,24 @@ const (
 
 // MicroflowParameterMapping maps a microflow parameter to a value in a MicroflowClientAction.
 // BSON storage type: Forms$MicroflowParameterMapping (not Pages$ or Microflows$).
+//
+// An argument binds one of two ways, and Mendix does not treat them as
+// interchangeable. A reference to a page parameter, snippet parameter or page
+// variable is stored as a Forms$PageVariable under Variable; anything else — a
+// literal, an expression — is stored as text under Expression. Writing a
+// $-reference as an Expression leaves the parameter unbound: Studio Pro reports
+// CE1571 and mxbuild builds it at 0 errors (mendixlabs/mxcli#1140).
+//
+// VariableKind is what says which of the two applies, and which slot of the
+// PageVariable to fill. Empty means "not a page-variable reference" — Variable is
+// then still written as the Expression, which is what $currentObject and every
+// pre-#1140 caller relies on.
 type MicroflowParameterMapping struct {
 	model.BaseElement
-	ParameterName string `json:"parameterName"`        // Parameter name (without $)
-	Variable      string `json:"variable,omitempty"`   // Variable reference (e.g., "$Customer")
-	Expression    string `json:"expression,omitempty"` // Expression value
+	ParameterName string `json:"parameterName"`          // Parameter name (without $)
+	Variable      string `json:"variable,omitempty"`     // Variable reference (e.g., "$Customer")
+	VariableKind  string `json:"variableKind,omitempty"` // "" | "parameter" | "snippet" | "local"
+	Expression    string `json:"expression,omitempty"`   // Expression value
 }
 
 // MicroflowClientAction calls a microflow.
@@ -213,11 +226,15 @@ func (MicroflowClientAction) isClientAction() {}
 
 // NanoflowParameterMapping maps a nanoflow parameter to a value in a NanoflowClientAction.
 // BSON storage type: Forms$NanoflowParameterMapping (not Pages$).
+//
+// Same two binding forms as MicroflowParameterMapping — see its comment for why
+// VariableKind decides between them.
 type NanoflowParameterMapping struct {
 	model.BaseElement
-	ParameterName string `json:"parameterName"`        // Parameter name (without $)
-	Variable      string `json:"variable,omitempty"`   // Variable reference (e.g., "$Customer")
-	Expression    string `json:"expression,omitempty"` // Expression value
+	ParameterName string `json:"parameterName"`          // Parameter name (without $)
+	Variable      string `json:"variable,omitempty"`     // Variable reference (e.g., "$Customer")
+	VariableKind  string `json:"variableKind,omitempty"` // "" | "parameter" | "snippet" | "local"
+	Expression    string `json:"expression,omitempty"`   // Expression value
 }
 
 // NanoflowClientAction calls a nanoflow.

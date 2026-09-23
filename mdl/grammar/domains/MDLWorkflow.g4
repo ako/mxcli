@@ -14,15 +14,35 @@ options { tokenVocab = MDLLexer; }
  */
 createWorkflowStatement
     : WORKFLOW qualifiedName
-      (FOLDER folder=STRING_LITERAL)?
-      (PARAMETER VARIABLE COLON qualifiedName)?
-      (DISPLAY display=STRING_LITERAL)?
-      (DESCRIPTION description=STRING_LITERAL)?
-      (EXPORT LEVEL (IDENTIFIER | API))?
-      (OVERVIEW PAGE qualifiedName)?
-      (DUE DATE_TYPE dueDate=STRING_LITERAL)?
-      workflowEventHandlerClause*
+      workflowHeaderClause*
       BEGIN workflowMainBody workflowEventSubProcess* END WORKFLOW SEMICOLON? SLASH?
+    ;
+
+/**
+ * One header clause. The clauses used to be a fixed SEQUENCE of optional
+ * groups, so each was optional but its POSITION was not: `display` after
+ * `description` failed with `mismatched input 'DISPLAY' expecting {ON, BEGIN,
+ * EXPORT, DUE, OVERVIEW}`, which names neither the clause nor the rule, and the
+ * author had to reverse-engineer the order from the failure. They are now a
+ * set — any order, each at most once, which is how the rest of MDL reads
+ * (ADR-0003). The at-most-once half is NOT in the grammar: a repeated clause is
+ * reported by `checkWorkflowClausesAtMostOnce` in the visitor, which can name
+ * the clause instead of pointing at a token. See ako/mxcli#586.
+ */
+workflowHeaderClause
+    : FOLDER folder=STRING_LITERAL
+    | PARAMETER VARIABLE COLON qualifiedName
+    | DISPLAY display=STRING_LITERAL
+    | DESCRIPTION description=STRING_LITERAL
+    // HIDDEN_KW is listed beside IDENTIFIER because `Hidden` used to lex as an
+    // identifier and stopped when the microflow clauses made it a keyword.
+    // Anything matching a bare IDENTIFIER here is one token away from the same
+    // break — the hazard `identifierOrKeyword` exists to absorb, which this
+    // rule bypasses by taking IDENTIFIER directly.
+    | EXPORT LEVEL (IDENTIFIER | API | HIDDEN_KW)
+    | OVERVIEW PAGE qualifiedName
+    | DUE DATE_TYPE dueDate=STRING_LITERAL
+    | workflowEventHandlerClause
     ;
 
 /**
@@ -123,30 +143,41 @@ workflowActivityName
     | QUOTED_IDENTIFIER
     ;
 
+/**
+ * A user task. Its clauses are a SET, not a sequence — see
+ * `workflowHeaderClause` for why, and `checkWorkflowClausesAtMostOnce` for the
+ * half of the old rule the grammar no longer carries.
+ *
+ * The two alternatives keep their own clause rules rather than collapsing into
+ * `MULTI?`, so a single-user task still refuses `participants`, `decide by` and
+ * `await all users` — relaxing the ORDER must not also relax the vocabulary.
+ */
 workflowUserTaskStmt
     : USER TASK (IDENTIFIER | QUOTED_IDENTIFIER) STRING_LITERAL
-      (PAGE qualifiedName)?
-      (TARGETING (USERS | GROUPS)? MICROFLOW qualifiedName)?
-      (TARGETING (USERS | GROUPS)? XPATH STRING_LITERAL)?
-      (ON CREATED MICROFLOW qualifiedName)?
-      (ENTITY qualifiedName)?
-      (DUE DATE_TYPE STRING_LITERAL)?
-      (DESCRIPTION STRING_LITERAL)?
-      (OUTCOMES workflowUserTaskOutcome+)?
-      (BOUNDARY EVENT workflowBoundaryEventClause ((BOUNDARY EVENT)? workflowBoundaryEventClause)*)?
+      workflowUserTaskClause*
     | MULTI USER TASK (IDENTIFIER | QUOTED_IDENTIFIER) STRING_LITERAL
-      (PAGE qualifiedName)?
-      (TARGETING (USERS | GROUPS)? MICROFLOW qualifiedName)?
-      (TARGETING (USERS | GROUPS)? XPATH STRING_LITERAL)?
-      (ON CREATED MICROFLOW qualifiedName)?
-      (ENTITY qualifiedName)?
-      (DUE DATE_TYPE STRING_LITERAL)?
-      (DESCRIPTION STRING_LITERAL)?
-      workflowParticipantsClause?
-      workflowCompletionClause?
-      (AWAIT ALL USERS)?
-      (OUTCOMES workflowUserTaskOutcome+)?
-      (BOUNDARY EVENT workflowBoundaryEventClause ((BOUNDARY EVENT)? workflowBoundaryEventClause)*)?
+      workflowMultiUserTaskClause*
+    ;
+
+/** A clause every user task accepts. */
+workflowUserTaskClause
+    : PAGE qualifiedName
+    | TARGETING (USERS | GROUPS)? MICROFLOW qualifiedName
+    | TARGETING (USERS | GROUPS)? XPATH STRING_LITERAL
+    | ON CREATED MICROFLOW qualifiedName
+    | ENTITY qualifiedName
+    | DUE DATE_TYPE STRING_LITERAL
+    | DESCRIPTION STRING_LITERAL
+    | OUTCOMES workflowUserTaskOutcome+
+    | BOUNDARY EVENT workflowBoundaryEventClause ((BOUNDARY EVENT)? workflowBoundaryEventClause)*
+    ;
+
+/** The above, plus the three clauses only a multi user task has. */
+workflowMultiUserTaskClause
+    : workflowUserTaskClause
+    | workflowParticipantsClause
+    | workflowCompletionClause
+    | AWAIT ALL USERS
     ;
 
 /**
@@ -287,7 +318,7 @@ alterWorkflowAction
 workflowSetProperty
     : DISPLAY STRING_LITERAL
     | DESCRIPTION STRING_LITERAL
-    | EXPORT LEVEL (IDENTIFIER | API)
+    | EXPORT LEVEL (IDENTIFIER | API | HIDDEN_KW)
     | DUE DATE_TYPE STRING_LITERAL
     | OVERVIEW PAGE qualifiedName
     | PARAMETER VARIABLE COLON qualifiedName

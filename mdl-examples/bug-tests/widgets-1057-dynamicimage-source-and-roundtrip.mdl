@@ -1,0 +1,97 @@
+-- The `dynamicimage` sibling of the mendixlabs/mxcli#1057 static-image gap, and
+-- worse than it: TWO defects, only one of which is a round trip.
+--
+-- 1. EVERY dynamic image mxcli wrote failed the build. `dynamicImageToGen` called
+--    `imageViewerSourceToGen()` with no arguments, writing a
+--    Forms$ImageViewerSource carrying nothing but its own $ID and
+--    `EntityRef: null`:
+--
+--        [error] [CE0489] "Select an entity for the data source of this dynamic
+--                          image."  at Dynamic image 'imgPhoto'
+--
+-- 2. DESCRIBE had no case for Forms$ImageViewer, so a stored one came back as
+--
+--        -- Forms$ImageViewer (imgPhoto)  -- NOT re-executable: mxcli cannot
+--        author this widget, so re-running this script would drop it
+--
+--    and the replay DELETED the widget. Measured, and the shape of the evidence
+--    is the point: after the pre-fix round trip the build got QUIETER — 4 errors
+--    to 2 — because dropping the widget also dropped the CE0582 it carried. A
+--    round trip that "fixes" a build error by deleting the user's work.
+--
+-- Measured on a blank Mendix 11.12.1 project, mxbuild 11.12.1:
+--
+--     pre-fix  exec                  -> CE0489, 4 errors
+--     pre-fix  describe -> exec      -> widget gone, 2 errors
+--     fixed    exec                  -> 3 errors (CE0582 only), no CE0489
+--     fixed    describe -> exec      -> Unchanged page
+--     writer reverted to a bare source -> CE0489 again, 4 errors
+--
+-- There is NO Studio Pro-authored dynamic image in a blank 11.12.1 app (measured:
+-- 1 Forms$ImageViewer, and it is mxcli's own), so the widget's shape here is
+-- metamodel-derived. What IS pinned to Studio Pro is the element CE0489 asks
+-- for: DomainModels$DirectEntityRef{Entity: 'Module.Entity'}, 20 of 20 instances
+-- in the same app.
+--
+-- CE0582 ("not supported in React client") is Mendix's own deprecation of both
+-- legacy image widgets; prefer the pluggable `image` widget on a new page.
+
+create persistent entity MyFirstModule.Photo extends System.Image (
+  Caption: string(200)
+);
+
+create or replace page MyFirstModule.DynImageDemo (
+  Title: 'Dynamic image demo', Layout: Atlas_Core.Atlas_Default
+) {
+  placeholder Main {
+    listview lvPhoto (DataSource: database from MyFirstModule.Photo) {
+      dynamicimage imgPhoto (
+        DataSource: database from MyFirstModule.Photo,
+        DefaultImage: 'MyFirstModule.Images.gallery',
+        Width: 200, Height: 200
+      )
+    }
+  }
+};
+
+-- The properties the writer hardcoded beside the source: both size units were
+-- always "Auto" and both display flags always false, so none was reachable from
+-- MDL. Harmless while nothing described the widget; a silent normalisation on
+-- every replay once something did.
+
+create or replace page MyFirstModule.DynImageThumbnail (
+  Title: 'Thumbnail', Layout: Atlas_Core.Atlas_Default
+) {
+  placeholder Main {
+    listview lvThumbs (DataSource: database from MyFirstModule.Photo) {
+      dynamicimage imgThumb (
+        DataSource: database from MyFirstModule.Photo,
+        Width: 300, WidthUnit: pixels,
+        Height: 50, HeightUnit: percentage,
+        Responsive: false,
+        DisplayAs: thumbnail,
+        OnClickType: enlarge
+      )
+    }
+  }
+};
+
+-- The CONTROL: a dynamic image with no source of its own must still describe as
+-- a `dynamicimage`, with NO DataSource clause invented for it. Emitting one
+-- would guess an entity, and a wrong guess is CE0489's sibling rather than a fix
+-- for it. Auto units, a responsive full-size image and no enlarge are Mendix's
+-- defaults that the writer re-derives, so describing them would put clauses in
+-- the author's script they never wrote.
+--
+-- This one still builds as CE0489 — deliberately. mxcli writes what it is told;
+-- refusing an unbound source is a separate decision from round-tripping one.
+
+create or replace page MyFirstModule.DynImageUnbound (
+  Title: 'Unbound', Layout: Atlas_Core.Atlas_Default
+) {
+  placeholder Main {
+    listview lvUnbound (DataSource: database from MyFirstModule.Photo) {
+      dynamicimage imgUnbound (Width: 64, Height: 64)
+    }
+  }
+};

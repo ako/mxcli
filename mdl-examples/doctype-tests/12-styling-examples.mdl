@@ -697,3 +697,79 @@ create or modify page StyleTest."P007_Compound" (
 }
 
 DESCRIBE STYLING ON PAGE StyleTest.P007_Compound WIDGET lgCompound;
+
+-- MARK: Alter Page Design Properties
+
+-- ============================================================================
+-- LEVEL 12: ALTER PAGE SET writes design properties too (#515)
+-- ============================================================================
+-- `set` reaches a design property of the stored widget's own type, so styling
+-- one widget on one page no longer needs ALTER STYLING as a second spelling.
+-- The key is resolved against that widget's theme group; anything the theme
+-- does not declare for it stays on the pluggable path and keeps that path's
+-- error, so a typo is still reported as a typo. `show design properties for
+-- container` lists what is available here.
+
+alter page StyleTest.P006_Roundtrip {
+  set 'Item gap' = 'Large' on ctnHeader;
+  set 'Card style' = on on ctnHeader;
+};
+
+-- OFF removes the entry. Mendix stores a toggle's off state as the ABSENCE of
+-- the entry, not as a stored false, so this is a removal rather than a write
+-- of a second value.
+alter page StyleTest.P006_Roundtrip {
+  set 'Card style' = off on ctnHeader;
+};
+
+describe styling on page StyleTest.P006_Roundtrip widget ctnHeader;
+
+-- ============================================================================
+-- LEVEL 13: ALTER PAGES applies one styling decision across many pages (#515)
+-- ============================================================================
+-- The singular form styles one widget on one page. Rolling a decision out
+-- ("every data grid is compact and striped") one statement per widget per page
+-- is how a design system drifts, so the plural form selects by widget type.
+
+create page StyleTest.P008_Grid_A
+(
+  title: 'Grid A',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  datagrid dgEmployeesA (datasource: database StyleTest.Employee) {
+    column colNameA  (attribute: Name,  caption: 'Name')
+    column colEmailA (attribute: Email, caption: 'Email')
+  }
+}
+
+create page StyleTest.P009_Grid_B
+(
+  title: 'Grid B',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  datagrid dgTasksB (datasource: database StyleTest.task) {
+    column colTitleB (attribute: "title", caption: 'Title')
+    column colDueB   (attribute: DueDate, caption: 'Due')
+  }
+}
+
+-- `dry run` first: it applies the assignments to a discardable copy of each
+-- document and reports what would happen, which matters on a statement that
+-- rewrites every page it lands on.
+alter pages in StyleTest
+  set 'Compact' = on, 'Striped' = on
+  where widgettype = datagrid
+  dry run;
+
+alter pages in StyleTest
+  set 'Compact' = on, 'Striped' = on
+  where widgettype = datagrid;
+
+-- `widgettype` takes the MDL keyword, which resolves to exactly one widget id.
+-- A `like '%datagrid%'` predicate would also match the data grid's own filter
+-- widgets, which are separate widgets and do not carry its design properties.
+
+describe styling on page StyleTest.P008_Grid_A widget dgEmployeesA;
+describe styling on page StyleTest.P009_Grid_B widget dgTasksB;

@@ -161,6 +161,24 @@ func TestRuntimeConfigParams_ApplicationRootUrl(t *testing.T) {
 	}
 }
 
+func TestRuntimeConfigParams_HSQLDB(t *testing.T) {
+	o := testLocalOpts()
+	o.DB = DBConfig{Type: "HSQLDB", Name: "appdb"}
+	p := runtimeConfigParams(o, nil)
+	checks := map[string]any{
+		"DatabaseType":     "HSQLDB",
+		"DatabaseHost":     "",
+		"DatabaseName":     "appdb",
+		"DatabaseUserName": "",
+		"DatabasePassword": "",
+	}
+	for k, want := range checks {
+		if p[k] != want {
+			t.Errorf("%s = %v, want %v", k, p[k], want)
+		}
+	}
+}
+
 func TestReadDeploymentConstants(t *testing.T) {
 	dir := t.TempDir()
 	modelDir := filepath.Join(dir, "model")

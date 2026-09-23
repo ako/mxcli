@@ -1,0 +1,134 @@
+-- ============================================================================
+-- ako/mxcli#575: a pluggable widget's textTemplate property took only literal
+-- text, so it rendered the same string on every row.
+-- ============================================================================
+--
+-- Reported against a TreeNode, whose `headerCaption` is a textTemplate:
+--
+--   treenode tnCustomer (headerType: 'text', headerCaption: 'Name', ...)
+--
+-- passes `check`, `exec` and `mx check` -- and renders the literal word "Name"
+-- on every node. The companion the report reached for did not exist:
+--
+--   x widget `tn` (treenode) has no property `headerCaptionParams`
+--     -- did you mean `headerCaption`? [MDL-WIDGET01]
+--
+-- The `<Name>Params` convention was already the one an object-list ITEM used
+-- (a File Uploader custom button's `ButtonCaptionParams`, #956); it simply
+-- stopped at the item boundary. At the WIDGET level the only parameters the
+-- engine read were the single, widget-wide `contentparams:` -- one list for
+-- every template on the widget, which cannot say "this caption binds Name and
+-- that one binds Remarks".
+--
+-- The reported widgets are BUNDLED in a blank app -- TreeNode.mpk and
+-- Timeline.mpk both ship in 11.14.0's `widgets/`, and `mxcli init` generates
+-- their defs -- so this file exercises them directly. The built-in pluggable
+-- Image is here too: it has the same shape (TWO text templates, `imageUrl` and
+-- `alternativeText`) and reaches the engine through a DIFFERENT branch, because
+-- its def.json names the mappings by SOURCE (`ImageUrl`) where the TreeNode's
+-- names them by schema key. A fix applied to one branch looks complete.
+--
+-- Measured on a blank Mendix 11.14.0 project (mxbuild 11.14.0):
+--
+--   pre-fix   check    -> widget `tnProduct` (TREENODE) has no property
+--                         `headerCaptionParams` -- did you mean
+--                         `headerCaption`? [MDL-WIDGET01], and the same for
+--                         titleParams / descriptionParams / imageUrlParams /
+--                         alternativeTextParams
+--                      -> exec refuses; nothing is written.
+--
+--             with the companions deleted and one shared `contentparams:`
+--             left instead, check and exec pass and mx check is clean -- and
+--             alternativeText renders PictureUrl, because both templates read
+--             parameter {1} out of the same list. That is the reported class:
+--             valid, buildable, and wrong.
+--
+--             describe of the treenode/timeline emitted every primitive and
+--             NO caption at all (`extractExplicitProperties` read AttributeRef
+--             and PrimitiveValue only), so describe -> exec lost it outright.
+--
+--   fixed     check    -> Check passed!
+--             exec     -> Created page Bug575.Catalogue / Bug575.Tree
+--             mx check -> 0 errors
+--             BSON     -> headerCaption {1}=[Name]; title {1}=[Name];
+--                         description {1}=[PictureUrl]; imageUrl
+--                         {1}=[PictureUrl]; alternativeText {1}=[Name]
+--             describe -> exec -> "Unchanged page" (round trip stable)
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/widgets-575-texttemplate-params-companion.mdl -p app.mpr
+--   mx check app.mpr   # 0 errors
+-- ============================================================================
+
+create module Bug575;
+
+create persistent entity Bug575.Product (
+  Name: string(200),
+  PictureUrl: string(500)
+);
+/
+
+create or modify page Bug575.Catalogue (
+  Title: 'Catalogue',
+  Layout: Atlas_Core.Atlas_Default
+)
+{
+  LISTVIEW lv (DataSource: DATABASE Bug575.Product) {
+
+    -- The control: a built-in widget whose parameters always bound. It has one
+    -- template, so the widget-wide contentparams was never ambiguous for it.
+    DYNAMICTEXT dt ( Content: '{1}', ContentParams: [{1} = Name] )
+
+    -- The fix, in the schema-key spelling: each template names its own
+    -- parameters, so the two bind DIFFERENT attributes.
+    PLUGGABLEWIDGET 'com.mendix.widget.web.image.Image' cardImage (
+      datasource: imageUrl,
+      imageUrl: '{1}',        imageUrlParams: [{1} = PictureUrl],
+      alternativeText: '{1}', alternativeTextParams: [{1} = Name]
+    )
+
+    -- The same, in the source-name spelling the def.json also accepts. This
+    -- one carried no parameters at all before -- not even contentparams, which
+    -- #928 wired only into the schema-key path.
+    PLUGGABLEWIDGET 'com.mendix.widget.web.image.Image' cardImage2 (
+      datasource: imageUrl,
+      ImageUrl: '{1}',        ImageUrlParams: [{1} = PictureUrl],
+      AlternativeText: '{1}', AlternativeTextParams: [{1} = Name]
+    )
+
+    -- Unchanged: the widget-wide contentparams remains the fallback for a
+    -- widget with one template, and the `{AttrName}` convenience spelling is
+    -- untouched.
+    PLUGGABLEWIDGET 'com.mendix.widget.web.image.Image' cardImage3 (
+      datasource: imageUrl,
+      imageUrl: '{1}', contentparams: [{1} = PictureUrl]
+    )
+  }
+}
+/
+
+-- The widgets the issue was filed against, both bundled in a blank app. Neither
+-- has a dedicated DESCRIBE extractor, so they also cover the generic read path:
+-- before the fix their captions were absent from `describe page` entirely.
+create or modify page Bug575.Tree (
+  Title: 'Tree',
+  Layout: Atlas_Core.Atlas_Default
+)
+{
+  TREENODE tnProduct (
+    datasource: DATABASE Bug575.Product,
+    headerType: 'text',
+    headerCaption: '{1}', headerCaptionParams: [{1} = Name]
+  )
+
+  -- Three templates on one widget, of which two are bound to DIFFERENT
+  -- attributes. This is the case the widget-wide `contentparams:` cannot
+  -- express at all; `timeIndication` is left unset and stays unset.
+  TIMELINE tl (
+    data: DATABASE Bug575.Product,
+    groupEvents: false,
+    title: '{1}',       titleParams: [{1} = Name],
+    description: '{1}', descriptionParams: [{1} = PictureUrl]
+  )
+}
+/

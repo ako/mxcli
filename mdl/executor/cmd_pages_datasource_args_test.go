@@ -20,7 +20,10 @@ import (
 //
 // with mxcli check and exec both reporting success.
 func TestFlowArgsToParameterMappings(t *testing.T) {
-	got := flowArgsToParameterMappings([]ast.FlowArgV3{
+	// An empty builder knows no parameters, so every $-name is unclassifiable
+	// and the pre-#1140 behaviour applies unchanged — which is the point.
+	pb := &pageBuilder{}
+	got := pb.flowArgsToParameterMappings([]ast.FlowArgV3{
 		{Name: "Name", Value: "$Filter"},
 		{Name: "Limit", Value: "10"},
 		{Name: "Ctx", Value: "$currentObject"},
@@ -50,7 +53,8 @@ func TestFlowArgsToParameterMappings(t *testing.T) {
 // No arguments must stay nil rather than an empty slice, so a datasource without
 // parameters serializes exactly as it did before this change.
 func TestFlowArgsToParameterMappings_Empty(t *testing.T) {
-	if got := flowArgsToParameterMappings(nil); got != nil {
+	pb := &pageBuilder{}
+	if got := pb.flowArgsToParameterMappings(nil); got != nil {
 		t.Errorf("no args should yield nil, got %+v", got)
 	}
 }

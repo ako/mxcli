@@ -221,3 +221,13 @@ func Summarize(violations []Violation) Summary {
 	s.Total = len(violations)
 	return s
 }
+
+// RuleEnabled reports whether a rule will run. A rule with no configuration runs
+// by default, so this answers the same question Run asks rather than reporting
+// whether a configuration exists.
+func (l *Linter) RuleEnabled(ruleID string) bool {
+	if config, ok := l.configs[ruleID]; ok {
+		return config.Enabled
+	}
+	return true
+}

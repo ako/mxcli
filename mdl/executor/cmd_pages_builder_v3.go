@@ -68,6 +68,7 @@ func (pb *pageBuilder) buildPageV3(s *ast.CreatePageStmtV3) (*pages.Page, error)
 	if s.PopupResizable != nil {
 		page.PopupResizable = *s.PopupResizable
 	}
+	page.PopupCloseAction = s.PopupCloseAction
 
 	// Set title
 	if s.Title != "" {
@@ -252,7 +253,20 @@ func (pb *pageBuilder) buildSnippetV3(s *ast.CreateSnippetStmtV3) (*pages.Snippe
 			Name:        param.Name,
 		}
 
-		// Resolve entity type
+		// A snippet parameter must name an entity. A primitive one is refused
+		// rather than resolved as an entity name — the reported symptom was
+		// "entity not found: string", for a type nobody spelled — and rather
+		// than written, which storage would allow and mxbuild would not
+		// (CE0046). Same rule check applies, so a script cannot pass one and
+		// fail the other (mendixlabs/mxcli#1028).
+		if caption := types.SnippetParameterTypeRule(pageParamBSONType(param.Type)); caption != "" {
+			return nil, mdlerrors.NewValidationf(
+				"snippet '%s' declares parameter $%s with the primitive type %s — a snippet "+
+					"parameter must be an entity, and mxbuild rejects a primitive one with "+
+					"CE0046 (\"Invalid data type '%s'.\"). Pass the value on an object, or "+
+					"keep the primitive on the calling page's parameters.",
+				s.Name.String(), param.Name, paramTypeSourceName(param.Type), caption)
+		}
 		if param.EntityType.Name != "" {
 			entityID, err := pb.resolveEntity(param.EntityType)
 			if err != nil {
@@ -261,6 +275,8 @@ func (pb *pageBuilder) buildSnippetV3(s *ast.CreateSnippetStmtV3) (*pages.Snippe
 			entityName := param.EntityType.String()
 			snippetParam.EntityID = entityID
 			snippetParam.EntityName = entityName
+			// Only entity-typed parameters enter paramScope — it maps a name to
+			// an entity ID, and a primitive has none. Same as the page path.
 			pb.paramScope[param.Name] = entityID
 			pb.paramEntityNames[param.Name] = entityName
 		}
@@ -317,8 +333,25 @@ func (pb *pageBuilder) buildSnippetV3(s *ast.CreateSnippetStmtV3) (*pages.Snippe
 // as item slots. The dispatch table is consumed by inspection commands and
 // DESCRIBE-side keyword resolution rather than overriding write-side routing here.
 func (pb *pageBuilder) buildWidgetV3(w *ast.WidgetV3) (pages.Widget, error) {
+	// What a SHOW_PAGE argument inside this widget may bind to. The data widgets
+	// below overwrite it with the context they actually create; this only stops
+	// "no context object at all" surviving past a widget whose data source this
+	// pass cannot read. See argContextForSubtreeOf.
+	if next := argContextForSubtreeOf(w, pb.argCtx); next != pb.argCtx {
+		old := pb.argCtx
+		pb.argCtx = next
+		defer func() { pb.argCtx = old }()
+	}
+	oldWidget := pb.currentWidget
+	pb.currentWidget = w.Name
+	defer func() { pb.currentWidget = oldWidget }()
+
 	var widget pages.Widget
 	var err error
+
+	if err := checkSearchByIsOnAListView(w); err != nil {
+		return nil, err
+	}
 
 	switch strings.ToLower(w.Type) {
 	case "dataview":
@@ -587,7 +620,15 @@ func applyWidgetAppearance(widget pages.Widget, w *ast.WidgetV3, theme *ThemeReg
 		}
 		var dpValues []pages.DesignPropertyValue
 		for _, p := range astProps {
-			if dp, ok := astDesignPropToValue(p, themeProps); ok {
+			// Refuse rather than write, when the theme proves the shape wrong —
+			// a flat value on a multi-select property (ako/mxcli#511). Silently
+			// writing it produced a document mxbuild rejects with CE6084, whose
+			// wording names a type mismatch and not the spelling that fixes it.
+			dp, ok, err := astDesignPropToValueChecked(p, themeProps)
+			if err != nil {
+				return fmt.Errorf("widget %q: %w", w.Name, err)
+			}
+			if ok {
 				dpValues = append(dpValues, dp)
 			}
 		}
@@ -614,11 +655,57 @@ func applyWidgetAppearance(widget pages.Widget, w *ast.WidgetV3, theme *ThemeReg
 // ToggleButtonGroup materializes as Forms$CustomDesignPropertyValue rather than
 // the option default (findings: typed design properties). Without metadata the
 // prior syntactic behaviour (on→toggle, else→option) is preserved.
-func astDesignPropToValue(p ast.DesignPropertyEntryV3, themeProps []ThemeProperty) (pages.DesignPropertyValue, bool) {
+// astDesignPropToValueChecked is astDesignPropToValue plus the one shape the
+// theme can prove wrong: a FLAT value on a property declared `"multiSelect": true`.
+//
+// Such a property is a SET of the declared options, and Mendix stores it as a
+// Forms$CompoundDesignPropertyValue holding one entry per selected option, each
+// valued with a bare Forms$ToggleDesignPropertyValue — measured by decoding a
+// Studio Pro-authored Atlas page in a blank 11.12.2 project. Structurally that is
+// `Spacing`, which MDL already writes, so the capability is not missing: the
+// compound spelling works, round-trips through DESCRIBE, and builds at 0 errors.
+//
+// The flat spelling is the trap. `'Hide on': 'Phone'` names a declared option, so
+// resolveDesignPropertyValueType returned "option" and the write produced a
+// document mxbuild refuses:
+//
+//	[CE6084] "Expected design property Hide on to be of type Toggle button group,
+//	         but found Option."
+//
+// Refusing it and naming the spelling that works is the fix; the author cannot
+// derive `['Phone': on]` from CE6084's wording (ako/mxcli#511).
+func astDesignPropToValueChecked(p ast.DesignPropertyEntryV3, themeProps []ThemeProperty) (pages.DesignPropertyValue, bool, error) {
+	if len(p.Nested) == 0 && p.Value != "" && isMultiSelectDesignProperty(p.Key, themeProps) {
+		return pages.DesignPropertyValue{}, false, mdlerrors.NewValidation(fmt.Sprintf(
+			"design property %q takes a SET of options, not one value — write it as "+
+				"`'%s': ['%s': on]` (add one `'<option>': on` per selection). "+
+				"A single value is stored as an Option and mxbuild refuses it with CE6084.",
+			p.Key, p.Key, p.Value))
+	}
+	dp, ok := astDesignPropToValueInner(p, themeProps)
+	return dp, ok, nil
+}
+
+// isMultiSelectDesignProperty reports whether the theme declares this key as
+// multi-select. Unknown keys answer false: with no metadata there is nothing to
+// refuse on the strength of, and a theme newer than the snapshot must not be
+// blocked.
+func isMultiSelectDesignProperty(key string, themeProps []ThemeProperty) bool {
+	for i := range themeProps {
+		if strings.EqualFold(themeProps[i].Name, key) {
+			return themeProps[i].MultiSelect
+		}
+	}
+	return false
+}
+
+func astDesignPropToValueInner(p ast.DesignPropertyEntryV3, themeProps []ThemeProperty) (pages.DesignPropertyValue, bool) {
 	if len(p.Nested) > 0 {
 		dp := pages.DesignPropertyValue{Key: p.Key, ValueType: "compound"}
 		for _, sub := range p.Nested {
-			if sv, ok := astDesignPropToValue(sub, themeProps); ok {
+			// The inner function: a sub-entry is `'Phone': on`, which is a toggle
+			// by construction and never itself multi-select.
+			if sv, ok := astDesignPropToValueInner(sub, themeProps); ok {
 				dp.Compound = append(dp.Compound, sv)
 			}
 		}
@@ -672,6 +759,32 @@ func resolveDesignPropertyValueType(key, value string, themeProps []ThemePropert
 // =============================================================================
 // V3 DataSource and Action Builders
 // =============================================================================
+
+// checkSearchByIsOnAListView refuses `search by` on a widget that cannot store it.
+//
+// The clause hangs off the shared database-source rule, so the grammar accepts it
+// on a gallery or a data grid too — and only Forms$ListViewXPathSource declares
+// Search, so listViewSourceToGen is the only writer that emits it. Everything
+// else accepted the clause and dropped it: check passed, exec reported success,
+// and DESCRIBE did not echo it back. That is the silent-drop this whole area
+// keeps producing, and the reason MDL-WIDGET07 exists (ako/mxcli#512).
+//
+// An error rather than a warning: unlike an unrecognised PROPERTY key, which a
+// newer widget package might legitimately define, this one is decided by Mendix's
+// metamodel and cannot become valid later.
+func checkSearchByIsOnAListView(w *ast.WidgetV3) error {
+	if w == nil || strings.EqualFold(w.Type, "listview") {
+		return nil
+	}
+	ds := w.GetDataSource()
+	if ds == nil || len(ds.SearchAttributes) == 0 {
+		return nil
+	}
+	return mdlerrors.NewValidation(fmt.Sprintf(
+		"widget %q (%s): `search by` is a LIST VIEW search bar and %s cannot store one — "+
+			"only Forms$ListViewXPathSource declares Search. Drop the clause, or use a `listview`.",
+		w.Name, strings.ToLower(w.Type), strings.ToLower(w.Type)))
+}
 
 // buildDataSourceV3 converts a V3 DataSource AST to a pages.DataSource.
 // Returns the datasource, the entity name for context, and any error.
@@ -752,15 +865,43 @@ func (pb *pageBuilder) buildDataSourceV3(ds *ast.DataSourceV3) (pages.DataSource
 			if strings.ToLower(ob.Direction) == "desc" {
 				direction = pages.SortDirectionDescending
 			}
+			attrPath := pb.resolveAttributePathForEntity(ob.Attribute, ds.Reference)
+			var steps []pages.AttributeRefStep
+			if len(ob.Associations) > 0 {
+				// A sort that navigates associations. Resolved through the same
+				// walker DataGrid2 columns and dynamictext params use, so the two
+				// cannot disagree about a path that means the same thing in both.
+				// Refused rather than flattened: an attribute of a far entity with
+				// no EntityRef beside it is CE7247 at build time
+				// (mendixlabs/mxcli#1152).
+				path := strings.Join(append(append([]string{}, ob.Associations...), ob.Attribute), "/")
+				finalQN, hops, ok := pb.resolveAssociationAttributePathForEntity(path, ds.Reference)
+				if !ok {
+					return nil, "", mdlerrors.NewValidation(fmt.Sprintf(
+						"sort by %s: the association path could not be resolved from %s",
+						path, ds.Reference))
+				}
+				attrPath, steps = finalQN, hops
+			}
 			sortItem := &pages.GridSort{
 				BaseElement: model.BaseElement{
 					ID:       model.ID(types.GenerateID()),
 					TypeName: "Forms$GridSort",
 				},
-				AttributePath: pb.resolveAttributePathForEntity(ob.Attribute, ds.Reference),
-				Direction:     direction,
+				AttributePath:     attrPath,
+				AttributeRefSteps: steps,
+				Direction:         direction,
 			}
 			dbSource.Sorting = append(dbSource.Sorting, sortItem)
+		}
+
+		// Handle SEARCH BY — the List View search bar's attributes. Resolved to
+		// the same fully-qualified Module.Entity.Attribute form a sort column
+		// uses, because both are stored as a DomainModels$AttributeRef and a
+		// bare name in one would be a bare name in the other (ako/mxcli#512).
+		for _, attr := range ds.SearchAttributes {
+			dbSource.SearchAttributes = append(dbSource.SearchAttributes,
+				pb.resolveAttributePathForEntity(attr, ds.Reference))
 		}
 
 		return dbSource, ds.Reference, nil
@@ -782,7 +923,7 @@ func (pb *pageBuilder) buildDataSourceV3(ds *ast.DataSourceV3) (pages.DataSource
 			},
 			MicroflowID:       mfID,
 			Microflow:         ds.Reference,
-			ParameterMappings: flowArgsToParameterMappings(ds.Args),
+			ParameterMappings: pb.flowArgsToParameterMappings(ds.Args),
 		}, entityName, nil
 
 	case "nanoflow":
@@ -802,7 +943,7 @@ func (pb *pageBuilder) buildDataSourceV3(ds *ast.DataSourceV3) (pages.DataSource
 			},
 			NanoflowID:        nfID,
 			Nanoflow:          ds.Reference,
-			ParameterMappings: flowArgsToParameterMappings(ds.Args),
+			ParameterMappings: pb.flowArgsToParameterMappings(ds.Args),
 		}, entityName, nil
 
 	case "association":
@@ -1383,12 +1524,13 @@ func (pb *pageBuilder) buildClientActionV3(action *ast.ActionV3) (pages.ClientAc
 			// (#296). An argument naming anything else therefore cannot be honoured,
 			// and was previously dropped in silence: the button opened the page with
 			// the context object, `mx check` reported 0 errors, and DESCRIBE printed
-			// the inferred mapping. Refuse instead of re-pointing the argument.
-			if strVal, ok := arg.Value.(string); ok && !pageArgumentBindsContextObject(strVal, pb.contextVarName, pb.contextKnown) {
-				return nil, mdlerrors.NewValidationf(
-					"show_page %s: argument %s: %s cannot be stored — a widget's page argument is always the enclosing context object, which mxcli records by leaving the mapping empty (an explicit one is rejected as CE0115). Writing %s here would silently open the page with %s instead. Use $currentObject%s, or call a microflow that shows the page with the object you want [MDL-PAGEARG01]",
-					action.Target, arg.Name, strVal, strVal, pb.describeContextObject(),
-					pb.contextVarAlternative())
+			// the inferred mapping. Outside any data widget there is no context
+			// object to infer at all, so every argument is dropped and the build
+			// fails CE1571 (#1029). Refuse instead of re-pointing the argument.
+			if strVal, ok := arg.Value.(string); ok && !pb.argCtx.binds(strVal) {
+				return nil, mdlerrors.NewValidation(
+					refuseShowPageArgument(pb.currentWidget, action.Target, arg.Name, strVal, pb.argCtx) +
+						" [MDL-PAGEARG01]")
 			}
 
 			mapping := &pages.PageClientParameterMapping{
@@ -1439,10 +1581,14 @@ func (pb *pageBuilder) buildClientActionV3(action *ast.ActionV3) (pages.ClientAc
 				ParameterName: arg.Name,
 			}
 
-			// Determine if value is a variable reference or expression
+			// A page/snippet parameter or page variable binds through
+			// Variable (a Forms$PageVariable); anything else is an
+			// Expression. See classifyFlowArgValue — writing a $-reference
+			// as an Expression leaves the parameter unbound (CE1571, #1140).
 			if strVal, ok := arg.Value.(string); ok {
-				if strings.HasPrefix(strVal, "$") {
-					// Variable reference (including $currentObject)
+				if v, kind := pb.classifyFlowArgValue(strVal); kind != "" {
+					mapping.Variable, mapping.VariableKind = v, kind
+				} else if strings.HasPrefix(strVal, "$") {
 					mapping.Variable = strVal
 				} else {
 					mapping.Expression = strVal
@@ -1479,10 +1625,14 @@ func (pb *pageBuilder) buildClientActionV3(action *ast.ActionV3) (pages.ClientAc
 				ParameterName: arg.Name,
 			}
 
-			// Determine if value is a variable reference or expression
+			// A page/snippet parameter or page variable binds through
+			// Variable (a Forms$PageVariable); anything else is an
+			// Expression. See classifyFlowArgValue — writing a $-reference
+			// as an Expression leaves the parameter unbound (CE1571, #1140).
 			if strVal, ok := arg.Value.(string); ok {
-				if strings.HasPrefix(strVal, "$") {
-					// Variable reference (including $currentObject)
+				if v, kind := pb.classifyFlowArgValue(strVal); kind != "" {
+					mapping.Variable, mapping.VariableKind = v, kind
+				} else if strings.HasPrefix(strVal, "$") {
 					mapping.Variable = strVal
 				} else {
 					mapping.Expression = strVal
@@ -1577,16 +1727,23 @@ func (pb *pageBuilder) getEntityNameByID(entityID model.ID) (string, error) {
 	return "", mdlerrors.NewNotFound("entity", string(entityID))
 }
 
-// pageParamBSONType maps a DataType to the BSON $Type string for primitive page parameters.
-// Returns empty string for entity/enum types (which use DataTypes$ObjectType instead).
+// pageParamBSONType maps a DataType to the BSON $Type string for a primitive
+// page or snippet parameter. Returns empty string for entity/enum types (which
+// use DataTypes$ObjectType instead), which is the signal the callers branch on.
+//
+// Long maps to DataTypes$IntegerType because storage has no LongType: neither
+// generated/metamodel (the 11.6.0 arbiter) nor modelsdk/gen declares one, and
+// Studio Pro's own parameter type is the single "Integer/Long". This used to
+// return "DataTypes$LongType", a $Type Mendix does not have — the CLAUDE.md
+// "never invent a key" case, which on the way to disk was quietly rescued into
+// a String by pageParamTypeToGen's default arm. constant_write.go has carried
+// the same note ("storage has no LongType") all along.
 func pageParamBSONType(dt ast.DataType) string {
 	switch dt.Kind {
 	case ast.TypeString:
 		return "DataTypes$StringType"
-	case ast.TypeInteger:
+	case ast.TypeInteger, ast.TypeLong:
 		return "DataTypes$IntegerType"
-	case ast.TypeLong:
-		return "DataTypes$LongType"
 	case ast.TypeDecimal:
 		return "DataTypes$DecimalType"
 	case ast.TypeBoolean:
@@ -1722,6 +1879,18 @@ func (pb *pageBuilder) resolveAttributePathForEntity(attrName string, entityName
 	defer func() { pb.entityContext = oldContext }()
 
 	return pb.resolveAttributePath(attrName)
+}
+
+// resolveAssociationAttributePathForEntity resolves an `Assoc/.../Attr` path
+// against an explicit root entity rather than the builder's current widget
+// context — a datasource's sort is rooted in the datasource's own entity.
+// Mirrors resolveAttributePathForEntity.
+func (pb *pageBuilder) resolveAssociationAttributePathForEntity(path, entityName string) (string, []pages.AttributeRefStep, bool) {
+	oldContext := pb.entityContext
+	pb.entityContext = entityName
+	defer func() { pb.entityContext = oldContext }()
+
+	return pb.resolveAssociationAttributePath(path)
 }
 
 // resolveTemplateAttributePath resolves template parameter values like $widgetName.Attribute
@@ -1861,6 +2030,33 @@ func (pb *pageBuilder) resolveTemplateAssociationPath(attrRef string, param *pag
 	return true
 }
 
+// resolveInputAttribute resolves the `attribute:` of an input widget (text box,
+// text area, date picker, drop-down, check box, radio buttons) into the
+// qualified final attribute plus the association hops to reach it.
+//
+// A bare name resolves against the enclosing entity context as before and
+// carries no steps. `Assoc/Attr` navigates: Studio Pro stores exactly this on a
+// plain text box, as ako/TestApp's Rules.RuleAction_NewEdit does for
+// Rules.BusinessRule.Name over Rules.RuleAction_BusinessRule.
+//
+// Before this, every input builder called resolveAttributePath, which knows
+// nothing about associations — the slashes survived into a flat path that
+// resolved to nothing and the build failed CE1613 (ako/mxcli#529). DataGrid2
+// columns and DynamicText parameters already resolved it, so one page could
+// bind an associated attribute in a grid column and fail on the text box beside
+// it.
+//
+// An unresolvable path falls back to resolveAttributePath rather than erroring,
+// matching what the column builder does: the reference checker
+// (--references) is where an unknown member is reported, and failing here would
+// reject paths whose entity context this pass cannot see.
+func (pb *pageBuilder) resolveInputAttribute(attr string) (string, []pages.AttributeRefStep) {
+	if finalQN, steps, ok := pb.resolveAssociationAttributePath(attr); ok {
+		return finalQN, steps
+	}
+	return pb.resolveAttributePath(attr), nil
+}
+
 // resolveAssociationAttributePath resolves a context-relative attribute path that
 // navigates one or more associations (e.g. "Order_Customer/Name" or
 // "$currentObject/Sales.Order_Customer/Name") into the fully-qualified FINAL
@@ -1931,6 +2127,48 @@ func (pb *pageBuilder) associationDestination(assocQN, currentEntityQN string) (
 		// refuse rather than emit a wrong ref.
 		return "", false
 	}
+}
+
+// checkListViewTemplateSpecialization reports why a `template for X` cannot
+// belong to a list view over listEntity, or nil when it can.
+//
+// One function for both call sites — CREATE PAGE (buildListViewTemplateV3) and
+// ALTER PAGE INSERT/REPLACE (cmd_alter_page.go) — because two copies of a guard
+// is how the two drift, and this one was already wrong in both.
+//
+// The rule is a STRICT specialization, and that strictness is ako/mxcli#514.
+// Both copies gated on entityIsOrDescendsFrom, which returns true for the entity
+// itself, so `template for <the list view's own entity>` was accepted, written,
+// and refused by mxbuild:
+//
+//	[CE0543] "The entity of the list view template is 'MyFirstModule.Vehicle' and
+//	         this is not a specialization of the entity of the list view."
+//
+// Measured on 11.12.2; a template for a real specialization is 0 errors. The
+// list view's own body already renders an object no template matches, so a
+// template for the base entity would be a second, unreachable default.
+//
+// An empty listEntity means the datasource did not resolve to an entity, which
+// is reported elsewhere — do not report it a second time as a bogus
+// specialization error.
+func (pb *pageBuilder) checkListViewTemplateSpecialization(spec, listEntity, listViewName string) error {
+	if listEntity == "" || spec == "" {
+		return nil
+	}
+	if spec == listEntity {
+		return mdlerrors.NewValidation(fmt.Sprintf(
+			"template for %s in list view %s: %s is the list view's own entity, and a template "+
+				"must be for a specialization of it — the list view's own body already renders "+
+				"objects no template matches",
+			spec, listViewName, spec))
+	}
+	if !pb.entityIsOrDescendsFrom(spec, listEntity) {
+		return mdlerrors.NewValidation(fmt.Sprintf(
+			"template for %s in list view %s: %s is not a specialization of %s, "+
+				"so the template can never match an object the list view shows",
+			spec, listViewName, spec, listEntity))
+	}
+	return nil
 }
 
 // entityIsOrDescendsFrom reports whether entityQN equals baseQN or is a
@@ -2460,7 +2698,7 @@ func prefixWidgetNames(widgets []*ast.WidgetV3, prefix string) {
 // needs an argument for every parameter exactly as a call action does — Mendix
 // reports CE1571 "No argument has been selected for parameter 'X'" otherwise
 // (#835). The datasource path previously parsed the arguments and dropped them.
-func flowArgsToParameterMappings(args []ast.FlowArgV3) []*pages.MicroflowParameterMapping {
+func (pb *pageBuilder) flowArgsToParameterMappings(args []ast.FlowArgV3) []*pages.MicroflowParameterMapping {
 	var out []*pages.MicroflowParameterMapping
 	for _, arg := range args {
 		mapping := &pages.MicroflowParameterMapping{
@@ -2470,10 +2708,13 @@ func flowArgsToParameterMappings(args []ast.FlowArgV3) []*pages.MicroflowParamet
 			},
 			ParameterName: arg.Name,
 		}
-		// A leading $ marks a variable reference ($currentObject, a page
-		// parameter); anything else is an expression.
+		// A page/snippet parameter or page variable binds through Variable (a
+		// Forms$PageVariable); $currentObject and anything else stays an
+		// expression. See classifyFlowArgValue (#1140).
 		if strVal, ok := arg.Value.(string); ok {
-			if strings.HasPrefix(strVal, "$") {
+			if v, kind := pb.classifyFlowArgValue(strVal); kind != "" {
+				mapping.Variable, mapping.VariableKind = v, kind
+			} else if strings.HasPrefix(strVal, "$") {
 				mapping.Variable = strVal
 			} else {
 				mapping.Expression = strVal

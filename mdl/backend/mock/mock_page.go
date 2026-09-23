@@ -72,6 +72,13 @@ func (m *MockBackend) CreateLayout(layout *pages.Layout) error {
 	return nil
 }
 
+func (m *MockBackend) UpdateLayout(layout *pages.Layout) error {
+	if m.UpdateLayoutFunc != nil {
+		return m.UpdateLayoutFunc(layout)
+	}
+	return errors.New("MockBackend.UpdateLayout not configured")
+}
+
 func (m *MockBackend) DeleteLayout(id model.ID) error {
 	if m.DeleteLayoutFunc != nil {
 		return m.DeleteLayoutFunc(id)

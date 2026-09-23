@@ -26,6 +26,10 @@ type ProjectSecurityBackend interface {
 	GetProjectSecurity() (*security.ProjectSecurity, error)
 	SetProjectSecurityLevel(unitID model.ID, level string) error
 	SetProjectDemoUsersEnabled(unitID model.ID, enabled bool) error
+	// SetProjectStrictMode toggles security strict mode, which mxcli has always
+	// READ (it is what lint rule SEC005 reports on) and could not write, so the
+	// rule had no remedy short of Studio Pro (ako/mxcli#526).
+	SetProjectStrictMode(unitID model.ID, enabled bool) error
 	// SetProjectGuestAccess toggles anonymous access. An empty guestUserRole
 	// leaves the stored role untouched — the caller is responsible for having
 	// established that a role exists, because Mendix raises CE0133 on guest

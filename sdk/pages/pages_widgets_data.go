@@ -18,6 +18,10 @@ type DataView struct {
 	NoEntityMessage *model.Text     `json:"noEntityMessage,omitempty"`
 	FormOrientation FormOrientation `json:"formOrientation,omitempty"`
 	LabelWidth      *int            `json:"labelWidth,omitempty"`
+	// ReadOnlyStyle is the DataView's own Inherit/Control/Text, distinct from a
+	// CheckBox's and wired nowhere until ako/mxcli#550. Empty means "not
+	// authored", so the writer leaves whatever is stored alone.
+	ReadOnlyStyle string `json:"readOnlyStyle,omitempty"`
 }
 
 // FormOrientation controls label placement inside a DataView. Mendix

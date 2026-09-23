@@ -22,6 +22,9 @@ type LocalAppOptions struct {
 	ServePort int
 	// AdminPass is the M2EE admin password (defaults to the local-run password).
 	AdminPass string
+	// MxBuildPath overrides mxbuild resolution (optional), as --mxbuild-path does
+	// for `run --local`. Empty means resolve for this host.
+	MxBuildPath string
 	// DB is the database to connect to; empty fields take the run --local
 	// defaults (PostgreSQL at 127.0.0.1:5432, user/password mendix, database
 	// name derived from the project file name).
@@ -163,8 +166,15 @@ func StartLocalApp(opts LocalAppOptions) (*LocalApp, error) {
 	version := reader.ProjectVersion().ProductVersion
 	reader.Disconnect()
 
-	// 2. Cache mxbuild + runtime (no-ops when already present).
-	if _, err := DownloadMxBuild(version, w); err != nil {
+	// 2. Resolve mxbuild + cache the runtime (no-ops when already present).
+	//
+	// Resolution, not a bare DownloadMxBuild: the CDN publishes Linux archives
+	// only, so on macOS and Windows downloading caches a binary this host cannot
+	// execute. `run --local` was moved off DownloadMxBuild for that reason in
+	// #916; this second caller was left behind, which is why `test --local` still
+	// died on a Mac with Studio Pro installed (#1122).
+	mxbuildPath, err := ResolveMxBuildForLocal(opts.MxBuildPath, version, w)
+	if err != nil {
 		return nil, fmt.Errorf("setting up mxbuild: %w", err)
 	}
 	installPath, err := resolveRuntimeInstall(version, w)
@@ -197,7 +207,7 @@ func StartLocalApp(opts LocalAppOptions) (*LocalApp, error) {
 	if !opts.SkipBuild {
 		fmt.Fprintln(w, "Building project (mxbuild --serve)...")
 		serveJavaMajor, _ := ProjectJavaMajor(opts.ProjectPath)
-		serve, err := StartServe(ServeOptions{Version: version, JavaMajor: serveJavaMajor, Host: "127.0.0.1", Port: opts.ServePort})
+		serve, err := StartServe(serveOptionsFor(mxbuildPath, version, serveJavaMajor, opts.ServePort))
 		if err != nil {
 			return nil, fmt.Errorf("starting mxbuild serve: %w", err)
 		}

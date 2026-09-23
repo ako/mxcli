@@ -50,6 +50,16 @@ func (pb *pageBuilder) buildDataViewV3(w *ast.WidgetV3) (*pages.DataView, error)
 	// silently discarded (mendixlabs/mxcli#813). An explicit value is the author's
 	// statement and wins over the footer block, in both directions: it can show an
 	// empty footer, or hide one whose widgets are still declared.
+	// A DataView's own Inherit/Control/Text. The property parsed and
+	// `mxcli check` accepted it — staticWidgetKnownProps is a union across widget
+	// types, so it draws no MDL-WIDGET07 warning — and every layer below dropped
+	// it (ako/mxcli#550, the same shape as #490's checkbox).
+	dvStyle, err := readOnlyStyleValue(w.GetStringProp("ReadOnlyStyle"), "dataview", w.Name)
+	if err != nil {
+		return nil, err
+	}
+	dv.ReadOnlyStyle = dvStyle
+
 	showFooterSet := false
 	if raw, ok := lookupPropCI(w, "ShowFooter"); ok {
 		v, err := propBool(raw)
@@ -83,15 +93,12 @@ func (pb *pageBuilder) buildDataViewV3(w *ast.WidgetV3) (*pages.DataView, error)
 
 		// Save and restore entity context so nested DataViews work correctly
 		oldContext := pb.entityContext
-		oldContextVar := pb.contextVarName
-		oldContextKnown := pb.contextKnown
+		oldArgCtx := pb.argCtx
 		pb.entityContext = entityName
-		pb.contextVarName = contextVarFor(ds)
-		pb.contextKnown = true
+		pb.argCtx = enteringDataWidget(ds, entityName)
 		defer func() {
 			pb.entityContext = oldContext
-			pb.contextVarName = oldContextVar
-			pb.contextKnown = oldContextKnown
+			pb.argCtx = oldArgCtx
 		}()
 
 		// Register the widget name with its entity so template params like $dvOrder.Attr
@@ -294,6 +301,19 @@ func (pb *pageBuilder) buildListViewV3(w *ast.WidgetV3) (*pages.ListView, error)
 	// (ako/CapTrackV3 FINDINGS §6).
 	lv.Editable = w.GetBoolProp("Editable")
 
+	// "On click" — Pages$ListView.ClickAction. The model and the writer have
+	// always carried it (widget_write.go calls clientActionToGen(x.ClickAction));
+	// only this builder never read it off the AST, so the field was always nil
+	// and MDL-WIDGET23 told authors to wrap the row in a `container` instead
+	// (ako/mxcli#512).
+	if action := w.GetAction(); action != nil {
+		clientAction, err := pb.buildClientActionV3(action)
+		if err != nil {
+			return nil, err
+		}
+		lv.ClickAction = clientAction
+	}
+
 	// Handle DataSource
 	var listEntity string
 	if ds := w.GetDataSource(); ds != nil {
@@ -306,15 +326,12 @@ func (pb *pageBuilder) buildListViewV3(w *ast.WidgetV3) (*pages.ListView, error)
 
 		// Save and restore entity context so nested containers work correctly
 		oldContext := pb.entityContext
-		oldContextVar := pb.contextVarName
-		oldContextKnown := pb.contextKnown
+		oldArgCtx := pb.argCtx
 		pb.entityContext = entityName
-		pb.contextVarName = contextVarFor(ds)
-		pb.contextKnown = true
+		pb.argCtx = enteringDataWidget(ds, entityName)
 		defer func() {
 			pb.entityContext = oldContext
-			pb.contextVarName = oldContextVar
-			pb.contextKnown = oldContextKnown
+			pb.argCtx = oldArgCtx
 		}()
 
 		// Register widget name with entity for SELECTION datasource lookup
@@ -368,16 +385,10 @@ func (pb *pageBuilder) buildListViewTemplateV3(w *ast.WidgetV3, listViewName, li
 	}
 	seen[spec] = true
 
-	// The specialization must actually be one: Mendix matches a template against
-	// the object's type, so a template for an unrelated entity can never render.
-	// listEntity is empty when the datasource could not be resolved to an entity,
-	// and an unresolvable datasource is already reported elsewhere — do not
-	// report it a second time as a bogus specialization error.
-	if listEntity != "" && !pb.entityIsOrDescendsFrom(spec, listEntity) {
-		return nil, mdlerrors.NewValidation(fmt.Sprintf(
-			"template for %s in list view %s: %s is not %s or a specialization of it, "+
-				"so the template can never match an object the list view shows",
-			spec, listViewName, spec, listEntity))
+	// The specialization must actually be one, and strictly so — see
+	// checkListViewTemplateSpecialization, which the ALTER PAGE path shares.
+	if err := pb.checkListViewTemplateSpecialization(spec, listEntity, listViewName); err != nil {
+		return nil, err
 	}
 
 	tpl := &pages.ListViewTemplate{
@@ -443,8 +454,24 @@ func (pb *pageBuilder) buildTextBoxV3(w *ast.WidgetV3) (*pages.TextBox, error) {
 
 	// Handle Attribute (attribute path)
 	if attr := w.GetAttribute(); attr != "" {
-		tb.AttributePath = pb.resolveAttributePath(attr)
+		tb.AttributePath, tb.AttributeRefSteps = pb.resolveInputAttribute(attr)
 	}
+
+	// Forms$TextBox.IsPasswordBox. The writer always carried it; nothing parsed
+	// it, so a describe → exec round trip turned a password field into a
+	// plaintext one (ako/mxcli#550).
+	if raw, ok := lookupPropCI(w, "Password"); ok {
+		v, err := propBool(raw)
+		if err != nil {
+			return nil, mdlerrors.NewBackend("textbox Password", err)
+		}
+		tb.IsPassword = v
+	}
+	// Forms$WidgetValidation. Both fields are optional and empty means "not
+	// authored", which leaves the writer emitting the empty validation Studio
+	// Pro stores on a widget that has none.
+	tb.ValidationExpression = w.GetStringProp("Validation")
+	tb.ValidationMessage = w.GetStringProp("ValidationMessage")
 
 	// Handle Label
 	if label := w.GetLabel(); label != "" {
@@ -487,7 +514,7 @@ func (pb *pageBuilder) buildTextAreaV3(w *ast.WidgetV3) (*pages.TextArea, error)
 
 	// Handle Attribute
 	if attr := w.GetAttribute(); attr != "" {
-		ta.AttributePath = pb.resolveAttributePath(attr)
+		ta.AttributePath, ta.AttributeRefSteps = pb.resolveInputAttribute(attr)
 	}
 
 	// Handle Label
@@ -520,7 +547,7 @@ func (pb *pageBuilder) buildDatePickerV3(w *ast.WidgetV3) (*pages.DatePicker, er
 
 	// Handle Attribute
 	if attr := w.GetAttribute(); attr != "" {
-		dp.AttributePath = pb.resolveAttributePath(attr)
+		dp.AttributePath, dp.AttributeRefSteps = pb.resolveInputAttribute(attr)
 	}
 
 	// Handle Label
@@ -553,7 +580,7 @@ func (pb *pageBuilder) buildDropdownV3(w *ast.WidgetV3) (*pages.DropDown, error)
 
 	// Handle Attribute
 	if attr := w.GetAttribute(); attr != "" {
-		dd.AttributePath = pb.resolveAttributePath(attr)
+		dd.AttributePath, dd.AttributeRefSteps = pb.resolveInputAttribute(attr)
 	}
 
 	// Handle Label
@@ -586,7 +613,7 @@ func (pb *pageBuilder) buildCheckBoxV3(w *ast.WidgetV3) (*pages.CheckBox, error)
 
 	// Handle Attribute
 	if attr := w.GetAttribute(); attr != "" {
-		cb.AttributePath = pb.resolveAttributePath(attr)
+		cb.AttributePath, cb.AttributeRefSteps = pb.resolveInputAttribute(attr)
 	}
 
 	// Handle Label
@@ -598,7 +625,7 @@ func (pb *pageBuilder) buildCheckBoxV3(w *ast.WidgetV3) (*pages.CheckBox, error)
 	// omitted property stays empty and the writer keeps the stored default —
 	// what decides whether a read-only check box renders as "Yes"/"No" text or
 	// as the checkbox glyph (ako/mxcli#490).
-	style, err := readOnlyStyleValue(w.GetStringProp("ReadOnlyStyle"), w.Name)
+	style, err := readOnlyStyleValue(w.GetStringProp("ReadOnlyStyle"), "checkbox", w.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -622,7 +649,10 @@ func (pb *pageBuilder) buildCheckBoxV3(w *ast.WidgetV3) (*pages.CheckBox, error)
 // PagesReadOnlyStyle): an unknown one is a property Studio Pro cannot resolve,
 // and mxbuild tolerates it — so the build stays green and the project does not
 // open. Empty in, empty out: unset keeps the stored default.
-func readOnlyStyleValue(raw, widgetName string) (string, error) {
+// kind names the widget in the refusal below. It is a parameter because a
+// DataView has its own ReadOnlyStyle as well (ako/mxcli#550), and an error
+// naming the wrong widget type sends the reader to the wrong line.
+func readOnlyStyleValue(raw, kind, widgetName string) (string, error) {
 	if raw == "" {
 		return "", nil
 	}
@@ -632,8 +662,8 @@ func readOnlyStyleValue(raw, widgetName string) (string, error) {
 		}
 	}
 	return "", mdlerrors.NewValidationf(
-		"checkbox %q: ReadOnlyStyle %q is not a Mendix read-only style — use Inherit, Control or Text",
-		widgetName, raw)
+		"%s %q: ReadOnlyStyle %q is not a Mendix read-only style — use Inherit, Control or Text",
+		kind, widgetName, raw)
 }
 
 // buildRadioButtonsV3 creates RadioButtons from V3 syntax.
@@ -651,7 +681,7 @@ func (pb *pageBuilder) buildRadioButtonsV3(w *ast.WidgetV3) (*pages.RadioButtons
 
 	// Get attribute path from Attribute property
 	if attr := w.GetAttribute(); attr != "" {
-		rb.AttributePath = pb.resolveAttributePath(attr)
+		rb.AttributePath, rb.AttributeRefSteps = pb.resolveInputAttribute(attr)
 	}
 
 	// Handle OnChange (the "On change" client action)
@@ -925,31 +955,17 @@ func (pb *pageBuilder) buildButtonV3(w *ast.WidgetV3) (*pages.ActionButton, erro
 			},
 		}
 
-		// Handle CaptionParams (template parameters like {1}, {2})
-		if params := w.GetCaptionParams(); params != nil {
-			for _, p := range params {
-				param := &pages.ClientTemplateParameter{
-					BaseElement: model.BaseElement{
-						ID:       model.ID(types.GenerateID()),
-						TypeName: "Forms$ClientTemplateParameter",
-					},
-				}
-				// Check if it's an attribute reference or literal
-				if strVal, ok := p.Value.(string); ok {
-					if strings.HasPrefix(strVal, "'") || strings.HasPrefix(strVal, "\"") {
-						// Already a quoted string literal - use as-is
-						param.Expression = strVal
-					} else if strings.HasPrefix(strVal, "$") || strings.Contains(strVal, ".") {
-						// Attribute reference - resolve widget references to entity paths
-						param.AttributeRef = pb.resolveTemplateAttributePath(strVal)
-					} else {
-						// Unquoted literal value - wrap in quotes for expression
-						param.Expression = "'" + strVal + "'"
-					}
-				}
-				btn.CaptionTemplate.Parameters = append(btn.CaptionTemplate.Parameters, param)
-			}
+		// CaptionParams bind through the same resolver as a dynamictext's
+		// ContentParams, so `[{1} = Title]` binds the attribute on both. The
+		// button used to carry its own copy that wrote a bare name as the literal
+		// 'Title' (#632). `ContentParams:` is what DESCRIBE printed for a button
+		// before #632, so it is read too — otherwise re-executing an old
+		// description drops every parameter and leaves {1} unbound.
+		params := w.GetCaptionParams()
+		if params == nil {
+			params = w.GetContentParams()
 		}
+		btn.CaptionTemplate.Parameters = pb.buildClientTemplateParams(params)
 	}
 
 	// Handle ButtonStyle. Normalize case (so `primary` becomes `Primary`) and
@@ -1245,11 +1261,42 @@ func (pb *pageBuilder) buildStaticImageV3(w *ast.WidgetV3) (*pages.StaticImage, 
 		Responsive: true,
 	}
 
+	// Which image the widget shows: Module.Collection.Image, the qualified name
+	// of an entry in an image collection. Forms$StaticImageViewer.Image is a
+	// by-name reference to Images$Image, so the NAME is what is stored — and
+	// until mendixlabs/mxcli#1057 MDL had no way to say it, which is why a
+	// Selection helper's Studio Pro-authored custom slots could not be
+	// re-authored after a DESCRIBE.
+	img.ImageName = w.GetStringProp("Image")
+
 	if width := w.GetIntProp("Width"); width > 0 {
 		img.Width = width
 	}
 	if height := w.GetIntProp("Height"); height > 0 {
 		img.Height = height
+	}
+	img.WidthUnit = pages.WidthUnit(w.GetStringProp("WidthUnit"))
+	img.HeightUnit = pages.WidthUnit(w.GetStringProp("HeightUnit"))
+	// Responsive defaults to TRUE (Studio Pro's default, set above), so only an
+	// explicit `Responsive: false` turns it off — an ABSENT property must not
+	// read as false, which is exactly what GetBoolProp would do.
+	if raw, ok := lookupPropCI(w, "Responsive"); ok {
+		v, err := propBool(raw)
+		if err != nil {
+			return nil, mdlerrors.NewBackend("staticimage Responsive", err)
+		}
+		img.Responsive = v
+	}
+
+	// Pages$StaticImageViewer.ClickAction / Pages$DynamicImageViewer.ClickAction.
+	// Same story as the list view: the writer already serialises OnClickAction,
+	// only this builder never filled it (ako/mxcli#512).
+	if action := w.GetAction(); action != nil {
+		clientAction, err := pb.buildClientActionV3(action)
+		if err != nil {
+			return nil, err
+		}
+		img.OnClickAction = clientAction
 	}
 
 	if err := pb.registerWidgetName(w.Name, img.ID); err != nil {
@@ -1271,11 +1318,56 @@ func (pb *pageBuilder) buildDynamicImageV3(w *ast.WidgetV3) (*pages.DynamicImage
 		Responsive: true,
 	}
 
+	// The entity holding the image. Without it mxbuild refuses the widget —
+	// CE0489 "Select an entity for the data source of this dynamic image" — so
+	// every dynamic image mxcli wrote before this was broken at build time, not
+	// merely lossy. The entity must be reachable from the widget's context; a
+	// wrong one is mxbuild's to reject, not this builder's to guess at.
+	if ds := w.GetDataSource(); ds != nil {
+		dataSource, _, err := pb.buildDataSourceV3(ds)
+		if err != nil {
+			return nil, mdlerrors.NewBackend("build datasource", err)
+		}
+		img.DataSource = dataSource
+	}
+
+	// The fallback shown when the bound object has no image, as the qualified
+	// name of an image-collection entry (Module.Collection.Image).
+	img.DefaultImageName = w.GetStringProp("DefaultImage")
+
 	if width := w.GetIntProp("Width"); width > 0 {
 		img.Width = width
 	}
 	if height := w.GetIntProp("Height"); height > 0 {
 		img.Height = height
+	}
+	img.WidthUnit = pages.WidthUnit(w.GetStringProp("WidthUnit"))
+	img.HeightUnit = pages.WidthUnit(w.GetStringProp("HeightUnit"))
+	// Same vocabulary as the pluggable image widget: DisplayAs: thumbnail and
+	// OnClickType: enlarge. Both were hardcoded false in the writer, so neither
+	// was reachable from MDL at all.
+	img.ShowAsThumbnail = strings.EqualFold(w.GetStringProp("DisplayAs"), "thumbnail")
+	img.OnClickEnlarge = strings.EqualFold(w.GetStringProp("OnClickType"), "enlarge")
+	// Responsive defaults to TRUE (Mendix's default, set above), so only an
+	// explicit `Responsive: false` turns it off — an ABSENT property must not
+	// read as false, which is what GetBoolProp would do.
+	if raw, ok := lookupPropCI(w, "Responsive"); ok {
+		v, err := propBool(raw)
+		if err != nil {
+			return nil, mdlerrors.NewBackend("dynamicimage Responsive", err)
+		}
+		img.Responsive = v
+	}
+
+	// Pages$StaticImageViewer.ClickAction / Pages$DynamicImageViewer.ClickAction.
+	// Same story as the list view: the writer already serialises OnClickAction,
+	// only this builder never filled it (ako/mxcli#512).
+	if action := w.GetAction(); action != nil {
+		clientAction, err := pb.buildClientActionV3(action)
+		if err != nil {
+			return nil, err
+		}
+		img.OnClickAction = clientAction
 	}
 
 	if err := pb.registerWidgetName(w.Name, img.ID); err != nil {

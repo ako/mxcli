@@ -1,0 +1,73 @@
+-- ako/mxcli#585 — MDL031's pass-through length rule refused EVERY declaration
+-- of a column taken from a System.* string attribute, including the one that
+-- builds, and suggested the one that does not.
+--
+-- Measured on mxbuild 11.14.0 (System.User.Name is String(100), not the 200 the
+-- field report and the issue both assumed):
+--
+--   declared        mxcli check (before)   mx check
+--   String(200)     refused                CE6770
+--   String(100)     refused                0 errors      <- the correct one
+--   String          passed                 CE6770
+--
+-- The inferred length was 0 because the System metadata carried no lengths
+-- (0 of 115 attributes — #584), and the rule treated 0 as a length to match.
+-- It now declines a length it does not know. #584 then measured the lengths, so
+-- System.User.Name is no longer such a case: after both fixes, mxcli's verdict
+-- matches mxbuild's on all three declarations above.
+--
+-- WHAT THIS FILE CHECKS, AND WHAT IT DOES NOT. `make check-mdl` runs
+-- `mxcli check` with NO project, so it only proves these statements parse. The
+-- length rule needs the project to resolve System.User at all, so run it with
+-- `-p <project>.mpr` to exercise the fix:
+--
+--   mxcli check mdl-examples/bug-tests/viewentity-585-system-attribute-length.mdl -p app.mpr
+--     -> Check passed!
+--
+-- The assertion that survives CI is the unit test,
+-- mdl/executor/oql_passthrough_unknown_length_test.go, which pins the predicate
+-- directly AND keeps the known-length case refused.
+
+create module Ve585;
+
+-- 1. The declaration mxbuild accepts. Refused before the fix — this is the
+--    statement the reporter could not write, which drove them to cast().
+create view entity Ve585.UserNames (
+  UserName: String(100)
+) as (
+  from System.User as u
+  select u.Name as UserName
+);
+
+-- 2. The declaration mxbuild rejects (CE6770). Also refused before the fix, and
+--    briefly accepted after it: with no length for System.User.Name, mxcli
+--    could not tell these two apart. #584 supplied the length (String(100),
+--    measured from the deployed model), so `mxcli check -p` refuses THIS
+--    statement again — this time for the right reason, naming 100. That means
+--    the file below no longer passes `mxcli check -p …` as a whole; run
+--    statement 1 alone to see the #585 fix, or use
+--    bug-tests/viewentity-584-system-string-lengths.mdl, which is the
+--    both-halves-fixed version. It is commented out here for the same reason
+--    statement 3 is: this file has to pass `mxcli check`.
+--
+--    create view entity Ve585.UserNames200 (
+--      UserName: String(200)
+--    ) as (
+--      from System.User as u
+--      select u.Name as UserName
+--    );
+
+-- 3. The control: a source whose length mxcli DOES know. The rule must still
+--    refuse this, with the exact fix named — a build where the rule had simply
+--    been deleted would accept it.
+--
+--    create persistent entity Ve585.Meter (MeterName: String(100));
+--    create view entity Ve585.MeterNames (MeterName: String(200)) as (
+--      from Ve585.Meter as m select m.MeterName as MeterName
+--    );
+--    -> attribute 'MeterName': declared as String(200) but pass-through column
+--       'm.MeterName' inherits length 100 from source attribute
+--       Ve585.Meter.MeterName … Fix: change to 'MeterName: String(100)'
+--
+--    Left commented because this file must pass `make check-mdl`; the live
+--    version of this control is in the unit test named above.

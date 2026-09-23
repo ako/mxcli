@@ -102,8 +102,16 @@ func (b *Backend) ListSnippets() ([]*pages.Snippet, error) {
 			}
 			p := &pages.SnippetParameter{Name: sp.Name()}
 			p.ID = model.ID(sp.ID())
-			if ot, ok := sp.ParameterType().(*genDT.ObjectType); ok {
-				p.EntityName = ot.EntityQualifiedName()
+			// Entity or primitive — a snippet parameter's ParameterType is the
+			// polymorphic DataTypes$DataType, the same as a page parameter's.
+			// Reading only the ObjectType arm made every primitive parameter
+			// read back as an untyped one (mendixlabs/mxcli#1028).
+			if pt := sp.ParameterType(); pt != nil {
+				if ot, ok := pt.(*genDT.ObjectType); ok {
+					p.EntityName = ot.EntityQualifiedName()
+				} else {
+					p.Type = pt.TypeName()
+				}
 			}
 			s.Parameters = append(s.Parameters, p)
 		}

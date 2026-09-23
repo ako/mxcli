@@ -317,6 +317,13 @@ func setBoolField(doc bson.D, key string, value bool) {
 // rather than dropped quietly, because "the package wanted a different version"
 // is exactly the thing that was invisible before.
 func InstallPackageFiles(mpkPath, projectDir string) (written []string, skipped []SkippedFile, err error) {
+	// Anchor the project first. A relative projectDir ("." from `-p app.mpr`)
+	// made filepath.Join drop the dot, so "manifest.json" was compared against
+	// the prefix "./" and every legitimate entry was refused as a traversal.
+	projectDir, err = filepath.Abs(projectDir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve project dir: %w", err)
+	}
 	zr, err := zip.OpenReader(mpkPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open package %s: %w", filepath.Base(mpkPath), err)
@@ -425,8 +432,15 @@ func PerformInstall(mprPath, referenceMpr, packageMpk, moduleName, version, vers
 	if err != nil {
 		return nil, fmt.Errorf("copy the module in: %w", err)
 	}
-	if err := StampMarketplaceVersion(mprPath, moduleName, version, versionID); err != nil {
-		return nil, fmt.Errorf("record the installed version: %w", err)
+	// A package installed from disk (marketplace install --file) has no
+	// marketplace identity. Stamping it FromAppStore with an empty GUID would
+	// tell `update` and `diff` that some release is installed while naming
+	// none; leaving the module unstamped is the truthful record, and both then
+	// report — correctly — that no marketplace content is installed under it.
+	if versionID != "" {
+		if err := StampMarketplaceVersion(mprPath, moduleName, version, versionID); err != nil {
+			return nil, fmt.Errorf("record the installed version: %w", err)
+		}
 	}
 	files, skippedFiles, err := InstallPackageFiles(packageMpk, filepath.Dir(mprPath))
 	if err != nil {

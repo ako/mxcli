@@ -136,3 +136,7 @@ name.
 - [ ] `mxcli debug activities <Module.Flow>` lists the activity you want.
 - [ ] After triggering the flow, `mxcli debug paused` shows it with variables.
 - [ ] Finished with `mxcli debug disable`.
+
+## Microflow/nanoflow debugger (`mxcli debug`)
+
+set breakpoints **by name** (activity resolved from the model), inspect paused flows + variables, step over/into/out, continue — against a `run --local` runtime. Two M2EE planes wired behind one command (admin `enable/disable/status`, app `/debugger/` session); `run --local --debug` enables it at boot. **Nanoflows** are auto-detected (uses the `nanoflow_name` breakpoint param; paused nanoflows are merged from `poll_events`, which `get_paused_microflows` omits). Nanoflow `LOG` output is rewritten to the `Client_Nanoflow` node in the runtime log. and `docs/11-proposals/PROPOSAL_microflow_debugger.md`

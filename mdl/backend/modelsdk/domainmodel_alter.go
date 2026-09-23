@@ -4,6 +4,7 @@ package modelsdkbackend
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
@@ -55,6 +56,43 @@ func removeAssocsReferencing(dm *genDm.DomainModel, entityID model.ID) bool {
 		}
 		if string(a.ParentRefID()) == string(entityID) || string(a.ChildRefID()) == string(entityID) {
 			dm.RemoveAssociations(i)
+			changed = true
+		}
+	}
+	return changed
+}
+
+// removeCrossAssocsReferencing drops every CROSS-MODULE association in dm that
+// ends at the deleted entity. Returns whether anything was removed.
+//
+// A cross-module association is stored in the FROM entity's module, in a separate
+// collection from the regular ones, and its two ends are addressed differently:
+// the FROM end by element id (local to this domain model) and the TO end by
+// qualified name (it lives in another module). So both have to be matched, and
+// they fail differently when they are not (ako/mxcli#553):
+//
+//   - a dangling BY-ID end is a 16-byte pointer to an element that is gone, and
+//     mxbuild cannot LOAD the project — KeyNotFoundException at
+//     StreamingBsonUnitReader.ResolvePostponedProperties(), with no CE code and
+//     no document named.
+//   - a dangling BY-NAME end is an ordinary model error, CE1613 at the
+//     cross-module association.
+//
+// qualifiedName may be empty when the module name could not be established; the
+// by-name sweep is then skipped rather than guessed at, since an empty name would
+// match nothing at best and everything at worst.
+func removeCrossAssocsReferencing(dm *genDm.DomainModel, entityID model.ID, qualifiedName string) bool {
+	changed := false
+	items := dm.CrossAssociationsItems()
+	for i := len(items) - 1; i >= 0; i-- {
+		ca, ok := items[i].(*genDm.CrossAssociation)
+		if !ok {
+			continue
+		}
+		byID := string(ca.ParentRefID()) == string(entityID)
+		byName := qualifiedName != "" && strings.EqualFold(ca.ChildQualifiedName(), qualifiedName)
+		if byID || byName {
+			dm.RemoveCrossAssociations(i)
 			changed = true
 		}
 	}
@@ -387,8 +425,18 @@ func (b *Backend) DeleteEntity(domainModelID, entityID model.ID) error {
 	if eidx < 0 {
 		return fmt.Errorf("entity not found: %s", entityID)
 	}
+	// The qualified name the OTHER modules' cross-module associations know this
+	// entity by. Read before the entity is removed, for obvious reasons.
+	qualifiedName := ""
+	if ge := findGenEntity(dm, entityID); ge != nil {
+		if moduleName := b.moduleNameFor(domainModelID); moduleName != "" {
+			qualifiedName = moduleName + "." + ge.Name()
+		}
+	}
+
 	dm.RemoveEntities(eidx)
 	removeAssocsReferencing(dm, entityID)
+	removeCrossAssocsReferencing(dm, entityID, qualifiedName)
 	if err := b.persistDM(domainModelID, dm); err != nil {
 		return err
 	}
@@ -411,7 +459,14 @@ func (b *Backend) DeleteEntity(domainModelID, entityID model.ID) error {
 		if err != nil {
 			return fmt.Errorf("DeleteEntity: cascade cleanup: load %s: %w", other.ID, err)
 		}
-		if removeAssocsReferencing(odm, entityID) {
+		// Two sweeps, not one: a regular association here can only reference the
+		// entity by id, while a cross-module one in ANOTHER module reaches it by
+		// qualified name — which is the half that leaves CE1613 behind.
+		removed := removeAssocsReferencing(odm, entityID)
+		if removeCrossAssocsReferencing(odm, entityID, qualifiedName) {
+			removed = true
+		}
+		if removed {
 			if err := b.persistDM(other.ID, odm); err != nil {
 				return fmt.Errorf("DeleteEntity: cascade cleanup: update %s: %w", other.ID, err)
 			}

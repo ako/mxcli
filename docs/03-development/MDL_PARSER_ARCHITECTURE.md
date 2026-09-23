@@ -646,3 +646,7 @@ Common ANTLR context methods that can return `nil` on parse errors:
 - [ANTLR4 Documentation](https://github.com/antlr/antlr4/blob/master/doc/index.md)
 - [ANTLR4 Go Target](https://github.com/antlr/antlr4/blob/master/doc/go-target.md)
 - [MDL Syntax Reference](../07-references/mdl/MDL_SYNTAX_REFERENCE.md)
+
+## TypeEnumeration vs TypeEntity Ambiguity
+
+The MDL visitor (`buildDataType` in `visitor_helpers.go`) cannot distinguish between entity types and enumeration types for bare qualified names like `Module.EntityName`. Both parse as `ast.TypeEnumeration` with `EnumRef` set. Code that consumes data types must handle `TypeEnumeration` alongside `TypeEntity` and use `EnumRef` as a fallback for the entity name.

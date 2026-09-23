@@ -353,10 +353,12 @@ func (c *widgetRefCollector) collectFromWidget(w *ast.WidgetV3) {
 		c.snippets = append(c.snippets, snippet)
 	}
 
-	// An image widget's Image collection entry. Only the image widget spells it
-	// this way; `Image` on any other widget type is not a collection reference.
-	if strings.EqualFold(w.Type, "image") {
-		if img := strings.TrimSpace(w.GetStringProp("Image")); img != "" {
+	// An image-collection entry, Module.Collection.Image. Which property holds
+	// one is a property of the WIDGET, so the table decides — `Image` on a
+	// widget that is not in it is not a collection reference and must not be
+	// resolved as one.
+	for _, key := range imageRefProps[strings.ToLower(w.Type)] {
+		if img := strings.TrimSpace(w.GetStringProp(key)); img != "" {
 			c.images = append(c.images, img)
 		}
 	}
@@ -829,4 +831,27 @@ func buildConstantQualifiedNames(ctx *ExecContext) (map[string]bool, bool) {
 	// A backend that has no constant listing at all reports success with nothing
 	// in it; treat that as "cannot tell" rather than "the project has none".
 	return result, len(consts) > 0
+}
+
+// imageRefProps maps a widget type to the properties that hold an
+// image-collection entry (Module.Collection.Image).
+//
+// It is a table rather than a condition on the widget type because the set grew
+// and the condition did not. `Image:` was wired for the pluggable `image`
+// widget, and mendixlabs/mxcli#1057 then gave the SAME reference to
+// `staticimage` — the widget Studio Pro puts in a Selection helper's custom
+// states, which is the whole reason #1057 exists — and to `dynamicimage`'s
+// fallback. Neither was collected, so a name that does not resolve passed
+// `mxcli check --references` and failed the build (mendixlabs/mxcli#1149):
+//
+//	[error] [CE1613] "The selected image 'Atlas_UI_Resources.Atlas_Icons.
+//	        checkbox_checked' no longer exists."   at Static image 'imgAll'
+//
+// Adding a widget that names an image means adding a row here. The keys are the
+// ones `validate_widgets.go` already accepts for these widgets and DESCRIBE
+// already emits, so the two lists say the same thing about the same property.
+var imageRefProps = map[string][]string{
+	"image":        {"Image"},
+	"staticimage":  {"Image"},
+	"dynamicimage": {"DefaultImage"},
 }

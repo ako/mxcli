@@ -34,6 +34,9 @@ func TestDeriveDBName(t *testing.T) {
 func TestLocalRunOptions_Defaults(t *testing.T) {
 	o := LocalRunOptions{ProjectPath: "/proj/App1112.mpr"}
 	o.applyDefaults()
+	if err := o.applyDatabaseDefaults(); err != nil {
+		t.Fatalf("applyDatabaseDefaults: %v", err)
+	}
 	if o.DeployDir != filepath.FromSlash("/proj/deployment") {
 		t.Errorf("DeployDir = %q", o.DeployDir)
 	}
@@ -228,6 +231,9 @@ func TestLocalRunOptions_DefaultsRespectOverrides(t *testing.T) {
 		DB:          DBConfig{Host: "db:5432", Name: "custom", User: "u", Password: "p"},
 	}
 	o.applyDefaults()
+	if err := o.applyDatabaseDefaults(); err != nil {
+		t.Fatalf("applyDatabaseDefaults: %v", err)
+	}
 	if o.AppPort != 9000 {
 		t.Errorf("AppPort override lost: %d", o.AppPort)
 	}
@@ -577,5 +583,64 @@ func TestURLPort(t *testing.T) {
 		if got := urlPort(in); got != want {
 			t.Errorf("urlPort(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestLocalRunOptions_DatabaseDefaults_HSQLDB(t *testing.T) {
+	o := LocalRunOptions{ProjectPath: "/proj/App1112.mpr", DB: DBConfig{Type: "hsqldb"}}
+	o.applyDefaults()
+	if err := o.applyDatabaseDefaults(); err != nil {
+		t.Fatalf("applyDatabaseDefaults: %v", err)
+	}
+	if o.DB.Type != "HSQLDB" {
+		t.Errorf("Type = %q, want HSQLDB", o.DB.Type)
+	}
+	if o.DB.Host != "" || o.DB.User != "" || o.DB.Password != "" {
+		t.Errorf("HSQLDB must carry no host/credentials, got %+v", o.DB)
+	}
+	if o.DB.Name != "app1112" {
+		t.Errorf("DB.Name = %q, want app1112", o.DB.Name)
+	}
+}
+
+func TestLocalRunOptions_DatabaseDefaults_HSQLDBRejectsConnectionFlags(t *testing.T) {
+	for _, db := range []DBConfig{
+		{Type: "hsqldb", Host: "127.0.0.1:5432"},
+		{Type: "hsqldb", User: "u"},
+		{Type: "hsqldb", Password: "p"},
+	} {
+		o := LocalRunOptions{ProjectPath: "/proj/App.mpr", DB: db}
+		o.applyDefaults()
+		if err := o.applyDatabaseDefaults(); err == nil {
+			t.Errorf("hsqldb with %+v: want an error", db)
+		}
+	}
+}
+
+func TestLocalRunOptions_DatabaseDefaults_HSQLDBRejectsEnsureDB(t *testing.T) {
+	o := LocalRunOptions{ProjectPath: "/proj/App.mpr", DB: DBConfig{Type: "hsqldb"}, EnsureDB: true}
+	o.applyDefaults()
+	if err := o.applyDatabaseDefaults(); err == nil {
+		t.Error("hsqldb + --ensure-db: want an error")
+	}
+}
+
+func TestLocalRunOptions_DatabaseDefaults_UnknownType(t *testing.T) {
+	o := LocalRunOptions{ProjectPath: "/proj/App.mpr", DB: DBConfig{Type: "mysql"}}
+	o.applyDefaults()
+	if err := o.applyDatabaseDefaults(); err == nil {
+		t.Error("unknown db type: want an error")
+	}
+}
+
+func TestDBConfig_IsFileBased(t *testing.T) {
+	if !(DBConfig{Type: "HSQLDB"}).IsFileBased() {
+		t.Error("HSQLDB should be file-based")
+	}
+	if (DBConfig{Type: "PostgreSQL"}).IsFileBased() {
+		t.Error("PostgreSQL is not file-based")
+	}
+	if (DBConfig{Type: "hsqldb"}).IsFileBased() {
+		t.Error("the check must use the runtime spelling set by applyDatabaseDefaults, not the raw flag")
 	}
 }

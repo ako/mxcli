@@ -299,12 +299,10 @@ func NewPluggableWidgetEngine(b backend.WidgetBuilderBackend, pb *pageBuilder) *
 func (e *PluggableWidgetEngine) Build(def *WidgetDefinition, w *ast.WidgetV3) (*pages.CustomWidget, error) {
 	// Save and restore entity context (DataSource mappings may change it)
 	oldEntityContext := e.pageBuilder.entityContext
-	oldContextVar := e.pageBuilder.contextVarName
-	oldContextKnown := e.pageBuilder.contextKnown
+	oldArgCtx := e.pageBuilder.argCtx
 	defer func() {
 		e.pageBuilder.entityContext = oldEntityContext
-		e.pageBuilder.contextVarName = oldContextVar
-		e.pageBuilder.contextKnown = oldContextKnown
+		e.pageBuilder.argCtx = oldArgCtx
 	}()
 
 	// Remember the containing context for properties that name members of it
@@ -450,8 +448,7 @@ func (e *PluggableWidgetEngine) Build(def *WidgetDefinition, w *ast.WidgetV3) (*
 				e.recordDataSourceEntity(propKey, entityName)
 				if entityName != "" {
 					e.pageBuilder.entityContext = entityName
-					e.pageBuilder.contextVarName = contextVarFor(ds)
-					e.pageBuilder.contextKnown = true
+					e.pageBuilder.argCtx = enteringDataWidget(ds, entityName)
 				}
 			}
 		}
@@ -601,12 +598,14 @@ func (e *PluggableWidgetEngine) Build(def *WidgetDefinition, w *ast.WidgetV3) (*
 		case "Expression":
 			builder.SetExpression(propName, strVal)
 		case "TextTemplate":
-			// `contentparams:` supplies the parameters for a `{1}`-style template.
-			// Without this branch the numeric spelling had no route on a pluggable
-			// widget — the template was written with an empty parameter list and
-			// mxbuild answered CE0720. The named `{AttrName}` spelling keeps its
-			// own path, which derives parameters from the entity context. (#928)
-			if params := e.pageBuilder.buildClientTemplateParams(w.GetContentParams()); len(params) > 0 &&
+			// `<propName>Params:` — or, failing that, the widget-wide
+			// `contentparams:` — supplies the parameters for a `{1}`-style
+			// template. Without this branch the numeric spelling had no route on a
+			// pluggable widget — the template was written with an empty parameter
+			// list and mxbuild answered CE0720. The named `{AttrName}` spelling
+			// keeps its own path, which derives parameters from the entity
+			// context. (#928, #575)
+			if params := e.textTemplateParams(w, propName); len(params) > 0 &&
 				numericTemplatePlaceholderRe.MatchString(strVal) {
 				builder.SetTextTemplateWithClientParams(propName, strVal, params)
 				break
@@ -1022,6 +1021,72 @@ func namedPropValue(mapping PropertyMapping, w *ast.WidgetV3) string {
 	return ""
 }
 
+// namedPropValueWithKey is namedPropValue plus the NAME the value was found
+// under. A text-template property's parameters live beside it under that same
+// name + "Params", and the script may have written either the schema key or one
+// of the MDL aliases — so the companion cannot be looked up until it is known
+// which one was used.
+func namedPropValueWithKey(mapping PropertyMapping, w *ast.WidgetV3) (string, string) {
+	if v, ok := lookupProperty(w.Properties, mapping.PropertyKey); ok {
+		return stringifyAny(v), mapping.PropertyKey
+	}
+	for _, alias := range mapping.MdlAliases {
+		if v, ok := lookupProperty(w.Properties, alias); ok {
+			return stringifyAny(v), alias
+		}
+	}
+	return "", ""
+}
+
+// templateParamNames lists the names a text-template mapping's `<Name>Params`
+// companion may be written under, most specific first: the name the template
+// text itself was authored under, then the schema key, then the aliases. An
+// alias-authored caption keeps working when the companion is written with the
+// schema key and vice versa.
+func templateParamNames(mapping PropertyMapping, matched string) []string {
+	names := make([]string, 0, len(mapping.MdlAliases)+2)
+	if matched != "" {
+		names = append(names, matched)
+	}
+	if mapping.PropertyKey != "" && mapping.PropertyKey != matched {
+		names = append(names, mapping.PropertyKey)
+	}
+	for _, a := range mapping.MdlAliases {
+		if a != "" && a != matched && a != mapping.PropertyKey {
+			names = append(names, a)
+		}
+	}
+	return names
+}
+
+// textTemplateParams resolves the ClientTemplateParameters bound to ONE
+// text-template property: its own `<Name>Params` companion, falling back to the
+// widget-wide `contentparams:`.
+//
+// The companion is the same convention an object-list item already used (#956).
+// Stopping it at the item boundary left a widget-level textTemplate — a TreeNode
+// `headerCaption`, a Timeline `title`/`description`/`timeIndication` — with one
+// shared parameter list for every template on the widget, which cannot express
+// "this caption binds Name and that one binds Remarks". A literal was the only
+// thing left that worked, so every row rendered the same string (#575).
+func (e *PluggableWidgetEngine) textTemplateParams(w *ast.WidgetV3, names ...string) []*pages.ClientTemplateParameter {
+	for _, name := range names {
+		if name == "" {
+			continue
+		}
+		raw, ok := lookupProperty(w.Properties, name+"Params")
+		if !ok {
+			continue
+		}
+		astParams, ok := raw.([]ast.ParamAssignmentV3)
+		if !ok || len(astParams) == 0 {
+			continue
+		}
+		return e.pageBuilder.buildClientTemplateParams(astParams)
+	}
+	return e.pageBuilder.buildClientTemplateParams(w.GetContentParams())
+}
+
 // namedDataSourceValue returns the datasource a script authored under a
 // mapping's own schema key (or one of its aliases):
 //
@@ -1252,10 +1317,10 @@ func (e *PluggableWidgetEngine) resolveMapping(mapping PropertyMapping, w *ast.W
 		// A required widget-level caption authored by a named MDL property
 		// (e.g. PieChart `SeriesName: '...'` → `seriesName`). applyOperation
 		// "texttemplate" writes ctx.PrimitiveVal as the ClientTemplate text.
-		if v := namedPropValue(mapping, w); v != "" {
+		if v, matched := namedPropValueWithKey(mapping, w); v != "" {
 			ctx.PrimitiveVal = v
 			if numericTemplatePlaceholderRe.MatchString(v) {
-				ctx.ClientParams = e.pageBuilder.buildClientTemplateParams(w.GetContentParams())
+				ctx.ClientParams = e.textTemplateParams(w, templateParamNames(mapping, matched)...)
 			}
 		}
 
@@ -1291,8 +1356,7 @@ func (e *PluggableWidgetEngine) resolveMapping(mapping PropertyMapping, w *ast.W
 			e.recordDataSourceEntity(mapping.PropertyKey, entityName)
 			if entityName != "" {
 				e.pageBuilder.entityContext = entityName
-				e.pageBuilder.contextVarName = contextVarFor(ds)
-				e.pageBuilder.contextKnown = true
+				e.pageBuilder.argCtx = enteringDataWidget(ds, entityName)
 				if w.Name != "" {
 					e.pageBuilder.paramEntityNames[w.Name] = entityName
 				}
@@ -1375,6 +1439,16 @@ func (e *PluggableWidgetEngine) resolveMapping(mapping PropertyMapping, w *ast.W
 			val = mapping.Default
 		}
 		ctx.PrimitiveVal = val
+		// A text-template mapping addressed by its SOURCE name — an Image's
+		// `ImageUrl:`, whose schema key is `imageUrl` — lands here rather than in
+		// the "TextTemplate" case above, and reached applyOperation with no
+		// parameters at all: neither its own `<Name>Params` companion nor the
+		// widget-wide `contentparams:` (#575, and the half of #928 that spelling
+		// never got).
+		if mapping.Operation == "texttemplate" && numericTemplatePlaceholderRe.MatchString(val) {
+			ctx.ClientParams = e.textTemplateParams(w,
+				append([]string{source}, templateParamNames(mapping, "")...)...)
+		}
 	}
 
 	return ctx, nil

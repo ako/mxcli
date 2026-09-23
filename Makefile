@@ -35,7 +35,7 @@ GO_BUILD_FLAGS = -trimpath
 # Clean version for VS Code extension (must be valid semver: major.minor.patch)
 VSCE_VERSION = $(shell echo "$(VERSION)" | sed 's/^v//; s/-.*//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$$' || echo "0.0.0")
 
-.PHONY: build build-debug size release clean test test-mdl check-mdl check-skill-mdl check-findings check-wiki-pages digest-status check-tunnel-deps check-widget-versions grammar completions sync-skills sync-skill-packs sync-commands sync-lint-rules sync-changelog sync-all docs documentation docs-site docs-serve vscode-ext vscode-install source-tree sbom sbom-report lint lint-go lint-ts fmt fmt-check vet
+.PHONY: build build-debug size release clean test test-mdl check-mdl check-skill-mdl check-skill-pack-js check-findings check-wiki-pages digest-status check-tunnel-deps check-widget-versions grammar completions sync-skills sync-skill-packs sync-commands sync-lint-rules sync-changelog sync-all docs documentation docs-site docs-serve vscode-ext vscode-install source-tree sbom sbom-report lint lint-go lint-ts fmt fmt-check vet
 
 # Helper: copy file only if content differs (avoids mtime updates that invalidate go build cache)
 # Usage: $(call copy-if-changed,src,dst)
@@ -273,6 +273,24 @@ check-skill-mdl: build
 # line, so a typo in an appended finding takes out every query over that area.
 check-findings:
 	@scripts/check-findings.sh
+
+# Unit-test the JavaScript a skill pack ships. Nothing else in this repo
+# compiles a pack's widget — it is installed and built in the user's project —
+# so logic that lives there has no gate at all unless it has one here.
+#
+# node's own test runner over .ts, no dependencies and no build step: Node 22
+# strips the types. Keep pack test files to erasable syntax, and out of the
+# widget's tsconfig `include` (they live in widget/test/, which it does not
+# name), or the user's `npm run build` type-checks them without @types/node.
+check-skill-pack-js:
+	@found=0; \
+	for f in .claude/skills/packs/*/widget/test/*.test.ts; do \
+		[ -e "$$f" ] || continue; \
+		found=1; \
+		node --test "$$f" >/dev/null || { echo "FAILED: $$f"; node --test "$$f"; exit 1; }; \
+		echo "  ok $$f"; \
+	done; \
+	[ $$found -eq 1 ] || echo "  (no skill-pack JS tests)"
 
 # How far docs-wiki/bug-patterns/ has fallen behind the findings it digests.
 # Advisory, always exits 0 — see the header in the script for why.

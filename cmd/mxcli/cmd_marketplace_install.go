@@ -22,9 +22,10 @@ import (
 )
 
 var marketplaceInstallCmd = &cobra.Command{
-	Use:   "install <content-id>",
+	Use:   "install <content-id> | install --file <package.mpk>",
 	Short: "Download and install a marketplace item into a project",
-	Long: `Download a marketplace content version and install it into a project.
+	Long: `Download a marketplace content version and install it into a project,
+or install a .mpk you already have on disk with --file.
 
 Install is type-aware:
   - Widget      copied into the project's widgets/ folder (overwrites on update)
@@ -42,10 +43,19 @@ binary .mpr, one-way — and it works for theme modules, which module-import
 refuses outright. Everything the package ships (widgets, themesource, ...) is
 installed alongside the model.
 
---allow-format-change selects the legacy module-import path instead.`,
+--allow-format-change selects the legacy module-import path instead.
+
+--file <package.mpk> installs a package from disk through the same writer, with
+no marketplace lookup and no PAT: the kind (module or widget) is read from the
+package's own package.xml. That is the route for a module distributed as a file
+— an internal or company-standard module, a theme module, a package fetched
+earlier with 'marketplace download', or any CI/air-gapped environment. A module
+installed this way carries no marketplace version stamp, because it has none;
+'marketplace update' and 'diff' will not claim it.`,
 	Example: `  mxcli marketplace install 20 -p app.mpr
-  mxcli marketplace install 2888 --version 7.0.3 -p app.mpr`,
-	Args: cobra.ExactArgs(1),
+  mxcli marketplace install 2888 --version 7.0.3 -p app.mpr
+  mxcli marketplace install --file ./CompanyTheme.mpk -p app.mpr`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: runMarketplaceInstall,
 	// A failed install/update/diff is a runtime failure, not a misuse of the
 	// command: printing the full flag list on top of the error buries it.
@@ -61,22 +71,40 @@ func init() {
 	marketplaceInstallCmd.Flags().String("version", "", "version number to install (default: latest)")
 	marketplaceInstallCmd.Flags().Bool("allow-format-change", false,
 		"use the legacy 'mx module-import' path, which rewrites an MPR v2 project as v1 (one-way)")
+	marketplaceInstallCmd.Flags().String("file", "",
+		"install a .mpk from disk instead of marketplace content (no PAT, no lookup)")
 	_ = marketplaceInstallCmd.MarkFlagRequired("project")
 
 	marketplaceCmd.AddCommand(marketplaceInstallCmd)
 }
 
 func runMarketplaceInstall(cmd *cobra.Command, args []string) error {
-	contentID, err := parseContentID(args[0])
-	if err != nil {
-		return err
-	}
 	mprPath, _ := cmd.Flags().GetString("project")
 	if _, err := os.Stat(mprPath); err != nil {
 		return fmt.Errorf("project not found: %s", mprPath)
 	}
 	versionNumber, _ := cmd.Flags().GetString("version")
 	allowFormatChange, _ := cmd.Flags().GetBool("allow-format-change")
+
+	// A package on disk: no marketplace client is constructed at all, so no PAT
+	// is needed and nothing is fetched. Everything after the download step is
+	// shared with the online path.
+	if filePath, _ := cmd.Flags().GetString("file"); filePath != "" {
+		if len(args) != 0 {
+			return fmt.Errorf("give either a content id or --file, not both")
+		}
+		if versionNumber != "" {
+			return fmt.Errorf("--version selects a marketplace release; it does not apply to --file")
+		}
+		return installFromFile(cmd.Context(), filePath, mprPath, allowFormatChange, cmd.OutOrStdout())
+	}
+	if len(args) != 1 {
+		return fmt.Errorf("a content id is required (or --file <package.mpk> for a package on disk)")
+	}
+	contentID, err := parseContentID(args[0])
+	if err != nil {
+		return err
+	}
 
 	client, err := newMarketplaceClient(cmd.Context(), cmd)
 	if err != nil {
@@ -128,6 +156,29 @@ func runMarketplaceInstall(cmd *cobra.Command, args []string) error {
 	}
 }
 
+// installFromFile installs a package that is already on disk. The package's
+// own package.xml says what it is: a module (installed through the transplant
+// writer, exactly as an online install would be) or a widget (placed under
+// widgets/). Anything else is refused rather than guessed at.
+func installFromFile(ctx context.Context, mpkPath, mprPath string, allowFormatChange bool, out io.Writer) error {
+	if _, err := os.Stat(mpkPath); err != nil {
+		return fmt.Errorf("package not found: %s", mpkPath)
+	}
+	pkg, err := readPackageXML(mpkPath)
+	if err != nil {
+		return fmt.Errorf("inspect package: %w", err)
+	}
+	switch {
+	case pkg.ModelerProject.Module.Name != "":
+		return installModuleFromFile(ctx, mpkPath, mprPath, allowFormatChange, "", "",
+			"from "+filepath.Base(mpkPath), out)
+	case pkg.ClientModule.Name != "":
+		return placeWidgetFile(mpkPath, filepath.Dir(mprPath), out)
+	}
+	return fmt.Errorf("%s is neither a module nor a widget package: its package.xml names no module and no clientModule",
+		filepath.Base(mpkPath))
+}
+
 // installWidget copies the widget .mpk into the project's widgets/ folder.
 // An existing file with the same name is overwritten (the update path).
 func installWidget(ctx context.Context, client *marketplace.Client, v *marketplace.Version, projDir string, out io.Writer) error {
@@ -140,8 +191,32 @@ func installWidget(ctx context.Context, client *marketplace.Client, v *marketpla
 		return err
 	}
 	fmt.Fprintf(out, "Installed widget %s into %s\n", v.VersionNumber, dest)
-	fmt.Fprintln(out, "Run 'mxcli fix widgets -p <project.mpr>' (or reload in Studio Pro) to pick it up.")
+	printWidgetNext(out)
 	return nil
+}
+
+// placeWidgetFile is installWidget for a package already on disk: the same
+// destination and the same overwrite-on-update rule, without the download.
+func placeWidgetFile(mpkPath, projDir string, out io.Writer) error {
+	widgetsDir := filepath.Join(projDir, "widgets")
+	if err := os.MkdirAll(widgetsDir, 0o755); err != nil {
+		return fmt.Errorf("create widgets dir: %w", err)
+	}
+	body, err := os.ReadFile(mpkPath)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", mpkPath, err)
+	}
+	dest := filepath.Join(widgetsDir, filepath.Base(mpkPath))
+	if err := os.WriteFile(dest, body, 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", dest, err)
+	}
+	fmt.Fprintf(out, "Installed widget %s into %s\n", filepath.Base(mpkPath), dest)
+	printWidgetNext(out)
+	return nil
+}
+
+func printWidgetNext(out io.Writer) {
+	fmt.Fprintln(out, "Run 'mxcli fix widgets -p <project.mpr>' (or reload in Studio Pro) to pick it up.")
 }
 
 // installModule imports a module .mpk into the project, but only when the module
@@ -157,6 +232,17 @@ func installModule(ctx context.Context, client *marketplace.Client, v *marketpla
 	if err != nil {
 		return err
 	}
+	return installModuleFromFile(ctx, mpkPath, mprPath, allowFormatChange, v.VersionNumber, v.VersionID,
+		"version "+v.VersionNumber, out)
+}
+
+// installModuleFromFile is the part of a module install that starts once the
+// package is on disk — shared by the online path (after its download) and by
+// --file (which has no download). versionNumber and versionID are the
+// marketplace identity to record on the module; both are empty for a package
+// from disk, which has none. label is how the package is named in output.
+func installModuleFromFile(ctx context.Context, mpkPath, mprPath string, allowFormatChange bool,
+	versionNumber, versionID, label string, out io.Writer) error {
 
 	moduleName, err := moduleNameFromMpk(mpkPath)
 	if err != nil {
@@ -175,7 +261,7 @@ func installModule(ctx context.Context, client *marketplace.Client, v *marketpla
 	if existing {
 		// Postponed: do NOT auto-update modules — see the module-update memory.
 		fmt.Fprintf(out, "Module %q is already installed (version %s).\n", moduleName, displayVer(installedVer))
-		fmt.Fprintf(out, "Target version: %s.\n", v.VersionNumber)
+		fmt.Fprintf(out, "Target: %s.\n", label)
 		fmt.Fprintln(out, "In-place module updates are not applied automatically (they can discard local")
 		fmt.Fprintln(out, "edits and change persistent-entity IDs, which loses data). Update via Studio Pro.")
 		return nil
@@ -185,12 +271,12 @@ func installModule(ctx context.Context, client *marketplace.Client, v *marketpla
 	// the project's storage format and works for theme modules. --allow-format-change
 	// selects the legacy `mx module-import`, which does neither.
 	if !allowFormatChange {
-		res, ierr := installByTransplant(ctx, mpkPath, mprPath, moduleName, mendixVer, v)
+		res, ierr := installByTransplant(ctx, mpkPath, mprPath, moduleName, mendixVer, versionNumber, versionID)
 		if ierr != nil {
 			return ierr
 		}
-		fmt.Fprintf(out, "Installed module %q version %s into %s\n",
-			moduleName, v.VersionNumber, filepath.Base(mprPath))
+		fmt.Fprintf(out, "Installed module %q %s into %s\n",
+			moduleName, label, filepath.Base(mprPath))
 		fmt.Fprintf(out, "  %d units copied, %d bundled file(s) installed.\n",
 			res.UnitsCopied, len(res.FilesInstalled))
 		reportSkippedFiles(out, res.FilesSkipped)
@@ -216,7 +302,7 @@ func installModule(ctx context.Context, client *marketplace.Client, v *marketpla
 	if runErr != nil {
 		return fmt.Errorf("mx module-import failed: %w\n%s", runErr, strings.TrimSpace(string(combined)))
 	}
-	fmt.Fprintf(out, "Imported module %q version %s into %s\n", moduleName, v.VersionNumber, filepath.Base(mprPath))
+	fmt.Fprintf(out, "Imported module %q %s into %s\n", moduleName, label, filepath.Base(mprPath))
 	reportFormatChange(mprPath, out)
 	return nil
 }
@@ -224,7 +310,7 @@ func installModule(ctx context.Context, client *marketplace.Client, v *marketpla
 // installByTransplant builds a reference project from the package and copies the
 // module out of it, so the destination keeps its MPR format.
 func installByTransplant(ctx context.Context, mpkPath, mprPath, moduleName, mendixVer string,
-	v *marketplace.Version) (*mp.UpdateResult, error) {
+	versionNumber, versionID string) (*mp.UpdateResult, error) {
 
 	work, err := os.MkdirTemp("", "mxinstall")
 	if err != nil {
@@ -240,7 +326,7 @@ func installByTransplant(ctx context.Context, mpkPath, mprPath, moduleName, mend
 	if err != nil {
 		return nil, fmt.Errorf("build a reference project from the package: %w", err)
 	}
-	return mp.PerformInstall(mprPath, refMpr, mpkPath, moduleName, v.VersionNumber, v.VersionID, newBackendFactory())
+	return mp.PerformInstall(mprPath, refMpr, mpkPath, moduleName, versionNumber, versionID, newBackendFactory())
 }
 
 // isMPRv2 reports whether the project at mprPath uses the MPR v2 storage format:
@@ -360,12 +446,14 @@ type mpkPackageXML struct {
 	} `xml:"modelerProject"`
 }
 
-// moduleNameFromMpk reads package.xml from the .mpk and returns the module name
-// (from <modelerProject><module> for modules, or <clientModule> for widgets).
-func moduleNameFromMpk(mpkPath string) (string, error) {
+// readPackageXML returns the parsed package.xml of a .mpk. It is the one place
+// that knows where a package describes itself, so both "what is its name" and
+// "what kind of package is it" read from here.
+func readPackageXML(mpkPath string) (mpkPackageXML, error) {
+	var pkg mpkPackageXML
 	zr, err := zip.OpenReader(mpkPath)
 	if err != nil {
-		return "", err
+		return pkg, err
 	}
 	defer zr.Close()
 	for _, f := range zr.File {
@@ -374,24 +462,33 @@ func moduleNameFromMpk(mpkPath string) (string, error) {
 		}
 		rc, err := f.Open()
 		if err != nil {
-			return "", err
+			return pkg, err
 		}
 		data, err := io.ReadAll(rc)
 		_ = rc.Close()
 		if err != nil {
-			return "", err
+			return pkg, err
 		}
-		var pkg mpkPackageXML
 		if err := xml.Unmarshal(data, &pkg); err != nil {
-			return "", err
+			return pkg, err
 		}
-		if pkg.ModelerProject.Module.Name != "" {
-			return pkg.ModelerProject.Module.Name, nil
-		}
-		if pkg.ClientModule.Name != "" {
-			return pkg.ClientModule.Name, nil
-		}
-		return "", fmt.Errorf("package.xml has no module name")
+		return pkg, nil
 	}
-	return "", fmt.Errorf("no package.xml in %s", filepath.Base(mpkPath))
+	return pkg, fmt.Errorf("no package.xml in %s", filepath.Base(mpkPath))
+}
+
+// moduleNameFromMpk reads package.xml from the .mpk and returns the module name
+// (from <modelerProject><module> for modules, or <clientModule> for widgets).
+func moduleNameFromMpk(mpkPath string) (string, error) {
+	pkg, err := readPackageXML(mpkPath)
+	if err != nil {
+		return "", err
+	}
+	if pkg.ModelerProject.Module.Name != "" {
+		return pkg.ModelerProject.Module.Name, nil
+	}
+	if pkg.ClientModule.Name != "" {
+		return pkg.ClientModule.Name, nil
+	}
+	return "", fmt.Errorf("package.xml has no module name")
 }

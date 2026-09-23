@@ -609,19 +609,21 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 				return mdlerrors.NewNotFound("module", s.Name.Module)
 			}
 		}
+		// Every widget-bearing field, not just the bare body — see pageWidgets.
+		pageWidgets := allPageWidgets(s)
 		// Validate widget references (DataSource, Action, Snippet)
-		if refErrors := validateWidgetReferences(ctx, s.Widgets, sc); len(refErrors) > 0 {
+		if refErrors := validateWidgetReferences(ctx, pageWidgets, sc); len(refErrors) > 0 {
 			return mdlerrors.NewValidationf("page '%s' has reference errors:\n  - %s",
 				s.Name.String(), strings.Join(refErrors, "\n  - "))
 		}
 		// Validate page context tree (parameter/selection/attribute bindings)
-		if ctxErrors := validatePageContextTree(ctx, s.Parameters, s.Widgets); len(ctxErrors) > 0 {
+		if ctxErrors := validatePageContextTree(ctx, s.Parameters, pageWidgets); len(ctxErrors) > 0 {
 			return mdlerrors.NewValidationf("page '%s' has context errors:\n  - %s",
 				s.Name.String(), strings.Join(ctxErrors, "\n  - "))
 		}
 		// CE1571: a microflow call must be given an argument per parameter —
 		// as a data source and as an action alike (mendixlabs/mxcli#1082).
-		if argErrors := validateFlowArguments(ctx, s.Parameters, s.Widgets, sc); len(argErrors) > 0 {
+		if argErrors := validateFlowArguments(ctx, s.Parameters, pageWidgets, sc); len(argErrors) > 0 {
 			return mdlerrors.NewValidationf("page '%s' has argument errors:\n  - %s",
 				s.Name.String(), strings.Join(argErrors, "\n  - "))
 		}
@@ -1283,7 +1285,8 @@ var execEnforcedMicroflowRules = map[string]bool{
 	// exprcheck's funcTable is now a write barrier, so a name missing from it
 	// blocks valid MDL rather than merely warning about it: three genuine
 	// built-ins (isNew/isSynced/isSyncing) were found missing and added — each
-	// built at 0 errors — before this line was added.
+	// built at 0 errors — before this line was added. validateNanoflowRules
+	// applies the same entry to nanoflow bodies (mendixlabs/mxcli#1033).
 	"MDL044": true,
 	// #884: an unknown annotation is silently dropped, so exec must refuse it too —
 	// otherwise `check` catches the typo and the write that follows does not.
@@ -1328,4 +1331,40 @@ func validateMicroflowRules(stmt *ast.CreateMicroflowStmt) error {
 // bound to it is checked exactly as one bound to a stored flow is.
 func (sc *scriptContext) recordFlowParams(qualifiedName string, params []ast.MicroflowParam, ret *ast.MicroflowReturnType) {
 	sc.flowParams[strings.ToLower(qualifiedName)] = astFlowSignature(params, ret)
+}
+
+// allPageWidgets returns every widget a CREATE PAGE statement carries: the bare
+// body AND the content of each `placeholder <Name> { … }` block.
+//
+// A page's widgets live in two fields. `Widgets` is the bare body, which binds
+// to Main; content addressed to a named layout placeholder is held apart in
+// `Placeholders` (issue #532). The three page validators below were wired to
+// `Widgets` alone, so a widget inside a placeholder block was validated by
+// nothing — and `placeholder Main { … }` is the shape mxcli's own skills,
+// examples and DESCRIBE output all use, so this was the common case rather than
+// an edge one. Measured on a blank Mendix 11.14.0 project, the same button
+// twice:
+//
+//	placeholder Main { actionbutton btn (Action: MICROFLOW Mod.NoSuchMicroflow) }
+//	                                -> ✓ All references valid
+//	actionbutton btn (Action: MICROFLOW Mod.NoSuchMicroflow)
+//	                                -> microflow not found: Mod.NoSuchMicroflow
+//
+// This is the third time the same walk has been missed in this file's
+// neighbourhood: validateIconRefs (mendixlabs/mxcli#1008) and forEachWidget
+// both had to grow the placeholder arm separately. Collecting the roots once,
+// here, is what stops the fourth.
+func allPageWidgets(s *ast.CreatePageStmtV3) []*ast.WidgetV3 {
+	if len(s.Placeholders) == 0 {
+		return s.Widgets
+	}
+	out := make([]*ast.WidgetV3, 0, len(s.Widgets))
+	out = append(out, s.Widgets...)
+	for _, ph := range s.Placeholders {
+		if ph == nil {
+			continue
+		}
+		out = append(out, ph.Widgets...)
+	}
+	return out
 }

@@ -1,0 +1,94 @@
+-- ako/mxcli#586 (follow-up) — `create workflow … overview page X` reported
+-- success and stored NOTHING.
+--
+-- `exec` printed `Created workflow: …` and exit 0, the written `.mxunit`
+-- contained no page reference and no `M.Overview` string anywhere, `mx check`
+-- passed (a workflow with no overview page is valid) and `describe workflow`
+-- omitted the clause — so nothing revealed the loss. Running
+-- `alter workflow … set overview page X` immediately afterwards DID write it,
+-- which is what made the split visible.
+--
+-- Two halves, both settled by the Model SDK's own StructureVersionInfo
+-- (mendixmodelsdk 4.115.0, `src/gen/workflows.js`):
+--
+--     overviewPage: { deleted:    "9.11.0" }
+--     adminPage:    { introduced: "9.11.0" }
+--
+-- so the stored property is **AdminPage**, a `Workflows$PageReference` child —
+-- and `generated/metamodel`, the arbiter when it and `modelsdk/gen` disagree,
+-- declares `AdminPage` and no `OverviewPage` at all.
+--
+--   1. WRITE: the executor set the semantic `Workflow.OverviewPage`; the
+--      backend only ever wrote `Workflow.AdminPage`. Two fields for one
+--      concept, never joined — the same shape as the `create … comment 'text'`
+--      bug (see findings/mdl-grammar.jsonl, 2026-08-25).
+--   2. READ: the reader took `g.OverviewPageQualifiedName()`, the pre-9.11
+--      property, so even the correctly-written ALTER read back empty.
+--
+-- Only ONE spelling is written. mxcli's own workflows already carry
+-- `WorkflowV2`, introduced in 11.1.0, so no reachable project wants the
+-- pre-9.11 key, and writing both as a hedge is what CLAUDE.md's overlay rule
+-- forbids. The pre-9.11 key is still READ, as a fallback.
+--
+-- Verified on Mendix 11.6.6: the workflow unit goes from 6,038 to 6,129 bytes,
+-- the 91 added bytes being the `AdminPage` page reference, `OverviewPage` is
+-- absent from the document, and `describe workflow` now emits the clause, so
+-- describe -> exec round-trips it.
+
+create module WF586B;
+
+create entity WF586B.Request (
+  Status : string(200)
+);
+
+-- An overview page takes a System.Workflow parameter. mxbuild enforces it
+-- (CE7410 "The selected page 'Overview' should accept a parameter of type
+-- 'Workflow'") — and that error is itself the proof the fix works: before it,
+-- the page was never stored, so there was nothing for the build to check.
+create page WF586B.Overview (
+  title: 'Requests',
+  layout: Atlas_Core.Atlas_Default,
+  params: { $Workflow: System.Workflow }
+) {
+  layoutgrid g1 {
+    row r1 {
+      column c1 (desktopwidth: 12) {
+        dynamictext txt1 (content: 'All requests', rendermode: H2)
+      }
+    }
+  }
+}
+/
+
+create page WF586B.TaskPage (
+  title: 'Task',
+  layout: Atlas_Core.Atlas_Default,
+  params: { $WorkflowUserTask: System.WorkflowUserTask }
+) {
+  layoutgrid g1 {
+    row r1 {
+      column c1 (desktopwidth: 12) {
+        dynamictext txt1 (content: 'Handle the request', rendermode: H2)
+      }
+    }
+  }
+}
+/
+
+-- The clause under test. Before the fix this workflow was written with no
+-- overview page at all.
+create or replace workflow WF586B.Review
+  parameter $WorkflowContext: WF586B.Request
+  overview page WF586B.Overview
+begin
+  user task ReviewTask 'Review the request'
+    page WF586B.TaskPage
+    outcomes
+      'Approve' { }
+      'Reject'  { };
+end workflow;
+/
+
+-- The ALTER path has always written AdminPage correctly; it is here because
+-- until the READ was fixed it, too, described back as absent.
+alter workflow WF586B.Review set overview page WF586B.Overview;

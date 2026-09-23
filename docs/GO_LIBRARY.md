@@ -103,21 +103,19 @@ package main
 
 import (
     "github.com/mendixlabs/mxcli/api"
-    "github.com/mendixlabs/mxcli/sdk/mpr"
 )
 
 func main() {
-    writer, err := mpr.OpenForWriting("/path/to/MyApp.mpr")
+    // api.Open opens the project for reading and writing and owns the
+    // connection; api.New(b) wraps a backend the caller already owns.
+    modelAPI, err := api.Open("/path/to/MyApp.mpr")
     if err != nil {
         panic(err)
     }
-    defer writer.Close()
-
-    // create the high-level api
-    modelAPI := api.New(writer)
+    defer modelAPI.Close()
 
     // set the current module context
-    module, _ := modelAPI.Modules.GetModule("MyModule")
+    module, _ := modelAPI.Modules.Get("MyModule")
     modelAPI.SetModule(module)
 
     // create entity with fluent builder
@@ -127,14 +125,14 @@ func main() {
         WithStringAttribute("Email", 254).
         WithIntegerAttribute("Age").
         WithBooleanAttribute("IsActive").
-        WithDateTimeAttribute("CreatedDate", true).
+        WithDateTimeAttribute("CreatedDate").
         build()
 
     // create another entity
     order, _ := modelAPI.DomainModels.CreateEntity("Order").
         persistent().
         WithDecimalAttribute("TotalAmount").
-        WithDateTimeAttribute("OrderDate", true).
+        WithDateTimeAttribute("OrderDate").
         build()
 
     // create association between entities

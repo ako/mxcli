@@ -46,3 +46,13 @@ func signalProcessGroup(p *os.Process, sig syscall.Signal) error {
 func killProcessGroup(p *os.Process) error {
 	return signalProcessGroup(p, syscall.SIGKILL)
 }
+
+// processAlive reports whether p is still running. On POSIX, signal 0 succeeds
+// for a live process; it also succeeds for an unreaped zombie, which is why the
+// callers that care (LocalRuntime) reap via watchExit.
+func processAlive(p *os.Process) bool {
+	if p == nil {
+		return false
+	}
+	return p.Signal(syscall.Signal(0)) == nil
+}

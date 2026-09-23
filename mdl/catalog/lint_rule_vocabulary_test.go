@@ -98,6 +98,7 @@ func TestQUAL004EntryKindsAreRealRefKinds(t *testing.T) {
 		RefKindParameter, RefKindAction, RefKindHomePage, RefKindLoginPage,
 		RefKindMenuItem, RefKindChange, RefKindDelete, RefKindCalculate,
 		RefKindReturn, RefKindSchedule, RefKindValidate, RefKindSettings,
+		RefKindWidget, RefKindSync, RefKindPublish, RefKindEvent,
 	} {
 		known[k] = true
 	}
@@ -123,7 +124,11 @@ func TestQUAL004CountsEveryEntryPointKind(t *testing.T) {
 
 	for _, want := range []string{
 		RefKindCall, RefKindSchedule, RefKindDatasource, RefKindAction, RefKindCalculate,
-		RefKindSettings,
+		RefKindSettings, RefKindPublish,
+		// An entity event handler runs on every commit/delete of its entity.
+		// Of every kind in this list it is the one whose absence flags the
+		// hottest code (mendixlabs/mxcli#1127).
+		RefKindEvent,
 	} {
 		if !contains(starListItems(src, "MICROFLOW_ENTRY_KINDS"), want) {
 			t.Errorf("MICROFLOW_ENTRY_KINDS is missing %q — a microflow reached only that way "+

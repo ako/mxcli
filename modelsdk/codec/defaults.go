@@ -38,6 +38,12 @@ type TypeDefaults struct {
 	// AssociationPointer on an attribute-based index segment). Emitted when not
 	// otherwise set. Stands in for a gen property the constructor doesn't expose.
 	ZeroGUIDFields []string
+	// FalseFields are keys Studio Pro always serializes as boolean false when
+	// unset. Go's zero value for a bool is false either way, so the property is
+	// never marked dirty and the encoder would otherwise omit the key — which
+	// is a difference from the stored document even though nothing about the
+	// model changed (ako/mxcli#541, Forms$PageVariable.UseAllPages).
+	FalseFields []string
 	// FreshGUIDFields are keys Studio Pro serializes as a fresh random GUID binary
 	// (subtype 0), e.g. a microflow's StableId. Emitted when not otherwise set.
 	// Stands in for a gen property mistyped as a string. The value is opaque to

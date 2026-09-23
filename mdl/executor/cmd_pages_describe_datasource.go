@@ -140,10 +140,11 @@ func parseEntitySource(ds map[string]any) *rawDataSource {
 		return nil
 	}
 	result := &rawDataSource{
-		Type:            "database",
-		Reference:       entity,
-		XPathConstraint: extractString(ds["XPathConstraint"]),
-		SortColumns:     parseSortColumns(ds),
+		Type:             "database",
+		Reference:        entity,
+		XPathConstraint:  extractString(ds["XPathConstraint"]),
+		SortColumns:      parseSortColumns(ds),
+		SearchAttributes: parseSearchAttributes(ds),
 	}
 	return result
 }
@@ -163,6 +164,32 @@ func parseContextSource(ds map[string]any) *rawDataSource {
 		return &rawDataSource{Type: "parameter", Reference: entityPath}
 	}
 	return nil
+}
+
+// parseSearchAttributes reads a List View search bar's attributes
+// (Forms$ListViewSearch.SearchRefs). Each entry is a DomainModels$AttributeRef,
+// the same element a sort item carries — so this reads the same field a sort
+// column does, one level less deep.
+//
+// Its absence is not an error: every ListViewXPathSource carries a Search
+// element and all 18 in a blank 11.12.2 project are empty, so "no search
+// attributes" is the overwhelmingly common case (ako/mxcli#512).
+func parseSearchAttributes(ds map[string]any) []string {
+	search, ok := ds["Search"].(map[string]any)
+	if !ok || search == nil {
+		return nil
+	}
+	var out []string
+	for _, item := range getBsonArrayElements(search["SearchRefs"]) {
+		ref, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if name := shortAttributeName(extractString(ref["Attribute"])); name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // parseSortColumns reads a datasource's sort, accepting both stored shapes:
@@ -188,6 +215,7 @@ func parseSortColumns(ds map[string]any) []rawSortColumn {
 		col := rawSortColumn{Order: "asc"}
 		if attrRef, ok := sortItem["AttributeRef"].(map[string]any); ok {
 			col.Attribute = shortAttributeName(extractString(attrRef["Attribute"]))
+			col.Associations = sortAttributeHops(attrRef)
 		}
 		if gridSortDirection(sortItem) == "Descending" {
 			col.Order = "desc"
@@ -197,6 +225,38 @@ func parseSortColumns(ds map[string]any) []rawSortColumn {
 		}
 	}
 	return cols
+}
+
+// sortAttributeHops reads the association hops of a stored AttributeRef — its
+// EntityRef.Steps, one DomainModels$EntityRefStep per hop. An own-entity
+// attribute carries a DirectEntityRef or no EntityRef and yields none.
+//
+// Without this a sort over an association described as a bare attribute name,
+// and the replay had to guess the hop back (mendixlabs/mxcli#1152).
+func sortAttributeHops(attrRef map[string]any) []string {
+	entityRef, ok := attrRef["EntityRef"].(map[string]any)
+	if !ok || entityRef == nil {
+		return nil
+	}
+	var hops []string
+	for _, raw := range getBsonArrayElements(entityRef["Steps"]) {
+		step, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if assoc := extractString(step["Association"]); assoc != "" {
+			hops = append(hops, assoc)
+		}
+	}
+	return hops
+}
+
+// sortColumnPath renders a sort column as `Assoc/.../Attribute`.
+func sortColumnPath(col rawSortColumn) string {
+	if len(col.Associations) == 0 {
+		return col.Attribute
+	}
+	return strings.Join(append(append([]string{}, col.Associations...), col.Attribute), "/")
 }
 
 // dataSourceExpr renders a datasource as the MDL that reproduces it — the part
@@ -224,9 +284,14 @@ func dataSourceExpr(ds *rawDataSource) string {
 		if len(ds.SortColumns) > 0 {
 			parts := make([]string, 0, len(ds.SortColumns))
 			for _, col := range ds.SortColumns {
-				parts = append(parts, col.Attribute+" "+col.Order)
+				parts = append(parts, sortColumnPath(col)+" "+col.Order)
 			}
 			expr += " sort by " + strings.Join(parts, ", ")
+		}
+		// After `sort by`, matching the grammar's clause order so the emitted
+		// text re-parses (ako/mxcli#512).
+		if len(ds.SearchAttributes) > 0 {
+			expr += " search by " + strings.Join(ds.SearchAttributes, ", ")
 		}
 		return expr
 	case "microflow", "nanoflow":
@@ -395,8 +460,10 @@ func xpathConstraintClause(constraint string) string {
 // document that stores the name bare is left alone instead of losing its first
 // segment.
 //
-// The bound value lives in Expression for both a variable reference ($Term) and
-// a literal (10); Variable is the older spelling and is honoured when present.
+// The bound value lives in Expression for a literal or an expression, and in
+// Variable — a Forms$PageVariable naming a page parameter, snippet parameter or
+// page variable — for a $-reference. Reading only Expression, or reading Variable
+// as a flat string, drops every argument Studio Pro wrote (#1140).
 // A parameterless flow yields nil, which the renderer emits without parentheses
 // — the grammar makes the list optional, and adding empty parens would churn
 // every existing description.
@@ -417,6 +484,11 @@ func flowSourceArgs(ds map[string]any, settingsKey, flowName string) []rawDataSo
 		}
 		value := extractString(mapping["Expression"])
 		if value == "" {
+			value = pageVariableArgValue(mapping["Variable"])
+		}
+		if value == "" {
+			// A pre-#1140 document, or another writer, may have put the bare
+			// reference text in Variable.
 			value = extractString(mapping["Variable"])
 		}
 		if value == "" {

@@ -25,8 +25,10 @@ var marketplaceCmd = &cobra.Command{
 
 Requires a Personal Access Token (PAT). Run 'mxcli auth login' first.
 
-'marketplace download' fetches a content version's .mpk to disk. To install a
-downloaded module into a project, use Studio Pro or 'mx module-import'.`,
+'marketplace download' fetches a content version's .mpk to disk;
+'marketplace install --file <package.mpk>' installs a .mpk from disk — a downloaded
+one, or any package distributed as a file — through the same writer as an online
+install, with no PAT.`,
 }
 
 var marketplaceSearchCmd = &cobra.Command{

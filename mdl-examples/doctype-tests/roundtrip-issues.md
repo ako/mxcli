@@ -26,6 +26,11 @@
 
 **Skipped (require Docker runtime):** 04-math-examples.tests.mdl, 06-rest-client-examples.test.mdl, 15-fragment-examples.test.mdl, microflow-spec.test.md, microflow-spec.test.mdl
 
+> `15-fragment-examples.test.mdl` was skipped here for the wrong reason: it was
+> named like a test file but declares no `@test` block, so it needed no runtime
+> and was checked by nothing either. Renamed to `15-fragment-examples.mdl` in
+> ako/mxcli#619; it has not been through this roundtrip run.
+
 ---
 
 ## Consolidated Bug Summary

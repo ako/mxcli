@@ -1,0 +1,73 @@
+-- mendixlabs/mxcli#1152, second half — naming the association a sort navigates.
+--
+-- Inference alone cannot make the round trip faithful. Two associations reaching
+-- the same entity (Order_ShipTo and Order_BillTo, both Order -> Address) is an
+-- ordinary shape, and the stored hop is not recoverable from the sort
+-- attribute's name. Measured on 11.12.3 before this: a microflow sorting by the
+-- BILLING address came back from `describe -> exec` sorting by the SHIPPING one,
+-- at 0 errors on both sides — the round trip silently denoting a different
+-- program.
+--
+-- A sort column may now navigate associations, one `/` per hop, with the last
+-- segment naming the attribute. DESCRIBE emits the hop whenever one is stored,
+-- so a described sort replays to the same model — measured, the replay of the
+-- first microflow below reports "Unchanged", the write being elided because the
+-- rebuild is identical.
+--
+-- Dropping the hop but keeping the attribute path — the shape a half-fix
+-- produces — is CE7247 "Cannot sort on attribute ... is not an attribute of
+-- entity ...", in a microflow and in a page's sort bar alike.
+
+create persistent entity Sort1152.Address ( City: String(200) );
+create persistent entity Sort1152.Order ( OrderNo: String(50) );
+
+create association Sort1152.Order_ShipTo from Sort1152.Order to Sort1152.Address;
+create association Sort1152.Order_BillTo from Sort1152.Order to Sort1152.Address;
+
+-- Named hop: Order_ShipTo is declared first and reaches the same entity, so
+-- inference would pick it. The spelling is what makes the billing sort sayable.
+create or modify microflow Sort1152.ACT_billing_sort ()
+begin
+    @start(96, 200)
+    @position(236, 200)
+    retrieve $Orders from Sort1152.Order
+        sort by Sort1152.Order_BillTo/Sort1152.Address.City asc;
+    @position(700, 200)
+    return;
+end;
+
+-- The hop may be unqualified and the attribute bare.
+create or modify microflow Sort1152.ACT_shipping_sort ()
+begin
+    @start(96, 200)
+    @position(236, 200)
+    retrieve $Orders from Sort1152.Order
+        sort by Order_ShipTo/City asc;
+    @position(700, 200)
+    return;
+end;
+
+-- Inference still covers the unambiguous case, including an association declared
+-- on an ANCESTOR in another module: System.User_Language is on System.User, and
+-- Administration.Account generalizes it.
+create or modify microflow Sort1152.ACT_language_sort ()
+begin
+    @start(96, 200)
+    @position(236, 200)
+    retrieve $AccountList from Administration.Account
+        sort by System.Language.Code asc;
+    @position(700, 200)
+    return;
+end;
+
+-- A page datasource's sort takes the same path: it is stored as the same
+-- DomainModels$AttributeRef, so it has the same EntityRef and the same CE7247.
+create or replace page Sort1152.Orders_Overview (
+    title: 'Orders',
+    Layout: Atlas_Core.Atlas_Default
+) {
+  listview lvOrders (datasource: database from Sort1152.Order
+      sort by Sort1152.Order_BillTo/City asc) {
+    dynamictext txtNo (content: '{1}', contentparams: [{1} = OrderNo])
+  }
+}

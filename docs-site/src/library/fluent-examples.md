@@ -12,18 +12,16 @@ package main
 import (
     "log"
     "github.com/mendixlabs/mxcli/api"
-    "github.com/mendixlabs/mxcli/sdk/mpr"
 )
 
 func main() {
-    writer, err := mpr.OpenForWriting("/path/to/MyApp.mpr")
+    modelAPI, err := api.Open("/path/to/MyApp.mpr")
     if err != nil {
         log.Fatal(err)
     }
-    defer writer.Close()
+    defer modelAPI.Close()
 
-    modelAPI := api.New(writer)
-    module, _ := modelAPI.Modules.GetModule("Sales")
+    module, _ := modelAPI.Modules.Get("Sales")
     modelAPI.SetModule(module)
 
     // ... examples below
@@ -40,14 +38,14 @@ customer, _ := modelAPI.DomainModels.CreateEntity("Customer").
     WithStringAttribute("Email", 254).
     WithIntegerAttribute("Age").
     WithBooleanAttribute("IsActive").
-    WithDateTimeAttribute("CreatedDate", true).
+    WithDateTimeAttribute("CreatedDate").
     Build()
 
 // Create another entity
 order, _ := modelAPI.DomainModels.CreateEntity("Order").
     Persistent().
     WithDecimalAttribute("TotalAmount").
-    WithDateTimeAttribute("OrderDate", true).
+    WithDateTimeAttribute("OrderDate").
     Build()
 
 // Create an enumeration
@@ -94,18 +92,16 @@ package main
 import (
     "log"
     "github.com/mendixlabs/mxcli/api"
-    "github.com/mendixlabs/mxcli/sdk/mpr"
 )
 
 func main() {
-    writer, err := mpr.OpenForWriting("/path/to/MyApp.mpr")
+    modelAPI, err := api.Open("/path/to/MyApp.mpr")
     if err != nil {
         log.Fatal(err)
     }
-    defer writer.Close()
+    defer modelAPI.Close()
 
-    modelAPI := api.New(writer)
-    module, _ := modelAPI.Modules.GetModule("ProductCatalog")
+    module, _ := modelAPI.Modules.Get("ProductCatalog")
     modelAPI.SetModule(module)
 
     // Enumeration

@@ -63,6 +63,12 @@ func TestValidateMicroflow_UnknownFunction(t *testing.T) {
 		// is how a write barrier stops catching anything.
 		{"trunc is not a Mendix built-in", "declare $d Decimal = trunc($x);", true, ""},
 		{"currentDeviceType is not a Mendix built-in", "declare $b Boolean = currentDeviceType() = 'Phone';", true, ""},
+		// mendixlabs/mxcli#1033: a log message is an expression too, and the
+		// reported repro put the unknown call there. Log statements were never
+		// walked for MDL044, in a microflow or a nanoflow.
+		{"unknown in log message", "log info 'device: ' + currentDeviceType();", true, ""},
+		{"unknown in log template param", "log info 'device: {1}' with ({1} = currentDeviceType());", true, ""},
+		{"known func in log message", "log info 'x: ' + toUpperCase($x);", false, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

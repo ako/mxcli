@@ -65,6 +65,19 @@ func (b *Builder) ExitAlterSettingsClause(ctx *parser.AlterSettingsClauseContext
 			val := settingsValueText(svCtx)
 			stmt.Properties[key] = val
 		}
+	} else if ctx.SettingsSection() != nil && ctx.GROUP() != nil {
+		// ALTER SETTINGS WORKFLOWS ADD [OR MODIFY] GROUP 'Approvers' [( Description: '…' )]
+		// ALTER SETTINGS WORKFLOWS MODIFY          GROUP 'Approvers'  ( Description: '…' )
+		// ALTER SETTINGS WORKFLOWS REMOVE          GROUP 'Approvers'
+		stmt.Section = ctx.SettingsSection().GetText()
+		stmt.UpsertGroup = ctx.ADD() != nil && ctx.OR() != nil && ctx.MODIFY() != nil
+		stmt.AddGroup = ctx.ADD() != nil && !stmt.UpsertGroup
+		stmt.ModifyGroup = ctx.MODIFY() != nil && !stmt.UpsertGroup
+		stmt.RemoveGroup = ctx.REMOVE() != nil
+		if all := ctx.AllSTRING_LITERAL(); len(all) > 0 {
+			stmt.GroupName = unquoteString(all[0].GetText())
+		}
+		collectSettingsItemOptions(ctx.SettingsItemOptions(), stmt.Properties)
 	} else if ctx.SettingsSection() != nil && (ctx.ADD() != nil || ctx.MODIFY() != nil || ctx.REMOVE() != nil) {
 		// ALTER SETTINGS LANGUAGE ADD    'ar_SD' [( key: value, … )]
 		// ALTER SETTINGS LANGUAGE MODIFY 'ar_SD'  ( key: value, … )
@@ -77,21 +90,7 @@ func (b *Builder) ExitAlterSettingsClause(ctx *parser.AlterSettingsClauseContext
 		if all := ctx.AllSTRING_LITERAL(); len(all) > 0 {
 			stmt.LanguageCode = unquoteString(all[0].GetText())
 		}
-		if opts := ctx.LanguageOptions(); opts != nil {
-			if oc, ok := opts.(*parser.LanguageOptionsContext); ok && oc != nil {
-				for _, o := range oc.AllLanguageOption() {
-					lo, ok := o.(*parser.LanguageOptionContext)
-					if !ok || lo == nil || lo.IDENTIFIER() == nil || lo.SettingsValue() == nil {
-						continue
-					}
-					sv, ok := lo.SettingsValue().(*parser.SettingsValueContext)
-					if !ok || sv == nil {
-						continue
-					}
-					stmt.Properties[lo.IDENTIFIER().GetText()] = settingsValueText(sv)
-				}
-			}
-		}
+		collectSettingsItemOptions(ctx.SettingsItemOptions(), stmt.Properties)
 	} else if ctx.SettingsSection() != nil {
 		// ALTER SETTINGS MODEL|LANGUAGE|WORKFLOWS Key = Value, ...
 		stmt.Section = ctx.SettingsSection().GetText()
@@ -150,6 +149,30 @@ func (b *Builder) ExitCreateConfigurationStatement(ctx *parser.CreateConfigurati
 	}
 
 	b.statements = append(b.statements, stmt)
+}
+
+// collectSettingsItemOptions reads a ( key: value, … ) option list — the shared
+// form behind ALTER SETTINGS LANGUAGE's language options and WORKFLOWS' group
+// options — into the statement's property map.
+func collectSettingsItemOptions(opts parser.ISettingsItemOptionsContext, into map[string]any) {
+	if opts == nil {
+		return
+	}
+	oc, ok := opts.(*parser.SettingsItemOptionsContext)
+	if !ok || oc == nil {
+		return
+	}
+	for _, o := range oc.AllSettingsItemOption() {
+		so, ok := o.(*parser.SettingsItemOptionContext)
+		if !ok || so == nil || so.IdentifierOrKeyword() == nil || so.SettingsValue() == nil {
+			continue
+		}
+		sv, ok := so.SettingsValue().(*parser.SettingsValueContext)
+		if !ok || sv == nil {
+			continue
+		}
+		into[unquoteIdentifier(so.IdentifierOrKeyword().GetText())] = settingsValueText(sv)
+	}
 }
 
 // settingsValueText extracts the string value from a SettingsValue context.

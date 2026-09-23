@@ -152,6 +152,95 @@ func TestWidgetPacksShipALockfile(t *testing.T) {
 	}
 }
 
+// TestUrlFedPacksDocumentSessionAuth — a pack that tells the reader to fetch
+// data from a relative URL must say how that request authenticates.
+//
+// ako/mxcli#574: mendix-vega-charts documented a `{"data": {"url": "/odata/…"}}`
+// spec and stated that "same-origin requests carry the session cookie, so an
+// endpoint authenticated by session is reachable … without any token handling".
+// The cookie does go. It is not sufficient — Mendix answers a
+// session-authenticated OData READ 401 without `X-Csrf-Token` (measured on
+// 11.14.0: cookie only 401, cookie + header 200), and Vega reads the 401 body as
+// an empty dataset, so the chart draws axes and a full legend with no marks and
+// no error.
+//
+// The check is on the *vendored* copy, which is what installs, and it is keyed
+// on the relative URL in the docs rather than on this one pack: any pack that
+// documents fetching from the app's own endpoints has the same obligation.
+func TestUrlFedPacksDocumentSessionAuth(t *testing.T) {
+	fsys, err := packsFS()
+	if err != nil {
+		t.Fatalf("packsFS: %v", err)
+	}
+	// A data spec whose url is a relative path — i.e. the app's own endpoint.
+	relativeURLSpec := regexp.MustCompile(`"url"\s*:\s*"/`)
+
+	err = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".md") {
+			return err
+		}
+		body, err := fs.ReadFile(fsys, p)
+		if err != nil {
+			return err
+		}
+		if !relativeURLSpec.Match(body) {
+			return nil
+		}
+		if !strings.Contains(string(body), "X-Csrf-Token") {
+			t.Errorf("%s documents fetching from a relative URL but never mentions "+
+				"X-Csrf-Token; a session-authenticated read is refused 401 without it, "+
+				"and the chart renders empty with no error (ako/mxcli#574)", p)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestCsrfTokenIsNeverSentCrossOrigin — the other half of #574's fix.
+//
+// The CSRF token authenticates this session against this app, so a widget that
+// attaches it to whatever URL a spec names would hand a third-party host a
+// working credential. A widget source that sets the header must therefore
+// decide same-origin by RESOLVING the uri against the page, not by testing the
+// string for a scheme: a protocol-relative "//elsewhere.example/rows.json"
+// passes any `^[a-z][a-z0-9+.-]*://` test and goes to another host.
+//
+// The decision itself is unit-tested in the pack
+// (widget/test/csrf.test.ts, `make check-skill-pack-js`). This guards the
+// vendored copy against losing it.
+func TestCsrfTokenIsNeverSentCrossOrigin(t *testing.T) {
+	fsys, err := packsFS()
+	if err != nil {
+		t.Fatalf("packsFS: %v", err)
+	}
+	err = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
+		// The widget's own tests name the header while asserting it is absent,
+		// which is the opposite of the hazard.
+		if err != nil || d.IsDir() || !strings.Contains(p, "/widget/") || strings.Contains(p, ".test.") {
+			return err
+		}
+		body, err := fs.ReadFile(fsys, p)
+		if err != nil {
+			return err
+		}
+		src := string(body)
+		if !strings.Contains(src, "X-Csrf-Token") {
+			return nil
+		}
+		if !strings.Contains(src, "new URL(") {
+			t.Errorf("%s attaches X-Csrf-Token but does not resolve the uri with new URL(); "+
+				"a scheme test on the raw string sends this app's session token to "+
+				"//another.host/x (ako/mxcli#574)", p)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestLockfilesAreNotRewritten — a lockfile must never be listed under
 // rewrite.files. Substitution is what keeps a widget id unique, but a lock
 // records resolved integrity hashes: rewriting one silently invalidates them

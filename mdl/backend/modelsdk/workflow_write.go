@@ -200,8 +200,14 @@ func (b *Backend) DeleteWorkflow(id model.ID) error {
 
 func workflowToGen(wf *workflows.Workflow) element.Element {
 	g := newElem("Workflows$Workflow", string(wf.ID))
-	if wf.AdminPage != "" {
-		addPart(g, "AdminPage", pageReferenceElem(wf.AdminPage))
+	// The overview page is stored under AdminPage (Mendix renamed the property in
+	// 9.11.0 — see workflows.Workflow.OverviewPage). Only this spelling is
+	// written: a mxcli-authored workflow already carries WorkflowV2, introduced
+	// in 11.1.0, so there is no reachable project for which the pre-9.11
+	// OverviewPage key would be right, and writing both as a hedge is what the
+	// overlay rule in CLAUDE.md forbids.
+	if wf.OverviewPage != "" {
+		addPart(g, "AdminPage", pageReferenceElem(wf.OverviewPage))
 	}
 	if wf.Annotation != "" {
 		addPart(g, "Annotation", annotationElem(wf.Annotation))

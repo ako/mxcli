@@ -270,6 +270,31 @@ retrieve $Recent from Sales.Order
 
 - The keyword is **`sort by`** (one or more `Module.Entity.Attr asc|desc`, comma-separated). `order by` is **not** valid on a microflow `retrieve` — it's reserved for `select ... from CATALOG.*` queries and will cause a parse error here.
 - `limit` and `offset` accept **a variable or expression**, not only a literal — `limit $PageSize`, `offset $Offset`, even `limit $Base + 5` all work. A bare literal (`limit 20`) is just the simplest case.
+- A bare attribute name is qualified with the entity that **declares** it, which may be an ancestor — `sort by Name` on a specialization of `System.User` stores `System.User.Name`, which is what mxbuild resolves.
+
+**Sorting over an association** — one `/` per hop, the last segment is the attribute:
+
+```mdl
+retrieve $Orders from Sales.Order
+  sort by Sales.Order_BillTo/Sales.Address.City asc;
+
+-- the hop may be unqualified, and the attribute bare
+retrieve $Orders from Sales.Order
+  sort by Order_BillTo/City asc;
+```
+
+- **Name the hop when more than one association reaches the same entity.** Writing the
+  attribute alone (`sort by Sales.Address.City`) makes mxcli infer the association: it
+  walks the generalization chain and crosses modules — `Administration.Account` reaches
+  `System.Language.Code` through `System.User_Language`, declared on `System.User` — but it
+  cannot tell `Order_ShipTo` from `Order_BillTo` and takes the nearest one. Measured on
+  11.12.3: a microflow sorting by the billing address came back from `describe → exec`
+  sorting by the shipping one, at 0 errors on both sides (mendixlabs/mxcli#1152).
+- `describe microflow` emits the hop whenever one is stored, so a described sort replays
+  to the same model. An association that does not exist, or does not start at the entity
+  in hand, is **refused** rather than written — Mendix stores a sort over an association
+  as an `EntityRef` beside the attribute, and an attribute of a far entity without one is
+  **CE7247** "Cannot sort on attribute …".
 
 ### Retrieve by Association (in-memory, over an association path)
 

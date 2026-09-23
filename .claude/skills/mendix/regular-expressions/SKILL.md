@@ -148,3 +148,7 @@ select QualifiedName, Expression from CATALOG.REGULAR_EXPRESSIONS;
 - `mxcli syntax regular-expression` — full syntax reference
 - `mxcli syntax validation-rule` — binding a pattern or a range to an attribute
 - `mdl-entities` — attributes and validation
+
+## Regular expressions (LIST/DESCRIBE/CREATE [OR MODIFY]/DROP REGULAR EXPRESSION)
+
+named patterns that attribute validation rules reference **by qualified name**, which is why they are documents. `modelsdk/gen` is **wrong** about the pattern's key — it binds `RegEx` where every Studio Pro document stores `Expression` (`generated/metamodel` agrees with the documents), so both engines share one raw-BSON codec in `mdl/regularexpressions`; a reader keyed on gen's name returns an empty pattern for every real document. Pinned against five Studio Pro-authored documents (Email Connector 6.4.2, Community Commons 11.5.1). Mendix validates with .NET's engine, so a pattern Go's RE2 cannot compile (lookaround — the Email Connector ships one) is stored unchanged and reported "not verifiable", never "invalid". A `validate` edge into `CATALOG.REFS` makes `show references to <regex>` list the entities using it

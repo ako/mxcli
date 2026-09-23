@@ -135,6 +135,15 @@ func (b *Builder) buildAlterPageAssignment(ctx *parser.AlterPageAssignmentContex
 	// previously only possible by REPLACEing the whole widget, which silently
 	// drops any property the author did not restate.
 	if acCtx := ctx.ActionExprV3(); acCtx != nil {
+		// A named pluggable action slot — `set 'createFileAction' = microflow
+		// M.F` — keeps the author's key; the executor routes any action value
+		// whose key is not `Action` to the slot of that name (#995).
+		if id := ctx.IdentifierOrKeyword(); id != nil {
+			return identifierOrKeywordText(id), buildActionV3(acCtx)
+		}
+		if sl := ctx.STRING_LITERAL(); sl != nil {
+			return unquoteString(sl.GetText()), buildActionV3(acCtx)
+		}
 		return "Action", buildActionV3(acCtx)
 	}
 
@@ -278,6 +287,48 @@ func (b *Builder) exitAlterPagesLayoutStatement(ctx *parser.AlterPagesLayoutStat
 				stmt.Mappings[identifierOrKeywordText(ids[0])] = identifierOrKeywordText(ids[1])
 			}
 		}
+	}
+
+	b.statements = append(b.statements, stmt)
+}
+
+// exitAlterPagesStylingStatement builds the bulk design-property sweep:
+// ALTER PAGES [IN <module>] SET 'key' = value, … WHERE WIDGETTYPE = <kw> [DRY RUN]
+func (b *Builder) exitAlterPagesStylingStatement(ctx *parser.AlterPagesStylingStatementContext) {
+	stmt := &ast.AlterPagesStylingStmt{DryRun: ctx.DRY() != nil}
+
+	// Two identifierOrKeyword positions in the rule — the optional module and
+	// the WIDGETTYPE value — and ANTLR returns one list, so which is which
+	// depends on whether IN was given. Getting it backwards would scope a
+	// project-wide sweep to a module named after a widget type, or vice versa.
+	ids := ctx.AllIdentifierOrKeyword()
+	if ctx.IN() != nil && len(ids) > 0 {
+		stmt.Module = identifierOrKeywordText(ids[0])
+		ids = ids[1:]
+	}
+	if lit := ctx.STRING_LITERAL(); lit != nil {
+		// The WHERE value as a quoted string — a full widget id.
+		stmt.WidgetType = unquoteString(lit.GetText())
+	} else if len(ids) > 0 {
+		stmt.WidgetType = identifierOrKeywordText(ids[0])
+	}
+
+	for _, a := range ctx.AllAlterPagesStylingAssignment() {
+		ac := a.(*parser.AlterPagesStylingAssignmentContext)
+		lits := ac.AllSTRING_LITERAL()
+		if len(lits) == 0 {
+			continue
+		}
+		assignment := ast.StylingAssignment{Property: unquoteString(lits[0].GetText())}
+		switch {
+		case ac.ON() != nil:
+			assignment.IsToggle, assignment.ToggleOn = true, true
+		case ac.OFF() != nil:
+			assignment.IsToggle, assignment.ToggleOn = true, false
+		case len(lits) > 1:
+			assignment.Value = unquoteString(lits[1].GetText())
+		}
+		stmt.Assignments = append(stmt.Assignments, assignment)
 	}
 
 	b.statements = append(b.statements, stmt)

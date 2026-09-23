@@ -475,7 +475,8 @@ widgets take a different, simpler path than the MPR writer:
   whitelist.
 - **Supported property operations**: attribute, association, primitive,
   selection, datasource, widgets (child slots), object lists, expression,
-  texttemplate (including `{AttrName}` placeholders -> template parameters),
+  texttemplate (including `{AttrName}` placeholders and `<Name>Params` /
+  `contentparams` bindings -> template parameters),
   and action (`microflow Module.Flow`, `show_page Module.Page`, or none).
 - **Rejected loudly** (widget refused, nothing sent): actions *with argument
   mappings*, other action kinds (save/cancel/close/delete/create/open-link/
@@ -553,6 +554,16 @@ otherwise select a datasource mode.
 | `selection` | Sets `Value.Selection` (mode string) | `selection` |
 | `widgets` | Replaces `Value.Widgets` array with child widget BSON | child slot |
 | `texttemplate` | Sets text in `Value.TextTemplate` (Forms$ClientTemplate) | property name (resolved as string) |
+
+A `texttemplate` takes **text**, so a bare value renders the same string on every
+row. Bind it with the property's own `<Name>Params` companion, named for
+whichever spelling the template used (`ImageUrl:` pairs with `ImageUrlParams:`)
+and taking the same `format (...)` block a `dynamictext` does — e.g.
+`headerCaption: '{1}', headerCaptionParams: [{1} = Name]`, or a Timeline's
+`title` / `description` bound separately. `contentparams:` is ONE list shared by
+every template on the widget, so it only disambiguates a widget with a single
+one; `'{AttrName}'` is the short form for one attribute. A companion whose
+template has no `{N}` is **MDL-WIDGET21**, not a silent drop (ako/mxcli#575).
 | `action` | Sets `Value.Action` with serialized client action BSON | `onclick` (resolved from AST Action) |
 
 ### Mapping Order Constraints

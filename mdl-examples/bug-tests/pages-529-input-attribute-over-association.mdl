@@ -1,0 +1,80 @@
+-- @version: 11.0+
+-- ============================================================================
+-- ako/mxcli#529 — an input widget could not bind an attribute over an
+-- association. `attribute: Assoc/Attr` on a text box produced a FLAT path and
+-- the build failed:
+--
+--   [CE1613] "The selected attribute
+--    'Rules.RuleAction.RuleAction_BusinessRule/Name' no longer exists."
+--    at Text box [RuleAction_BusinessRule/Name]
+--
+-- measured on ako/TestApp at Mendix 11.14.0. Note the shape of the bad value:
+-- the association segment was pasted onto the context entity instead of being
+-- navigated, because every input builder resolved its attribute with
+-- resolveAttributePath, which knows nothing about associations.
+--
+-- DataGrid2 columns and DynamicText parameters already resolved the same
+-- syntax, so one page could bind an associated attribute in a grid column and
+-- fail on the text box beside it.
+--
+-- Studio Pro DOES store this on a plain text box. The reference is
+-- ako/TestApp's Rules.RuleAction_NewEdit, textBox4:
+--
+--   AttributeRef.Attribute  = "Rules.BusinessRule.Name"
+--   AttributeRef.EntityRef  = IndirectEntityRef{ Steps: [ EntityRefStep{
+--       Association: "Rules.RuleAction_BusinessRule",
+--       DestinationEntity: "Rules.BusinessRule" } ] }
+--
+-- The read half was broken too: DESCRIBE emitted `Attribute: Name`, and
+-- RuleAction has no Name — so describe → exec over a Studio Pro page REBOUND
+-- the widget to nothing, with `check` clean.
+--
+-- EXPECTED: `mx check` reports 0 errors, and `describe page` round-trips the
+-- association path rather than flattening it.
+-- ============================================================================
+
+create module Issue529;
+
+@position(100, 100)
+create persistent entity Issue529.BusinessRule (
+  Name: string(200),
+  Active: boolean default true
+);
+
+-- Deliberately has NO attribute called Name: that is what turns the old
+-- behaviour into a binding that cannot resolve, rather than one that merely
+-- points somewhere else.
+@position(400, 100)
+create persistent entity Issue529.RuleAction (
+  ActionType: string(200)
+);
+
+create association Issue529.RuleAction_BusinessRule
+  from Issue529.RuleAction to Issue529.BusinessRule;
+
+create or replace page Issue529.RuleAction_NewEdit (
+  title: 'Edit Rule Action',
+  layout: Atlas_Core.PopupLayout,
+  params: { $RuleAction: Issue529.RuleAction }
+)
+{
+  -- Wrapped in a layout grid, as the Studio Pro reference page is (MPR010).
+  layoutgrid layoutGrid1 {
+    row row1 {
+      column col1 (DesktopWidth: AutoFill) {
+  dataview dvMain (datasource: $RuleAction) {
+    -- The control: an own attribute, which must stay a bare binding.
+    textbox tbActionType (label: 'Action type', attribute: ActionType)
+
+    -- The reported case, on each input widget that takes a single attribute.
+    textbox tbRuleName (label: 'Rule name', attribute: RuleAction_BusinessRule/Name)
+    textarea taRuleName (label: 'Rule name (area)', attribute: RuleAction_BusinessRule/Name)
+    checkbox cbActive (label: 'Active', attribute: RuleAction_BusinessRule/Active)
+  }
+      }
+    }
+  }
+}
+
+-- Round-trip: this must emit `RuleAction_BusinessRule/Name`, not a bare `Name`.
+describe page Issue529.RuleAction_NewEdit;

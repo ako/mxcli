@@ -95,9 +95,13 @@ func ruleToGen(rule *microflows.Rule, major int) *genMf.Rule {
 	out := genMf.NewRule()
 	out.SetName(rule.Name)
 	out.SetDocumentation(rule.Documentation)
-	// Both Studio Pro reference rules store ExportLevel "Hidden", and both
-	// engines already hardcode it for microflows. Omitting it was the one key
-	// the first authored rule was missing against the reference document.
+	// Both Studio Pro reference rules store ExportLevel "Hidden". Omitting it
+	// was the one key the first authored rule was missing against the reference
+	// document. Unlike a microflow's, this one is NOT carried: a rule is not
+	// independently callable, so there is nothing for a module to expose, and
+	// 2 of 2 reference rules agree. If a rule is ever measured storing "API",
+	// it needs the same carry microflowToGen has — a field on Rule, a read in
+	// ruleFromGen, and a "" -> "Hidden" default here.
 	out.SetExportLevel("Hidden")
 	out.SetExcluded(rule.Excluded)
 	out.SetMarkAsUsed(rule.MarkAsUsed)

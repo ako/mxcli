@@ -27,7 +27,6 @@ Common version gates:
 | Feature | Requires | Workaround for older versions |
 |---------|----------|-------------------------------|
 | VIEW ENTITY | 10.18+ | Regular entity with microflow data source |
-| Page parameters | 11.0+ | Pass data via non-persistent entity |
 | REST query params | 11.0+ | Build query string manually in microflow |
 | DB runtime connection | 11.0+ | Hardcode connection in Database Connector config |
 | Design properties v3 | 11.0+ | Use Atlas v2 design properties |
@@ -50,6 +49,6 @@ show features added since 10.24;    -- what's new if upgrading from 10.24
 Before writing any MDL for a connected project:
 
 1. Run `show status` to confirm the Mendix version
-2. If using view entities, page parameters, REST clients, or database queries — run `show features` to verify availability
+2. If using view entities, REST clients, or database queries — run `show features` to verify availability
 3. If a feature is unavailable, use the workaround pattern
 4. Run `mxcli check script.mdl -p app.mpr --references` to validate before execution

@@ -9,6 +9,7 @@ import (
 	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genDT "github.com/mendixlabs/mxcli/modelsdk/gen/datatypes"
 	genMf "github.com/mendixlabs/mxcli/modelsdk/gen/microflows"
+	genTexts "github.com/mendixlabs/mxcli/modelsdk/gen/texts"
 	"github.com/mendixlabs/mxcli/modelsdk/mprread"
 
 	"github.com/mendixlabs/mxcli/model"
@@ -205,6 +206,24 @@ func microflowFromGen(mf *genMf.Microflow, containerID model.ID) *microflows.Mic
 		// microflow may read and write. mx check and mxbuild are both silent,
 		// because the model is valid either way.
 		ApplyEntityAccess: mf.ApplyEntityAccess(),
+		// The two flags above are only half of it: what Mendix does to the
+		// second caller when concurrency is disallowed lives here, and the
+		// writer emitted an empty message and no microflow on every rewrite, so
+		// the pair vanished — translations and all — the moment anything edited
+		// the microflow. Mendix requires one of them (CE4899).
+		ConcurrencyErrorMessage:   concurrencyMessageFromGen(mf.ConcurrencyErrorMessage()),
+		ConcurrencyErrorMicroflow: mf.ConcurrencyErrorMicroflowQualifiedName(),
+		// Studio Pro's "Export level". The writer pinned it to "Hidden", so a
+		// microflow a protected module exposes as API was demoted to hidden by
+		// any rewrite — again with every checker silent.
+		ExportLevel: mf.ExportLevel(),
+		// The deep link (Mendix 10.6+). Same class again: the writer emitted an
+		// empty Url on every rewrite and nothing read the stored one back, so a
+		// CREATE OR MODIFY that touched only the body deleted it. Both checkers
+		// stay silent — a microflow with no URL is valid — so the loss only
+		// showed up in Studio Pro (#1120).
+		URL:                 mf.Url(),
+		URLSearchParameters: mf.UrlSearchParametersQualifiedNames(),
 	}
 	out.ID = model.ID(mf.ID())
 	// AllowedModuleRoles (BY_NAME role references) — without these DESCRIBE omits
@@ -227,6 +246,26 @@ func microflowFromGen(mf *genMf.Microflow, containerID model.ID) *microflows.Mic
 	annotFlows := annotationFlowsFromGen(mf.FlowsItems())
 	if objs != nil || flows != nil || annotFlows != nil {
 		out.ObjectCollection = &microflows.MicroflowObjectCollection{Objects: objs, Flows: flows, AnnotationFlows: annotFlows}
+	}
+	return out
+}
+
+// concurrencyMessageFromGen reads a microflow's concurrency error message.
+//
+// nil for a message with no translations, so that a microflow which never had
+// one is unchanged by a rewrite: textToGen of an empty model.Text and the bare
+// genTexts.NewText() the writer used to emit produce the same document, and
+// keeping the distinction out of the model keeps elision (ADR-0008) simple.
+// "The same document" is canon.Equal, not bytes.Equal — the element's $ID is
+// minted fresh on every encode, which is why canon compares a canonical form.
+func concurrencyMessageFromGen(el element.Element) *model.Text {
+	txt, ok := el.(*genTexts.Text)
+	if !ok || txt == nil {
+		return nil
+	}
+	out := textFromGen(txt)
+	if len(out.Translations) == 0 {
+		return nil
 	}
 	return out
 }

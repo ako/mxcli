@@ -58,22 +58,98 @@ func (m *layoutMeasurer) measureStatements(stmts []ast.MicroflowStatement) Bound
 		return Bounds{Width: 0, Height: 0}
 	}
 
-	totalWidth := 0
+	// cursor is the right edge of what sits on the main line; laneBusy is how far the
+	// lane underneath it is taken by a guard's branch (see lowerLane in
+	// layout_lanes.go), which the main line does not wait for.
+	cursor, laneBusy, extent := 0, 0, 0
 	maxHeight := ActivityHeight
 
+	var prev ast.MicroflowStatement
 	for _, stmt := range stmts {
 		bounds := m.measureStatement(stmt)
 		maxHeight = max(maxHeight, bounds.Height)
 		if bounds.Width == 0 {
 			continue
 		}
-		if totalWidth > 0 {
-			totalWidth += HorizontalSpacing
+		left := cursor
+		if prev != nil {
+			left += gapBetween(prev, stmt)
 		}
-		totalWidth += bounds.Width
+		if left < laneBusy && reachesBelowMainLine(stmt, bounds) {
+			left = laneBusy
+		}
+		if guard, ok := stmt.(*ast.IfStmt); ok && isGuard(guard) {
+			branchRight := left + guardBranchInset + m.measureBranch(guard.ThenBody).Width
+			cursor = left + guardMainWidth
+			laneBusy = branchRight + laneGap
+			extent = max(extent, branchRight)
+		} else {
+			cursor = left + bounds.Width
+		}
+		extent = max(extent, cursor)
+		prev = stmt
 	}
 
-	return Bounds{Width: totalWidth, Height: maxHeight}
+	return Bounds{Width: extent, Height: maxHeight}
+}
+
+// measureBranch measures a branch body including the end event a trailing RETURN
+// draws. measureStatements gives RETURN no width, because on the main line the end
+// event is the flow's own; in a branch it is an extra element one pitch past the last
+// activity, and a merge placed by the activities alone lands on top of it.
+func (m *layoutMeasurer) measureBranch(stmts []ast.MicroflowStatement) Bounds {
+	b := m.measureStatements(stmts)
+	if !lastStmtIsReturn(stmts) {
+		return b
+	}
+	if b.Width == 0 {
+		// A bare RETURN: the end event stands where the first activity would.
+		b.Width = ActivityWidth/2 + EventSize/2
+	} else {
+		b.Width += HorizontalSpacing - ActivityWidth/2 + EventSize/2
+	}
+	return b
+}
+
+// gapBetween is the empty space the builder actually leaves between two consecutive
+// elements of a run, edge to edge.
+//
+// It used to be HorizontalSpacing for every pair. But HorizontalSpacing is a
+// centre-to-centre pitch — the builder does `posX += spacing` and centres each
+// activity on posX — so adding it on top of both widths counted the activity twice:
+// two activities were measured 400 wide and occupy 280. Every IF sized its branch
+// from that, so a merge sat a whole activity further right per extra statement in
+// the branch, and the main line ran empty underneath it.
+//
+// Only the pairs whose arithmetic is known exactly are tightened; anything else
+// keeps the old, generous gap, because a merge placed short of its branch's content
+// is worse than a merge placed long.
+func gapBetween(prev, next ast.MicroflowStatement) int {
+	// Distance from prev's measured right edge to the centre the builder gives next.
+	var toNextCentre int
+	switch prev.(type) {
+	case *ast.IfStmt:
+		// After an IF, posX = (measured right edge) + HorizontalSpacing/2.
+		toNextCentre = HorizontalSpacing / 2
+	case *ast.EnumSplitStmt, *ast.InheritanceSplitStmt:
+		return HorizontalSpacing
+	default:
+		// A simple activity, or a loop box: after either, the builder centres the
+		// next element one activity-gap plus half an activity past the right edge.
+		// A simple activity: centre-to-centre pitch, less its own right half.
+		toNextCentre = HorizontalSpacing - ActivityWidth/2
+	}
+	// How far next reaches left of the centre it is given.
+	var leftHalf int
+	switch next.(type) {
+	case *ast.IfStmt, *ast.EnumSplitStmt:
+		leftHalf = SplitWidth / 2
+	default:
+		// An activity — and a loop box, whose left edge the builder now puts where
+		// an activity's would be.
+		leftHalf = ActivityWidth / 2
+	}
+	return max(toNextCentre-leftHalf, 20)
 }
 
 // measureStatementsSpan returns the horizontal extent a statement run actually
@@ -139,12 +215,12 @@ func (m *layoutMeasurer) measureEnumSplitStatement(s *ast.EnumSplitStmt) Bounds 
 	maxBranchWidth := 0
 	var branchHeights []int
 	for _, c := range s.Cases {
-		bounds := m.measureStatements(c.Body)
+		bounds := m.measureBranch(c.Body)
 		maxBranchWidth = max(maxBranchWidth, bounds.Width)
 		branchHeights = append(branchHeights, max(bounds.Height, ActivityHeight))
 	}
 	if len(s.ElseBody) > 0 {
-		bounds := m.measureStatements(s.ElseBody)
+		bounds := m.measureBranch(s.ElseBody)
 		maxBranchWidth = max(maxBranchWidth, bounds.Width)
 		branchHeights = append(branchHeights, max(bounds.Height, ActivityHeight))
 	}
@@ -161,7 +237,7 @@ func (m *layoutMeasurer) measureEnumSplitStatement(s *ast.EnumSplitStmt) Bounds 
 	}
 	totalHeight += (len(branchHeights) - 1) * BranchGap
 
-	width := SplitWidth + HorizontalSpacing/2 + maxBranchWidth + HorizontalSpacing/2 + MergeSize
+	width := SplitWidth + HorizontalSpacing/2 + maxBranchWidth + MergeSize
 	return Bounds{Width: width, Height: totalHeight}
 }
 
@@ -195,10 +271,10 @@ func (m *layoutMeasurer) measureInheritanceSplitStatement(s *ast.InheritanceSpli
 // - IF without ELSE: FALSE path horizontal, TRUE path below
 func (m *layoutMeasurer) measureIfStatement(s *ast.IfStmt) Bounds {
 	// Measure THEN branch
-	thenBounds := m.measureStatements(s.ThenBody)
+	thenBounds := m.measureBranch(s.ThenBody)
 
 	// Measure ELSE branch
-	elseBounds := m.measureStatements(s.ElseBody)
+	elseBounds := m.measureBranch(s.ElseBody)
 
 	// Width: split + max(then, else) + merge + spacing
 	branchWidth := max(thenBounds.Width, elseBounds.Width)
@@ -207,7 +283,15 @@ func (m *layoutMeasurer) measureIfStatement(s *ast.IfStmt) Bounds {
 		branchWidth = HorizontalSpacing / 2
 	}
 
-	totalWidth := SplitWidth + HorizontalSpacing/2 + branchWidth + HorizontalSpacing/2 + MergeSize
+	totalWidth := SplitWidth + HorizontalSpacing/2 + branchWidth + MergeSize
+	// A guard — `if X then ...; return; end if` with no ELSE — has no merge: its
+	// branch ends in an end event and the main line resumes straight after the
+	// branch (addIfStatement's no-merge exit). Measuring a merge and its spacing
+	// that are never drawn left 120px of empty main line after every guard nested
+	// in a branch.
+	if isGuard(s) {
+		totalWidth = SplitWidth + HorizontalSpacing/2 + thenBounds.Width
+	}
 
 	// Height depends on layout strategy
 	var totalHeight int

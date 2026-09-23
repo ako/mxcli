@@ -158,7 +158,7 @@ func (e *annotationEmitter) labelFor(id model.ID) (label string, first bool) {
 // exactly as before. Only a note that is shared, or that has been moved or
 // resized on the canvas, pays for the longer form — so this fix does not churn
 // the output of every microflow that has a note in it.
-func (e *annotationEmitter) lines(target model.ID, activityPos model.Point, indentStr string) []string {
+func (e *annotationEmitter) lines(target model.ID, activityPos model.Point, targetHeight int, indentStr string) []string {
 	if e == nil {
 		return nil
 	}
@@ -178,7 +178,7 @@ func (e *annotationEmitter) lines(target model.ID, activityPos model.Point, inde
 			continue
 		}
 
-		defPos, defSize := defaultAnnotationGeometry(activityPos, i)
+		defPos, defSize := defaultAnnotationGeometry(activityPos, i, targetHeight)
 		var params []string
 		if note.Position != defPos {
 			params = append(params, fmt.Sprintf("position: (%d, %d)", note.Position.X, note.Position.Y))
@@ -802,7 +802,7 @@ func emitObjectAnnotations(
 	}
 
 	// @annotation (attached Annotation objects)
-	*lines = append(*lines, annotationsByTarget.lines(currentID, pos, indentStr)...)
+	*lines = append(*lines, annotationsByTarget.lines(currentID, pos, objectHeight(obj), indentStr)...)
 }
 
 // emitActivityStatement appends the formatted activity statement (with error handling)
@@ -1776,7 +1776,7 @@ func emitEnumSplitStatement(
 	branches := []enumBranch{}
 	branchByDestination := map[model.ID]int{}
 	var elseFlow *microflows.SequenceFlow
-	for _, flow := range orderedEnumSplitFlows(findNormalFlows(flowsByOrigin[currentID])) {
+	for _, flow := range orderedEnumSplitFlows(findNormalFlows(flowsByOrigin[currentID]), activityMap) {
 		caseValue, ok := enumCaseValue(flow)
 		if !ok {
 			elseFlow = flow
@@ -1929,10 +1929,34 @@ func inheritanceCaseName(flow *microflows.SequenceFlow, entityNames map[model.ID
 	return "", false
 }
 
-func orderedEnumSplitFlows(flows []*microflows.SequenceFlow) []*microflows.SequenceFlow {
+// orderedEnumSplitFlows puts a split's case flows back in the order they were
+// written. Stored flow order does not survive serialization, so the order is read
+// from what does: the anchor pair (splitCaseOrder), then how far down the canvas the
+// branch sits.
+//
+// The pair alone used to carry the whole order, one distinct pair per case. A split
+// of four or more cases now shares three pairs — top, right and bottom of the split,
+// each arriving on the left (enumSplitOriginAnchors) — which the table already ranks
+// in that order, and the branches inside a group are stacked top to bottom in case
+// order, so their Y finishes the job. A model written with one pair per case never
+// reaches the tie-break and reads exactly as before; a split drawn by hand in Studio
+// Pro reads side first, then top to bottom.
+func orderedEnumSplitFlows(flows []*microflows.SequenceFlow, activityMap map[model.ID]microflows.MicroflowObject) []*microflows.SequenceFlow {
 	ordered := append([]*microflows.SequenceFlow(nil), flows...)
+	branchY := func(flow *microflows.SequenceFlow) int {
+		if flow == nil {
+			return 0
+		}
+		if obj := activityMap[flow.DestinationID]; obj != nil {
+			return obj.GetPosition().Y
+		}
+		return 0
+	}
 	sort.SliceStable(ordered, func(i, j int) bool {
-		return splitCaseOrder(ordered[i]) < splitCaseOrder(ordered[j])
+		if ri, rj := splitCaseOrder(ordered[i]), splitCaseOrder(ordered[j]); ri != rj {
+			return ri < rj
+		}
+		return branchY(ordered[i]) < branchY(ordered[j])
 	})
 	return ordered
 }
@@ -2319,7 +2343,7 @@ func collectErrorHandlerStatements(
 	// note and the read path drops it, which is the same round-trip loss #1077
 	// is about, one nesting level down.
 	notes := func(obj microflows.MicroflowObject, indentStr string) {
-		statements = append(statements, annotationsByTarget.lines(obj.GetID(), obj.GetPosition(), indentStr)...)
+		statements = append(statements, annotationsByTarget.lines(obj.GetID(), obj.GetPosition(), objectHeight(obj), indentStr)...)
 	}
 	splitMergeMap := findErrorHandlerSplitMergePoints(ctx, activityMap, flowsByOrigin)
 

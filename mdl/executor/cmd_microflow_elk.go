@@ -173,7 +173,7 @@ func buildFlowELK(ctx *ExecContext, in flowELKInput) error {
 
 	// Build nodes — loops become compound nodes with children
 	for _, obj := range in.ObjectCollection.Objects {
-		node := buildMicroflowELKNodeHierarchical(obj, in.EntityNames, 0)
+		node := buildMicroflowELKNodeHierarchical(obj, in.EntityNames, describeDefaultLanguage(ctx), 0)
 		data.Nodes = append(data.Nodes, node)
 	}
 
@@ -186,13 +186,13 @@ func buildFlowELK(ctx *ExecContext, in flowELKInput) error {
 	return emitMicroflowELK(ctx, data)
 }
 
-func buildMicroflowELKNode(obj microflows.MicroflowObject, entityNames map[model.ID]string) microflowELKNode {
+func buildMicroflowELKNode(obj microflows.MicroflowObject, entityNames map[model.ID]string, lang string) microflowELKNode {
 	id := "node-" + string(obj.GetID())
 	label := mermaidActivityLabel(obj, entityNames)
 	// Un-escape Mermaid-specific escaping
 	label = strings.ReplaceAll(label, "#quot;", "\"")
 
-	details := mermaidActivityDetails(obj, entityNames)
+	details := mermaidActivityDetails(obj, entityNames, lang)
 	// Un-escape details too
 	for i, d := range details {
 		details[i] = strings.ReplaceAll(d, "#quot;", "\"")
@@ -214,17 +214,17 @@ func buildMicroflowELKNode(obj microflows.MicroflowObject, entityNames map[model
 
 // buildMicroflowELKNodeHierarchical builds an ELK node, handling LoopedActivity
 // as a compound node with children (loop body objects) and inner edges.
-func buildMicroflowELKNodeHierarchical(obj microflows.MicroflowObject, entityNames map[model.ID]string, depth int) microflowELKNode {
+func buildMicroflowELKNodeHierarchical(obj microflows.MicroflowObject, entityNames map[model.ID]string, lang string, depth int) microflowELKNode {
 	loop, isLoop := obj.(*microflows.LoopedActivity)
 	if !isLoop || loop.ObjectCollection == nil || len(loop.ObjectCollection.Objects) == 0 {
-		return buildMicroflowELKNode(obj, entityNames)
+		return buildMicroflowELKNode(obj, entityNames, lang)
 	}
 
 	// Build compound loop node
 	id := "node-" + string(loop.GetID())
 	label := mermaidActivityLabel(obj, entityNames)
 	label = strings.ReplaceAll(label, "#quot;", "\"")
-	details := mermaidActivityDetails(obj, entityNames)
+	details := mermaidActivityDetails(obj, entityNames, lang)
 	for i, d := range details {
 		details[i] = strings.ReplaceAll(d, "#quot;", "\"")
 	}
@@ -240,7 +240,7 @@ func buildMicroflowELKNodeHierarchical(obj microflows.MicroflowObject, entityNam
 
 	// Add children (recursively handle nested loops)
 	for _, childObj := range loop.ObjectCollection.Objects {
-		child := buildMicroflowELKNodeHierarchical(childObj, entityNames, depth+1)
+		child := buildMicroflowELKNodeHierarchical(childObj, entityNames, lang, depth+1)
 		node.Children = append(node.Children, child)
 	}
 

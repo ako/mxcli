@@ -109,6 +109,13 @@ alterProjectSecurityStatement
     // the executor refuses ON when neither source supplies a role.
     | ALTER PROJECT SECURITY GUEST ACCESS ON (ROLE identifierOrKeyword)?
     | ALTER PROJECT SECURITY GUEST ACCESS OFF
+    // Strict mode is a plain bool on Security$ProjectSecurity, declared by BOTH
+    // generated sources and already read back from real projects — so this
+    // writes a property Studio Pro knows, not one gen merely offers.
+    //
+    // mxcli LINTED for it (SEC005) and offered no way to clear it, which is a
+    // rule with no remedy (ako/mxcli#526).
+    | ALTER PROJECT SECURITY STRICT MODE (ON | OFF)
     ;
 
 createDemoUserStatement

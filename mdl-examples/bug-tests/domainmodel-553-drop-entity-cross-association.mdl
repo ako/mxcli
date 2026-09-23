@@ -1,0 +1,67 @@
+-- ako/mxcli#553 — DROP ENTITY left CROSS-MODULE associations pointing at the
+-- deleted entity, and mxbuild could then not LOAD the project:
+--
+--   ERROR: System.AggregateException … (The given key
+--   '49751a65-d5f9-456c-887e-3f14bacb8822' was not present in the dictionary.)
+--     at StreamingBsonUnitReader.ResolvePostponedProperties()
+--
+-- No CE code and no document named, because the failure is in the storage layer
+-- rather than the consistency checker — the obvious reading is "the project is
+-- corrupt, restore from git". The recovery was DROP ASSOCIATION on each orphan.
+--
+-- Reported against a VIEW entity, whose associations are derived from its OQL so
+-- there is no CREATE ASSOCIATION to undo. Measured here: nothing about it is
+-- view-entity specific. A plain cross-module association orphans identically;
+-- the single-module case was always handled, which is why it went unnoticed.
+--
+-- Both ends are covered because they fail differently: a dangling BY-ID end (the
+-- FROM entity, stored in this module) is the crash above, while a dangling
+-- BY-NAME end (the TO entity, in another module) is CE1613 at the cross-module
+-- association.
+--
+-- Run with `mxcli exec`, then `mxcli docker check --no-update-widgets`: the
+-- project must LOAD and report 0 errors. On the unfixed build `show associations`
+-- shows a raw GUID where the parent entity should be.
+
+create module Dm553A;
+create module Dm553B;
+
+create persistent entity Dm553A.Meter (
+  MeterName: String(100)
+);
+
+create persistent entity Dm553A.Reading (
+  Kwh: Decimal
+);
+
+create association Dm553A.Reading_Meter from Dm553A.Reading to Dm553A.Meter type reference;
+
+-- 1. A view entity in another module, whose association to Dm553A.Meter is
+--    DERIVED from the OQL (`select m.ID as MeterRef`).
+create view entity Dm553B.MeterTotals (
+  TotalKwh: Decimal
+) as (
+  from Dm553A.Reading as r
+  join r/Dm553A.Reading_Meter/Dm553A.Meter as m
+  group by m.ID
+  select m.ID as MeterRef, sum(r.Kwh) as TotalKwh
+);
+
+-- 2. A plain cross-module association, dropped from its BY-ID (FROM) end.
+create persistent entity Dm553A.Parent1 (Label: String(100));
+create persistent entity Dm553B.Child1 (Label: String(100));
+create association Dm553A.Parent1_Child1 from Dm553A.Parent1 to Dm553B.Child1 type reference;
+
+-- 3. The same shape, dropped from its BY-NAME (TO) end.
+create persistent entity Dm553A.Parent2 (Label: String(100));
+create persistent entity Dm553B.Child2 (Label: String(100));
+create association Dm553A.Parent2_Child2 from Dm553A.Parent2 to Dm553B.Child2 type reference;
+
+-- The control: a cross-module association neither drop touches. It must survive.
+create persistent entity Dm553A.Keeper (Label: String(100));
+create persistent entity Dm553B.Kept (Label: String(100));
+create association Dm553A.Keeper_Kept from Dm553A.Keeper to Dm553B.Kept type reference;
+
+drop entity Dm553B.MeterTotals;
+drop entity Dm553A.Parent1;
+drop entity Dm553B.Child2;

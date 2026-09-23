@@ -13,7 +13,7 @@ entity, err := modelAPI.DomainModels.CreateEntity("Customer").
     WithStringAttribute("Email", 254).
     WithIntegerAttribute("Age").
     WithBooleanAttribute("IsActive").
-    WithDateTimeAttribute("CreatedDate", true).
+    WithDateTimeAttribute("CreatedDate").
     WithDecimalAttribute("Revenue").
     WithEnumerationAttribute("Status", "MyModule.CustomerStatus").
     Build()
@@ -30,7 +30,7 @@ entity, err := modelAPI.DomainModels.CreateEntity("Customer").
 | `WithLongAttribute(name)` | Add a long attribute |
 | `WithDecimalAttribute(name)` | Add a decimal attribute |
 | `WithBooleanAttribute(name)` | Add a boolean attribute |
-| `WithDateTimeAttribute(name, localize)` | Add a datetime attribute |
+| `WithDateTimeAttribute(name)` | Add a datetime attribute |
 | `WithAutoNumberAttribute(name)` | Add an auto-number attribute |
 | `WithEnumerationAttribute(name, enumRef)` | Add an enumeration attribute |
 | `Build()` | Create the entity and write it to the project |

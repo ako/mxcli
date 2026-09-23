@@ -125,6 +125,8 @@ func execShow(ctx *ExecContext, s *ast.ShowStmt) error {
 		return listSettings(ctx)
 	case ast.ShowLanguages:
 		return listLanguages(ctx)
+	case ast.ShowWorkflowGroups:
+		return listWorkflowGroups(ctx)
 	case ast.ShowFragments:
 		return listFragments(ctx)
 	case ast.ShowDatabaseConnections:

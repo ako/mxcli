@@ -28,7 +28,7 @@ server, **Concord**, fills a few gaps PED lacks (notably document deletion).
 The same MDL pipeline (grammar → AST → visitor → executor) runs unchanged; only the
 backend differs, which is exactly what the backend abstraction is for. Choosing the
 MCP backend means the executor's writes become `ped_*` tool calls against Studio
-Pro's in-memory model rather than `sdk/mpr` writer calls — so the edits appear live
+Pro's in-memory model rather than MPR writer calls — so the edits appear live
 in the open project instead of being serialised to the file.
 
 The hybrid split creates a **consistency problem the backend has to close itself**.

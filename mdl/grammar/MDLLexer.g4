@@ -29,6 +29,10 @@ NOT_NULL: N O T WS+ N U L L;
 GROUP_BY: G R O U P WS+ B Y;
 ORDER_BY: O R D E R WS+ B Y;
 SORT_BY: S O R T WS+ B Y;
+// `search by Attr, Attr2` on a List View database source — the attributes its
+// search bar filters on (Forms$ListViewSearch.SearchRefs). Shaped on SORT_BY
+// deliberately: same position, same comma list, so one example teaches both.
+SEARCH_BY: S E A R C H WS+ B Y;
 NON_PERSISTENT: N O N '-' P E R S I S T E N T;
 REFERENCE_SET: R E F E R E N C E '_'? S E T;
 LIST_OF: L I S T WS+ O F;
@@ -577,6 +581,15 @@ POST: P O S T;
 PUT: P U T;
 PATCH: P A T C H;
 API: A P I;
+
+// Microflow document properties (mendixlabs/mxcli#1120 follow-up). All five are
+// in identifierOrKeyword so they stay usable as element names — HIDDEN and
+// ALLOW in particular are plausible attribute names.
+HIDDEN_KW: H I D D E N;  // HIDDEN is reserved by ANTLR (the hidden channel)
+ALLOW: A L L O W;
+DISALLOW: D I S A L L O W;
+CONCURRENT: C O N C U R R E N T;
+EXECUTION: E X E C U T I O N;
 CLIENT: C L I E N T;
 CLIENTS: C L I E N T S;
 PUBLISH: P U B L I S H;
@@ -747,6 +760,8 @@ MATRIX: M A T R I X;
 APPLY: A P P L Y;
 ACCESS: A C C E S S;
 LEVEL: L E V E L;
+STRICT: S T R I C T;
+MODE: M O D E;
 USER: U S E R;
 TASK: T A S K;
 DECISION: D E C I S I O N;

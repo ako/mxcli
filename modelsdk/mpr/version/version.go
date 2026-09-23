@@ -8,31 +8,23 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/mendixlabs/mxcli/mdl/types"
 )
 
-// ProjectVersion contains version information for a Mendix project.
-type ProjectVersion struct {
-	// ProductVersion is the full Mendix version string (e.g., "10.18.0", "11.6.0")
-	ProductVersion string
-
-	// BuildVersion is the build version, usually same as ProductVersion
-	BuildVersion string
-
-	// FormatVersion is the MPR format version (1 for legacy, 2 for mprcontents)
-	FormatVersion int
-
-	// SchemaHash is the SHA256 hash of the metamodel schema
-	SchemaHash string
-
-	// MajorVersion is the major version number (e.g., 10, 11)
-	MajorVersion int
-
-	// MinorVersion is the minor version number (e.g., 18, 6)
-	MinorVersion int
-
-	// PatchVersion is the patch version number (e.g., 0, 1)
-	PatchVersion int
-}
+// ProjectVersion is an alias for types.ProjectVersion, the canonical
+// declaration. All its methods — IsAtLeast, IsAtLeastFull, String, IsMPRv2 —
+// are defined there.
+//
+// It is an ALIAS and not a struct of its own on purpose. This package used to
+// declare a duplicate whose fields matched types.ProjectVersion exactly, which
+// made the two unrelated Go types that print under the same name: a value could
+// not cross the mdl/ ↔ modelsdk/ boundary without a conversion, and a mismatch
+// reported itself as a tautology rather than as a type error anyone could read.
+// The sdk/mpr copy deleted in the legacy-engine retirement aliased the canonical
+// type; this one did not, and that asymmetry is what CLAUDE.md's shared-types
+// rule exists to prevent.
+type ProjectVersion = types.ProjectVersion
 
 // DefaultVersion returns the default version (11.6.0) used when detection fails.
 func DefaultVersion() *ProjectVersion {
@@ -100,91 +92,13 @@ func parseVersion(version string) (major, minor, patch int) {
 	return
 }
 
-// String returns the product version string.
-func (v *ProjectVersion) String() string {
-	return v.ProductVersion
-}
-
-// IsMPRv2 returns true if the project uses MPR v2 format (mprcontents folder).
-func (v *ProjectVersion) IsMPRv2() bool {
-	return v.FormatVersion >= 2
-}
-
-// IsAtLeast returns true if this version is at least the specified major.minor version.
-func (v *ProjectVersion) IsAtLeast(major, minor int) bool {
-	if v.MajorVersion > major {
-		return true
-	}
-	if v.MajorVersion == major && v.MinorVersion >= minor {
-		return true
-	}
-	return false
-}
-
-// IsAtLeastFull returns true if this version is at least the specified major.minor.patch version.
-func (v *ProjectVersion) IsAtLeastFull(major, minor, patch int) bool {
-	if v.MajorVersion > major {
-		return true
-	}
-	if v.MajorVersion == major && v.MinorVersion > minor {
-		return true
-	}
-	if v.MajorVersion == major && v.MinorVersion == minor && v.PatchVersion >= patch {
-		return true
-	}
-	return false
-}
-
-// SupportedVersionRange defines the range of Mendix versions supported for read/write.
-var SupportedVersionRange = struct {
-	MinMajor int
-	MaxMajor int
-}{
-	MinMajor: 9,
-	MaxMajor: 11,
-}
-
-// IsSupported returns true if this version is within the supported range for writing.
-func (v *ProjectVersion) IsSupported() bool {
-	return v.MajorVersion >= SupportedVersionRange.MinMajor &&
-		v.MajorVersion <= SupportedVersionRange.MaxMajor
-}
-
-// SupportsFeature checks if a specific feature is available in this version.
-func (v *ProjectVersion) SupportsFeature(feature Feature) bool {
-	minVersion, ok := featureVersions[feature]
-	if !ok {
-		return false
-	}
-	return v.IsAtLeast(minVersion.Major, minVersion.Minor)
-}
-
-// Feature represents a Mendix feature that may or may not be available.
-type Feature string
-
-// Known features with version requirements
-const (
-	FeatureViewEntities       Feature = "ViewEntities"
-	FeatureAssociationStorage Feature = "AssociationStorageFormat"
-	FeatureMPRv2              Feature = "MPRv2Format"
-	FeatureBusinessEvents     Feature = "BusinessEvents"
-	FeatureWorkflows          Feature = "Workflows"
-	FeaturePortableApp        Feature = "PortableApp"
-)
-
-// MinVersion represents a minimum version requirement.
-type MinVersion struct {
-	Major int
-	Minor int
-}
-
-// featureVersions maps features to their minimum required versions.
-// This is the fallback when the YAML registry is unavailable.
-var featureVersions = map[Feature]MinVersion{
-	FeatureViewEntities:       {Major: 10, Minor: 18},
-	FeatureAssociationStorage: {Major: 11, Minor: 0},
-	FeatureMPRv2:              {Major: 10, Minor: 18},
-	FeatureBusinessEvents:     {Major: 10, Minor: 0},
-	FeatureWorkflows:          {Major: 9, Minor: 0},
-	FeaturePortableApp:        {Major: 11, Minor: 6},
-}
+// Removed with the alias: IsSupported, SupportsFeature, Feature and its
+// constants, MinVersion, featureVersions and SupportedVersionRange.
+//
+// They could not survive as methods on an aliased type, and nothing called
+// them — measured, zero references outside their own declarations, in this
+// package or any other. They were also a second, hand-maintained copy of the
+// feature registry: the live one is sdk/versions/mendix-{9,10,11}.yaml, read
+// through checkFeature in mdl/executor/cmd_features.go, and featureVersions
+// described itself as "the fallback when the YAML registry is unavailable" —
+// a fallback with no caller is a list that can only drift.

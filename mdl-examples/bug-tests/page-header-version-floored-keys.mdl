@@ -1,0 +1,52 @@
+-- Version-floored keys in the page and snippet HEADER (follow-up to
+-- mendixlabs/mxcli#1121, which fixed the same defect in a page's parameters).
+--
+-- Measured floors (mendixmodelsdk 4.115.0, Page.versionInfo / Snippet.versionInfo):
+--
+--   Page.Autofocus       11.1.0
+--   Page.Variables       10.17.0
+--   Snippet.Variables    10.17.0
+--
+-- Both were written unconditionally, so a document mxcli created for a Mendix 10
+-- project carried a key that project's metamodel does not declare. mxbuild is not
+-- a safety net: measured on 10.24.25, `mx check` is 0 errors either way.
+--
+-- Run against a Mendix 10.24 project and dump the documents:
+--
+--   mxcli bson dump -p app.mpr --type page    --object "KeyTest.Item_Edit"
+--   mxcli bson dump -p app.mpr --type snippet --object "KeyTest.Sn_Item"
+--
+-- Expected on 10.24 (>= 10.17, < 11.1): NO Autofocus, Variables present.
+-- Before the fix the page carried Autofocus; that is the only difference
+-- between the two documents, and it is what the control run showed.
+CREATE MODULE KeyTest;
+
+CREATE PERSISTENT ENTITY KeyTest.Item (
+  Name: String(200)
+);
+
+CREATE OR REPLACE PAGE KeyTest.Item_Edit (
+  Title: 'Edit item',
+  Layout: Atlas_Core.PopupLayout,
+  Params: { $Item: KeyTest.Item }
+) {
+  layoutgrid lg {
+    row r {
+      column c (DesktopWidth: AutoFill) {
+        dataview dv (DataSource: $Item) {
+          textbox txtName (Label: 'Name', Attribute: Name)
+        }
+      }
+    }
+  }
+}
+
+CREATE OR REPLACE SNIPPET KeyTest.Sn_Item {
+  layoutgrid lg2 {
+    row r2 {
+      column c2 (DesktopWidth: AutoFill) {
+        dynamictext st (Content: 'hello')
+      }
+    }
+  }
+}

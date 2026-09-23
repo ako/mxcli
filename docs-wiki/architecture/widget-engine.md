@@ -6,7 +6,7 @@ sources:
   - sdk/widgets/definitions/loader.go
   - sdk/widgets/definitions/combobox.def.json
   - sdk/widgets/templates/README.md
-  - sdk/mpr/writer_widgets.go
+  - mdl/backend/modelsdk/widget_write.go
   - mdl/executor/cmd_pages_builder_v3_widgets.go
   - docs/03-development/PAGE_BSON_SERIALIZATION.md
   - docs/03-development/WIDGET_BSON_VERSION_COMPATIBILITY.md
@@ -16,7 +16,7 @@ sources:
 
 ## What this is
 
-The machinery that turns a one-line MDL widget statement (e.g. `COMBOBOX myCombo (...)`) into the BSON a Mendix pluggable widget requires. Built-in page widgets are serialized directly by [`writer_widgets.go`](../../sdk/mpr/writer_widgets.go); pluggable widgets (ComboBox, DataGrid2, Gallery, filters) are far harder, because their BSON is a self-referential `type`/`object` pair that Studio Pro validates strictly. The widget engine exists to assemble that pair declaratively instead of by hand.
+The machinery that turns a one-line MDL widget statement (e.g. `COMBOBOX myCombo (...)`) into the BSON a Mendix pluggable widget requires. Built-in page widgets are serialized directly by [`widget_write.go`](../../mdl/backend/modelsdk/widget_write.go); pluggable widgets (ComboBox, DataGrid2, Gallery, filters) are far harder, because their BSON is a self-referential `type`/`object` pair that Studio Pro validates strictly. The widget engine exists to assemble that pair declaratively instead of by hand.
 
 ## How it fits
 

@@ -40,6 +40,7 @@ mxcli lint -p app.mpr --exclude System --exclude Administration
 | MPR005 | quality | ImageSource - IMAGE widgets with no source configured |
 | MPR006 | quality | EmptyContainer - Empty layout containers |
 | MPR007 | security | PageNavigationSecurity - Navigation pages need allowed roles (CE0557) |
+| MPR012 | correctness | LegacyImageWidget - staticimage/dynamicimage are unsupported by the React client (CE0582) |
 | SEC001 | security | NoEntityAccessRules - Persistent entities need access rules |
 | SEC002 | security | WeakPasswordPolicy - Password minimum length should be 8+ |
 | SEC003 | security | DemoUsersActive - Demo users should be off at Production security |

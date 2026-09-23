@@ -1139,3 +1139,53 @@ func (b *Builder) ExitCreateIndexStatement(ctx *parser.CreateIndexStatementConte
 		Index:     &ast.Index{Columns: buildIndexColumns(ctx.IndexAttributeList())},
 	})
 }
+
+// ExitAlterEntitiesStatement handles the bulk form,
+// ALTER ENTITIES [IN <module>] ADD ATTRIBUTE ... [WHERE PERSISTENT|NON-PERSISTENT].
+//
+// Each action is built into an ordinary AlterEntityStmt with an EMPTY Name: the
+// executor resolves the target set and fills the name in per entity, so a bulk
+// add and a single add run the identical code path and cannot diverge.
+func (b *Builder) ExitAlterEntitiesStatement(ctx *parser.AlterEntitiesStatementContext) {
+	stmt := &ast.AlterEntitiesStmt{}
+
+	if mod := ctx.IdentifierOrKeyword(); mod != nil {
+		stmt.Module = unquoteIdentifier(mod.GetText())
+	}
+
+	if f := ctx.EntityPersistenceFilter(); f != nil {
+		fc := f.(*parser.EntityPersistenceFilterContext)
+		switch {
+		case fc.NON_PERSISTENT() != nil:
+			stmt.Filter = ast.EntityFilterNonPersistent
+		case fc.PERSISTENT() != nil:
+			stmt.Filter = ast.EntityFilterPersistent
+		}
+	}
+
+	for _, act := range ctx.AllAlterEntitiesAction() {
+		ac := act.(*parser.AlterEntitiesActionContext)
+		attrDef := ac.AttributeDefinition()
+		if attrDef == nil {
+			continue
+		}
+		attr := buildSingleAttribute(attrDef.(*parser.AttributeDefinitionContext))
+		if attr == nil {
+			continue
+		}
+		if attr.Documentation == "" {
+			if docCtx := ac.DocComment(); docCtx != nil {
+				attr.Documentation = extractDocComment(docCtx.GetText())
+			}
+		}
+		stmt.Actions = append(stmt.Actions, &ast.AlterEntityStmt{
+			Operation:   ast.AlterEntityAddAttribute,
+			Attribute:   attr,
+			IfNotExists: ac.IfNotExists() != nil,
+		})
+	}
+
+	if len(stmt.Actions) > 0 {
+		b.statements = append(b.statements, stmt)
+	}
+}

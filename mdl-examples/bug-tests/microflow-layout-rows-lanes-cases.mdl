@@ -1,0 +1,112 @@
+-- Auto-layout of a microflow written with no @position: long main lines, guards
+-- and wide enumeration splits.
+--
+-- Measured on a generated app of 41 microflows (Mendix 11.12.1, mxcli v0.23.0), none
+-- of them carrying an @position: nothing overlapped, and the widest flow was
+-- 6930x160 px - four screens of sideways scrolling. Every guard left 370px of bare
+-- main line above its own branch (40px between any two activities), a merge stood
+-- 120px after its branch, and a 7-case split sent its fourth case out of the split's
+-- LEFT corner and its fifth onwards onto the TOP of their activities, because the
+-- anchor pair was storing the case order.
+--
+-- Open the three flows in Studio Pro after exec:
+--   MF_LayoutLong    wraps onto rows; the joining line runs between the rows
+--   MF_LayoutGuards  each activity after a guard stands in the branch's column
+--   MF_LayoutCases   case lines leave the split top / right / bottom, 2-3-2
+--
+-- mendixlabs/mxcli#1154
+
+CREATE ENUMERATION MyFirstModule.LayoutStatus (
+  NewOrder 'New', Confirmed 'Confirmed', InProgress 'In progress', Shipped 'Shipped',
+  Delivered 'Delivered', Invoiced 'Invoiced'
+);
+
+CREATE MICROFLOW MyFirstModule.MF_LayoutLong ()
+BEGIN
+  LOG INFO 'step 1';
+  LOG INFO 'step 2';
+  LOG INFO 'step 3';
+  LOG INFO 'step 4';
+  LOG INFO 'step 5';
+  LOG INFO 'step 6';
+  LOG INFO 'step 7';
+  LOG INFO 'step 8';
+  LOG INFO 'step 9';
+  LOG INFO 'step 10';
+  LOG INFO 'step 11';
+  LOG INFO 'step 12';
+  LOG INFO 'step 13';
+  LOG INFO 'step 14';
+  LOG INFO 'step 15';
+  LOG INFO 'step 16';
+  LOG INFO 'step 17';
+  LOG INFO 'step 18';
+  LOG INFO 'step 19';
+  LOG INFO 'step 20';
+  LOG INFO 'step 21';
+  LOG INFO 'step 22';
+  LOG INFO 'step 23';
+  LOG INFO 'step 24';
+  LOG INFO 'step 25';
+  LOG INFO 'step 26';
+  LOG INFO 'step 27';
+  LOG INFO 'step 28';
+  LOG INFO 'step 29';
+  LOG INFO 'step 30';
+  LOG INFO 'step 31';
+  LOG INFO 'step 32';
+  LOG INFO 'step 33';
+  LOG INFO 'step 34';
+  LOG INFO 'step 35';
+  LOG INFO 'step 36';
+  LOG INFO 'step 37';
+  LOG INFO 'step 38';
+  LOG INFO 'step 39';
+  LOG INFO 'step 40';
+END;
+/
+
+CREATE MICROFLOW MyFirstModule.MF_LayoutGuards ($Amount: Integer, $Limit: Integer)
+RETURNS Boolean AS $IsAccepted
+BEGIN
+  IF $Amount = 0 THEN
+    LOG WARNING 'nothing to place';
+    RETURN false;
+  END IF;
+  LOG INFO 'amount present';
+  IF $Amount > $Limit THEN
+    LOG WARNING 'over the limit';
+    RETURN false;
+  END IF;
+  IF $Limit < 0 THEN
+    LOG WARNING 'no credit at all';
+    RETURN false;
+  END IF;
+  LOG INFO 'accepted';
+  RETURN true;
+END;
+/
+
+CREATE MICROFLOW MyFirstModule.MF_LayoutCases ($Status: MyFirstModule.LayoutStatus)
+RETURNS String AS $Next
+BEGIN
+  DECLARE $Next String = '';
+  CASE $Status
+    WHEN NewOrder THEN
+      SET $Next = 'Confirmed';
+    WHEN Confirmed THEN
+      SET $Next = 'InProgress';
+    WHEN InProgress THEN
+      SET $Next = 'Shipped';
+    WHEN Shipped THEN
+      SET $Next = 'Delivered';
+    WHEN Delivered THEN
+      SET $Next = 'Invoiced';
+    WHEN Invoiced THEN
+      SET $Next = 'Invoiced';
+    WHEN (empty) THEN
+      SET $Next = 'NewOrder';
+  END CASE;
+  RETURN $Next;
+END;
+/

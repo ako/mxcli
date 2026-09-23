@@ -11,6 +11,7 @@ package executor
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/linter"
@@ -43,4 +44,55 @@ func validatePluggableContentParams(w *ast.WidgetV3, locationPrefix string) []li
 		Suggestion: "Put a numbered placeholder in the text property (e.g. `imageUrl: '{1}'`), or drop " +
 			"the contentparams — a single attribute can also be written inline as `'{AttrName}'`",
 	}}
+}
+
+// validatePluggableTemplateParams reports (MDL-WIDGET21) a `<Name>Params`
+// companion whose own text property carries no `{N}` placeholder to consume it.
+//
+// The companion binds ONE text-template property (#575), so unlike the
+// widget-wide `contentparams:` above there is a specific property to look at:
+// `headerCaptionParams` is consumed by `headerCaption` and by nothing else. A
+// companion written beside a literal caption is the shape the issue was filed
+// for, one step short of the fix — the parameters are dropped and the literal
+// still renders on every row.
+func validatePluggableTemplateParams(w *ast.WidgetV3, locationPrefix string) []linter.Violation {
+	if w == nil {
+		return nil
+	}
+	var out []linter.Violation
+	for _, key := range sortedPropertyKeys(w) {
+		base, ok := strings.CutSuffix(key, "Params")
+		if !ok || base == "" {
+			continue
+		}
+		// ContentParams / CaptionParams are the widget-wide spelling, judged
+		// against every property by the check above.
+		switch strings.ToLower(key) {
+		case "contentparams", "captionparams":
+			continue
+		}
+		raw, ok := lookupProperty(w.Properties, key)
+		if !ok {
+			continue
+		}
+		if params, isParams := raw.([]ast.ParamAssignmentV3); !isParams || len(params) == 0 {
+			continue
+		}
+		text, _ := lookupProperty(w.Properties, base)
+		if s, isStr := text.(string); isStr && numericTemplatePlaceholderRe.MatchString(s) {
+			continue
+		}
+		out = append(out, linter.Violation{
+			RuleID:   "MDL-WIDGET21",
+			Severity: linter.SeverityWarning,
+			Message: fmt.Sprintf(
+				"%s: widget `%s` (%s) has `%s` but `%s` contains no `{1}`-style placeholder to use "+
+					"it, so the binding is dropped on write and the text renders literally",
+				locationPrefix, w.Name, w.Type, key, base,
+			),
+			Suggestion: fmt.Sprintf(
+				"Write the text as a template, e.g. `%s: '{1}', %s: [{1} = <attr>]`", base, key),
+		})
+	}
+	return out
 }

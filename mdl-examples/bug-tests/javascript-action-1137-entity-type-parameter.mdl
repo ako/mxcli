@@ -1,0 +1,38 @@
+-- mendixlabs/mxcli#1137
+-- CALL JAVASCRIPT ACTION with an entity-type parameter produced the wrong BSON
+-- type: Microflows$BasicCodeActionParameterValue { Argument: "<entity>" } where
+-- Studio Pro stores Microflows$EntityTypeCodeActionParameterValue { Entity:
+-- "<entity>" }. The Basic shape leaves the entity picker EMPTY in Studio Pro.
+--
+-- Measured on mxbuild 11.6.6 against testdata/expr-checker/minimal.mpr, the two
+-- variants are:
+--   fixed  -> "The app contains: 0 errors."
+--   faulty -> CE0115 "The arguments that are passed to JavaScript action
+--             'NanoflowCommons.RefreshEntity' do not match the expected
+--             parameters and need to be refreshed."
+-- So `mx check` DOES catch this one. What does not catch it is mxcli itself:
+-- `mxcli check` passes, `exec` reports "Created nanoflow", and DESCRIBE renders
+-- the broken and the correct document as identical MDL — both print
+-- `EntityToRefresh = Administration.Account`. A describe-based round-trip test
+-- therefore cannot detect this; assert on the BSON $Type.
+--
+-- NanoflowCommons.RefreshEntity declares
+--     EntityToRefresh: entity <> not null
+-- i.e. a CodeActions$EntityTypeParameterType — the generic `<>` slot Studio Pro
+-- renders as an entity picker. A parameter typed to a CONCRETE entity (e.g.
+-- NanoflowCommons.TakePicture's `Picture: System.Image`) is a different case:
+-- it takes an object-valued expression and keeps the Basic shape.
+--
+-- Needs an app with the NanoflowCommons module (testdata/expr-checker/minimal.mpr).
+--
+-- Verify after exec:
+--   ./bin/mxcli -p app.mpr -c "describe nanoflow MyFirstModule.ACT_Refresh_NF"
+-- and in the raw BSON the parameter value must carry
+--   "$Type": "Microflows$EntityTypeCodeActionParameterValue"
+--   "Entity": "Administration.Account"
+-- and must NOT carry an "Argument" key.
+
+create or replace nanoflow MyFirstModule.ACT_Refresh_NF ()
+begin
+  call javascript action NanoflowCommons.RefreshEntity (EntityToRefresh = Administration.Account);
+end;

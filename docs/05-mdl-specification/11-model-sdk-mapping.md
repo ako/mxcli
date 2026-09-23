@@ -28,7 +28,8 @@ The modelsdk-go library is organized into packages:
 | `sdk/microflows` | Microflow types (60+ activity types) |
 | `sdk/pages` | Page and widget types (50+ widgets) |
 | `sdk/widgets` | Embedded widget templates for pluggable widgets |
-| `sdk/mpr` | MPR file reading/writing, BSON parsing |
+| `modelsdk/mpr` | MPR file reading/writing |
+| `modelsdk/codec` | BSON encode/decode |
 | `sql` | External database connectivity (PostgreSQL, Oracle, SQL Server) |
 | `mdl/executor` | MDL statement execution engine |
 | `mdl/catalog` | SQLite-based catalog for cross-reference queries |
@@ -697,7 +698,7 @@ The `api/` package provides a simplified builder API as an alternative to direct
 import "github.com/mendixlabs/mxcli/api"
 
 modelAPI := api.New(writer)
-module, _ := modelAPI.Modules.GetModule("Sales")
+module, _ := modelAPI.Modules.Get("Sales")
 modelAPI.SetModule(module)
 
 entity, _ := modelAPI.DomainModels.CreateEntity("Customer").

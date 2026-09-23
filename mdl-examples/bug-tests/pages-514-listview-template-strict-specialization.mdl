@@ -1,0 +1,59 @@
+-- ako/mxcli#514 — a list view template for the list view's OWN entity was
+-- accepted and written, and mxbuild then refused the project.
+--
+-- mxcli already guarded `template for` against an entity that cannot match. The
+-- rule was one case too generous, and its own wording was the bug:
+--
+--     "<X> is not <listEntity> or a specialization of it"
+--                              ^^^^^^^^^^^^^^^^^^^^^^^^^
+--
+-- Mendix requires a STRICT specialization. The list view's own body already
+-- renders an object no template matches, so a template for the base entity is a
+-- second, unreachable default.
+--
+-- Measured on a blank Mendix 11.12.2 project, list view over MyFirstModule.Vehicle:
+--
+--     template for       mxcli check    mxcli exec    mx check
+--     -----------------  -------------  ------------  -----------------------
+--     Car (specialized)  passed         writes        0 errors
+--     Thing (unrelated)  passed         refused       —
+--     Vehicle (its own)  passed         WRITES        CE0543   <- the bug
+--
+--     [CE0543] "The entity of the list view template is 'MyFirstModule.Vehicle'
+--              and this is not a specialization of the entity of the list view."
+--
+-- Still true after the fix, and filed separately in #514: the guard runs at exec,
+-- not at check, so `mxcli check` reports success for all three rows. Nothing is
+-- written in the refused cases, so it is a false green rather than a bad model.
+
+create persistent entity MyFirstModule.Vehicle ( Brand: string(100) );
+create persistent entity MyFirstModule.Car extends MyFirstModule.Vehicle ( Doors: integer );
+
+-- The control. A real specialization builds, and mxbuild reports 0 errors —
+-- without it a guard that refused everything would look like a fix.
+create or replace page MyFirstModule.TplOK (
+  title: 'ok', layout: 'Atlas_Core.Atlas_Default'
+) {
+  listview lvV (DataSource: database from MyFirstModule.Vehicle) {
+    dynamictext dt (Content: 'x')
+    template for MyFirstModule.Car { dynamictext dtc (Content: 'car') }
+  }
+};
+
+-- The bug. Uncomment to see the refusal — it is an exec-time error, so this file
+-- has to keep it commented out for `make check-mdl`, which runs `check` alone:
+--
+-- create or replace page MyFirstModule.TplSame (
+--   title: 'same', layout: 'Atlas_Core.Atlas_Default'
+-- ) {
+--   listview lvV3 (DataSource: database from MyFirstModule.Vehicle) {
+--     dynamictext dt (Content: 'x')
+--     template for MyFirstModule.Vehicle { dynamictext dtv (Content: 'vehicle') }
+--   }
+-- };
+--
+-- After the fix:
+--   Error: failed to build page: failed to build widget: template for
+--   MyFirstModule.Vehicle in list view lvV3: MyFirstModule.Vehicle is the list
+--   view's own entity, and a template must be for a specialization of it — the
+--   list view's own body already renders objects no template matches

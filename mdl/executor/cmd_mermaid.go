@@ -342,7 +342,7 @@ func renderFlowMermaid(ctx *ExecContext, oc *microflows.MicroflowObjectCollectio
 		}
 
 		// Collect detail lines for this node
-		if details := mermaidActivityDetails(obj, entityNames); len(details) > 0 {
+		if details := mermaidActivityDetails(obj, entityNames, describeDefaultLanguage(ctx)); len(details) > 0 {
 			nodeInfo[id] = details
 		}
 	}
@@ -616,10 +616,10 @@ func mermaidActionLabel(a *microflows.ActionActivity, entityNames map[model.ID]s
 
 // mermaidActivityDetails returns detailed property lines for a microflow activity node.
 // These lines are emitted as metadata for the webview to show on expand/click.
-func mermaidActivityDetails(obj microflows.MicroflowObject, entityNames map[model.ID]string) []string {
+func mermaidActivityDetails(obj microflows.MicroflowObject, entityNames map[model.ID]string, lang string) []string {
 	switch a := obj.(type) {
 	case *microflows.ActionActivity:
-		return mermaidActionDetails(a, entityNames)
+		return mermaidActionDetails(a, entityNames, lang)
 	case *microflows.ExclusiveSplit:
 		var lines []string
 		if a.Caption != "" {
@@ -654,7 +654,7 @@ func mermaidActivityDetails(obj microflows.MicroflowObject, entityNames map[mode
 }
 
 // mermaidActionDetails returns detailed property lines for an action activity.
-func mermaidActionDetails(a *microflows.ActionActivity, entityNames map[model.ID]string) []string {
+func mermaidActionDetails(a *microflows.ActionActivity, entityNames map[model.ID]string, lang string) []string {
 	if a.Action == nil {
 		return nil
 	}
@@ -802,7 +802,7 @@ func mermaidActionDetails(a *microflows.ActionActivity, entityNames map[model.ID
 			lines = append(lines, "Type: "+string(act.Type))
 		}
 		if act.Template != nil {
-			if msg := mermaidTextPreview(act.Template); msg != "" {
+			if msg := mermaidTextPreview(act.Template, lang); msg != "" {
 				lines = append(lines, "Message: "+mermaidTruncate(msg, 60))
 			}
 		}
@@ -821,7 +821,7 @@ func mermaidActionDetails(a *microflows.ActionActivity, entityNames map[model.ID
 			lines = append(lines, "Target: "+target)
 		}
 		if act.Template != nil {
-			if msg := mermaidTextPreview(act.Template); msg != "" {
+			if msg := mermaidTextPreview(act.Template, lang); msg != "" {
 				lines = append(lines, "Message: "+mermaidTruncate(msg, 60))
 			}
 		}
@@ -834,7 +834,7 @@ func mermaidActionDetails(a *microflows.ActionActivity, entityNames map[model.ID
 			lines = append(lines, "Node: "+act.LogNodeName)
 		}
 		if act.MessageTemplate != nil {
-			if msg := mermaidTextPreview(act.MessageTemplate); msg != "" {
+			if msg := mermaidTextPreview(act.MessageTemplate, lang); msg != "" {
 				lines = append(lines, "Message: "+mermaidTruncate(msg, 60))
 			}
 		}
@@ -950,21 +950,12 @@ func mermaidMemberName(mc *microflows.MemberChange) string {
 	return name
 }
 
-// mermaidTextPreview extracts the first non-empty translation from a model.Text.
-func mermaidTextPreview(t *model.Text) string {
-	if t == nil {
-		return ""
-	}
-	// Try English first, then any language
-	if msg, ok := t.Translations["en_US"]; ok && msg != "" {
-		return strings.TrimSpace(msg)
-	}
-	for _, msg := range t.Translations {
-		if msg != "" {
-			return strings.TrimSpace(msg)
-		}
-	}
-	return ""
+// mermaidTextPreview renders a model.Text in the project's language. It asked
+// for "en_US" first and then ranged the map, so a Dutch project's diagram was
+// labelled in English when both existed and in a language that changed between
+// runs when neither did (mendixlabs/mxcli#1113).
+func mermaidTextPreview(t *model.Text, lang string) string {
+	return strings.TrimSpace(pickTextTranslation(t, lang))
 }
 
 // mermaidCaseLabel extracts a display label from a CaseValue.

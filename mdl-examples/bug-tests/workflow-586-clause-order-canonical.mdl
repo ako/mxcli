@@ -1,0 +1,121 @@
+-- ako/mxcli#586 — the CONTROL for `workflow-586-clause-order.mdl`.
+--
+-- Same two workflows, every clause in the order the old sequence grammar
+-- demanded: parameter -> display -> description -> export level -> overview
+-- page -> due date -> events, and within a user task page -> targeting -> on
+-- created -> entity -> due date -> description -> outcomes -> boundary event.
+--
+-- This file parsed BEFORE the fix and its sibling did not. Executing the two
+-- against the same project must produce the same model: run one, then the
+-- other, and the second reports `Unchanged workflow: WF586.Review` — the
+-- write-elision of ADR-0008 used as the comparator. A shuffled order that
+-- landed a qualified name on the wrong field would report `Replaced` instead.
+
+create module WF586;
+
+create entity WF586.Request (
+  Status : string(200)
+);
+
+create page WF586.TaskPage (
+  title: 'Task',
+  layout: Atlas_Core.Atlas_Default,
+  params: { $WorkflowUserTask: System.WorkflowUserTask }
+) {
+  layoutgrid g1 {
+    row r1 {
+      column c1 (desktopwidth: 12) {
+        dynamictext txt1 (content: 'Review the request', rendermode: H2)
+      }
+    }
+  }
+}
+/
+
+create page WF586.Overview (
+  title: 'Overview',
+  layout: Atlas_Core.Atlas_Default
+) {
+  layoutgrid g1 {
+    row r1 {
+      column c1 (desktopwidth: 12) {
+        dynamictext txt1 (content: 'Requests', rendermode: H2)
+      }
+    }
+  }
+}
+/
+
+-- Targeting microflow: (System.Workflow, context) -> List of System.User
+create microflow WF586.ACT_GetUsers (
+  $Workflow : System.Workflow,
+  $Context  : WF586.Request
+)
+returns list of System.User as $Users
+begin
+  @position(200,200)
+  retrieve $Users from System.User;
+  @position(400,200) return $Users;
+end;
+/
+
+create microflow WF586.ACT_OnCreated (
+  $WorkflowUserTask : System.WorkflowUserTask,
+  $WorkflowContext  : WF586.Request
+)
+begin
+  @position(200,200) declare $Message String = 'task created';
+end;
+/
+
+create microflow WF586.ACT_OnEvent (
+  $WorkflowEvent            : System.WorkflowEvent,
+  $WorkflowRecord           : System.WorkflowRecord,
+  $WorkflowActivityRecord   : System.WorkflowActivityRecord
+)
+begin
+  @position(200,200) declare $Message String = 'workflow event';
+end;
+/
+
+create microflow WF586.ACT_Audit (
+  $WorkflowContext : WF586.Request
+)
+begin
+  @position(200,200) declare $Message String = 'audited';
+end;
+/
+
+create or replace workflow WF586.Review
+  folder 'Flows'
+  parameter $WorkflowContext: WF586.Request
+  display 'Request review'
+  description 'Reviews a request'
+  export level Hidden
+  overview page WF586.Overview
+  due date '${P2D}'
+  on any workflow event microflow WF586.ACT_OnEvent as 'all events'
+begin
+  user task Review 'Review the request'
+    page WF586.TaskPage
+    targeting microflow WF586.ACT_GetUsers
+    on created microflow WF586.ACT_OnCreated
+    entity WF586.Request
+    due date '${PT4H}'
+    description 'Check the request and decide'
+    outcomes
+      'Approve' { call microflow WF586.ACT_Audit; }
+      'Reject'  { }
+    boundary event interrupting timer '${PT8H}';
+
+  multi user task Confirm 'Confirm the decision'
+    page WF586.TaskPage
+    targeting groups xpath '[Name = ''Administrator'']'
+    due date '${PT2H}'
+    participants 60 percent
+    decide by majority more than half fallback 'Confirmed'
+    await all users
+    outcomes
+      'Confirmed' { };
+end workflow;
+/

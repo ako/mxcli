@@ -20,6 +20,9 @@
     ALTER SETTINGS LANGUAGE REMOVE 'code' 
 
     ALTER SETTINGS WORKFLOWS key = value
+    ALTER SETTINGS WORKFLOWS ADD [OR MODIFY] GROUP 'name' [( Description: 'text' )]
+    ALTER SETTINGS WORKFLOWS MODIFY GROUP 'name' ( Description: 'text' )
+    ALTER SETTINGS WORKFLOWS REMOVE GROUP 'name'
 
 ## Description
 
@@ -34,7 +37,10 @@ Modifies project settings by category. Each category has its own syntax and avai
 **LANGUAGE** settings control localization: the default language code, and the
 list of **enabled** languages — the only ones a build emits translations for.
 
-**WORKFLOWS** settings control the workflow engine, including the user entity used for workflow tasks and default task parallelism.
+**WORKFLOWS** settings control the workflow engine, including the user entity
+used for workflow tasks and default task parallelism, and the **workflow
+groups** — the named buckets under App Settings ▸ Workflows ▸ Groups that a user
+task's group targeting selects from. Groups need Mendix **11.2** or later.
 
 ## Parameters
 
@@ -128,6 +134,38 @@ the run reports how many source strings are affected.
 ```sql
 ALTER SETTINGS WORKFLOWS UserEntity = 'Administration.Account';
 ```
+
+### Manage workflow groups
+
+```sql
+ALTER SETTINGS WORKFLOWS ADD GROUP 'Approvers' (Description: 'Primary approval group');
+ALTER SETTINGS WORKFLOWS ADD GROUP 'Reviewers';
+
+-- the upsert, and what DESCRIBE SETTINGS emits
+ALTER SETTINGS WORKFLOWS ADD OR MODIFY GROUP 'Approvers' (Description: 'Approves budget requests');
+
+-- changes only the options it names
+ALTER SETTINGS WORKFLOWS MODIFY GROUP 'Reviewers' (Description: 'Second-line review');
+
+ALTER SETTINGS WORKFLOWS REMOVE GROUP 'Reviewers';
+```
+
+`Description` is the only option, because a workflow group stores a name and a
+description and nothing else. The **name is the group's identity**, which is what
+`MODIFY` and `REMOVE` address; adding a second group whose name differs only in
+case is refused rather than creating one no statement could address
+unambiguously.
+
+Changing a description keeps the group's stored identity, so the
+`System.WorkflowGroup` row the runtime maintains for it is updated in place —
+group memberships and already-assigned user tasks survive the edit.
+
+`REMOVE` has no dangling reference to check for: nothing in the model points at a
+settings group, since a user task targets groups through a microflow or an XPath
+returning `System.WorkflowGroup` objects. The coupling is at runtime, where the
+removed group's row simply stops being maintained.
+
+List the groups with [`SHOW WORKFLOW GROUPS`](show-settings.md).
 
 ### Set Java version
 

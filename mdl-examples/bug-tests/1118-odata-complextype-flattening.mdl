@@ -1,0 +1,69 @@
+-- Bug mendixlabs/mxcli#1118: CREATE OR MODIFY EXTERNAL ENTITIES FROM silently
+-- drops OData ComplexType properties.
+--
+-- Symptom, verbatim: "mxcli silently discards any OData property whose type is a
+-- ComplexType defined in a different Schema namespace within the same $metadata
+-- document. The attributes are not created in the Mendix entity, and no warning
+-- or error is emitted." Pages and microflows written against the attributes
+-- Studio Pro WOULD have made then fail the build with CE1613.
+--
+-- Cause: mdl/types/edmx.go never parsed <ComplexType> at all, so a property
+-- typed `Shared.Uom.Quantity` was indistinguishable from one of an unknown type,
+-- and createExternalEntities' `if !strings.HasPrefix(p.Type, "Edm.")` dropped it
+-- without a word. The report says "only cross-namespace" — in fact EVERY complex
+-- type was dropped, same namespace or not; nothing named `Edm.*` is complex.
+--
+-- Fix: flatten as Studio Pro does — one attribute per leaf, named
+-- `<property>_<leaf>`, read over the OData path `<property>/<leaf>`.
+--
+-- Measured on mxbuild 11.12.1, three copies of one project:
+--
+--   RemoteName 'MaxQty/UoMNId'       -> The app contains: 0 errors.
+--   RemoteName 'MaxQty_UoMNId'       -> 4 x CE6615 "does not exist in the OData service"
+--   RemoteName 'MaxQty_ZZNOTAPATH_…' -> 4 x CE6615
+--
+-- and the pre-fix control (attributes simply absent) -> 0 errors, which is why
+-- the loss was invisible until something referenced them.
+--
+-- Three things a complex type carries that are NOT importable — each measured
+-- against the live TripPin contract in doctype-tests/10-odata-examples.mdl, and
+-- each now reported by name rather than dropped:
+--
+--   inherited properties      CE6615  (AirportLocation derives from Location;
+--                                      its inherited Address is unreachable,
+--                                      while Person.HomeAddress/Address is not)
+--   Edm.GeographyPoint etc.   CE6622  "type ... is not supported"
+--   complex within complex    (flattening is one level deep)
+--
+-- And two capability rules: a flattened attribute is never creatable/updatable,
+-- and is filterable/sortable only where its entity has an entity set — CE6630
+-- fires in BOTH directions, so neither blanket answer works.
+--
+-- Run it:
+--   cp mdl-examples/odata-local-metadata/complextype-metadata.xml /path/to/app/
+--   mxcli exec 1118-odata-complextype-flattening.mdl -p app.mpr
+
+create module Issue1118;
+create module role Issue1118.User;
+
+create constant Issue1118.SvcUrl
+  type string
+  default 'https://example.com/odata/v4/App/';
+
+create odata client Issue1118.App (
+  ODataVersion: 'OData4',
+  MetadataUrl: './complextype-metadata.xml',
+  ServiceUrl: '@Issue1118.SvcUrl'
+);
+
+-- The contract's own view: MaxQty/MaxWeight must appear FLATTENED here, not as
+-- `String(200)` — the lossy catch-all the report calls out.
+describe contract entity Issue1118.App.Definition;
+
+create or modify external entities from Issue1118.App into Issue1118 entities (Definition);
+
+-- Expect DefinitionId plus six flattened attributes:
+--   MaxQty_UoMNId: String(40),  MaxQty_QuantityValue: Decimal,
+--   MaxWeight_UoMNId: String(40), MaxWeight_QuantityValue: Decimal
+-- Before the fix this listed DefinitionId and nothing else.
+describe entity Issue1118.Definition;

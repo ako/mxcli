@@ -1,0 +1,75 @@
+-- ako/mxcli#520 — UPDATE WIDGETS reported success after every assignment failed.
+--
+-- It counted widgets it FOUND, not assignments that SUCCEEDED. Measured on a
+-- blank Mendix 11.12.2 project with two Data grid 2 widgets:
+--
+--     Found 2 widget(s) in 2 container(s) matching the criteria
+--       Warning: Failed to set 'Compact' on dgA: pluggable property "Compact" not found
+--       Warning: Failed to set 'Striped' on dgA: pluggable property "Striped" not found
+--       …same for dgB…
+--     Updated 2 widget(s)
+--     Note: Run 'refresh catalog full force' to update the catalog with changes.
+--
+-- Four failures out of four, then "Updated 2" and an instruction to pick up
+-- changes that did not exist. `describe styling` afterwards: "No styled widgets
+-- found". Exit code 0.
+--
+-- After the fix:
+--
+--     Updated 0 widget(s)
+--     2 widget(s) matched but had no property that could be set
+--     Error: no widget was updated: 4 assignment(s) could not be applied. A design
+--     property (Atlas styling) is not a pluggable widget property and cannot be set
+--     this way — see `mxcli syntax page.styling`
+--     exit 1
+--
+-- The DRY RUN told the same lie one step earlier, which matters more because the
+-- syntax help says to run it first. It now attempts the assignments against a
+-- discardable copy of the document (pagemutator.Probe, the same mechanism
+-- `mxcli check` uses for ALTER PAGE SET) and reports "Cannot set" / "Would
+-- update 0".
+--
+-- Severity was bounded and worth recording: nothing was corrupted. The rebuilt
+-- document was semantically identical, so idempotent-write elision (ADR-0008)
+-- skipped it — no mprcontents/ unit changed mtime and `mx check` stayed at 0
+-- errors. A reporting defect, not a data one.
+--
+-- Why 'Compact'/'Striped' cannot be set this way: they are Data grid 2's Atlas
+-- DESIGN properties, stored in Appearance.DesignProperties, and
+-- SetWidgetProperty reaches only the pluggable property bag. That capability gap
+-- is ako/mxcli#515. This issue was only about reporting the outcome truthfully.
+
+create persistent entity MyFirstModule.Vehicle (
+  Brand: string(100),
+  Model: string(100)
+);
+
+create or replace page MyFirstModule.GridA (
+  title: 'A', layout: 'Atlas_Core.Atlas_Default'
+) {
+  datagrid dgA (DataSource: database from MyFirstModule.Vehicle) {
+    column colBrand (Attribute: Brand, Caption: 'Brand')
+  }
+};
+
+-- The control: a property the widget really has. Reports `Updated 1 widget(s)`,
+-- writes, and `describe page` reads back `PageSize: 25`.
+update widgets
+  set 'pageSize' = 25
+  where WidgetType like '%datagrid.Datagrid%'
+  in MyFirstModule;
+
+-- The bug, kept commented because `make check-mdl` runs `check` with no project
+-- and this one needs a catalog:
+--
+--   update widgets
+--     set 'Compact' = true, 'Striped' = true
+--     where WidgetType like '%datagrid.Datagrid%'
+--     in MyFirstModule;
+--   -> Updated 0 widget(s) / 2 matched but had no property that could be set / exit 1
+--
+-- Adjacent, and not a bug: `like '%datagrid%'` (without `.Datagrid`) matches 20
+-- widgets in 6 containers on a blank project, because it sweeps in
+-- DatagridTextFilter, DatagridDateFilter and DatagridDropdownFilter. That is the
+-- predicate doing what it was asked, and is why #515 proposes selecting by the
+-- MDL keyword instead.

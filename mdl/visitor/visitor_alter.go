@@ -18,6 +18,10 @@ func (b *Builder) ExitAlterStatement(ctx *parser.AlterStatementContext) {
 	}
 
 	// Handle ALTER PAGES … SET LAYOUT (the bulk repoint)
+	if sub := ctx.AlterPagesStylingStatement(); sub != nil {
+		b.exitAlterPagesStylingStatement(sub.(*parser.AlterPagesStylingStatementContext))
+		return
+	}
 	if sub := ctx.AlterPagesLayoutStatement(); sub != nil {
 		b.exitAlterPagesLayoutStatement(sub.(*parser.AlterPagesLayoutStatementContext))
 		return

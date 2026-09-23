@@ -171,10 +171,16 @@ func describeContractEntity(ctx *ExecContext, name ast.QualifiedName, format str
 	}
 	fmt.Fprintln(ctx.Output)
 
-	// Properties
+	// Properties, with complex types expanded the way an import would expand
+	// them. Reporting `MaxQty  Shared.Uom.Quantity` — or, in the MDL form,
+	// `MaxQty: String(200)` from edmToMendixType's catch-all — describes an
+	// attribute that cannot exist and hides the ones that will
+	// (mendixlabs/mxcli#1118).
+	props, unsupported := doc.FlattenProperties(et.Properties)
+
 	nameWidth := len("Property")
 	typeWidth := len("Type")
-	for _, p := range et.Properties {
+	for _, p := range props {
 		if len(p.Name) > nameWidth {
 			nameWidth = len(p.Name)
 		}
@@ -186,12 +192,19 @@ func describeContractEntity(ctx *ExecContext, name ast.QualifiedName, format str
 
 	fmt.Fprintf(ctx.Output, "  %-*s  %-*s  %s\n", nameWidth, "Property", typeWidth, "Type", "Nullable")
 	fmt.Fprintf(ctx.Output, "  %s  %s  %s\n", strings.Repeat("-", nameWidth), strings.Repeat("-", typeWidth), "--------")
-	for _, p := range et.Properties {
+	for _, p := range props {
 		nullable := "Yes"
 		if p.Nullable != nil && !*p.Nullable {
 			nullable = "No"
 		}
 		fmt.Fprintf(ctx.Output, "  %-*s  %-*s  %s\n", nameWidth, p.Name, typeWidth, formatEdmType(p), nullable)
+	}
+	if len(unsupported) > 0 {
+		fmt.Fprintln(ctx.Output)
+		fmt.Fprintln(ctx.Output, "  Not importable as attributes:")
+		for _, u := range unsupported {
+			fmt.Fprintf(ctx.Output, "    %s\n", u)
+		}
 	}
 
 	// Navigation properties
@@ -287,7 +300,8 @@ func outputContractEntityMDL(ctx *ExecContext, et *types.EdmEntityType, svcQN st
 	fmt.Fprintln(ctx.Output, ")")
 	fmt.Fprintln(ctx.Output, "(")
 
-	for i, p := range et.Properties {
+	props, _ := doc.FlattenProperties(et.Properties)
+	for i, p := range props {
 		// Skip ID properties that are not real attributes
 		isKey := false
 		for _, k := range et.KeyProperties {
@@ -305,13 +319,13 @@ func outputContractEntityMDL(ctx *ExecContext, et *types.EdmEntityType, svcQN st
 		attrName := attrNameForOData(p.Name, et.Name)
 		mendixType := edmToMendixType(p)
 		comma := ","
-		if i == len(et.Properties)-1 {
+		if i == len(props)-1 {
 			comma = ""
 		}
 		// When the OData property name was renamed (reserved word), show the
 		// original OData name as a comment so the user knows the mapping.
-		if attrName != p.Name {
-			fmt.Fprintf(ctx.Output, "    -- OData property: %s\n", p.Name)
+		if attrName != p.Path() {
+			fmt.Fprintf(ctx.Output, "    -- OData property: %s\n", p.Path())
 		}
 		fmt.Fprintf(ctx.Output, "    %s: %s%s\n", attrName, mendixType, comma)
 	}
@@ -532,6 +546,12 @@ func createExternalEntities(ctx *ExecContext, s *ast.CreateExternalEntitiesStmt)
 	// Reported at the end so the local name never silently diverges from the
 	// contract; the mapping still points at the remote property either way.
 	var renamed []string
+	// Contract properties that could not become attributes, with the reason.
+	// Reported at the end: an import that drops a property and reports success
+	// is indistinguishable from one that had nothing to drop, which is how a
+	// whole set of ComplexType properties went missing unnoticed until a page
+	// referencing them failed to build (mendixlabs/mxcli#1118).
+	var dropped []string
 
 	for _, schema := range doc.Schemas {
 		for _, et := range schema.EntityTypes {
@@ -556,6 +576,18 @@ func createExternalEntities(ctx *ExecContext, s *ast.CreateExternalEntitiesStmt)
 
 			// Resolve the merged property and key set by walking the BaseType chain.
 			mergedProps, keyProps := mergedPropertiesWithKey(et, typeByQualified)
+
+			// Expand complex-typed properties into one attribute per leaf, the
+			// way Studio Pro imports them (MaxQty -> MaxQty_UoMNId,
+			// MaxQty_QuantityValue). Without this every such property fell
+			// through the `!strings.HasPrefix(p.Type, "Edm.")` drop below and
+			// vanished without a word, and the loss surfaced much later as
+			// CE1613 on a page written against the attributes Studio Pro would
+			// have made (mendixlabs/mxcli#1118).
+			flatProps, nestedComplex := doc.FlattenProperties(mergedProps)
+			for _, u := range nestedComplex {
+				dropped = append(dropped, fmt.Sprintf("%s.%s", mendixName, u))
+			}
 
 			keyPropSet := make(map[string]bool)
 			for _, k := range keyProps {
@@ -594,17 +626,47 @@ func createExternalEntities(ctx *ExecContext, s *ast.CreateExternalEntitiesStmt)
 			// write flow. (The earlier permissive default regressed this; the
 			// service that motivated #729 was a narrower ETag/Concurrency case.)
 			defaultCreatable := false
-			defaultUpdatable := false
 			if !isTopLevel {
 				defaultCreatable = true
-				defaultUpdatable = true
 			}
 			if entitySet != nil && entitySet.Insertable != nil {
 				defaultCreatable = *entitySet.Insertable
 			}
-			if entitySet != nil && entitySet.Updatable != nil {
-				defaultUpdatable = *entitySet.Updatable
-			}
+
+			// Updatable does NOT follow UpdateRestrictions, and that asymmetry
+			// with Creatable right above it is the whole of this rule: NO
+			// attribute of a top-level entity is updatable, and EVERY attribute
+			// of a non-top-level one is, because the latter is written through
+			// its parent's flow.
+			//
+			// Measured on mxbuild 11.12.1 across ten contract shapes, each a
+			// top-level set mxbuild reads as updatable and each answering
+			// False — inline <Record>, typed <Record Type=…>,
+			// UpdateMethod=PATCH, +NonUpdatableProperties +DeleteRestrictions,
+			// unannotated, external <Annotations Target=…>,
+			// Core.Permissions/ReadWrite, Core.OptimisticConcurrency (ETag),
+			// DeepUpdateSupport/Supported=true, and NonUpdatableProperties
+			// naming ONLY the key. That last one is what closes it: the service
+			// lists `Id` as the sole non-updatable property, i.e. asserts that
+			// the others ARE updatable, and mxbuild still says False. Following
+			// the annotation is one CE6630 per attribute.
+			//
+			// It is not "the entity is read-only" — Creatable follows
+			// Insertable on the very same attributes. It is not the model's
+			// "allow creating and changing objects locally" either: setting
+			// AllowCreateChangeLocally=Yes left the expectation at False. An
+			// external object can be changed in memory and passed to an
+			// external action, which is what that flag governs; this one
+			// mirrors what the endpoint itself accepts.
+			//
+			// entitySet.Updatable and NonUpdatableProperties are therefore read
+			// but never consulted here. They are left in place deliberately: if
+			// a contract is ever found that mxbuild does treat as updatable,
+			// this is where the per-property list becomes load-bearing again —
+			// and the key would then need its own guard, since mxbuild computes
+			// a top-level key as non-updatable independently (one CE6630 per
+			// key part, measured across the same ten shapes).
+			defaultUpdatable := !isTopLevel
 			nonInsertable := make(map[string]bool)
 			nonUpdatable := make(map[string]bool)
 			// Filter/Sort restrictions name the properties the service refuses to
@@ -626,32 +688,97 @@ func createExternalEntities(ctx *ExecContext, s *ast.CreateExternalEntitiesStmt)
 				}
 			}
 
-			// Build attributes from merged properties
+			// Build attributes from the flattened property set
 			var attrs []*domainmodel.Attribute
-			for _, p := range mergedProps {
+			for _, p := range flatProps {
 				// Drop collection-of-primitive — handled separately as primitive
-				// collection NPEs (not yet implemented).
+				// collection NPEs below.
 				if strings.HasPrefix(p.Type, "Collection(") {
 					continue
 				}
-				// Drop non-Edm types (complex types and entity refs) — they need
-				// to be modelled as NPEs/associations, not implemented yet.
+				// Anything still not an Edm type after the flatten is an entity
+				// reference, an enum, or a complex type this document does not
+				// declare. None of them can become an attribute — but say so:
+				// silence here is what made mendixlabs/mxcli#1118 cost a build to discover.
 				if !strings.HasPrefix(p.Type, "Edm.") {
+					dropped = append(dropped, fmt.Sprintf("%s.%s (%s) — not a supported attribute type", mendixName, p.Path(), p.Type))
 					continue
 				}
 				// Drop Edm.Duration — Mendix has no native duration type and
 				// Studio Pro skips these properties.
 				if p.Type == "Edm.Duration" {
+					dropped = append(dropped, fmt.Sprintf("%s.%s (Edm.Duration) — Mendix has no duration type; Studio Pro skips it too", mendixName, p.Path()))
 					continue
 				}
 
+				// Contract-side lookups key on the property PATH, which is what
+				// the service names in a PropertyPath annotation and what a
+				// $filter would address: "MaxQty/QuantityValue", not the local
+				// attribute name.
+				remoteName := p.Path()
+
+				isKey := keyPropSet[p.Name]
+
 				creatable := defaultCreatable
 				updatable := defaultUpdatable
-				if nonInsertable[p.Name] || p.Computed {
+				if nonInsertable[remoteName] || p.Computed {
 					creatable = false
 				}
-				if nonUpdatable[p.Name] || p.Computed || p.Immutable {
+				if nonUpdatable[remoteName] || p.Computed || p.Immutable {
 					updatable = false
+				}
+				// The key of a top-level entity is non-updatable for a reason
+				// of its own — a key cannot be changed after the object exists,
+				// which is the symptom that was reported ("'DefinitionId' is
+				// marked Updatable=False in the OData service, but True in the
+				// app") — but it needs no guard here, because defaultUpdatable
+				// already answers false for every top-level attribute. On a
+				// NON-top-level entity the key goes the other way and must stay
+				// updatable: clearing it there is CE6630 inverted, measured on
+				// the live TripPin contract over Trip, PlanItem, Event, Flight,
+				// PublicTransportation, Employee and Manager. `UserName` is the
+				// two-sided control inside that one document — False on Person
+				// (an entity set), True on Employee and Manager (derived).
+				// A property reached through a complex type carries NONE of the
+				// four capabilities, whatever the entity set says.
+				//
+				// Creatable/Updatable follow "External entities that contain
+				// attributes of complex types can only be read or deleted. They
+				// cannot be created, updated, or used in external actions"
+				// (Consumed OData Service Requirements), measured on 11.12.1
+				// against a contract annotated Insertable=true AND
+				// Updatable=true: Mendix still reports them Creatable=False /
+				// Updatable=False, so following the entity set is two CE6630 per
+				// attribute.
+				//
+				// Filterable/Sortable go the same way, but ONLY on an entity
+				// with no entity set. A flattened attribute is queryable exactly
+				// where its entity is: measured on TripPin (11.12.1), which
+				// carries no capability annotations at all, Mendix reports
+				//
+				//	Person   (entity set People)      HomeAddress_Address  True
+				//	Employee (derived, no entity set) HomeAddress_Address  False
+				//	Manager  (derived, no entity set) BossOffice_Address   False
+				//	Event    (derived, no entity set) OccursAt_BuildingInfo False
+				//
+				// so CE6630 fires in BOTH directions and a blanket answer cannot
+				// be right: stamping false everywhere is "marked Filterable=True
+				// in the OData service, but False in the app" on People, and
+				// leaving the default true is the same sentence inverted on the
+				// other three. Manager.BossOffice is Manager's OWN property, so
+				// the split is the entity set, not inheritance.
+				//
+				// Ordinary attributes of a derived type stay filterable — this
+				// is a property of the flattening, not of derived types.
+				filterable := entitySet.AttrFilterable(remoteName)
+				sortable := entitySet.AttrSortable(remoteName)
+				if p.RemotePath != "" {
+					creatable = false
+					updatable = false
+					if !isTopLevel {
+						filterable = false
+						sortable = false
+					}
 				}
 
 				attrName := attrNameForOData(p.Name, et.Name)
@@ -663,11 +790,11 @@ func createExternalEntities(ctx *ExecContext, s *ast.CreateExternalEntitiesStmt)
 				}
 				attr := &domainmodel.Attribute{
 					Name:       attrName,
-					Type:       edmToDomainModelAttrType(p, keyPropSet[p.Name]),
-					RemoteName: p.Name,
+					Type:       edmToDomainModelAttrType(p, isKey),
+					RemoteName: remoteName,
 					RemoteType: p.Type,
-					Filterable: entitySet.AttrFilterable(p.Name),
-					Sortable:   entitySet.AttrSortable(p.Name),
+					Filterable: filterable,
+					Sortable:   sortable,
 					Creatable:  creatable,
 					Updatable:  updatable,
 				}
@@ -743,6 +870,14 @@ func createExternalEntities(ctx *ExecContext, s *ast.CreateExternalEntitiesStmt)
 
 	fmt.Fprintf(ctx.Output, "\nFrom %s into %s: %d created, %d updated, %d skipped, %d failed\n",
 		svcQN, targetModule, created, updated, skipped, failed)
+
+	if len(dropped) > 0 {
+		sort.Strings(dropped)
+		fmt.Fprintf(ctx.Output, "\n  %d contract propert(y/ies) could not be imported as attributes:\n", len(dropped))
+		for _, d := range dropped {
+			fmt.Fprintf(ctx.Output, "    %s\n", d)
+		}
+	}
 
 	if len(renamed) > 0 {
 		sort.Strings(renamed)

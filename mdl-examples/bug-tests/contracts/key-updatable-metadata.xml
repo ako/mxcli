@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
+  <edmx:DataServices>
+    <Schema Namespace="App.Model" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+      <EntityType Name="Definition">
+        <Key><PropertyRef Name="Id"/></Key>
+        <Property Name="Id" Type="Edm.String" Nullable="false" MaxLength="36"/>
+        <Property Name="Label" Type="Edm.String" MaxLength="100"/>
+      </EntityType>
+      <EntityContainer Name="Container">
+        <EntitySet Name="Definition" EntityType="App.Model.Definition">
+          <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+            <Record><PropertyValue Property="Insertable" Bool="true"/></Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+            <Record><PropertyValue Property="Updatable" Bool="true"/></Record>
+          </Annotation>
+        </EntitySet>
+      </EntityContainer>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

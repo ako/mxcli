@@ -140,12 +140,56 @@ func (m *Mutator) SetWidgetDataSource(widgetRef string, ds pages.DataSource) err
 		ds = &resolved
 	}
 
+	if err := databaseSourceRefusal(result.widget, ds); err != nil {
+		return err
+	}
+
 	serialized := serializeDataSourceBson(ds)
 	if serialized == nil {
 		return fmt.Errorf("unsupported DataSource type %T", ds)
 	}
 	bsonnav.DSet(result.widget, "DataSource", serialized)
 	return nil
+}
+
+// databaseSourceRefusal turns away `set DataSource = DATABASE …`, which this
+// setter cannot write correctly for any widget (#1032).
+//
+// A DATABASE source is not one element but several, chosen by the widget that
+// holds it: Forms$ListViewXPathSource on a list view,
+// CustomWidgets$CustomWidgetXPathSource on a pluggable widget,
+// Forms$GridXPathSource on a grid — each with its own sort bar and search
+// sub-elements. A DATA VIEW has no database form at all, which is why the CREATE
+// PAGE builder refuses that pairing outright.
+//
+// One mapping stood in for all of them and wrote a Forms$DataViewSource — the
+// "data from context" source — with the entity in EntityRef and SourceVariable
+// left null. Nothing rejected it: `exec` reported success, DESCRIBE read it back
+// as no datasource at all (the context reader needs a SourceVariable), and the
+// first signal was CE7007 from mxbuild, naming the widget rather than the
+// statement that broke it.
+//
+// Refusing is what the two reads agree on. Rebuilding the shapes here would be a
+// second copy of listViewSourceToGen and friends in a second currency — the
+// drift CLAUDE.md's duplicate-resolver rule is about — while REPLACE already
+// reaches the one that exists, by rebuilding the widget through CREATE PAGE.
+func databaseSourceRefusal(widget bson.D, ds pages.DataSource) error {
+	if _, ok := ds.(*pages.DatabaseSource); !ok {
+		return nil
+	}
+	if bsonnav.DGetString(widget, "$Type") == "Forms$DataView" {
+		// Not "use replace": REPLACE goes through the same CREATE PAGE builder,
+		// which refuses a database source on a data view as well. Naming it
+		// would send the author down a dead end.
+		return fmt.Errorf("a data view cannot take a database datasource — a data view binds to a " +
+			"single object, so its source is a context parameter (`$Param`), a microflow, a nanoflow " +
+			"or `selection <widget>`; to show the result of a database query, use a list view or a " +
+			"data grid instead")
+	}
+	return fmt.Errorf("setting a database datasource on %q (%s) is not supported by `set` — "+
+		"its stored shape depends on the widget and is built by the CREATE PAGE path; "+
+		"use `replace <widget> with …` instead, which rebuilds the widget through that path",
+		bsonnav.DGetString(widget, "Name"), widgetTypeName(widget))
 }
 
 // SetWidgetAction retargets the on-click action of an existing widget.
@@ -175,6 +219,91 @@ func (m *Mutator) SetWidgetAction(widgetRef string, action pages.ClientAction) e
 	}
 	bsonnav.DSet(result.widget, "Action", serialized)
 	return nil
+}
+
+// SetWidgetNamedAction writes an action into a pluggable widget's action slot
+// addressed by the widget's own property key — the ALTER-level twin of CREATE
+// PAGE's `createFileAction: microflow M.F` (#956), so one mis-wired slot can be
+// retargeted without REPLACEing the widget and restating everything else
+// (mendixlabs/mxcli#995). It writes the same Value.Action field
+// widgetobj.Builder.SetAction does.
+//
+// The property TYPE decides, not the presence of the field: every stored
+// WidgetValue carries an Action (a NoAction by default) whatever its type, so
+// writing one into an Integer property would build clean and do nothing.
+func (m *Mutator) SetWidgetNamedAction(widgetRef, propertyKey string, action pages.ClientAction) error {
+	result := m.widgetFinder(m.rawData, widgetRef)
+	if result == nil {
+		return m.widgetNotFoundError(widgetRef)
+	}
+	obj := bsonnav.DGetDoc(result.widget, "Object")
+	if obj == nil {
+		return fmt.Errorf("widget %q (%s) is not a pluggable widget and has no named action slots — "+
+			"a built-in widget's click action is set with `set Action = … on %s`",
+			widgetRef, widgetTypeName(result.widget), widgetRef)
+	}
+
+	keys, kinds := pluggablePropertyTypes(result.widget)
+	var actionSlots []string
+	for id, key := range keys {
+		if kinds[id] == "Action" {
+			actionSlots = append(actionSlots, key)
+		}
+	}
+	sort.Strings(actionSlots)
+
+	for _, prop := range bsonnav.DGetArrayElements(bsonnav.DGet(obj, "Properties")) {
+		propDoc, ok := prop.(bson.D)
+		if !ok {
+			continue
+		}
+		id := bsonnav.ExtractBinaryIDFromDoc(bsonnav.DGet(propDoc, "TypePointer"))
+		if key := keys[id]; key == "" || !strings.EqualFold(key, propertyKey) {
+			continue
+		}
+		if kinds[id] != "Action" {
+			return fmt.Errorf("property %q of widget %q has type %s, not Action — "+
+				"its action slots are: %s", propertyKey, widgetRef, kinds[id], slotList(actionSlots))
+		}
+		valDoc := bsonnav.DGetDoc(propDoc, "Value")
+		if valDoc == nil {
+			return fmt.Errorf("property %q has no Value map", propertyKey)
+		}
+		serialized := m.deps.SerializeClientAction(action)
+		if serialized == nil {
+			return fmt.Errorf("unsupported action type %T", action)
+		}
+		bsonnav.DSet(valDoc, "Action", serialized)
+		return nil
+	}
+	return fmt.Errorf("widget %q has no action slot %q — its action slots are: %s",
+		widgetRef, propertyKey, slotList(actionSlots))
+}
+
+// pluggablePropertyTypes maps a pluggable widget's PropertyType IDs to their
+// keys and to their value types ("Action", "Integer", …).
+func pluggablePropertyTypes(widget bson.D) (keys, kinds map[string]string) {
+	keys = buildPropKeyMap(widget)
+	kinds = make(map[string]string, len(keys))
+	objType := bsonnav.DGetDoc(bsonnav.DGetDoc(widget, "Type"), "ObjectType")
+	for _, pt := range bsonnav.DGetArrayElements(bsonnav.DGet(objType, "PropertyTypes")) {
+		ptDoc, ok := pt.(bson.D)
+		if !ok {
+			continue
+		}
+		id := bsonnav.ExtractBinaryIDFromDoc(bsonnav.DGet(ptDoc, "$ID"))
+		if vt := bsonnav.DGetDoc(ptDoc, "ValueType"); vt != nil && id != "" {
+			kinds[id] = bsonnav.DGetString(vt, "Type")
+		}
+	}
+	return keys, kinds
+}
+
+func slotList(slots []string) string {
+	if len(slots) == 0 {
+		return "(none)"
+	}
+	return strings.Join(slots, ", ")
 }
 
 // widgetTypeName reports a widget's $Type for error messages, or "unknown type".
@@ -2321,6 +2450,25 @@ func applyPageLevelSetMut(rawData bson.D, prop string, value any) (bson.D, error
 	case "Url":
 		strVal, _ := value.(string)
 		rawData = dSetOrAppend(rawData, "Url", strVal)
+	case "Documentation":
+		// A plain top-level string, the same shape as Url, and declared on
+		// Page, Layout and Snippet alike — all three reach this function
+		// through SetWidgetProperty(""), so one case covers them.
+		//
+		// Without it, documenting an existing page meant re-running its CREATE
+		// (the doc comment is the only other source), which for a real page
+		// means re-emitting its whole widget tree through a describe → exec
+		// round trip that is only as complete as what MDL can spell
+		// (ako/mxcli#527).
+		//
+		// An empty string is stored rather than rejected: removing a doc
+		// comment from a script has to be expressible, and the property is a
+		// bare string with no unset value.
+		strVal, ok := value.(string)
+		if !ok {
+			return rawData, fmt.Errorf("Documentation value must be a string")
+		}
+		rawData = dSetOrAppend(rawData, "Documentation", strVal)
 	case "PopupWidth", "PopupHeight":
 		// Pop-up dimensions live at the top level of the Forms$Page document and
 		// are stored as int64 (matching what Studio Pro and the legacy writer
@@ -2359,7 +2507,8 @@ func applyPageLevelSetMut(rawData bson.D, prop string, value any) (bson.D, error
 		}
 	default:
 		return rawData, fmt.Errorf("unsupported page-level property: %s "+
-			"(supported: Title, Url, PopupWidth, PopupHeight, PopupResizable, PopupCloseAction, Class, Style)", prop)
+			"(supported: Title, Url, Documentation, PopupWidth, PopupHeight, PopupResizable, "+
+			"PopupCloseAction, Class, Style)", prop)
 	}
 	return rawData, nil
 }
@@ -2786,7 +2935,7 @@ func setWidgetAttributeRefMut(widget bson.D, value any) error {
 func setPluggableWidgetPropertyMut(widget bson.D, propName string, value any) error {
 	obj := bsonnav.DGetDoc(widget, "Object")
 	if obj == nil {
-		return fmt.Errorf("property %q not found (widget has no pluggable Object)", propName)
+		return noPluggableObjectError(widget, propName)
 	}
 
 	// The same derivation buildPropKeyMap does, and it used to be spelled out a
@@ -2828,6 +2977,38 @@ func setPluggableWidgetPropertyMut(widget bson.D, propName string, value any) er
 		return fmt.Errorf("property %q has no Value map", propName)
 	}
 	return fmt.Errorf("pluggable property %q not found", propName)
+}
+
+// noPluggableObjectError explains a SET that reached the pluggable fallback on a
+// widget that has no pluggable Object — i.e. a built-in one, whose vocabulary is
+// setRawWidgetPropertyMut's switch and nothing else.
+//
+// The message used to be "property %q not found (widget has no pluggable
+// Object)". That is true and unusable: "pluggable Object" is not something the
+// author wrote, and it was not the whole truth either — an Atlas design property
+// on a built-in widget (the case reported as mendixlabs/mxcli#1135) is writable.
+//
+// It named ALTER STYLING as the route until ako/mxcli#515 taught `set` to write
+// design properties itself. Reaching here now means the key is neither a
+// first-class property NOR a design property the theme declares for this
+// widget's type, so the message says that and points at the command that lists
+// the ones it does declare — sending the reader to a second statement would be
+// stale advice for a route that no longer differs.
+//
+// A Forms$Appearance and no Object is exactly a built-in widget, which is when
+// the advice applies. A pluggable widget keeps the error that names its own
+// declared keys — sending a mistyped pluggable key to ALTER STYLING would point
+// at a command that cannot write it either.
+func noPluggableObjectError(widget bson.D, propName string) error {
+	if bsonnav.DGetDoc(widget, "Appearance") == nil {
+		return fmt.Errorf("property %q not found on this widget", propName)
+	}
+	return fmt.Errorf("property %q is not a property of this built-in widget, and not an Atlas "+
+		"design property your theme declares for it — `set` writes its own properties "+
+		"(Caption, Class, Style, DynamicClasses, Visible, Editable, …) and any design "+
+		"property of this widget's type. Run `mxcli show design properties for <widget type>` "+
+		"to see which those are",
+		propName)
 }
 
 // setTranslatableText sets a translatable text value in BSON.
@@ -2882,22 +3063,9 @@ func serializeDataSourceBson(ds pages.DataSource) bson.D {
 			{Key: "$Type", Value: "Forms$ListenTargetSource"},
 			{Key: "ListenTarget", Value: d.WidgetName},
 		}
-	case *pages.DatabaseSource:
-		var entityRef any
-		if d.EntityName != "" {
-			entityRef = bson.D{
-				{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
-				{Key: "$Type", Value: "DomainModels$DirectEntityRef"},
-				{Key: "Entity", Value: d.EntityName},
-			}
-		}
-		return bson.D{
-			{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
-			{Key: "$Type", Value: "Forms$DataViewSource"},
-			{Key: "EntityRef", Value: entityRef},
-			{Key: "ForceFullObjects", Value: false},
-			{Key: "SourceVariable", Value: nil},
-		}
+	// A *pages.DatabaseSource is deliberately absent: it has no single stored
+	// shape, so there is nothing to map it to here. databaseSourceRefusal
+	// above turns it away before this is reached.
 	case *pages.DataViewSource:
 		// "Data from context": the widget binds to a page/snippet parameter. The
 		// EntityRef names the parameter's entity and the SourceVariable points at

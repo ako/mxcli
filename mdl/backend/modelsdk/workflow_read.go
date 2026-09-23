@@ -50,7 +50,7 @@ func workflowFromGen(g *genWf.Workflow, containerID model.ID) *workflows.Workflo
 		Documentation:       g.Documentation(),
 		ExportLevel:         g.ExportLevel(),
 		Excluded:            g.Excluded(),
-		OverviewPage:        g.OverviewPageQualifiedName(),
+		OverviewPage:        workflowOverviewPageName(g),
 		DueDate:             g.DueDate(),
 		WorkflowName:        workflowTemplateText(g.WorkflowName()),
 		WorkflowDescription: workflowTemplateText(g.WorkflowDescription()),
@@ -464,6 +464,23 @@ func microflowEventName(el element.Element) string {
 		return ev.MicroflowQualifiedName()
 	}
 	return ""
+}
+
+// workflowOverviewPageName reads the workflow's overview page.
+//
+// It is stored under AdminPage, as a Workflows$PageReference child — Mendix
+// deleted the `overviewPage` property in 9.11.0 and introduced `adminPage` in
+// the same release. Reading only the old one is what made `describe workflow`
+// silent about a page that `alter workflow … set overview page` had written
+// correctly all along.
+//
+// The pre-9.11 key is still read as a fallback. Reading both costs nothing and
+// invents nothing; WRITING both would be the mistake.
+func workflowOverviewPageName(g *genWf.Workflow) string {
+	if name := taskPageName(g.AdminPage()); name != "" {
+		return name
+	}
+	return g.OverviewPageQualifiedName()
 }
 
 // taskPageName extracts the page qualified name from a TaskPage part

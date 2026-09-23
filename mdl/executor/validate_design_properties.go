@@ -114,6 +114,24 @@ func validateWidgetDesignProps(w *ast.WidgetV3, reg *ThemeRegistry, locationPref
 			continue // compound — registry doesn't model sub-properties
 		}
 		tp := findThemeProp(props, p.Key)
+		if tp != nil && tp.MultiSelect && len(p.Nested) == 0 && p.Value != "" {
+			// A multi-select property is stored as a compound, one entry per
+			// selected option. A flat value names a declared option, so nothing
+			// else here objects — and mxbuild then refuses the document with
+			// CE6084 (ako/mxcli#511). exec refuses it too; saying so at check
+			// time is what keeps the two in step.
+			out = append(out, linter.Violation{
+				RuleID:   "MDL-WIDGET12",
+				Severity: linter.SeverityWarning,
+				Message: fmt.Sprintf("%s: widget %q (%s) sets design property %q to a single value, "+
+					"but it takes a SET of options — mxbuild refuses that with CE6084",
+					locationPrefix, w.Name, w.Type, p.Key),
+				Location: linter.Location{DocumentType: "page", DocumentName: locationPrefix},
+				Suggestion: fmt.Sprintf("Write it as `'%s': ['%s': on]`, with one `'<option>': on` "+
+					"per selection.", p.Key, firstOptionName(tp, p.Value)),
+			})
+			continue
+		}
 		if tp == nil {
 			out = append(out, linter.Violation{
 				RuleID:   "MDL-WIDGET11",

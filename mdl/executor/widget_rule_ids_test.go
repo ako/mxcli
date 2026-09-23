@@ -30,6 +30,14 @@ var widgetRuleIDsRaisedFromSeveralFiles = map[string][]string{
 	// One rule about a property that is hidden under the current configuration,
 	// raised from the content-params path and the editability path.
 	"MDL-WIDGET21": {"validate_widget_contentparams.go", "validate_widget_editability.go"},
+	// One rule about a design-property KEY the theme does not declare, asked of
+	// the widget trees a statement carries and of ALTER STYLING, which names a
+	// stored widget instead (ako/mxcli#509).
+	"MDL-WIDGET11": {"validate_alter_styling.go", "validate_design_properties.go"},
+	// One rule about a design-property VALUE the theme does not allow — an
+	// off-list option, or a single value where the property takes a set
+	// (ako/mxcli#511). Same two paths.
+	"MDL-WIDGET12": {"validate_alter_styling.go", "validate_design_properties.go"},
 }
 
 // Matched as a QUOTED literal rather than after `RuleID:`, because an id is

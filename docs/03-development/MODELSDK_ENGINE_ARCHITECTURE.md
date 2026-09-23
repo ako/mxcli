@@ -79,19 +79,124 @@ and break the MCP backend + the future format (ADR-0005). See `docs/11-proposals
 
 ## Recipe: add a document type or activity group
 
-1. **Find the legacy serializer** for the type (`sdk/mpr/writer_*.go`) — the field set + ordering spec.
-2. **Capture real BSON when unsure** — legacy can be wrong (e.g. the index `SortOrder` bug). Dump an
-   on-disk `.mxunit` or use the MCP/PED probe (`cmd/mcpprobe`) to get authoritative keys/markers.
+1. **Get a Studio Pro-authored reference document** of the type — from a Marketplace module that uses
+   it, or by asking for one to be created in Studio Pro. This is the field set + ordering spec. There is
+   no second engine to copy from any more, and there is nothing else that will tell you the truth.
+2. **Read its BSON**: `mxcli bson dump -p app.mpr --type <type> --object "Mod.Name"`, or the MCP/PED
+   probe (`cmd/mcpprobe`) against a live Studio Pro.
 3. **Write `xToGen`** (+ `xFromGen` if reads/ALTER need it), registering any TypeDefaults / list markers.
 4. **`assignXIDs`** walks new sub-elements.
-5. **Add a parity test** in `mdl/enginecompare/` (`copyProject` → `Run(Legacy,…)` + `Run(ModelSDK,…)` →
-   `XCanonBSON` → diff). Add an `XCanonBSON` dumper to `bsoncompare.go` for new top-level types.
-6. **Iterate on the diff** until byte-identical. (Per-group this is fast: 1–2 iterations.)
+5. **Pin the document against the reference** — re-serialize the reference element by element and assert
+   the keys, markers and value types match. `mdl/scheduledevents` and `mdl/regularexpressions` are the
+   worked examples; both found gen wrong about a property that way.
+6. **Iterate until the diff is empty**, then build it (`mxcli docker check`) and, where the construct
+   renders or runs, verify it there too — `mx check` tolerates unknown properties, so a clean build is
+   not evidence the document is right.
 7. **gofmt any hand-edited gen file** or `TestGeneratedCodeIsFormatted` fails.
 
 ## Verification truth
 
-`legacy` is the parity baseline, but it is **not infallible** — it has had stale serializers (index
-`SortOrder`). When a gen-vs-legacy disagreement appears, the tiebreaker is **real Studio-Pro BSON**
-(on-disk dump or MCP capture), not whichever engine you trust. The gen has been wrong (EventHandler keys);
-legacy has been wrong (indexes). Capture, don't guess.
+**A Studio Pro-authored document is the arbiter.** There used to be a second engine to diff against;
+`sdk/mpr` was deleted ([ADR-0004](../13-decisions/0004-full-codec-engine.md)) and it had been wrong often
+enough that it was never the real baseline anyway (stale index `SortOrder` serializer).
+
+Where `modelsdk/gen` and `generated/metamodel` disagree about a property key, **`generated/metamodel` is
+the arbiter** — it is built from reflection data carrying storage names, while gen's generator reads the
+TypeScript SDK, which has none, and patches them back by hand. The caveat is that it is a snapshot of
+11.6.0, so it says nothing about properties introduced later; for those, get a real document. See
+CLAUDE.md, "`modelsdk/gen` Binds Some Properties Under the Wrong BSON Key".
+
+Capture, don't guess — and note what a green build does *not* tell you: mxbuild accepts properties the
+project's metamodel does not declare, while Studio Pro throws `InvalidOperationException` at
+`MprProperty.cs`. Measured on 10.24.25 with two 11.5-only keys present: 0 errors.
+
+## `modelsdk/gen` Binds Some Properties Under the Wrong BSON Key
+
+The storage-name table above is about `$Type`. The **same split exists per
+property**, and `modelsdk/gen` gets it wrong in **102 properties across 65
+types** — the ledger is `modelsdk/gen/keyaudit_test.go`. Mendix's reflection
+data carries two names per property — an SDK `Name` and a BSON `StorageName` —
+and the in-repo generator (`cmd/codegen` → `generated/metamodel`) keeps them
+apart, tag from storage name:
+
+```go
+// generated/metamodel/types.go — correct
+RegularExpression model.QualifiedName `json:"regExIdentifier,omitempty"`
+//   ^ SDK name                                ^ storage name
+```
+
+The generator behind `modelsdk/gen` reads a **different input** — the TypeScript
+SDK's compiled JS, which does not contain storage names at all (measured:
+`regExIdentifier` occurs 0 times in `mendixmodelsdk` 4.114.0) — and patches them
+back via a hand-maintained `PropertyKeyOverrides` table.
+
+**`generated/metamodel` is therefore the arbiter when the two disagree**, with
+one caveat: it is a **snapshot of 11.6.0** (see its header), so it is sound for
+the properties it contains but says nothing about ones introduced later — for
+those, get a real document. It has been right in every case checked that way
+(`RegularExpression.Expression`, `RegExRuleInfo.RegExIdentifier`, `Attribute.GUID`).
+`TestGenPropertyKeysAgainstMetamodel` fails when a NEW mismatch appears (a
+re-vendored gen that dropped an override) or when a listed one is fixed without
+being struck off. Why the generator is not simply brought in-tree, and what it
+would take: [PROPOSAL_codegen_ownership.md](docs/11-proposals/PROPOSAL_codegen_ownership.md).
+
+`cmd/modelsdk-codegen` and `internal/codegen/supplements.json` — named in every
+gen file's `DO NOT EDIT` header — have **never existed in this repo**
+(`git log --all` is empty for both), and `/reference/` is gitignored, so the
+generator's input is absent too. gen is vendored output that cannot be
+regenerated here; see `docs/plans/2026-06-05-adopt-modelsdk-engine.md` §4, where
+"vendor engalar codegen" is still an open Phase-0 item.
+
+So the fix for a wrong key is a **hand-applied override in the `init<Type>`
+function**, commented in the house style (grep `STORAGE-NAME OVERRIDE` for the
+four precedents). Two rules:
+
+1. **Patch both sides.** The encode key (`init<Type>`) and the decode key
+   (`InitFromRaw`) are separate literals. Patching one gives a document that
+   writes one key and reads another — which the entity-rewrite guard then
+   refuses, so the symptom is a puzzling refusal rather than a wrong file.
+2. **`gofmt` the file**, or `TestGeneratedCodeIsFormatted` fails.
+
+Not every wrong key is worth patching — leave the ones nothing writes, and note
+why. `mx check` is a weak signal here either way: it caught the RegEx one
+(CE0135) but tolerates unknown properties in general, and Studio Pro is stricter
+than mxbuild.
+
+## Overlay Writes: Never Invent a Key, Branch on `$Type`
+
+When a write overlays fields onto preserved BSON (`mdl/settingsoverlay`, and any
+future storage that follows ADR-0005 guard-don't-drop), two rules are load-bearing.
+Breaking either produces a document `mx check` accepts and **Studio Pro cannot
+open**: it resolves every stored property against the type's property list and
+throws `System.InvalidOperationException: Sequence contains no matching element`
+at `MprProperty.cs`. mxbuild's deserializer tolerates unknown properties, so the
+build is not a safety net here.
+
+1. **Write only keys the document already carries.** Property names are
+   version-specific — Mendix renamed `JavaVersion` (`"Java21"`) to
+   `JavaMajorVersion` (`"21"`) and `Tracing` to `OpenTelemetry` between 11.6 and
+   11.12. Read the key off the stored document and write back to that same key;
+   when neither is present, write neither (an absent optional property is filled
+   in on load). See `settingsoverlay.JavaVersionKey` (#759).
+2. **A polymorphic child must be dispatched on `$Type` before any field
+   assignment.** Variants can differ in *arity*, not just field values:
+   `Settings$SharedValue` carries a `Value`, while `Settings$PrivateValue` is a
+   bare marker with no properties at all (the value lives on the developer's
+   workstation). Assigning `Value` to whichever node is there corrupts the marker.
+
+The same reasoning bans authoring what the model does not own: mxcli preserves a
+constant override's shared/private choice and refuses statements that would flip
+it, rather than silently converting one to the other.
+
+Enum-valued properties are the sibling trap: validate against
+`generated/metamodel` (e.g. `SettingsDatabaseType` is `Hsqldb`, never `HSQLDB`)
+rather than passing a user string through.
+
+**On a CREATE there is no stored document to read the key off.** Rule 1 then
+becomes: branch on the project's Mendix version and write exactly one spelling —
+never both as a hedge. `mdl/dbconnector` does this for the 11.13 rename of
+`DatabaseQuery.QueryType` (int) to `Type` (string enum), which mxbuild *does*
+catch, as CE5277 on every activity using the query. To learn the target shape
+without guessing, run the new mxbuild's own migration over an old project
+(`mx convert -p -s <project>`) and diff the BSON: Mendix ships a one-time
+conversion per renamed property, so the converted document is authoritative.

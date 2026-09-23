@@ -47,8 +47,9 @@ Implementing a new MDL feature requires changes across multiple layers:
                   ┌───────────────┴───────────────┐
                   ▼                               ▼
 ┌─────────────────────────────┐   ┌─────────────────────────────┐
-│  6a. PARSER (BSON → Go)     │   │  6b. WRITER (Go → BSON)     │
-│  sdk/mpr/parser_*.go        │   │  sdk/mpr/writer_*.go        │
+│  6a. READER (BSON → Go)     │   │  6b. WRITER (Go → BSON)     │
+│  mdl/backend/modelsdk/      │   │  mdl/backend/modelsdk/      │
+│         *_read.go           │   │         *_write.go          │
 │  for describe to work       │   │  for create to work         │
 └─────────────────────────────┘   └─────────────────────────────┘
                   │                               │
@@ -340,7 +341,7 @@ type HttpConfiguration struct {
 
 ## Part 6a: Parser (BSON → Go)
 
-Add parsing logic in `sdk/mpr/parser_microflow.go`:
+Add read logic in `mdl/backend/modelsdk/microflow_read_actions.go`:
 
 ```go
 // add case in parseActionActivity switch
@@ -371,7 +372,7 @@ func parseRestCallAction(raw map[string]interface{}) *microflows.RestCallAction 
 
 ## Part 6b: Writer (Go → BSON)
 
-Add serialization logic in `sdk/mpr/writer_microflow.go`:
+Add serialization logic in `mdl/backend/modelsdk/microflow_write.go`:
 
 ```go
 func serializeRestCallAction(action *microflows.RestCallAction) bson.D {
@@ -624,8 +625,8 @@ Before considering the implementation complete:
 - [ ] AST types added (`mdl/ast/`)
 - [ ] Visitor implemented (`mdl/visitor/`)
 - [ ] SDK types added/updated (`sdk/microflows/` or `sdk/pages/`)
-- [ ] BSON parser added (`sdk/mpr/parser_*.go`)
-- [ ] BSON writer added (`sdk/mpr/writer_*.go`)
+- [ ] BSON reader added (`mdl/backend/modelsdk/*_read.go`)
+- [ ] BSON writer added (`mdl/backend/modelsdk/*_write.go`)
 - [ ] Executor builder added (`mdl/executor/cmd_*_builder.go`)
 - [ ] Executor show/describe added (`mdl/executor/cmd_*_show.go`)
 - [ ] Syntax check passes
@@ -646,10 +647,11 @@ Before considering the implementation complete:
 | Visitor | `mdl/visitor/visitor_page.go` | Page parsing |
 | SDK | `sdk/microflows/microflows_actions.go` | Action Go types |
 | SDK | `sdk/pages/pages.go` | Widget Go types |
-| Parser | `sdk/mpr/parser_microflow.go` | BSON → Go (microflows) |
-| Parser | `sdk/mpr/parser_page.go` | BSON → Go (pages) |
-| Writer | `sdk/mpr/writer_microflow.go` | Go → BSON (microflows) |
-| Writer | `sdk/mpr/writer_widgets.go` | Go → BSON (widgets) |
+| Reader | `mdl/backend/modelsdk/microflow_read_actions.go` | BSON → Go (microflows) |
+| Reader | `mdl/backend/modelsdk/page.go` | BSON → Go (pages) |
+| Writer | `mdl/backend/modelsdk/microflow_write.go` | Go → BSON (microflows) |
+| Writer | `mdl/backend/modelsdk/widget_write.go` | Go → BSON (widgets) |
+| Codec | `modelsdk/codec/encoder.go`, `decoder.go` | the layer underneath both |
 | Executor | `mdl/executor/cmd_microflows_builder.go` | AST → microflow BSON |
 | Executor | `mdl/executor/cmd_microflows_show.go` | Microflow → MDL |
 | Executor | `mdl/executor/cmd_pages_builder.go` | AST → page BSON |

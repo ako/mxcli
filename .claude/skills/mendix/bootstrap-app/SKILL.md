@@ -1,6 +1,6 @@
 ---
 name: bootstrap-app
-description: "Provision a Mendix project in a repo that has none — interview, `mxcli new`, session hook, project brief, first commit and boot. Use when the repository is empty or has no .mpr yet, typically from the empty-repo seed prompt."
+description: "Provision a Mendix project in a repo that has none — interview, `mxcli new`, session hook, project brief, first commit, boot and quality baseline. Use when the repository is empty or has no .mpr yet, typically from the empty-repo seed prompt."
 ---
 
 # Bootstrap a Mendix App in an Empty Repo
@@ -20,7 +20,9 @@ folder and go straight to the work.
 
 Related skills: `run-local` (the warm dev loop this ends in), `mdl-entities` and
 `create-page` (building the model you propose at the end),
-`migrate-design-prototype` (when a design was handed to you).
+`migrate-design-prototype` (when a design was handed to you), `assess-quality`
+(reading the `report` this takes a baseline with), `test-microflows` and `test-app`
+(the two gates that prove behaviour rather than syntax).
 
 ---
 
@@ -49,7 +51,11 @@ it is building.
    below is derived from this.
 4. **What does it keep track of?** Three to six nouns that will become entities, and a
    word on how they relate (e.g. "a Job has many Visits; each Visit has Photos"). For
-   a solution, also ask which app owns each noun.
+   a solution, also ask which app owns each noun. Ask two follow-ups here, because
+   both change the model rather than decorate it: does anything go through **steps
+   someone has to act on** (approval, hand-off, review, a deadline), and is there a
+   **number or count across records** anyone needs to see. The first is a workflow and
+   the second a view entity — see "Two choices to make deliberately" below.
 5. **Who logs in?** The user roles, and roughly what each may do (e.g. "Requester
    creates and sees their own; Approver sees everything and approves").
 6. **Look and feel.** One of the bundled themes: `signal` (light, high contrast),
@@ -190,12 +196,27 @@ drop the `./` if it came pre-installed on `PATH`.
    clone, so committing the script is what makes the hook survive a reap.
 8. **Boot and verify:** `./mxcli run --local -p <AppName>.mpr` in the background, then
    confirm the app answers HTTP 200 at http://localhost:8080/ and report.
-9. **(Optional) browser preview from a cloud session:**
-   `./mxcli run --hub https://hub.mxcli.org -p <AppName>.mpr`, and report the preview
-   URL it prints. Needs `MXCLI_HUB_KEY` on the environment; without it, continue as a
-   normal local run. `--hub` ships in the **Linux** build only (a cloud session is a
-   Linux container, so it works there); on a native Windows/macOS mxcli it fails with
-   an explanatory message — continue as a normal local run.
+9. **Take the quality baseline** — run the two gates that score the project, on the
+   blank app, before any of your own work is in it:
+
+   ```bash
+   ./mxcli lint -p <AppName>.mpr
+   ./mxcli report -p <AppName>.mpr --format markdown
+   ```
+
+   Report the warning count and the six category scores, and put them in
+   `FINDINGS.md` with the date. This is the only moment the numbers mean "what the
+   template ships with" — afterwards every figure is yours plus the template's, and
+   there is nothing to subtract. A blank app is **not** expected to score zero
+   warnings; knowing which ones it starts with is what stops you chasing them later.
+   Read `.ai-context/skills/assess-quality/SKILL.md` before interpreting the report —
+   it covers what each category means and which findings are worth acting on.
+10. **(Optional) browser preview from a cloud session:**
+    `./mxcli run --hub https://hub.mxcli.org -p <AppName>.mpr`, and report the preview
+    URL it prints. Needs `MXCLI_HUB_KEY` on the environment; without it, continue as a
+    normal local run. `--hub` ships in the **Linux** build only (a cloud session is a
+    Linux container, so it works there); on a native Windows/macOS mxcli it fails with
+    an explanatory message — continue as a normal local run.
 
 ---
 
@@ -278,6 +299,38 @@ named after it. From the brief, propose in chat:
 - for a solution: which app owns each entity, and what crosses the boundary — publish
   only what the other app actually needs
 
+### Two choices to make deliberately — the lazy answer is wrong both times
+
+Both of these are first-class in Mendix and both are easy to reinvent in microflows,
+because the microflow version *works*: it passes `check`, it builds, and nothing
+flags it. The cost lands later, on someone else.
+
+- **A business process with human steps is a `WORKFLOW`**, not a status attribute and
+  a handful of microflows. Approvals, hand-offs, "someone has to look at this",
+  anything with a due date or a timer, anything that can sit waiting for days. You
+  get the state machine, the user-task inbox (`System.WorkflowUserTask`), assignment
+  and targeting, timers and boundary events, and a definition the business can read.
+  Rebuild it from status attributes and every one of those is yours to write and
+  maintain, and the process stops being inspectable — nobody can answer "where is
+  this request" except by reading microflows. `create workflow`; see
+  `mxcli syntax workflow` and the `write-workflows` skill.
+- **An aggregation is a `VIEW ENTITY`**, not a microflow that retrieves the rows and
+  counts them. Totals, counts per group, a figure on a dashboard, a report, anything
+  joined across entities: a view entity is OQL the **database** executes — joins,
+  `GROUP BY`, `SUM`/`COUNT` — returning rows a page binds to directly. The microflow
+  version pulls every object into memory to produce one number, and it gets slower
+  exactly as the app succeeds, which is the worst possible failure curve. Needs
+  **Mendix 10.18+** (`show features` confirms it). `create view entity Mod.Name (…)
+  as ( select … )` — see `mxcli syntax view-entity` for the shape, its `oql` and
+  `association` subtopics for the rules that bite (every column needs an `AS`
+  alias; `ORDER BY` needs a `LIMIT`; selecting an id under an alias makes an
+  *association*, not an attribute), and the `write-oql-queries` skill for worked
+  queries.
+
+Name which of the two you are using **in the proposal**, with one line on why. Both
+are cheap to choose now and expensive to retrofit: the pages, security rules and
+tests all bind to whichever you picked.
+
 Show it as **MDL the user can read**, and wait for their go-ahead before executing it.
 Name the elements the same way the plan's anchors do — if a requirement is anchored
 `@<AppName>Module.ACT_Approve`, propose that name — so `./mxcli brain plan` starts
@@ -293,6 +346,39 @@ see `migrate-design-prototype`.
 ./mxcli run --local -p <AppName>.mpr --watch --screenshot   # warm dev loop + screenshots
 ./mxcli exec change.mdl -p <AppName>.mpr                     # edit the model; the loop hot-applies
 ```
+
+### The gates — the same list the project's CLAUDE.md publishes
+
+`mxcli init` wrote these into the project's `CLAUDE.md`, so every later session has
+them in context. They are the **definition of done**, not a menu: run them in order,
+stop at the first that fails, and say what each one reported.
+
+Run them **once per change, not per edit** — a change being a coherent unit of work,
+not a single statement and not a file write. Iterate with `exec` until the script is
+right, then run the gates once over the result. The whole list after every edit costs
+~55s and five calls each time and proves nothing the one run at the end does not.
+
+```bash
+./mxcli check change.mdl -p <AppName>.mpr --references   # syntax + references (~2s)
+./mxcli exec change.mdl -p <AppName>.mpr                 # apply
+./mxcli lint -p <AppName>.mpr                            # rules (~3s)
+./mxcli report -p <AppName>.mpr                          # scored quality report
+./mxcli docker check -p <AppName>.mpr                    # mxbuild, the slow one (~25s)
+./mxcli test tests/ -p <AppName>.mpr --local             # microflow tests (~30s cold, ~2s warm)
+./mxcli run --local --watch -p <AppName>.mpr             # the app, hot-reloading
+```
+
+Two of them are easy to mistake for optional and are not:
+
+- **`report` is the quality report**, and its six category scores are what the
+  baseline in step 9 exists to be compared against. A score that fell is a finding,
+  not a detail. `assess-quality` covers how to read it.
+- **`test` needs a suite to run.** Write the first one with the **first microflow you
+  build** — not "later", because later is after the code is written and the expected
+  values have stopped being obvious. One `tests/<Slice>.test.mdl` per slice is the
+  shape that keeps up; `test-microflows` has the annotations, and `--local` needs no
+  Docker daemon. For pages and rendering, `test-app` drives a real browser: a page can
+  serialize correctly, pass `check`, build clean and still render wrong.
 
 Keep the plan current as you go — it is the only record of scope that outlives the
 conversation:

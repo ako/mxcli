@@ -165,9 +165,13 @@ func (b *Builder) applyGenericPageHeaderProp(stmt *ast.CreatePageStmtV3, name st
 			return
 		}
 		stmt.PopupResizable = &bval
+	case "PopupCloseAction":
+		// The value is a widget NAME on this page, so it arrives as a bare
+		// identifier rather than a quoted string; accept either spelling.
+		stmt.PopupCloseAction = strings.Trim(fmt.Sprintf("%v", val), `"'`)
 	default:
 		b.addError(fmt.Errorf("line %d:%d: unknown page property %q "+
-			"(supported: Title, Layout, Url, Folder, Params, Variables, PopupWidth, PopupHeight, PopupResizable, Class, Style)",
+			"(supported: Title, Layout, Url, Folder, Params, Variables, PopupWidth, PopupHeight, PopupResizable, PopupCloseAction, Class, Style)",
 			tok.GetLine(), tok.GetColumn(), name))
 	}
 }
@@ -248,8 +252,8 @@ func (b *Builder) parseSnippetHeaderV3(ctx parser.ISnippetHeaderV3Context, stmt 
 
 		if prop.PARAMS() != nil {
 			// Params: { $Customer: Entity, ... }
-			if paramList := prop.SnippetParameterList(); paramList != nil {
-				stmt.Parameters = buildSnippetParameterListAsPage(paramList)
+			if paramList := prop.PageParameterList(); paramList != nil {
+				stmt.Parameters = buildPageParameters(paramList)
 			}
 		} else if prop.VARIABLES_KW() != nil {
 			// Variables: { $showStock: Boolean = 'true', ... }
@@ -265,46 +269,13 @@ func (b *Builder) parseSnippetHeaderV3(ctx parser.ISnippetHeaderV3Context, stmt 
 	}
 }
 
-// buildSnippetParameterListAsPage converts snippet parameters to page parameters.
-func buildSnippetParameterListAsPage(ctx parser.ISnippetParameterListContext) []ast.PageParameter {
-	if ctx == nil {
-		return nil
-	}
-	listCtx := ctx.(*parser.SnippetParameterListContext)
-	var params []ast.PageParameter
-
-	for _, sp := range listCtx.AllSnippetParameter() {
-		spCtx := sp.(*parser.SnippetParameterContext)
-		param := ast.PageParameter{}
-
-		if id := spCtx.IDENTIFIER(); id != nil {
-			param.Name = id.GetText()
-		} else if v := spCtx.VARIABLE(); v != nil {
-			// VARIABLE token is $name, strip the $ prefix
-			param.Name = strings.TrimPrefix(v.GetText(), "$")
-		} else if qid := spCtx.QUOTED_IDENTIFIER(); qid != nil {
-			// Quoted name for reserved-keyword params, e.g. "List". See issue #114.
-			param.Name = unquoteIdentifier(qid.GetText())
-		}
-
-		// Walk the parse tree rather than re-splitting its TEXT. GetText() hands
-		// back the source verbatim, so a quoted entity name arrived as
-		// `Pd."Thing"` and exec failed with `entity not found: Pd."Thing"` —
-		// while the identical quoted form in a PAGE parameter resolved, because
-		// that path has always used buildQualifiedName (ako/CapTrackV4 019). The
-		// project convention is to quote every identifier, so this was reached by
-		// following the house style.
-		if dt := spCtx.DataType(); dt != nil {
-			if qn := dt.(*parser.DataTypeContext).QualifiedName(); qn != nil {
-				param.EntityType = buildQualifiedName(qn)
-			}
-		}
-
-		params = append(params, param)
-	}
-
-	return params
-}
+// A snippet's Params clause is the page's pageParameterList rule (they were
+// byte-identical), so one conversion serves both. buildSnippetParameterListAsPage
+// used to live here and drifted from buildPageParameters twice out of the same
+// clause: it re-split the parse node's TEXT, so a quoted entity name reached
+// the resolver as `Pd."Thing"`, and it never called buildDataType, so a
+// primitive type was left for the executor to take for an entity name
+// (mendixlabs/mxcli#1028 — "entity not found: string").
 
 // buildVariableDeclarations builds variable declarations from the parse context.
 func buildVariableDeclarations(ctx parser.IVariableDeclarationListContext) []ast.PageVariable {
@@ -984,6 +955,16 @@ func buildDataSourceV3(ctx parser.IDataSourceExprV3Context) *ast.DataSourceV3 {
 				ds.OrderBy = append(ds.OrderBy, buildSortColumnAsOrderBy(sc))
 			}
 		}
+
+		// Inline SEARCH BY clause — a List View's search bar
+		// (Forms$ListViewSearch.SearchRefs). Names only, no direction.
+		if dsCtx.SEARCH_BY() != nil {
+			for _, sa := range dsCtx.AllSearchAttribute() {
+				if name := strings.TrimSpace(sa.GetText()); name != "" {
+					ds.SearchAttributes = append(ds.SearchAttributes, name)
+				}
+			}
+		}
 	} else if dsCtx.MICROFLOW() != nil {
 		// MICROFLOW Module.Flow
 		ds.Type = "microflow"
@@ -1404,8 +1385,11 @@ func buildSortColumnAsOrderBy(ctx parser.ISortColumnContext) ast.OrderByItemV3 {
 	scCtx := ctx.(*parser.SortColumnContext)
 	item := ast.OrderByItemV3{Direction: "ASC"}
 
-	if qn := scCtx.QualifiedName(); qn != nil {
-		item.Attribute = getQualifiedNameText(qn)
+	// Several qualifiedNames mean an association path: every segment but the last
+	// is a hop, the last is the attribute (mendixlabs/mxcli#1152).
+	if qns := scCtx.AllQualifiedName(); len(qns) > 0 {
+		item.Associations = sortColumnHops(qns)
+		item.Attribute = getQualifiedNameText(qns[len(qns)-1])
 	} else if id := scCtx.IDENTIFIER(); id != nil {
 		item.Attribute = id.GetText()
 	}

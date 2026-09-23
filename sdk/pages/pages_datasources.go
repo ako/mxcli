@@ -28,6 +28,14 @@ type DatabaseSource struct {
 	EntityName      string      `json:"entityName,omitempty"` // Qualified name e.g. "Module.Entity"
 	XPathConstraint string      `json:"xPathConstraint,omitempty"`
 	Sorting         []*GridSort `json:"sorting,omitempty"`
+	// SearchAttributes are the attributes a List View's search bar filters on.
+	// Stored as Forms$ListViewSearch.SearchRefs, a list of
+	// DomainModels$AttributeRef — the same element a sort item carries, pinned
+	// against a Studio Pro-authored Forms$GridSortItem in a blank 11.12.2 app.
+	//
+	// Only a List View source has one: Forms$ListViewXPathSource declares Search,
+	// and the grid sources do not (ako/mxcli#512).
+	SearchAttributes []string `json:"searchAttributes,omitempty"`
 }
 
 func (DatabaseSource) isDataSource() {}
@@ -35,8 +43,13 @@ func (DatabaseSource) isDataSource() {}
 // GridSort represents sorting configuration.
 type GridSort struct {
 	model.BaseElement
-	AttributePath string        `json:"attributePath"`
-	Direction     SortDirection `json:"direction"`
+	AttributePath string `json:"attributePath"`
+	// AttributeRefSteps carries the association hops when the sort navigates to
+	// another entity. Mendix stores them as the AttributeRef's EntityRef; an
+	// attribute path naming a far entity without them is CE7247 "Cannot sort on
+	// attribute …" (mendixlabs/mxcli#1152).
+	AttributeRefSteps []AttributeRefStep `json:"attributeRefSteps,omitempty"`
+	Direction         SortDirection      `json:"direction"`
 }
 
 // SortDirection represents the sort direction.

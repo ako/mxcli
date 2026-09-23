@@ -25,7 +25,7 @@ Ask the user:
 
 If the user isn't sure about version or BSON, help them find out:
 - Version: check `reference/mendixmodellib/reflection-data/` or Mendix release notes
-- BSON: check if similar features exist in `sdk/mpr/parser*.go` or `sdk/mpr/writer*.go`
+- BSON: check if similar features exist in `mdl/backend/modelsdk/*_read.go` or `*_write.go`
 
 ### Phase 2: BSON Investigation (if applicable)
 
@@ -69,7 +69,7 @@ Before writing the proposal, search for existing work:
 ls docs/11-proposals/ | grep -i <feature>
 
 # Existing implementations
-grep -r "<feature>" mdl/executor/ sdk/mpr/ --include="*.go" -l
+grep -r "<feature>" mdl/executor/ mdl/backend/modelsdk/ --include="*.go" -l
 
 # Existing test coverage
 ls mdl-examples/doctype-tests/ | grep -i <feature>

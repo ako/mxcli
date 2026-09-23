@@ -1,0 +1,86 @@
+-- mendixlabs/mxcli#1027 — the bundled `write-lint-rules` skill documented
+-- `action_type` / `source_type` values the lint API never returns, so a rule
+-- written from the guide's own examples matched nothing and reported a clean
+-- pass. Nothing warned that the filter never had a chance.
+--
+-- REPORTED SHAPE. The guide's action_type row listed Mendix's BSON *storage*
+-- names; the catalog labels an action with its *SDK* name (getMicroflowActionType
+-- derives the label from the parsed Go type):
+--
+--   Guide said              Catalog emits
+--   CreateChangeAction      CreateObjectAction, ChangeObjectAction
+--   CommitAction            CommitObjectsAction
+--   ShowFormAction          ShowPageAction
+--   CloseFormAction         ClosePageAction
+--   ShowHomeFormAction      ShowHomePageAction
+--
+-- and source_type was documented lower-case ("microflow", "page") against an
+-- upper-case vocabulary. The same defect sat unreported in three sibling rows:
+-- permission.element_type, permission.access_type and attribute.data_type.
+--
+-- WHY THIS FILE IS A MODEL AND NOT A FAILING SCRIPT. The defect is in the
+-- documentation, not in MDL, so there is no script that reproduces it. What the
+-- repro needs is a project whose microflows exercise the disputed labels. This
+-- is that project: ACT_Customer_Create uses exactly the actions the guide got
+-- wrong, one of each.
+--
+-- REPRODUCING (three legs — B alone proves nothing, because a rule that matches
+-- nothing also reports zero):
+--
+--   mxcli exec 1027-lint-rule-vocabulary.mdl -p app.mpr
+--   mxcli -p app.mpr -c "refresh catalog full"
+--
+-- then run a rule in .claude/lint-rules/ that allow-lists action_type values:
+--
+--   A  allowlist = the guide's old values  -> 7 of 7 activities flagged (inverted)
+--   B  allowlist = the corrected values    -> 0 flagged (correct)
+--   C  B minus "ShowPageAction"            -> exactly ShowPageAction flagged
+--
+-- C is the control: without it, B's silence is indistinguishable from the bug.
+--
+-- The regression coverage is TestSkillDocumentsRealActionTypes and its siblings
+-- in mdl/catalog/lint_rule_doc_vocabulary_test.go, which pin every documented
+-- value to the function that produces it.
+
+create module Sales;
+
+create persistent entity Sales.Customer (
+  Name: String(100),
+  Age: Integer
+);
+
+create or replace layout Sales.App_Default (
+  layouttype: 'Responsive'
+) {
+  scrollcontainer layoutContainer {
+    region center {
+      placeholder Main
+    }
+  }
+}
+
+create page Sales.Customer_Overview (
+  Title: 'Customers',
+  Layout: Sales.App_Default
+) {
+  container box {
+  }
+}
+
+create or replace microflow Sales.SUB_Helper ()
+begin
+  log info 'helper';
+end;
+
+-- One activity per label the guide got wrong, so every disputed value appears in
+-- CATALOG.ACTIVITIES.ActionType after a full refresh.
+create or replace microflow Sales.ACT_Customer_Create ()
+begin
+  $cust = CREATE Sales.Customer (Name = 'x');
+  CHANGE $cust (Age = 1);
+  COMMIT $cust WITH EVENTS;
+  $r = CALL MICROFLOW Sales.SUB_Helper();
+  SHOW PAGE Sales.Customer_Overview;
+  CLOSE PAGE;
+  DELETE $cust;
+end;

@@ -60,17 +60,21 @@ func execSet(ctx *ExecContext, s *ast.SetStmt) error {
 // execHelp handles HELP statements. With topic words, queries the syntax registry.
 func execHelp(ctx *ExecContext, s *ast.HelpStmt) error {
 	if len(s.Topic) > 0 {
-		path := syntax.ResolveAlias(resolveHelpPath(s.Topic))
-		features := syntax.ByPrefix(path)
-		if len(features) == 0 {
-			fmt.Fprintf(ctx.Output, "No syntax help found for: %s\n", path)
+		// Same resolver as `mxcli syntax` — see syntax.Lookup.
+		m := syntax.Lookup(s.Topic)
+		if len(m.Features) == 0 {
+			fmt.Fprintf(ctx.Output, "No syntax help found for: %s\n", m.Path)
 			fmt.Fprintln(ctx.Output, "Use HELP; for a command overview.")
 			return nil
 		}
 		if ctx.Format == FormatJSON {
-			return syntax.WriteJSON(ctx.Output, features)
+			return syntax.WriteJSON(ctx.Output, m.Features)
 		}
-		syntax.WriteText(ctx.Output, features)
+		if !m.Exact {
+			fmt.Fprintf(ctx.Output, "No topic %q. Showing %d topic(s) matching %q:\n\n",
+				m.Path, len(m.Features), m.Fallback)
+		}
+		syntax.WriteText(ctx.Output, m.Features)
 		return nil
 	}
 	help := `MDL Commands:
@@ -345,6 +349,9 @@ Other:
   commit [message 'message'];
   set key = value;
   HELP or ?
+  HELP <topic>;                 Syntax reference — the topics mxcli syntax lists.
+                                Words, hyphens or the dotted path all work:
+                                HELP workflow user task | HELP workflow.user-task
   EXIT or QUIT
 
 Statement Terminator:
@@ -352,32 +359,6 @@ Statement Terminator:
 `
 	fmt.Fprint(ctx.Output, help)
 	return nil
-}
-
-// resolveHelpPath converts space-separated words like ["workflow", "user", "task"]
-// into a registry path like "workflow.user-task" by greedily merging adjacent words
-// with hyphens to find the longest matching prefix at each level.
-func resolveHelpPath(words []string) string {
-	var segments []string
-	i := 0
-	for i < len(words) {
-		matched := false
-		for j := len(words); j > i; j-- {
-			candidate := strings.Join(words[i:j], "-")
-			testPath := strings.Join(append(segments, candidate), ".")
-			if syntax.HasPrefix(testPath) {
-				segments = append(segments, candidate)
-				i = j
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			segments = append(segments, words[i])
-			i++
-		}
-	}
-	return strings.Join(segments, ".")
 }
 
 // listVersion displays Mendix project version information.

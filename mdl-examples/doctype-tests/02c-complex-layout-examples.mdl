@@ -24,6 +24,10 @@
 --                                (~35 activities, McCabe ~16)
 --   5. CX_ACT_BatchProcessFactories — loop with CASE + nested-if body
 --                                (~30 activities, McCabe ~8)
+--   6. CX_SYNC_FactoryTelemetry — jumps and merges: a retry that jumps
+--                                backwards, error handlers rejoining the main
+--                                flow, and crossed branches
+--                                (~37 activities, 4 merges, 11 joins)
 --
 -- Usage:
 --   ./bin/mxcli check mdl-examples/doctype-tests/02c-complex-layout-examples.mdl
@@ -679,5 +683,131 @@ begin
     + ', errors: '  + toString($ErrorCount);
 
   return $ProcessedCount;
+end;
+/
+
+-- ============================================================================
+-- PATTERN 6: Jumps and Merges — retry, error rejoin, crossed branches
+-- Source: the graph shapes a nested IF cannot express (mendixlabs/mxcli#923)
+-- Layout: a BACKWARD edge (the retry), two error handlers rejoining the main
+--         flow, two splits whose arms land on a shared merge, and a funnel
+--         where three independent paths end. Expected canvas: tall rather
+--         than wide, with lines running right-to-left across it.
+-- ============================================================================
+
+/**
+ * Synchronises one Factory's telemetry, with retry and a degraded fallback.
+ *
+ * Every join shape MDL can spell, in one flow:
+ *   - BACKWARD     the handler jumps back to `attempt`, above the call, so
+ *                  the failed call is retried until $MaxAttempts
+ *   - ERROR → MAIN a handler that gives up joins `degraded`, which the main
+ *                  flow also reaches when the response came back empty
+ *   - CROSSED      the inner split's FALSE arm and the outer split's FALSE
+ *                  arm both land on `review`, which no nesting of IF
+ *                  reproduces
+ *   - FALL-THROUGH the last handler ends without RETURN or JOIN, so it
+ *                  merges back into the main flow of its own accord
+ *   - FUNNEL       three independent paths end at `finish`
+ *
+ * Expected layout: `attempt`, `degraded`, `review`, `emit` and `finish`
+ * are merge nodes carrying two or three incoming lines each; the retry edge
+ * is the one that runs backwards.
+ */
+create microflow CxLayout.CX_SYNC_FactoryTelemetry (
+  $Factory:     CxLayout.Factory,
+  $MaxAttempts: integer
+)
+returns string as $Outcome
+begin
+  declare $Outcome     string  = 'pending';
+  declare $Attempts    integer = 0;
+
+  -- A decommissioned factory reports nothing: straight to the funnel.
+  if $Factory/Status = CxLayout.FactoryStatus.Decommissioned then
+    set $Outcome = 'skipped';
+    join finish;
+  end if;
+
+  -- ---- retry: the handler jumps BACK to the merge above the call ---------
+  merge attempt;
+  set $Attempts = $Attempts + 1;
+
+  $RawResponse = call java action CxLayout.SUB_ExchangeAuthCode (
+    AuthCode     = $Factory/Name,
+    ClientId     = 'telemetry-client',
+    ClientSecret = 'telemetry-secret',
+    RedirectUri  = 'https://telemetry.example.com/callback',
+    UseBasicAuth = false
+  ) on error without rollback {
+    log warning node 'Telemetry' 'Telemetry call failed for ' + $Factory/Name
+      + ' (attempt ' + toString($Attempts) + ')';
+    if $Attempts < $MaxAttempts then
+      join attempt;
+    else
+      log error node 'Telemetry' 'Giving up on ' + $Factory/Name
+        + ' after ' + toString($Attempts) + ' attempts';
+      join degraded;
+    end if;
+  };
+
+  -- The main flow reaches `degraded` as well, for a call that returned nothing.
+  if $RawResponse = empty then
+    log warning node 'Telemetry' 'Empty telemetry payload for ' + $Factory/Name;
+    join degraded;
+  end if;
+
+  $Token = create CxLayout.AuthToken (
+    ClientId    = 'telemetry-client',
+    AuthMethod  = CxLayout.AuthMethod.None,
+    RawResponse = $RawResponse,
+    IssuedAt    = [%CurrentDateTime%]
+  );
+
+  commit $Token with events on error {
+    log error node 'Telemetry' 'Could not store the telemetry token';
+    join degraded;
+  };
+
+  -- ---- crossed branches: two splits, three arms, two landing points -----
+  if $Factory/Availability > 80 then
+    if $Factory/Performance > 90 then
+      set $Outcome = 'healthy';
+      join emit;
+    else
+      set $Outcome = 'performance-watch';
+      join review;
+    end if;
+  else
+    set $Outcome = 'availability-watch';
+    join review;
+  end if;
+
+  merge review;
+  log info node 'Telemetry' 'Queued for review: ' + $Factory/Name;
+  change $Factory (
+    Status       = CxLayout.FactoryStatus.Maintenance,
+    LastModified = [%CurrentDateTime%]
+  );
+  join emit;
+
+  merge emit;
+  change $Factory (LastModified = [%CurrentDateTime%]);
+  commit $Factory with events on error rollback;
+  log info node 'Telemetry' 'Telemetry published for ' + $Factory/Name;
+  join finish;
+
+  merge degraded;
+  set $Outcome = 'degraded';
+  change $Factory (Status = CxLayout.FactoryStatus.Offline);
+  commit $Factory with events on error {
+    log error node 'Telemetry' 'Degraded write failed for ' + $Factory/Name;
+  };
+  join finish;
+
+  merge finish;
+  log info node 'Telemetry' 'Telemetry sync finished for ' + $Factory/Name
+    + ' with outcome ' + $Outcome;
+  return $Outcome;
 end;
 /

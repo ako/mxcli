@@ -102,6 +102,12 @@ type LocalRunOptions struct {
 	// Screenshot, when set, captures a PNG of the app after boot and after each
 	// applied change (requires the Playwright CLI + a browser).
 	Screenshot bool
+
+	// PageCheck prints a text verdict for each target page instead of (or as
+	// well as) capturing a PNG. It answers the question a screenshot is usually
+	// taken to answer at a fraction of the tokens, and reports console errors,
+	// which a picture cannot show. See pagecheck.go and ako/mxcli#614.
+	PageCheck bool
 	// ScreenshotPath is where the PNG is written (default <projectDir>/.mxcli/run-local.png).
 	// With multiple ScreenshotURLs, it is the base name and each page gets a
 	// per-page suffix (run-local-<page>.png).
@@ -182,21 +188,6 @@ func (o *LocalRunOptions) applyDefaults() {
 	if o.PollInterval == 0 {
 		o.PollInterval = time.Second
 	}
-	if o.DB.Type == "" {
-		o.DB.Type = "PostgreSQL"
-	}
-	if o.DB.Host == "" {
-		o.DB.Host = "127.0.0.1:5432"
-	}
-	if o.DB.User == "" {
-		o.DB.User = "mendix"
-	}
-	if o.DB.Password == "" {
-		o.DB.Password = "mendix"
-	}
-	if o.DB.Name == "" {
-		o.DB.Name = deriveDBName(o.ProjectPath)
-	}
 	if o.ScreenshotPath == "" {
 		o.ScreenshotPath = filepath.Join(filepath.Dir(o.ProjectPath), ".mxcli", "run-local.png")
 	}
@@ -212,6 +203,47 @@ func (o *LocalRunOptions) applyDefaults() {
 	if o.Stderr == nil {
 		o.Stderr = os.Stderr
 	}
+}
+
+// applyDatabaseDefaults validates --db-type and fills the connection settings the
+// chosen database needs. It is separate from applyDefaults because it can fail:
+// a flag combination that cannot work (--db-type hsqldb with --db-host) is a user
+// error, not something to silently normalise away.
+func (o *LocalRunOptions) applyDatabaseDefaults() error {
+	kind, err := NormalizeDBType(o.DB.Type)
+	if err != nil {
+		return err
+	}
+	if o.DB.Name == "" {
+		o.DB.Name = deriveDBName(o.ProjectPath)
+	}
+	if IsFileBasedDBType(kind) {
+		// The built-in database is a file: it has no host or credentials, and
+		// accepting them would imply a connection that never happens.
+		if o.DB.Host != "" || o.DB.User != "" || o.DB.Password != "" {
+			return fmt.Errorf("--db-type hsqldb uses the built-in file database and takes no " +
+				"--db-host, --db-user or --db-password")
+		}
+		if o.EnsureDB {
+			return fmt.Errorf("--ensure-db provisions PostgreSQL; the built-in HSQLDB database " +
+				"needs no provisioning — drop --ensure-db")
+		}
+		o.DB.Type = RuntimeDatabaseType(kind)
+		o.DB.Host, o.DB.User, o.DB.Password = "", "", ""
+		return nil
+	}
+	// PostgreSQL (unchanged behaviour).
+	if o.DB.Host == "" {
+		o.DB.Host = "127.0.0.1:5432"
+	}
+	if o.DB.User == "" {
+		o.DB.User = "mendix"
+	}
+	if o.DB.Password == "" {
+		o.DB.Password = "mendix"
+	}
+	o.DB.Type = RuntimeDatabaseType(kind)
+	return nil
 }
 
 // defaultOtelSpanFilters are the internal runtime spans suppressed under --trace.
@@ -541,6 +573,9 @@ func sourceMTime(projectPath string) time.Time {
 // and hot-apply on every project change until interrupted.
 func RunLocal(opts LocalRunOptions) error {
 	opts.applyDefaults()
+	if err := opts.applyDatabaseDefaults(); err != nil {
+		return err
+	}
 	w, stderr := opts.Stdout, opts.Stderr
 
 	// 0. Refuse fast if the loop's ports are already taken (a stale run/serve/
@@ -610,10 +645,12 @@ func RunLocal(opts LocalRunOptions) error {
 		if err := EnsureDatabase(&opts.DB, w); err != nil {
 			return fmt.Errorf("ensuring database: %w", err)
 		}
-	} else if err := pingTCP(opts.DB.Host, 3*time.Second); err != nil {
-		return fmt.Errorf("database not reachable at %s: %w\n"+
-			"  Pass --ensure-db to provision it, or start Postgres and create the '%s' database (user %q).",
-			opts.DB.Host, err, opts.DB.Name, opts.DB.User)
+	} else if !opts.DB.IsFileBased() {
+		if err := pingTCP(opts.DB.Host, 3*time.Second); err != nil {
+			return fmt.Errorf("database not reachable at %s: %w\n"+
+				"  Pass --ensure-db to provision it, or start Postgres and create the '%s' database (user %q).",
+				opts.DB.Host, err, opts.DB.Name, opts.DB.User)
+		}
 	}
 
 	// Setup-only: prerequisites are ready (mxbuild+runtime cached, database up).
@@ -627,12 +664,7 @@ func RunLocal(opts LocalRunOptions) error {
 	// 5. Start the warm build server.
 	fmt.Fprintln(w, "Starting mxbuild --serve...")
 	javaMajor, _ := ProjectJavaMajor(opts.ProjectPath)
-	serve, err := StartServe(ServeOptions{
-		Version:   version,
-		JavaMajor: javaMajor,
-		Host:      "127.0.0.1",
-		Port:      opts.ServePort,
-	})
+	serve, err := StartServe(serveOptionsFor(mxbuildPath, version, javaMajor, opts.ServePort))
 	if err != nil {
 		return fmt.Errorf("starting mxbuild serve: %w", err)
 	}
@@ -927,6 +959,13 @@ func runtimeStoppedError(rt *LocalRuntime) error {
 // maybeScreenshot captures the app (best-effort) when --screenshot is set. A
 // failure is reported but never aborts the loop — the app is still running.
 func maybeScreenshot(opts LocalRunOptions, rt *LocalRuntime) {
+	// The text verdict is printed whenever either flag asks for it: with
+	// --page-check alone it is the whole output, and alongside --screenshot it
+	// means the PNG does not have to be opened to learn whether the page
+	// rendered (ako/mxcli#614).
+	if opts.PageCheck {
+		reportPageChecks(opts, rt)
+	}
 	if !opts.Screenshot {
 		return
 	}
@@ -1130,6 +1169,13 @@ func clientBundleServedWithin(appURL string, window time.Duration) bool {
 // path the non-watch boot uses) and re-probe. A no-op when the bundle is already
 // served (a pure model reload never touches web/dist).
 func ensureClientServed(deployDir, appURL, mxbuildPath string, out io.Writer) error {
+	// Nothing below applies to the classic (Dojo) client: it has no bundle, no
+	// chunks, and never serves /dist/index.js. Fixing only the boot path would
+	// have moved this failure to every applied change under --watch rather than
+	// removing it (#1123).
+	if planWebClient(deployDir) == webClientClassic {
+		return nil
+	}
 	// A dangling chunk is checked FIRST, because the index.js probe cannot see it:
 	// the entry point is served with a 200 while a chunk it imports is missing, so
 	// the apply is reported as successful and the page dies in the browser with
@@ -1350,4 +1396,20 @@ func declaredJarDependencies(reader backend.FullBackend) []JarDependencyRef {
 		}
 	}
 	return out
+}
+
+// reportPageChecks prints one verdict line per target page.
+func reportPageChecks(opts LocalRunOptions, rt *LocalRuntime) {
+	targets := opts.ScreenshotURLs
+	if len(targets) == 0 {
+		targets = []string{""}
+	}
+	for _, t := range targets {
+		sig, err := CheckPage(resolveScreenshotURL(rt.AppURL(), t), opts.screenshotStorage, 4000, 0)
+		if err != nil {
+			fmt.Fprintf(opts.Stderr, "  page check skipped (%s): %v\n", pageLabel(t), err)
+			continue
+		}
+		fmt.Fprint(opts.Stdout, "  "+formatPageVerdict(pageLabel(t), sig))
+	}
 }

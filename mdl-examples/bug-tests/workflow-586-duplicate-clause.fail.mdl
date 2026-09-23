@@ -1,0 +1,52 @@
+-- ako/mxcli#586 — the negative half of `workflow-586-clause-order.mdl`.
+--
+-- Making the clauses order-free must not also make them repeatable. The old
+-- sequence grammar allowed each clause at most once; a clause list that took
+-- them in any order would accept `page M.A page M.B` and let the second one
+-- silently win, which is a worse failure than the parse error it replaced.
+--
+-- So the at-most-once rule is enforced in the visitor, where the message can
+-- name the clause and the line the first one was on, rather than by the
+-- grammar, which can only point at a token. Every statement below must be
+-- refused by `mxcli check`.
+--
+-- Three clauses are deliberately exempt because they are list-valued and
+-- accumulate: `outcomes`, `boundary event`, and the header's workflow event
+-- handlers.
+
+create module WF586Dup;
+
+-- A header clause written twice.
+create workflow WF586Dup.HeaderTwice
+  display 'A'
+  display 'B'
+begin
+  user task T 'c' outcomes 'Done' { };
+end workflow;
+/
+
+-- A user task clause written twice, with another clause between them, so the
+-- report cannot be a matter of the two sitting next to each other.
+create workflow WF586Dup.TaskTwice
+begin
+  user task T 'c'
+    on created microflow WF586Dup.ACT_A
+    description 'between'
+    on created microflow WF586Dup.ACT_B
+    outcomes 'Done' { };
+end workflow;
+/
+
+-- `targeting microflow` and `targeting xpath` fill the SAME slot — a user task
+-- stores one UserSource — so writing both is a duplicate, not two clauses.
+-- Under the old grammar both were accepted and the one written LAST won, which
+-- is the order-dependence of #586 in its most damaging form: the task ends up
+-- targeted by whichever clause the author happened to put second.
+create workflow WF586Dup.TwoTargetings
+begin
+  user task T 'c'
+    targeting microflow WF586Dup.ACT_A
+    targeting xpath '[true()]'
+    outcomes 'Done' { };
+end workflow;
+/

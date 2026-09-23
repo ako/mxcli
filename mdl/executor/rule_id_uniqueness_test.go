@@ -37,6 +37,14 @@ var ruleIDPattern = regexp.MustCompile(`RuleID:\s+"([A-Z][A-Z0-9-]*)"`)
 var ruleIDsSharedDeliberately = map[string]string{
 	"MDL-WIDGET21": "validate_widget_contentparams.go and validate_widget_editability.go " +
 		"both report a property the widget does not honour; predates this test",
+	"MDL-WIDGET11": "one rule, two sites: a design-property KEY the project's theme does not " +
+		"declare. validate_design_properties.go asks it of the widget trees a statement CARRIES; " +
+		"validate_alter_styling.go asks it of ALTER STYLING, which names a stored widget instead. " +
+		"Someone suppressing MDL-WIDGET11 means both, so splitting the number would be wrong " +
+		"(ako/mxcli#509)",
+	"MDL-WIDGET12": "one rule, two sites: a design-property VALUE the theme does not allow — an " +
+		"off-list option, or a single value where the property takes a SET. Same two paths as " +
+		"MDL-WIDGET11, and the same argument against splitting (ako/mxcli#511)",
 	"MDL059": "one rule, two sites: an annotation that parses and does nothing. " +
 		"validate_flow_parameters.go covers one written on a PARAMETER, " +
 		"validate_document_annotations.go one written before a CREATE. Someone " +

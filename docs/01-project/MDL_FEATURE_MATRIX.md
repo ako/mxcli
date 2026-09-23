@@ -97,7 +97,7 @@ linked from the notes — this matrix never restates it:
 - **MCP** per-feature shapes, gaps, and Studio-Pro-version surface:
   [`../03-development/PED_MCP_CAPABILITIES.md`](../03-development/PED_MCP_CAPABILITIES.md).
 - **MPR** is the reference backend the executor was built on; it realizes everything MDL
-  expresses (read `sdk/mpr/` and `mdl/backend/mpr/` for specifics).
+  expresses (read `modelsdk/` and `mdl/backend/modelsdk/` for specifics).
 
 `Mendix` and `MDL` are `Y` for every row below *by construction* (a row exists only because
 MDL expresses a Mendix feature); they are kept as columns to make the stack explicit. The

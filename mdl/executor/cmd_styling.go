@@ -104,6 +104,15 @@ func printOneProperty(ctx *ExecContext, p ThemeProperty) {
 		for _, o := range p.Options {
 			options = append(options, o.Name)
 		}
+		// A multi-select property is authored and stored differently — a
+		// compound, one entry per selection — so listing it identically to a
+		// single-select one is how `'Hide on': 'Phone'` looked correct and
+		// produced a document mxbuild refuses (CE6084, ako/mxcli#511).
+		if p.MultiSelect {
+			fmt.Fprintf(ctx.Output, "  %-24s %-11s [%s]  (multi-select: '%s': ['%s': on])\n",
+				p.Name, p.Type, strings.Join(options, ", "), p.Name, firstOptionName(&p, ""))
+			return
+		}
 		fmt.Fprintf(ctx.Output, "  %-24s %-11s [%s]\n", p.Name, p.Type, strings.Join(options, ", "))
 	default:
 		fmt.Fprintf(ctx.Output, "  %-24s %s\n", p.Name, p.Type)
@@ -300,7 +309,7 @@ func execAlterStyling(ctx *ExecContext, s *ast.AlterStylingStmt) error {
 			fmt.Sprintf("widget %q not found in %s %s", s.WidgetName, containerType, s.ContainerName.String()))
 	}
 
-	if err := applyStylingMutator(mutator, s); err != nil {
+	if err := applyStylingMutator(mutator, s, ctx.GetThemeRegistry()); err != nil {
 		return mdlerrors.NewBackend("alter styling", err)
 	}
 
@@ -314,7 +323,29 @@ func execAlterStyling(ctx *ExecContext, s *ast.AlterStylingStmt) error {
 
 // applyStylingMutator applies the ALTER STYLING assignments through the page
 // mutator. CLEAR DESIGN PROPERTIES is applied first, then each assignment in order.
-func applyStylingMutator(mutator backend.PageMutator, s *ast.AlterStylingStmt) error {
+func applyStylingMutator(mutator backend.PageMutator, s *ast.AlterStylingStmt, theme *ThemeRegistry) error {
+	// A multi-select design property is stored as a compound — one entry per
+	// selected option — and a StylingAssignment carries a single flat value, so
+	// ALTER STYLING cannot express it at all. Writing the flat value produced a
+	// document mxbuild refuses with CE6084; refusing here names the form that
+	// works instead (ako/mxcli#511).
+	for _, a := range s.Assignments {
+		if a.IsCSS || a.Property == "" {
+			continue
+		}
+		if multi := multiSelectPropertyNamed(theme, a.Property); multi != nil {
+			return mdlerrors.NewUnsupported(fmt.Sprintf(
+				"design property %q takes a SET of options, and `alter styling` writes one value — "+
+					"mxbuild refuses that with CE6084. Set it inline instead: "+
+					"`DesignProperties: ['%s': ['%s': on]]` on the widget, in CREATE PAGE or an "+
+					"ALTER PAGE REPLACE.",
+				a.Property, a.Property, firstOptionName(multi, a.Value)))
+		}
+	}
+	return applyStylingMutatorInner(mutator, s)
+}
+
+func applyStylingMutatorInner(mutator backend.PageMutator, s *ast.AlterStylingStmt) error {
 	if s.ClearDesignProps {
 		if err := mutator.ClearDesignProperties(s.WidgetName); err != nil {
 			return err

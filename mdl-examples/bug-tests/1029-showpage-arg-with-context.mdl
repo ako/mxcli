@@ -1,0 +1,70 @@
+-- mendixlabs/mxcli#1029, the other half: what the refusal must NOT touch.
+--
+-- MDL-PAGEARG01 refuses a `show_page` widget argument only where it can prove
+-- the argument is discarded. Every form below has a context object for Mendix to
+-- infer, or no argument to lose, and all of them build at 0 errors on mxbuild
+-- 11.13.0. This script must PASS check.
+--
+-- (`ALTER PAGE … SET Action = …` is the third case the guard stands down on: it
+-- builds an action against a stored page the pass never traverses, so it cannot
+-- say what encloses the widget. Covered by the unit tests, not here, since it
+-- needs a project to alter.)
+create module Probe1029Ok;
+
+create persistent entity Probe1029Ok.Item (
+  Name: String(200)
+);
+
+create page Probe1029Ok.Detail (
+  params: { $Item: Probe1029Ok.Item },
+  title: 'Detail',
+  layout: Atlas_Core.Atlas_Default
+) {
+  dataview dv (datasource: $Item) {
+    textbox txt (label: 'Name', attribute: 'Name')
+  }
+};
+
+-- No argument at all: nothing to drop, so nothing to refuse.
+create page Probe1029Ok.Plain (
+  title: 'Plain',
+  layout: Atlas_Core.Atlas_Default
+) {
+  actionbutton btnNoArgs (
+    caption: 'Open',
+    action: show_page Probe1029Ok.Plain
+  )
+};
+
+-- Inside a data view: the argument names the context object, under either
+-- spelling. This is the documented form in create-page.md.
+create page Probe1029Ok.Ok (
+  params: { $SomeRef: Probe1029Ok.Item },
+  title: 'Ok',
+  layout: Atlas_Core.Atlas_Default
+) {
+  dataview dv (datasource: $SomeRef) {
+    actionbutton btnCurrent (
+      caption: 'Open (currentObject)',
+      action: show_page Probe1029Ok.Detail(Item: $currentObject)
+    )
+    actionbutton btnByName (
+      caption: 'Open (by name)',
+      action: show_page Probe1029Ok.Detail(Item: $SomeRef)
+    )
+  }
+};
+
+-- A row-scoped button in a list view: the row object is the context object, and
+-- it has no name of its own, so only $currentObject spells it.
+create page Probe1029Ok.Listing (
+  title: 'Listing',
+  layout: Atlas_Core.Atlas_Default
+) {
+  listview lv (datasource: database Probe1029Ok.Item) {
+    actionbutton btnRow (
+      caption: 'Open row',
+      action: show_page Probe1029Ok.Detail(Item: $currentObject)
+    )
+  }
+};

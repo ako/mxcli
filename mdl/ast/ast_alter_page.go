@@ -130,3 +130,20 @@ type AlterPagesLayoutStmt struct {
 }
 
 func (s *AlterPagesLayoutStmt) isStatement() {}
+
+// AlterPagesStylingStmt is the bulk form of ALTER PAGE's design-property SET:
+// set a design property on every widget of one TYPE, across a module or the
+// whole project.
+//
+// The predicate is a widget type and never a name, because a widget name is
+// unique only within its page — measured across a blank 11.12.2 project,
+// `actionButton1` appears in 30 units, so a name predicate would sweep
+// unrelated widgets together (ako/mxcli#515).
+type AlterPagesStylingStmt struct {
+	Module      string              // "" = every module the project owns
+	Assignments []StylingAssignment // reuses ALTER STYLING's assignment shape
+	WidgetType  string              // MDL keyword (`datagrid`) or a full widget id
+	DryRun      bool                // report the matches and write nothing
+}
+
+func (s *AlterPagesStylingStmt) isStatement() {}

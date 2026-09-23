@@ -39,9 +39,13 @@ func TestMeasureStatementsSpan_SimpleRun(t *testing.T) {
 			t.Errorf("span of %d activities = %d, want %d", tc.n, got, tc.want)
 		}
 		if tc.n > 1 {
-			// The old measure is the one that over-sized the loop box.
-			if old := m.measureStatements(simpleStmts(tc.n)).Width; old <= got {
-				t.Errorf("expected measureStatements (%d) to exceed the true span (%d)", old, got)
+			// measureStatements used to count HorizontalSpacing on top of both
+			// widths and over-measure a simple run by (n-1)*ActivityWidth — the
+			// reason this function exists. gapBetween made it exact, so the two
+			// now agree on a simple run; the span stays as the loop box's measure
+			// because it bails out to the general one for compound bodies.
+			if general := m.measureStatements(simpleStmts(tc.n)).Width; general != got {
+				t.Errorf("measureStatements (%d) should now equal the true span (%d) for a simple run", general, got)
 			}
 		}
 	}

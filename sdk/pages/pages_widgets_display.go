@@ -83,21 +83,48 @@ type Title struct {
 // DynamicImage represents a dynamic image widget.
 type DynamicImage struct {
 	BaseWidget
-	DefaultImage  model.ID     `json:"defaultImage,omitempty"`
-	Width         int          `json:"width,omitempty"`
-	WidthUnit     WidthUnit    `json:"widthUnit,omitempty"`
-	Height        int          `json:"height,omitempty"`
-	Responsive    bool         `json:"responsive"`
-	OnClickAction ClientAction `json:"onClickAction,omitempty"`
+	// DataSource is the entity holding the image, stored as the EntityRef of a
+	// Forms$ImageViewerSource. Without it mxbuild refuses the widget outright —
+	// CE0489 "Select an entity for the data source of this dynamic image" — so
+	// this is the one field the widget cannot be written without.
+	DataSource DataSource `json:"dataSource,omitempty"`
+	// DefaultImageName is the fallback image shown when the object has none, as
+	// the three-part qualified name of an image-collection entry
+	// (Module.Collection.Image). Forms$ImageViewer.DefaultImage is a by-name
+	// reference to Images$Image, so a NAME is what Mendix stores — the
+	// DefaultImage (model.ID) field that used to stand here was never filled by
+	// anything and named the wrong thing.
+	DefaultImageName string    `json:"defaultImageName,omitempty"`
+	Width            int       `json:"width,omitempty"`
+	WidthUnit        WidthUnit `json:"widthUnit,omitempty"`
+	Height           int       `json:"height,omitempty"`
+	// HeightUnit is the sibling of WidthUnit, which had no field while the
+	// writer hardcoded both to "Auto". Empty means Auto (Mendix's default).
+	HeightUnit WidthUnit `json:"heightUnit,omitempty"`
+	// ShowAsThumbnail and OnClickEnlarge were both hardcoded false by the
+	// writer, so neither was reachable from MDL.
+	ShowAsThumbnail bool         `json:"showAsThumbnail,omitempty"`
+	OnClickEnlarge  bool         `json:"onClickEnlarge,omitempty"`
+	Responsive      bool         `json:"responsive"`
+	OnClickAction   ClientAction `json:"onClickAction,omitempty"`
 }
 
 // StaticImage represents a static image widget.
 type StaticImage struct {
 	BaseWidget
-	ImageID       model.ID     `json:"imageId,omitempty"`
-	Width         int          `json:"width,omitempty"`
-	WidthUnit     WidthUnit    `json:"widthUnit,omitempty"`
-	Height        int          `json:"height,omitempty"`
+	// ImageName is the image this widget shows, as the three-part qualified
+	// name of an entry in an image collection (Module.Collection.Image).
+	// Forms$StaticImageViewer.Image is a by-name reference to Images$Image, so
+	// a NAME is what Mendix stores — the ImageID (model.ID) field that used to
+	// stand here was never filled by anything and named the wrong thing
+	// (mendixlabs/mxcli#1057).
+	ImageName string    `json:"imageName,omitempty"`
+	Width     int       `json:"width,omitempty"`
+	WidthUnit WidthUnit `json:"widthUnit,omitempty"`
+	Height    int       `json:"height,omitempty"`
+	// HeightUnit is the sibling of WidthUnit, which had no field while the
+	// writer hardcoded both to "Auto". Empty means Auto (Studio Pro's default).
+	HeightUnit    WidthUnit    `json:"heightUnit,omitempty"`
 	Responsive    bool         `json:"responsive"`
 	OnClickAction ClientAction `json:"onClickAction,omitempty"`
 }

@@ -25,35 +25,80 @@ This document describes how MDL constructs map to BSON structures in Mendix MPR 
 Mendix projects are stored in `.mpr` files which contain:
 
 ### MPR v1 (Mendix < 10.18)
-Single SQLite database file with:
-- `Unit` table: Document metadata
-- `UnitContents` table: BSON document contents
+Single SQLite database file with two tables:
+- `Unit`: one row per document, BSON contents included as the `Contents` blob
+- `_MetaData`: Mendix product/build version and schema hash
+
+There is no separate contents table: `SELECT Contents FROM Unit WHERE UnitID = ?`.
 
 ### MPR v2 (Mendix >= 10.18)
 SQLite metadata file + separate content files:
-- `.mpr` file: SQLite with `Unit` table (metadata only)
-- `mprcontents/` folder: Individual `.mxunit` files containing BSON
+- `.mpr` file: SQLite with the same `Unit` table **minus `Contents`**, plus a
+  `_Transaction` table
+- `mprcontents/<XX>/<YY>/<UUID>.mxunit`: one file per document, containing BSON
+
+Format detection is by the presence of the `mprcontents/` directory, falling
+back to whether `Unit` has a `Contents` column -- never by probing for a
+contents table. See
+[v1 vs v2](../../docs-site/src/internals/mpr-v1-v2.md).
 
 ### Unit Types
 
-| UnitType | Document Type |
-|----------|---------------|
+A document's type is its BSON `$Type`, not a column on `Unit`.
+
+These are **storage names**, and for the page family they differ from the
+names the TypeScript SDK uses: a page is stored as `Forms$Page`, never
+`Pages$Page` -- "Form" was the original term for "Page". Using the SDK
+spelling to select documents matches nothing, which is a wrong answer rather
+than an error. See [Storage Names](../../docs-site/src/internals/storage-names.md).
+
+The set below is measured: it is every distinct `$Type` in a blank Mendix
+11.6.6 app (369 units) unioned with a 9.24.30 app (20 units).
+
+| `$Type` | Document Type |
+|---------|---------------|
+| `Constants$Constant` | Constant |
+| `CustomIcons$CustomIconCollection` | Custom icon collection |
 | `DomainModels$DomainModel` | Domain model (entities, associations) |
-| `DomainModels$ViewEntitySourceDocument` | OQL query for VIEW entities |
-| `microflows$microflow` | Microflow definition |
-| `microflows$nanoflow` | Nanoflow definition |
-| `pages$page` | Page definition |
-| `pages$layout` | Layout definition |
-| `pages$snippet` | Snippet definition |
-| `pages$BuildingBlock` | Building block definition |
-| `enumerations$enumeration` | Enumeration definition |
-| `JavaActions$JavaAction` | Java action definition |
-| `security$ProjectSecurity` | Project security settings |
-| `security$ModuleSecurity` | Module security settings |
-| `navigation$NavigationDocument` | Navigation profile |
-| `settings$ProjectSettings` | Project settings |
+| `Enumerations$Enumeration` | Enumeration |
+| `ExportMappings$ExportMapping` | Export mapping |
+| `Forms$BuildingBlock` | Building block |
+| `Forms$Layout` | Layout |
+| `Forms$Page` | Page |
+| `Forms$PageTemplate` | Page template |
+| `Forms$Snippet` | Snippet |
+| `Images$ImageCollection` | Image collection |
+| `ImportMappings$ImportMapping` | Import mapping |
+| `JavaActions$JavaAction` | Java action |
+| `JavaScriptActions$JavaScriptAction` | JavaScript action |
+| `JsonStructures$JsonStructure` | JSON structure |
+| `Menus$MenuDocument` | Menu document |
+| `Microflows$Microflow` | Microflow |
+| `Microflows$Nanoflow` | Nanoflow |
+| `Navigation$NavigationDocument` | Navigation profile |
+| `Projects$Folder` | Folder |
+| `Projects$ModuleImpl` | Module |
+| `Projects$ModuleSettings` | Per-module settings |
+| `Projects$Project` | Project root |
+| `Projects$ProjectConversion` | Version-conversion record |
+| `Security$ModuleSecurity` | Module security settings |
+| `Security$ProjectSecurity` | Project security settings |
+| `Settings$ProjectSettings` | Project settings |
+| `Texts$SystemTextCollection` | System text collection |
+
+A project with no instance of a document type simply has no unit of it, so
+these are named from mxcli's own readers and writers rather than measured
+above:
+
+| `$Type` | Document Type |
+|---------|---------------|
 | `BusinessEvents$BusinessEventService` | Business event service |
-| `CustomWidgets$customwidget` | Custom widget definition |
+| `CustomBlobDocuments$CustomBlobDocument` | Custom blob document |
+| `DomainModels$ViewEntitySourceDocument` | OQL query for VIEW entities |
+| `Microflows$Rule` | Rule (a rule is a flow, so it is in the Microflows namespace) |
+| `Queues$Queue` | Task queue |
+| `RegularExpressions$RegularExpression` | Regular expression |
+| `ScheduledEvents$ScheduledEvent` | Scheduled event |
 
 ---
 
@@ -1259,7 +1304,8 @@ When Studio Pro doesn't display data correctly (e.g., missing attributes, incorr
 Use this pattern to compare your generated BSON with Mendix-generated BSON:
 
 ```go
-// in sdk/mpr/reader_units.go there's GetRawMicroflowByName for debugging
+// modelsdk/mpr exposes GetRawUnit / GetRawUnitByName for debugging;
+// `mxcli bson dump` is the same thing from the command line
 raw1, _ := reader.GetRawMicroflowByName("Module.BrokenMicroflow")
 raw2, _ := reader.GetRawMicroflowByName("Module.WorkingMicroflow")
 

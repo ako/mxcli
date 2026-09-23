@@ -1,0 +1,74 @@
+-- ako/mxcli#509 and #511 — two ways a design property reached mxbuild instead of
+-- `mxcli check`. Both measured on a blank Mendix 11.12.2 project, plain Atlas.
+--
+-- #509: ALTER STYLING was the one statement whose entire job is writing design
+-- properties, and the one statement MDL-WIDGET11 never looked at.
+--
+--     alter styling … set 'Remove empty text' = on;
+--       check  -> Check passed!
+--       exec   -> Updated styling on widget "lvThings"
+--       build  -> [CE6083] "Design property Remove empty text is not supported
+--                 by your theme."   1 error
+--
+-- What the check can and cannot answer: the statement names a STORED widget, so
+-- its $Type lives only in the document and this pass has no backend to open one.
+-- It therefore asks whether ANY widget type in the theme declares the key — a key
+-- declared nowhere cannot be right here either. A key declared for a DIFFERENT
+-- widget type is accepted. Under-reporting, never over-reporting.
+--
+-- #511: a design property declared `"multiSelect": true` (Atlas: 'Hide on') is
+-- stored as a COMPOUND, one entry per selected option. Decoded from a Studio
+-- Pro-authored Atlas page already in the project:
+--
+--     Forms$DesignPropertyValue  Key: "Hide on"
+--       Value: Forms$CompoundDesignPropertyValue
+--         Properties: [ Forms$DesignPropertyValue{ Key: "Phone",
+--                         Value: Forms$ToggleDesignPropertyValue } ]
+--
+-- That is structurally `Spacing`, which MDL already writes — so the capability
+-- was never missing. The FLAT spelling was the trap: 'Phone' is a declared
+-- option, so it serialized as a plain Option and mxbuild refused it:
+--
+--     [CE6084] "Expected design property Hide on to be of type Toggle button
+--              group, but found Option."
+--
+-- The same statement with 'Align self' (same declared control type, NOT
+-- multi-select) is 0 errors — which is what isolates multiSelect as the cause.
+
+create entity MyFirstModule.Thing ( Name: string(200) );
+
+-- #511 control: the compound spelling is the one that works. Verified 0 errors.
+create or replace page MyFirstModule.HideOn (
+  title: 'h', layout: 'Atlas_Core.Atlas_Default'
+) {
+  listview lvH (
+    DataSource: database from MyFirstModule.Thing,
+    DesignProperties: ['Hide on': ['Phone': on, 'Tablet': on]]
+  ) {
+    dynamictext dt (Content: 'x')
+  }
+};
+
+-- #509 control: a key the theme declares stays silent, and builds at 0 errors.
+-- 'Row size' is type-specific to ListView; 'Align self' is inherited from the
+-- `Widget` group, which a check built from one type's properties would wrongly
+-- report — the mistake this area keeps producing.
+alter styling on page MyFirstModule.HideOn widget lvH
+  set 'Row size' = 'Small', 'Align self' = 'Right';
+
+-- The two failing shapes, kept commented so `make check-mdl` (which runs `check`
+-- with no project, where there is no theme to judge against) stays green:
+--
+--   alter styling on page MyFirstModule.HideOn widget lvH
+--     set 'Remove empty text' = on;
+--   -> MDL-WIDGET11: … no widget type in this project's theme declares
+--
+--   DesignProperties: ['Hide on': 'Phone']
+--   -> MDL-WIDGET12: … takes a SET of options — mxbuild refuses that with CE6084
+--   -> exec: design property "Hide on" takes a SET of options, not one value —
+--            write it as `'Hide on': ['Phone': on]`
+--
+--   alter styling … set 'Hide on' = 'Phone';
+--   -> MDL-WIDGET12 + exec refusal: ALTER STYLING carries one flat value per
+--      assignment and cannot express a compound at all, so it names the inline
+--      form rather than pretending to write it.

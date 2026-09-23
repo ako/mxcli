@@ -79,8 +79,9 @@ func TestIsAvailable(t *testing.T) {
 		{"domain_model", "view_entities", SemVer{11, 0, 0}, true},
 		// Basic entities available in 9.x+
 		{"domain_model", "entities", SemVer{9, 0, 0}, true},
-		// Page parameters require 11.0+
-		{"pages", "page_parameters", SemVer{10, 24, 0}, false},
+		// Page parameters require 9.4+ (see page_parameter_floor_test.go)
+		{"pages", "page_parameters", SemVer{9, 3, 0}, false},
+		{"pages", "page_parameters", SemVer{10, 24, 0}, true},
 		{"pages", "page_parameters", SemVer{11, 0, 0}, true},
 		// Unknown feature
 		{"domain_model", "teleportation", SemVer{11, 0, 0}, false},
@@ -119,11 +120,11 @@ func TestFeaturesForVersion(t *testing.T) {
 		t.Error("view_entities not found in features list")
 	}
 
-	// Check that page_parameters is NOT available at 10.24
+	// Check that design_properties_v3 is NOT available at 10.24 (Atlas v3 is 11.0+)
 	for _, f := range features {
-		if f.Area == "pages" && f.Name == "page_parameters" {
+		if f.Area == "pages" && f.Name == "design_properties_v3" {
 			if f.Available {
-				t.Error("page_parameters should NOT be available at 10.24")
+				t.Error("design_properties_v3 should NOT be available at 10.24")
 			}
 		}
 	}
@@ -140,16 +141,16 @@ func TestFeaturesAddedSince(t *testing.T) {
 		t.Fatal("expected features added since 10.24.0, got none")
 	}
 
-	// page_parameters (11.0+) should be in the list
+	// design_properties_v3 (11.0+) should be in the list
 	found := false
 	for _, f := range added {
-		if f.Name == "page_parameters" {
+		if f.Name == "design_properties_v3" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Error("page_parameters should appear in features added since 10.24")
+		t.Error("design_properties_v3 should appear in features added since 10.24")
 	}
 
 	// entities (10.0+) should NOT be in the list
@@ -271,5 +272,35 @@ func TestAgentDocumentsAreGated(t *testing.T) {
 				t.Errorf("%s must not be reported available on 10.24.0", name)
 			}
 		})
+	}
+}
+
+// TestWorkflowGroupsFloorIs11_2 pins the workflow-group gate to the metamodel,
+// not to the release notes.
+//
+// mendixlabs/mxcli#272 states "Workflow Groups are GA from Mendix 11.6". The
+// arbiter for whether the document loads is the Model SDK's own
+// StructureVersionInfo, and there both Settings$WorkflowGroup and
+// WorkflowsProjectSettingsPart.groups read `introduced: "11.2.0"`
+// (mendixmodelsdk 4.115.0, package/src/gen/settings.js). Gating on 11.6 would
+// refuse four minors of projects that store the property perfectly well.
+func TestWorkflowGroupsFloorIs11_2(t *testing.T) {
+	reg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	cases := []struct {
+		v    SemVer
+		want bool
+	}{
+		{SemVer{Major: 10, Minor: 24, Patch: 0}, false},
+		{SemVer{Major: 11, Minor: 1, Patch: 0}, false},
+		{SemVer{Major: 11, Minor: 2, Patch: 0}, true},
+		{SemVer{Major: 11, Minor: 13, Patch: 0}, true},
+	}
+	for _, tc := range cases {
+		if got := reg.IsAvailable("workflows", "groups", tc.v); got != tc.want {
+			t.Errorf("IsAvailable(workflows, groups, %v) = %v, want %v", tc.v, got, tc.want)
+		}
 	}
 }

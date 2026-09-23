@@ -113,6 +113,16 @@ type flowBuilder struct {
 	// pendingJoin is the `join` addStatement just saw, waiting for the enclosing
 	// body loop to say which activity the path had reached.
 	pendingJoin *ast.JoinStmt
+	// lowerLane is how far right the lane under each main line (keyed by the line's
+	// y) is occupied by a guard's branch. See layout_lanes.go.
+	lowerLane map[int]int
+	// allowWrap turns on row wrapping for this builder: the main line breaks onto a
+	// new row past MaxRowWidth instead of running off the canvas (layout_rows.go).
+	// Only the builders that lay out a whole microflow set it; a loop body builds in
+	// its own coordinate space inside a box that is sized to fit, so wrapping there
+	// would fight the box rather than help the reader.
+	allowWrap bool
+	row       rowTracker
 }
 
 type flowBuilderVariableState struct {

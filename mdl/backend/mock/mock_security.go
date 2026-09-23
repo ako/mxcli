@@ -32,6 +32,13 @@ func (m *MockBackend) SetProjectDemoUsersEnabled(unitID model.ID, enabled bool) 
 	return nil
 }
 
+func (m *MockBackend) SetProjectStrictMode(unitID model.ID, enabled bool) error {
+	if m.SetProjectStrictModeFunc != nil {
+		return m.SetProjectStrictModeFunc(unitID, enabled)
+	}
+	return fmt.Errorf("MockBackend.SetProjectStrictMode not configured")
+}
+
 func (m *MockBackend) SetProjectGuestAccess(unitID model.ID, enabled bool, guestUserRole string) error {
 	if m.SetProjectGuestAccessFunc != nil {
 		return m.SetProjectGuestAccessFunc(unitID, enabled, guestUserRole)

@@ -9,21 +9,17 @@ package main
 
 import (
     "github.com/mendixlabs/mxcli/api"
-    "github.com/mendixlabs/mxcli/sdk/mpr"
 )
 
 func main() {
-    writer, err := mpr.OpenForWriting("/path/to/MyApp.mpr")
+    modelAPI, err := api.Open("/path/to/MyApp.mpr")
     if err != nil {
         panic(err)
     }
-    defer writer.Close()
-
-    // Create the high-level API
-    modelAPI := api.New(writer)
+    defer modelAPI.Close()
 
     // Set the current module context
-    module, _ := modelAPI.Modules.GetModule("MyModule")
+    module, _ := modelAPI.Modules.Get("MyModule")
     modelAPI.SetModule(module)
 }
 ```
@@ -84,7 +80,7 @@ customer, err := modelAPI.DomainModels.CreateEntity("Customer").
     WithStringAttribute("Email", 254).
     WithIntegerAttribute("Age").
     WithBooleanAttribute("IsActive").
-    WithDateTimeAttribute("CreatedDate", true).
+    WithDateTimeAttribute("CreatedDate").
     Build()
 ```
 
@@ -126,19 +122,17 @@ package main
 
 import (
     "github.com/mendixlabs/mxcli/api"
-    "github.com/mendixlabs/mxcli/sdk/mpr"
 )
 
 func main() {
-    writer, err := mpr.OpenForWriting("/path/to/MyApp.mpr")
+    modelAPI, err := api.Open("/path/to/MyApp.mpr")
     if err != nil {
         panic(err)
     }
-    defer writer.Close()
+    defer modelAPI.Close()
 
-    modelAPI := api.New(writer)
 
-    module, _ := modelAPI.Modules.GetModule("MyModule")
+    module, _ := modelAPI.Modules.Get("MyModule")
     modelAPI.SetModule(module)
 
     // Create entity with fluent builder
@@ -148,14 +142,14 @@ func main() {
         WithStringAttribute("Email", 254).
         WithIntegerAttribute("Age").
         WithBooleanAttribute("IsActive").
-        WithDateTimeAttribute("CreatedDate", true).
+        WithDateTimeAttribute("CreatedDate").
         Build()
 
     // Create another entity
     order, _ := modelAPI.DomainModels.CreateEntity("Order").
         Persistent().
         WithDecimalAttribute("TotalAmount").
-        WithDateTimeAttribute("OrderDate", true).
+        WithDateTimeAttribute("OrderDate").
         Build()
 
     // Create association between entities

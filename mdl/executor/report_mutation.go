@@ -35,6 +35,12 @@ import (
 // its own merits.
 func (ctx *ExecContext) ReportMutation(verb, format string, args ...any) {
 	if ctx.mutationWasElided() {
+		// Inside a program run these are held rather than printed: several of
+		// them collapse into one summary at the end, and a lone one is printed
+		// verbatim at flush. See mutation_tally.go.
+		if ctx.tally.countUnchanged(fmt.Sprintf("Unchanged %s\n", fmt.Sprintf(format, args...))) {
+			return
+		}
 		verb = "Unchanged"
 	}
 	fmt.Fprintf(ctx.Output, "%s %s\n", verb, fmt.Sprintf(format, args...))

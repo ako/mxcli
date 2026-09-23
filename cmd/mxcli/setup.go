@@ -76,6 +76,26 @@ Examples:
 			_ = reader.Disconnect()
 			versionStr = pv.ProductVersion
 			fmt.Fprintf(os.Stdout, "Detected Mendix version: %s\n", versionStr)
+		} else {
+			// A hand-typed version may name no CDN artifact: Mendix 9 and 10
+			// publish a build number the release notes never mention, so
+			// "10.24.25" is really mxbuild-10.24.25.122571.tar.gz. Resolving it
+			// here turns a bare 404 into the download the user asked for. A
+			// project-detected version needs none of this — _ProductVersion
+			// already carries all four parts — so this is the else branch.
+			resolved, err := docker.ResolveCDNVersion(versionStr, runtime.GOARCH)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				if avail := docker.CDNReleasesFor(majorMinorOf(versionStr), runtime.GOARCH); len(avail) > 0 {
+					fmt.Fprintf(os.Stderr, "  Published for %s: %s\n",
+						majorMinorOf(versionStr), strings.Join(avail[:minInt(len(avail), 8)], ", "))
+				}
+				os.Exit(1)
+			}
+			if resolved != versionStr {
+				fmt.Fprintf(os.Stdout, "Resolved Mendix %s to %s\n", versionStr, resolved)
+				versionStr = resolved
+			}
 		}
 
 		// The Mendix CDN only publishes Linux mxbuild. On Windows/macOS a CDN
@@ -324,4 +344,22 @@ func init() {
 	setupCmd.AddCommand(setupMxRuntimeCmd)
 	setupCmd.AddCommand(setupMxcliCmd)
 	rootCmd.AddCommand(setupCmd)
+}
+
+// majorMinorOf reduces a version to "major.minor" for listing what the CDN
+// publishes near a version that could not be resolved. A version with no minor
+// is returned as-is, which still narrows the listing to one major.
+func majorMinorOf(version string) string {
+	parts := strings.Split(version, ".")
+	if len(parts) >= 2 {
+		return parts[0] + "." + parts[1]
+	}
+	return version
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

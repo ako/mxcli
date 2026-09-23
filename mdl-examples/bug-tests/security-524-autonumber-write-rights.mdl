@@ -1,0 +1,48 @@
+-- @version: 11.0+
+-- ============================================================================
+-- ako/mxcli#524 — `grant write *` on an entity carrying an AUTONUMBER wrote
+-- ReadWrite on it, and the build failed CE6592 ("write access is not allowed on
+-- this attribute"). Reported from the ChipCoV3 test project, where the
+-- workaround was a hand-written REVOKE narrowing the grant.
+--
+-- Cause: the CE6592 downgrade asked only whether an attribute was CALCULATED.
+-- An autonumber carries no DomainModels$CalculatedValue — its value comes from
+-- the database on insert, not from a microflow on read — so it failed that test
+-- and kept its write. Mendix forbids write on both for the same reason, so the
+-- predicate covered exactly half the rule.
+--
+-- The fix is types.WriteRightsForbidden, applied at the GRANT
+-- (cmd_security_write.go) AND in ReconcileMemberAccesses, which runs after
+-- every program and would otherwise re-break a grant corrected by hand.
+--
+-- EXPECTED after running this: `mx check` reports 0 errors, and
+-- `show access on entity Issue524.ServiceRequest` shows RequestNumber as
+-- ReadOnly while Description stays ReadWrite.
+-- ============================================================================
+
+create module Issue524;
+create module role Issue524.Coordinator;
+
+@position(100, 100)
+create persistent entity Issue524.ServiceRequest (
+  -- The autonumber. A seed is required in its own right (MDL023 / CE7247).
+  RequestNumber: autonumber default 1001,
+  Description: string(500),
+  -- The control: a calculated attribute was already downgraded before the fix,
+  -- so on its own it proves nothing about this one.
+  Summary: string(200) calculated by Issue524.CALC_Summary
+);
+
+create microflow Issue524.CALC_Summary ($ServiceRequest: Issue524.ServiceRequest)
+returns string
+begin
+  return $ServiceRequest/Description;
+end
+
+-- The reported statement: blanket write, no REVOKE narrowing it.
+grant Issue524.Coordinator on Issue524.ServiceRequest (read *, write *);
+
+-- RequestNumber must come back ReadOnly, Summary ReadOnly, Description ReadWrite.
+-- A blanket downgrade would also make Description ReadOnly, which is why the
+-- plain attribute is part of the check and not just decoration.
+show access on entity Issue524.ServiceRequest;
