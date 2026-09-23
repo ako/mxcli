@@ -147,10 +147,9 @@ same attributes — makes the runtime treat it as a different entity and **destr
 its rows**. An unchanged reboot is the control, and preserves them. See
 [PROPOSAL_marketplace_module_upgrade.md §8](docs/11-proposals/PROPOSAL_marketplace_module_upgrade.md).
 
-Re-measured per **attribute** (#1119): the columns are dropped and recreated, and
-**a recreated column with a model default comes back filled with that default** —
-so `count(col)` proves nothing; seed a non-default value and compare values. That
-trap and the rest of the method:
+Re-measured per **attribute** (#1119): the columns are dropped and recreated, and a
+recreated column with a model default **comes back filled with that default** — so
+`count(col)` proves nothing; seed a non-default value and compare values. Method:
 [rewrite-drops-unauthored-state](docs-wiki/bug-patterns/rewrite-drops-unauthored-state.md).
 
 Consequences for any write path:
@@ -161,19 +160,20 @@ Consequences for any write path:
    because the model is perfectly valid. This is the same class as the identity
    properties in `canon.identityFields` and belongs in that decision.
 
-   **The write path refuses it** — `canon.StorageGUIDError`, called from
-   `reconcileWithStored` (after the transplant, which is what makes the pairing
-   exact) so both choke points get it. It refuses rather than repairs: the carry
-   belongs where the write knows which element is which (`carryChildIdentity`).
+   **The write path refuses it** — `canon.StorageGUIDError`, pairing on `$ID` +
+   `$Type` + `Name`: the transplant's pairing is structural, so a shared `$ID` alone
+   is NOT one member, and reading it as one made the guard refuse correct writes. It
+   refuses rather than repairs; the carry belongs with the write, which knows which
+   element is which (`carryChildIdentity`) — keyed on name as well as `$ID`, since
+   `CREATE OR MODIFY` declares members with no ID.
    The one deliberate GUID transplant, the marketplace module update, opts out by
    name via `UpdateRawUnitOwningStorageGUIDs` — passing that because "the guard was
    in the way" is how #1119 ships again.
 
-   The carry is fixed per rebuild **shape**, not per element type: swapping one
-   element into a list leaves its siblings passing through as stored bytes (#657,
-   #1119), while emptying the list and rebuilding all of it has no safe siblings at
-   all (#1169). The reported statement is rarely the blast radius — enumerate the
-   converter's **call sites**.
+   The carry is fixed per rebuild **shape**, not per element type: swapping one element
+   into a list leaves its siblings passing through as stored bytes (#657, #1119), while
+   emptying the list and rebuilding all of it has no safe siblings (#1169). The reported
+   statement is rarely the blast radius — enumerate the converter's **call sites**.
 2. **`$ID` renumbering is irrelevant to data safety** — the inverse of the natural
    assumption. Studio Pro renumbers every `$ID` in a module on update and preserves
    every `GUID`, which is exactly why its update does not lose data. `$ID` matters
@@ -181,15 +181,14 @@ Consequences for any write path:
 3. **A new element must get a fresh `GUID`**, and an element copied from another
    model must not keep the source's — two elements sharing a `GUID` are one entity
    as far as the runtime is concerned.
-4. **Moving an element between modules is the most expensive case, not a lesser
-   one.** Measured on 11.13.0 + PostgreSQL 16, same 250-row start both ways: with the
-   `GUID` preserved the runtime **renames** the table and every row survives; with it
-   re-minted the old table is dropped and an empty one created, losing all 250. The
-   runtime resolves the entity by `GUID`, not by table name, so a move loses a whole
-   **table** where an ALTER loses a column (#503). A `$Type` change on the way needs a
-   **raw transform** — not `SetRaw` (it passes the stored `$Type` through), not gen's
-   `SetDataStorageGuid` (wrong key, and `string` where the property is binary). A
-   `RENAME ENTITY` is the same case, since the entity name *is* the table name (#1169).
+4. **Moving an element between modules is the most expensive case, not a lesser one.**
+   Measured, same 250-row start both ways: `GUID` preserved → the runtime **renames**
+   the table, all 250 rows survive; re-minted → the table is dropped and an empty one
+   created. The runtime resolves the entity by `GUID`, not by table name, so a move
+   loses a whole **table** where an ALTER loses a column (#503) — and `RENAME ENTITY`
+   is the same case, the name being the table name (#1169). A `$Type` change on the
+   way needs a **raw transform**: not `SetRaw` (it passes the stored `$Type` through),
+   not gen's `SetDataStorageGuid` (wrong key, `string` where the property is binary).
 
 **Before trusting any GUID test, check the subject.** An element **mxcli created**
 has `GUID == $ID` from birth, so re-minting `GUID = $ID` reproduces the same value
