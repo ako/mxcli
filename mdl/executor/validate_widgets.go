@@ -187,6 +187,8 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		out = append(out, validateDynamicTextFormatting(w, locationPrefix)...)
 		out = append(out, validateDatasourceXPathAssociationEmpty(w, locationPrefix)...)
 		out = append(out, validateComboBoxAssociation(w, locationPrefix)...)
+		// #631: inputs inside a list view that will be written read-only.
+		out = append(out, validateListViewEditableInputs(w, locationPrefix)...)
 		// A show_page argument naming anything but the context object is dropped.
 		// The widget's OWN action is judged in the context IT establishes, not the
 		// one it sits in — a list widget's onClick is row-scoped (ako/mxcli#552).

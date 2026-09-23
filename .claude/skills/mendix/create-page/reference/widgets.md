@@ -834,6 +834,22 @@ actionbutton btnSubmit (
 )
 ```
 
+### Inputs in a List View Need `editable: true` on the List View
+
+A list view has an `Editable` of its own, default **false** (Mendix's default),
+and its read-only context wins over `editable: Always` on an input inside it —
+even inside a nested data view. Without it every input renders as a read-only
+value, while `mx check` and the build stay clean. `mxcli check` reports this as
+MDL-WIDGET31.
+
+```sql
+listview lvRows (datasource: database Mod.Row, editable: true) {
+  textbox tName (label: 'Name', attribute: Name)
+}
+```
+
+Write `true` unquoted: `editable: 'true'` is a string and is written false.
+
 ### Only a CONTAINER (or a Button) Can Be Clicked
 
 `onclick:` is an alias for `action:`, and mxcli writes it for three widget kinds
