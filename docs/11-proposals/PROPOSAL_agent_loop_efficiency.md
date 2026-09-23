@@ -13,6 +13,11 @@ related:
 
 # Agent loop efficiency — making an mxcli session cost what the work costs
 
+**Status:** Draft
+**Date:** 2026-09-22 (initial), revised 2026-09-23 — three complete builds
+measured with `diag loop-report`, overturning the `check`-dominant assumption and
+promoting the app restart to the wall-time lever (§"Three projects, measured").
+
 ## The report
 
 A side-by-side test had Opus build an app twice: once on Vercel (TypeScript files
@@ -53,6 +58,57 @@ That arithmetic sets the priority order, and it is not the intuitive one:
 2. **Less text per call** — enters linearly, but it is also the multiplier on
    lever 1, so the two compound.
 3. Output tokens (500 k of 228 M) are a rounding error. Do not optimise here.
+
+## Three projects, measured — and what they overturn
+
+This proposal's first draft reasoned from one session. `diag loop-report` has
+since run against three complete builds, and the result contradicts two things
+the draft assumed. Both corrections are kept here rather than quietly edited
+away, because the way each assumption survived is the reusable part.
+
+| project | Mendix | session | invocations | top commands by CALLS |
+|---|---|---|---:|---|
+| mxcli-ledger | — | 5 days | 301 | `check` 250 (83%) |
+| CapTrackV6 | 11.14.0 | 2 h 45 | 585 | `exec` 180, `-c` 111, `check` 90 |
+| mxcli-demo-2 | 11.13.0 | 5 h 07 | 408 | `-c` 120, `exec` 85, `check` 63 |
+
+**Overturned 1: `check` is not the dominant call.** The ledger's 83% was read
+as the shape of an mxcli loop, and the obvious follow-up — "why so many checks?"
+— was queued as the next thing to attack. Two further projects put `check` at
+15% and 22%. The ledger is the outlier, not the archetype. A distribution taken
+from one project is an anecdote with a table around it, and the fix for reading
+it that way is three, not a better argument about one.
+
+All three logs predate ako/mxcli#629, so their `-c` and `exec` counts are
+**inflated by mxcli's own child processes** — `mxcli test` spawns three before a
+single test runs, so demo-2's 11 test runs contributed ~33 phantom calls and
+CapTrack's 5 contributed ~15. The direction of that error matters: it inflates
+exactly the two commands that displaced `check` at the top. It does not overturn
+the overturning — `check` is still nowhere near 83% in either — but any figure
+in this table is a pre-#629 figure.
+
+**Overturned 2: the wall-time lever is `run`, and the report understates it.**
+
+| project | closed-run wall time | `run` calls | `run` closed | `run` median |
+|---|---:|---:|---:|---:|
+| CapTrackV6 | 1,775 s | 34 | 7 | 90.7 s |
+| mxcli-demo-2 | 838 s | 30 | 4 | 70.5 s |
+
+Read naively, `run` is 27–29% of mxcli's wall time. That reading is wrong, and
+wrong in the same direction both times: **a boot that is killed never writes a
+summary record, so its duration is not counted at all.** 26 of 30 and 27 of 34
+`run` invocations are uncounted. The totals above are floors.
+
+Multiply the boot count by the per-boot median instead and the shape changes
+completely: ~35 min of boots in demo-2, ~50 min in CapTrack — against sessions of
+5 h and 2 h 45. Every other command in both tables is noise beside that.
+
+This also corrects a figure CapTrack reported about itself. Its write-up says "of
+~2.5 h building, only ~30 min was spent inside mxcli" and ranks its levers on
+that basis. The 30 min is the closed-run total (1,775 s), which already contains
+the 7 boots that closed; the 27 it excludes add ~41 min at the measured median,
+so the real figure is around 70 min — more than double, and enough to change
+which levers are worth pulling.
 
 ## What is actually asymmetric — and how little of it is irreducible
 
@@ -288,6 +344,38 @@ Three consequences for this proposal:
    *test* loop is blocked on 11.14 as well, and the skills that recommend
    `--attach` need the same version caveat `--watch` already carries.
 
+**But 11.14 is not the whole story, and a 11.13 project proves it.** When this
+section was written the defect explained the restart-per-change, and that closed
+the question. It should not have. mxcli-demo-2 ran **11.13.0** — the version this
+proposal's own control measured hot-reloading in 3.4 s — and still took **30 full
+restarts**, its findings saying plainly:
+
+> `run` without `--watch`: every model change meant a full restart (the 30 runs,
+> 243 s). `--watch` would hot-apply most changes as one long-running invocation.
+
+So the two projects are a natural experiment, and they answer differently:
+
+| | Mendix | warm loop | restarts |
+|---|---|---|---:|
+| CapTrackV6 | 11.14.0 | blocked by the defect | 34 |
+| mxcli-demo-2 | 11.13.0 | **available, ~3 s** | 30 |
+
+On 11.14 the restart is forced. On 11.13 it is chosen — by a loop that never
+reached for `--watch`. An earlier draft of this proposal said exactly that ("the
+fast paths exist — the session just didn't take them, which makes this a defaults
+problem more than a capability one"), the 11.14 measurement contradicted it, and
+the correction went one step too far: it replaced "defaults problem" with
+"mxbuild problem" when both are true on different versions. A measurement that
+explains a symptom on one version does not retire the hypothesis on the others —
+and the tell was available, since the same control that proved the defect
+(11.13 reloads in 3.4 s) also proved a working warm loop existed to be unused.
+
+**That makes the restart lever real on both versions, by different routes:**
+fix the default *version* for 11.14, and fix the default *invocation* for
+everything else. `run --local --watch` is not what a session reaches for, and
+neither the generated CLAUDE.md gate list nor the skills tell it to. A one-line
+default is the whole intervention on 11.13; it is worth ~30 boots.
+
 **The version default makes this worse than it needs to be.** `bootstrap-app`
 chooses the newest version on the CDN when the environment has nothing cached —
 11.14.0 at the time of writing — so a freshly bootstrapped project lands on
@@ -479,11 +567,30 @@ mxcli already logs every invocation as JSON Lines under `~/.mxcli/logs/`
 (`diaglog`, wired at `newLoggedExecutor` in `cmd/mxcli/main.go` — so it covers
 all commands, not a curated subset). That is the instrument.
 
-**`mxcli diag loop-report`** reads a session's log and prints: invocations by
-verb, wall time by verb, `check`-immediately-before-`exec` pairs (pure waste),
-restarts vs. hot reloads, and output bytes per command. That converts "the loop
-feels expensive" into a ranked list of where the calls actually went — and, run
-before and after each lever, into evidence that a lever worked.
+**`mxcli diag loop-report`** reads a session's log and prints invocations by
+verb, wall time by verb, and `check`-immediately-before-`exec` pairs. It shipped,
+and it has now run against three complete builds — which is where the two
+corrections above came from, so the instrument has already paid for itself by
+falsifying its author.
+
+Testing it against real projects also found three defects in it, each of which
+had been silently skewing the very numbers it exists to produce: it logged a
+minority of invocations and presented it as all (ako/mxcli#617), its `failed`
+field counted a population its name did not describe (#620), and it counted
+mxcli's own child processes as calls the agent made while reporting their parent
+as a failure (#629). A measurement tool is not exempt from needing its own
+evidence, and none of the three was visible from inside the tool.
+
+**Two things it still cannot see, both of which matter to the lever above:**
+
+- **A killed `run` contributes no wall time.** mxcli writes its summary on a
+  normal exit, so the 26-of-30 boots stopped with a signal are counted as
+  invocations and as zero seconds. The largest cost in the session is the one
+  the report is least able to size — sequencing item 2d.
+- **Hot reloads inside a long-running `run`.** One `--watch` invocation that
+  applies forty changes is one row. That is the right unit for counting
+  processes and the wrong one for showing that item 2c worked, so claiming 2c
+  needs the app's own reload count, not this report.
 
 **Then a benchmark.** One fixed app-brief, run end to end, recording model calls
 and tokens. Without it, every claim here is an argument; with it, each lever
@@ -500,6 +607,8 @@ places once already, and a loop regression is exactly as invisible.
 | 1b | Measure the check↔build gap rate: how many builds in a real session caught something `check` did not | S | sizes the batching prize, and feeds the parity programme's queue |
 | 2 | Fix `projectGates` to teach `exec`, not `check`+`exec` (lever 1) | XS | ~1 call per change, every project, immediately |
 | 2b | Measure `test --attach` on 11.14; pin the bootstrap default off 11.14 | XS | removes a forced 35 s/change from new projects |
+| 2c | **Make `--watch` the default invocation** in the skills and the generated gate list, wherever the version supports it | XS | the largest measured wall-time item: ~30 boots on a 11.13 project that had the warm loop and never used it |
+| 2d | Count a killed `run` in `diag loop-report` rather than dropping it | S | the restart bill is invisible today — `run`'s reported wall time is a floor built from 4 of 30 invocations |
 | 3 | Publish the canonical `&&` chain in `projectGates` + skills (lever 1) | XS | the 5–8 → 1–2 collapse, with nothing built |
 | 4 | Terse/delta output for `exec` and the noisy listings (lever 2) | M | the token half of the chain win; helps every call |
 | 5 | Tiered verification rule in the skills (lever 3) | S | stops the default path at the cheapest sufficient gate |
@@ -508,7 +617,14 @@ places once already, and a loop regression is exactly as invisible.
 
 Item 1 first is deliberate. Items 2, 3, 5 and 6 are all XS-to-S and can ship
 immediately after it — item 3 is now the one that changes the shape of the loop,
-and it is a documentation change. Item 4 is the only substantial build, and it
+and it is a documentation change.
+
+**Items 2c and 2d were added after three projects were measured, and 2c is the
+largest single item in this table by wall time.** It is also the cheapest: a
+default, in prose, in files that already exist. Note that 2c and 2d attack
+different axes — 2c removes the boots, 2d makes the remaining ones visible — and
+that 2d has to land for 2c to be claimable, because a lever that removes
+uncounted time cannot be shown to have worked. Item 4 is the only substantial build, and it
 is what makes item 3 pay in tokens rather than only in call count.
 
 `mxcli apply` is deliberately **not** in this table. It is contingent on item 1
@@ -521,7 +637,9 @@ showing that the published chain is still being composed wrong.
   per-change.
 - The 11.14 serve-rebuild defect. It is mxbuild's, the controls are conclusive,
   and nothing mxcli does from outside repairs it. It should be reported upstream;
-  meanwhile the version default is the only lever we hold.
+  meanwhile the version default is the only lever we hold **on that version** —
+  on versions where the warm loop works, the restart is ours to remove (item 2c),
+  and a 11.13 project measured 30 restarts it did not have to take.
 - Scope. The reported sessions did not build the same thing.
 - MDL not being in training data (`PROPOSAL_llm_mdl_assistance.md` owns that).
   It is row 2 of the asymmetry table and the one property here that is not
