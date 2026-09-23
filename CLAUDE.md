@@ -147,6 +147,11 @@ same attributes — makes the runtime treat it as a different entity and **destr
 its rows**. An unchanged reboot is the control, and preserves them. See
 [PROPOSAL_marketplace_module_upgrade.md §8](docs/11-proposals/PROPOSAL_marketplace_module_upgrade.md).
 
+Re-measured per **attribute** (#1119): the columns are dropped and recreated, and a
+recreated column with a model default **comes back filled with that default** — so
+`count(col)` proves nothing; seed a non-default value and compare values. Method:
+[rewrite-drops-unauthored-state](docs-wiki/bug-patterns/rewrite-drops-unauthored-state.md).
+
 Consequences for any write path:
 
 1. **Preserve the stored `GUID` when rewriting an existing element.** A codec that
@@ -154,14 +159,42 @@ Consequences for any write path:
    on the next deploy — a failure that no `mx check` and no build will catch,
    because the model is perfectly valid. This is the same class as the identity
    properties in `canon.identityFields` and belongs in that decision.
+
+   **The write path refuses it** — `canon.StorageGUIDError`, pairing on `$ID` +
+   `$Type` + `Name`: the transplant's pairing is structural, so a shared `$ID` alone
+   is NOT one member, and reading it as one made the guard refuse correct writes. It
+   refuses rather than repairs; the carry belongs with the write, which knows which
+   element is which (`carryChildIdentity`) — keyed on name as well as `$ID`, since
+   `CREATE OR MODIFY` declares members with no ID.
+   The one deliberate GUID transplant, the marketplace module update, opts out by
+   name via `UpdateRawUnitOwningStorageGUIDs` — passing that because "the guard was
+   in the way" is how #1119 ships again.
+
+   The carry is fixed per rebuild **shape**, not per element type: swapping one element
+   into a list leaves its siblings passing through as stored bytes (#657, #1119), while
+   emptying the list and rebuilding all of it has no safe siblings (#1169). The reported
+   statement is rarely the blast radius — enumerate the converter's **call sites**.
 2. **`$ID` renumbering is irrelevant to data safety** — the inverse of the natural
-   assumption. Studio Pro renumbers every `$ID` in a module on update (94 of 94)
-   and preserves every `GUID` (9 of 9), which is exactly why its update does not
-   lose data. `$ID` matters for *intra-unit pointer consistency* (see below);
-   `GUID` matters for the database.
+   assumption. Studio Pro renumbers every `$ID` in a module on update and preserves
+   every `GUID`, which is exactly why its update does not lose data. `$ID` matters
+   for *intra-unit pointer consistency* (see below); `GUID` for the database.
 3. **A new element must get a fresh `GUID`**, and an element copied from another
    model must not keep the source's — two elements sharing a `GUID` are one entity
    as far as the runtime is concerned.
+4. **Moving an element between modules is the most expensive case, not a lesser one.**
+   Measured, same 250-row start both ways: `GUID` preserved → the runtime **renames**
+   the table, all 250 rows survive; re-minted → the table is dropped and an empty one
+   created. The runtime resolves the entity by `GUID`, not by table name, so a move
+   loses a whole **table** where an ALTER loses a column (#503) — and `RENAME ENTITY`
+   is the same case, the name being the table name (#1169). A `$Type` change on the
+   way needs a **raw transform**: not `SetRaw` (it passes the stored `$Type` through),
+   not gen's `SetDataStorageGuid` (wrong key, `string` where the property is binary).
+
+**Before trusting any GUID test, check the subject.** An element **mxcli created**
+has `GUID == $ID` from birth, so re-minting `GUID = $ID` reproduces the same value
+and the defect is undetectable — only a **Studio Pro-authored** element can fail.
+This has already voided a live-database control and an MDL repro script. Suspect it
+first whenever a GUID test passes.
 
 ### The Tunnel Is Linux-Only, On Purpose — Do Not "Restore" It
 

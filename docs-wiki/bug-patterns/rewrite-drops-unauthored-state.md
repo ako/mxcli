@@ -85,6 +85,111 @@ survived, values gone. Nothing in the model was wrong. This is the same concern
 as `GUID` preservation and the reason `canon.Reconcile` exists; a codec that
 mints fresh identities on rebuild is a data-loss bug wearing a clean `mx check`.
 
+**Fixing the rewritten element does not fix its children.** The carry that saves
+an ALTER target's own identity reaches the element and its untouched siblings —
+siblings pass through as stored bytes, so they were never at risk — and stops
+there. Everything the rebuild constructs *inside* the target arrives fresh, and
+the identity default fires on each one. So the same defect returns one level
+down, and the second time it is the attributes, which is where the database's
+identity actually lives.
+
+**The carry has to be fixed per rebuild SHAPE, not per element type.** There are
+two, and fixing one says nothing about the other. A rebuild that swaps one element
+into an otherwise untouched list leaves every sibling passing through as stored
+bytes, which is why sibling elements kept reading as safe and why the first two
+rounds of this only ever touched the target. A rebuild that empties the list and
+reconstructs all of it has no passthrough siblings at all, so a statement naming one
+association re-minted the identity of every entity, attribute, index and association
+in the module — hundreds of elements for a one-word edit. The second shape is the
+more dangerous by a wide margin and looked like the same bug already fixed.
+
+**The statement in the report is rarely the whole blast radius; the call site is.**
+The reported symptom named one command. What actually shared the defective rebuild
+were six, and the costliest of them was a `RENAME`, which nobody connects to
+data loss — an entity's name is its table name, so a re-minted identity makes the
+platform drop the table and create an empty one instead of renaming it, losing a
+whole table where the reported command lost a column. Enumerating every caller of
+the converter closes a class in one pass and finds the sites no reproduction can
+reach, including ones exposed only through a library API and not through the
+command language at all. Reproducing the reported statement and stopping there
+finds one of six.
+
+**A guard built on an approximate pairing promotes that pairing's error rate into
+refusals.** The identity transplant matches elements structurally and its correctness
+bar is deliberately low, because a wrong match only makes a diff bigger. A guard that
+reads the same pairing as "these are the same element" inherits every wrong match as a
+blocked write: a statement that dropped six differently-named members and added one had
+the new member paired with a removed one, and the guard refused a write that corrupted
+nothing. Anything consuming an approximate correspondence has to add its own test of
+identity — here the member's name and type — and the cost of that test is a narrower
+guard, which is the right trade: a backstop that refuses correct work makes documented
+operations unusable, while a backstop with a hole still catches everything it did
+before.
+
+**The same error message can carry two defects, and fixing one leaves it byte-identical.**
+A refusal naming one element persisted unchanged after a real fix to the carry, same
+element and same values, which reads as "the fix did nothing" and is actually "there are
+two". The tell is that an identical failure after a genuine change means the
+reproduction exercises a path the diagnosis did not. What settled it was describing the
+real stored document rather than the statement: the member the statement declared shared
+no name with anything stored, so there was nothing to carry and the pairing itself was
+spurious.
+
+**A fast local reproduction and a slow realistic one find different defects.** The unit
+reproduction of this ran in half a second against a fixture with the identities stripped
+the way the statement strips them; the integration reproduction took half a minute. Only
+the slow one could expose the second defect, because a spurious pairing needs a real
+document where several members are dropped and one is added. Build the fast one to
+iterate and keep running the slow one to decide.
+
+**A sweep that reports work it then discards looks exactly like a sweep that never
+ran.** A rename printed "Updated 3 reference(s) in 1 document(s)" and the build then
+raised exactly three errors naming exactly those three references. That coincidence
+is the diagnosis: the scanner found them and a later write to the same unit put the
+old values back — here the same read-modify-write persisting a model captured
+*before* the sweep. When a fix-up and a rewrite both touch one unit, the rewrite
+wins, so look for the second writer rather than for a gap in the first.
+
+**A green build can cover one arm of a fix and not another, depending on who
+authored the document.** The same stale qualified name raised an error on a
+platform-authored element and none on one the tool had written itself, because the
+tool's version still carried a valid element pointer beside the name and the
+platform resolves the pointer. So a synthetic reproduction proved half the fix and
+silently skipped the rest; the other half only shows against a document the real
+modeler wrote. This is the same subject-dependence as the identity case, where an
+element the tool created has its two identities equal from birth and cannot detect
+a re-mint at all.
+
+**An identity derived from another identity is invisible to every same-vs-same
+check.** A fresh random value makes a document differ from itself, which elision
+notices and a churn test catches. A value computed from a property that is itself
+held stable does not: the first write corrupts, and the second produces
+byte-identical bytes, so the write is elided and the run reports *Unchanged*. The
+damage is a one-shot, and every diagnostic after it — re-running the script
+included — agrees that nothing is wrong. The question that separates the two is
+not "does this write change anything?" but "does it change the same thing twice?",
+and only the first write answers it. Compare against a copy taken before any
+write, never against the previous run.
+
+**Restored data can be the default, not the data.** Where the platform recreates
+a store rather than altering it, a column, field or setting that carries a default
+comes back filled with that default. Counting non-empty values therefore reports
+the loss as no loss, and the reconstructed value is plausible enough that nobody
+looks again — a boolean with `default true` read back as fully populated on every
+row, and only a run seeded entirely with the non-default value showed it had been
+overwritten. A destructive-rewrite test has to compare values that could not have
+been guessed, not presence.
+
+**A carry keyed on structure is not the same tool as a carry keyed on identity.**
+The pairing behind `$ID` transplantation is deliberately tolerant, because a
+wrong match there only makes a diff larger. Reusing it to carry a database
+identity converts that tolerance into data loss of the opposite kind: instead of
+a dropped column, a new member silently adopts a removed one's data under a name
+and type that no longer describe it. Carry a database identity only on the
+identity the caller itself tracked through the statement; where no such identity
+is in hand, refuse the write rather than guessing, and keep the repair in the
+layer that knows which element is which.
+
 **Delete-then-create defeats every protection.** One replace path removed the
 stored document before writing the new one, so nothing was left for identity
 preservation or elision to reconcile against, and translated captions in every
