@@ -31,6 +31,21 @@ import (
 // semantic list staying in lockstep. Indexes have no name, so they pair by
 // position — which holds because entityToGen appends one gen index per semantic
 // index in the same loop.
+//
+// THE SEMANTIC ID IS NOT ALWAYS THERE, and reading its absence as "a new member"
+// was a second instance of #1119 rather than a safe default.
+// `CREATE OR MODIFY ENTITY` reaches UpdateEntity through
+// mergeDeclaredOntoStoredEntity, which sets `Attributes` and `Indexes` to the lists
+// the STATEMENT declares — built from text by the visitor, carrying no ID at all —
+// so an ID-only pairing carried nothing and every attribute of a re-declared entity
+// was re-minted. The write guard caught it as a refusal on a doctype script that had
+// been passing for months; a stored attribute of the same NAME is the same member,
+// which is what Studio Pro assumes when a re-declared attribute keeps its column.
+//
+// So each list is paired in two passes: the exact key first, the weaker one only for
+// what it left over. A stored element is claimed at most once, which is what keeps a
+// rename-plus-re-add from handing the newcomer the renamed member's data — the ID
+// match takes the stored element, and the name fallback then finds it claimed.
 func carryChildIdentity(ge, orig *genDm.Entity, entity *domainmodel.Entity) {
 	if ge == nil || orig == nil || entity == nil {
 		return
@@ -40,13 +55,15 @@ func carryChildIdentity(ge, orig *genDm.Entity, entity *domainmodel.Entity) {
 }
 
 func carryAttributeIdentity(ge, orig *genDm.Entity, entity *domainmodel.Entity) {
-	stored := map[string]*genDm.Attribute{}
+	storedByID := map[string]*genDm.Attribute{}
+	storedByName := map[string]*genDm.Attribute{}
 	for _, el := range orig.AttributesItems() {
 		if a, ok := el.(*genDm.Attribute); ok && a.Raw() != nil {
-			stored[string(a.ID())] = a
+			storedByID[string(a.ID())] = a
+			storedByName[a.Name()] = a
 		}
 	}
-	if len(stored) == 0 {
+	if len(storedByID) == 0 {
 		return
 	}
 
@@ -56,49 +73,93 @@ func carryAttributeIdentity(ge, orig *genDm.Entity, entity *domainmodel.Entity) 
 		semantic[a.Name] = a
 	}
 
+	var rebuilt []*genDm.Attribute
 	for _, el := range ge.AttributesItems() {
-		ga, ok := el.(*genDm.Attribute)
-		if !ok {
-			continue
+		if ga, ok := el.(*genDm.Attribute); ok {
+			rebuilt = append(rebuilt, ga)
 		}
+	}
+
+	claimed := make(map[string]bool, len(storedByID))
+	carry := func(ga, sa *genDm.Attribute) {
+		ga.SetID(sa.ID())
+		ga.SetRaw(sa.Raw())
+		claimed[string(sa.ID())] = true
+	}
+
+	// Pass 1 — the exact key. The executor preserves an attribute's ID across a
+	// RENAME, so this is what carries the GUID onto the new name.
+	paired := make(map[*genDm.Attribute]bool, len(rebuilt))
+	for _, ga := range rebuilt {
 		sem := semantic[ga.Name()]
 		if sem == nil || sem.ID == "" {
-			continue // a newly added attribute: nothing to carry, fresh GUID is right
+			continue
 		}
-		sa := stored[string(sem.ID)]
+		sa := storedByID[string(sem.ID)]
 		if sa == nil {
 			continue
 		}
-		ga.SetID(sa.ID())
-		ga.SetRaw(sa.Raw())
+		carry(ga, sa)
+		paired[ga] = true
+	}
+
+	// Pass 2 — by name, for what pass 1 left. This is the statement-declared case,
+	// where there is no ID to pair on. A stored attribute pass 1 already claimed is
+	// skipped, so an attribute genuinely introduced under a name another member has
+	// just vacated still gets a fresh GUID rather than that member's data.
+	for _, ga := range rebuilt {
+		if paired[ga] {
+			continue
+		}
+		sa := storedByName[ga.Name()]
+		if sa == nil || claimed[string(sa.ID())] {
+			continue // genuinely new: nothing to carry, a fresh GUID is right
+		}
+		carry(ga, sa)
 	}
 }
 
 func carryIndexIdentity(ge, orig *genDm.Entity, entity *domainmodel.Entity) {
-	stored := map[string]*genDm.Index{}
+	storedByID := map[string]*genDm.Index{}
+	var storedInOrder []*genDm.Index
 	for _, el := range orig.IndexesItems() {
 		if idx, ok := el.(*genDm.Index); ok && idx.Raw() != nil {
-			stored[string(idx.ID())] = idx
+			storedByID[string(idx.ID())] = idx
+			storedInOrder = append(storedInOrder, idx)
 		}
 	}
-	if len(stored) == 0 {
+	if len(storedByID) == 0 {
 		return
 	}
 
 	rebuilt := ge.IndexesItems()
+	claimed := make(map[string]bool, len(storedByID))
 	for i, sem := range entity.Indexes {
 		if i >= len(rebuilt) {
 			break
 		}
 		gi, ok := rebuilt[i].(*genDm.Index)
-		if !ok || sem == nil || sem.ID == "" {
+		if !ok || sem == nil {
 			continue
 		}
-		si := stored[string(sem.ID)]
-		if si == nil {
+		var si *genDm.Index
+		switch {
+		case sem.ID != "":
+			si = storedByID[string(sem.ID)]
+		case i < len(storedInOrder):
+			// The statement-declared case: no ID to pair on, and an index has no name
+			// either, so position is what is left. It is the same correspondence the
+			// ID-bearing branch already trusts, and it is the weaker one — a reordered
+			// or dropped index pairs the wrong way round. That costs an index rebuild
+			// and no data, because nothing the platform keys on rides on an index
+			// GUID; what a MISSING carry costs is the write, which the guard refuses.
+			si = storedInOrder[i]
+		}
+		if si == nil || claimed[string(si.ID())] {
 			continue
 		}
 		gi.SetID(si.ID())
 		gi.SetRaw(si.Raw())
+		claimed[string(si.ID())] = true
 	}
 }
