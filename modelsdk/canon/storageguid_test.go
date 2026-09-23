@@ -270,3 +270,102 @@ func TestStorageGUIDChanges_ReportsAreStable(t *testing.T) {
 		t.Errorf("got %d changes, want 3 (entity + two attributes)", n)
 	}
 }
+
+// TestStorageGUIDChanges_TransplantPairingIsNotMemberIdentity is the case that made
+// the guard refuse correct writes, and its positive half is the reason the guard is
+// still worth having.
+//
+// TransplantIDs pairs STRUCTURALLY — by $Type and shape, LCS-anchored — so a
+// genuinely new element can be handed the $ID of a removed one. Measured on
+// `CREATE OR MODIFY PERSISTENT ENTITY BusinessEvents.PublishedBusinessEvent
+// (EventId: long)` against the marketplace module, whose entity carries six
+// differently-named attributes: the statement drops all six and adds one, the
+// transplant paired the new attribute with a removed one, and because the codec had
+// written GUID = $ID and the transplant substitutes over every 16-byte binary, the
+// GUID followed the $ID. The guard saw a "changed" GUID on a "kept" $ID and refused a
+// write that corrupts nothing — on a doctype script that had been passing for months.
+//
+// The discriminator is the member's own identity. Both halves are asserted here
+// together, because either one alone is satisfiable by a guard that is simply wrong:
+// dropping the name check makes the first case fire, and never firing at all makes the
+// second pass.
+func TestStorageGUIDChanges_TransplantPairingIsNotMemberIdentity(t *testing.T) {
+	attr := func(id, guid byte, name, typ string) bson.D {
+		return bson.D{
+			{Key: "$Type", Value: typ},
+			{Key: "$ID", Value: bin(id)},
+			{Key: "GUID", Value: bin(guid)},
+			{Key: "Name", Value: name},
+		}
+	}
+	wrap := func(t *testing.T, a bson.D) []byte {
+		t.Helper()
+		return marshal(t, bson.D{
+			{Key: "$Type", Value: "DomainModels$DomainModel"},
+			{Key: "$ID", Value: bin(1)},
+			{Key: "Entities", Value: bson.A{
+				bson.D{
+					{Key: "$Type", Value: "DomainModels$EntityImpl"},
+					{Key: "$ID", Value: bin(2)},
+					{Key: "GUID", Value: bin(20)},
+					{Key: "Name", Value: "PublishedBusinessEvent"},
+					{Key: "Attributes", Value: bson.A{a}},
+				},
+			}},
+		})
+	}
+
+	for _, tc := range []struct {
+		name         string
+		stored, next bson.D
+		wantChange   bool
+		why          string
+	}{
+		{
+			// The reported false positive: same $ID, different member.
+			name:       "DifferentName_NotAChange",
+			stored:     attr(3, 30, "ServiceName", "DomainModels$Attribute"),
+			next:       attr(3, 3, "EventId", "DomainModels$Attribute"),
+			wantChange: false,
+			why:        "a new member the transplant paired with a removed one is not a rewrite",
+		},
+		{
+			// The guard's reason to exist, unchanged: same member, GUID replaced by
+			// its own $ID. This is #1119 exactly.
+			name:       "SameName_IsAChange",
+			stored:     attr(3, 30, "ServiceName", "DomainModels$Attribute"),
+			next:       attr(3, 3, "ServiceName", "DomainModels$Attribute"),
+			wantChange: true,
+			why:        "the member survived and its database identity was replaced",
+		},
+		{
+			// A $Type change at the same $ID is not the same member either. Nothing
+			// authors this today; it is here so the type half of sameMember is pinned
+			// rather than incidentally true.
+			name:       "DifferentType_NotAChange",
+			stored:     attr(3, 30, "Same", "DomainModels$Attribute"),
+			next:       attr(3, 3, "Same", "DomainModels$Association"),
+			wantChange: false,
+			why:        "two different kinds of element are not one member",
+		},
+		{
+			// A nameless element (an index) has only its $Type, so it must still be
+			// compared — otherwise the index arm of the carry loses its backstop.
+			name:       "NamelessElement_StillCompared",
+			stored:     bson.D{{Key: "$Type", Value: "DomainModels$EntityIndex"}, {Key: "$ID", Value: bin(3)}, {Key: "GUID", Value: bin(30)}},
+			next:       bson.D{{Key: "$Type", Value: "DomainModels$EntityIndex"}, {Key: "$ID", Value: bin(3)}, {Key: "GUID", Value: bin(3)}},
+			wantChange: true,
+			why:        "an index has no name to distinguish it, so $Type is the whole test",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := StorageGUIDChanges(wrap(t, tc.next), wrap(t, tc.stored))
+			if tc.wantChange && len(got) == 0 {
+				t.Errorf("no change reported, want one: %s", tc.why)
+			}
+			if !tc.wantChange && len(got) != 0 {
+				t.Errorf("reported %d change(s), want none: %s\n  %+v", len(got), tc.why, got)
+			}
+		})
+	}
+}

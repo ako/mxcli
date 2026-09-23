@@ -52,12 +52,33 @@ import (
 // see carryChildIdentity in mdl/backend/modelsdk, which pairs on the $ID the
 // executor tracked through the statement.
 //
-// The check runs AFTER TransplantIDs, and that ordering is what makes it exact.
-// Before the transplant a rebuilt element carries a freshly minted $ID that
-// appears in no stored document, so there would be nothing to compare it
-// against. After it, an element sharing an $ID with a stored one is an element
-// the transplant judged to be the same element — so a differing GUID on it is
-// unambiguously a rewrite that dropped the stored identity.
+// The check runs AFTER TransplantIDs, because before it a rebuilt element carries
+// a freshly minted $ID that appears in no stored document and there would be
+// nothing to compare against.
+//
+// But a shared $ID after the transplant does NOT by itself mean the same member,
+// and an earlier version of this comment claimed it did ("unambiguously"). The
+// transplant pairs STRUCTURALLY — by $Type and shape, LCS-anchored — and its own
+// correctness bar is low on purpose, because a wrong $ID match only makes a diff
+// bigger. Feed that pairing to a guard and a wrong match becomes a refusal.
+//
+// Measured: `CREATE OR MODIFY PERSISTENT ENTITY BusinessEvents.PublishedBusinessEvent
+// (EventId: long)` against the marketplace module, whose entity has six
+// differently-named attributes. The statement drops all six and adds one; the
+// transplant paired the NEW attribute with one of the REMOVED ones and handed it that
+// stored $ID; the codec had written GUID = $ID, and the transplant substitutes over
+// every 16-byte binary, so the GUID followed. The guard then saw a stored $ID whose
+// GUID had "changed" and refused a write that corrupts nothing — blocking a documented
+// statement on a doctype script that had been passing for months.
+//
+// So the pairing here is $ID **plus the member's identity**: same $Type, and the same
+// Name where the element has one. What that costs is one arm of coverage — a RENAME
+// that re-minted a GUID would no longer be refused, since the name is what changed.
+// That arm is checked directly where it is decidable, by the carry tests in
+// mdl/backend/modelsdk (TestIssue1119_AlterPreservesAttributeGUIDs has a
+// RenameAttribute case asserting the GUID moves to the new name). A backstop that
+// refuses correct writes is worse than a backstop with a hole: the first makes the
+// tool unusable for work the user is entitled to do, and this one had already done so.
 
 // GUIDChange is one element that kept its $ID across a write while its GUID
 // changed — the shape of the #1119 defect.
@@ -80,59 +101,86 @@ type GUIDChange struct {
 // a GUID that only one side carries — an optional property Mendix fills in on
 // load must not be invented, and one it stopped writing must not be preserved.
 //
+// Nor is a pair whose $Type or Name disagrees. Sharing an $ID after the transplant
+// does not make two elements the same MEMBER — see the note above the type — so the
+// member's own identity has to agree before a GUID difference means anything. An
+// element with no Name (an index, say) is matched on $Type alone, which is all it has.
+//
 // A document that cannot be unmarshalled yields no changes rather than an error.
 // This runs on the write path, where failing a write because the guard could not
 // read the bytes would be worse than the defect it prevents.
 func StorageGUIDChanges(contents, stored []byte) []GUIDChange {
-	newGUIDs, newTypes := elementGUIDs(contents)
-	if len(newGUIDs) == 0 {
+	now := elementGUIDs(contents)
+	if len(now) == 0 {
 		return nil
 	}
-	oldGUIDs, _ := elementGUIDs(stored)
-	if len(oldGUIDs) == 0 {
+	was := elementGUIDs(stored)
+	if len(was) == 0 {
 		return nil
 	}
 
-	ids := make([]string, 0, len(newGUIDs))
-	for id := range newGUIDs {
+	ids := make([]string, 0, len(now))
+	for id := range now {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
 
 	var out []GUIDChange
 	for _, id := range ids {
-		was, ok := oldGUIDs[id]
+		stored, ok := was[id]
 		if !ok {
 			continue
 		}
-		if now := newGUIDs[id]; now != was {
-			out = append(out, GUIDChange{
-				ElementID: id,
-				Type:      newTypes[id],
-				Stored:    was,
-				Written:   now,
-			})
+		written := now[id]
+		if written.guid == stored.guid {
+			continue
 		}
+		if !sameMember(stored, written) {
+			continue
+		}
+		out = append(out, GUIDChange{
+			ElementID: id,
+			Type:      written.typ,
+			Stored:    stored.guid,
+			Written:   written.guid,
+		})
 	}
 	return out
 }
 
-// elementGUIDs maps element $ID -> GUID for every element in raw that carries
-// both, plus each one's $Type for the error message.
-func elementGUIDs(raw []byte) (map[string]string, map[string]string) {
+// sameMember reports whether two elements sharing an $ID are the same member, and
+// so whether a GUID difference between them is a rewrite rather than the
+// transplant having paired two unrelated elements.
+func sameMember(a, b elementGUID) bool {
+	if a.typ != b.typ {
+		return false
+	}
+	return a.name == b.name
+}
+
+// elementGUID is one GUID-bearing element: its GUID, and the two properties that
+// say which member it is. The name is "" for an element that has none.
+type elementGUID struct {
+	guid string
+	typ  string
+	name string
+}
+
+// elementGUIDs maps element $ID -> elementGUID for every element in raw that
+// carries both an $ID and a GUID.
+func elementGUIDs(raw []byte) map[string]elementGUID {
 	var d bson.D
 	if err := bson.Unmarshal(raw, &d); err != nil {
-		return nil, nil
+		return nil
 	}
-	guids := map[string]string{}
-	types := map[string]string{}
+	out := map[string]elementGUID{}
 	var walk func(any)
 	walk = func(v any) {
 		if doc, ok := asDoc(v); ok {
 			if id, ok := elementID(doc); ok && hasType(doc) {
 				if g, ok := binary16(doc, "GUID"); ok {
-					guids[id] = blobToUUID(g)
-					types[id] = typeOf(doc)
+					name, _ := doc["Name"].(string)
+					out[id] = elementGUID{guid: blobToUUID(g), typ: typeOf(doc), name: name}
 				}
 			}
 			for _, k := range sortedKeys(doc) {
@@ -147,7 +195,7 @@ func elementGUIDs(raw []byte) (map[string]string, map[string]string) {
 		}
 	}
 	walk(d)
-	return guids, types
+	return out
 }
 
 // StorageGUIDError returns the error a write should fail with, or nil.
