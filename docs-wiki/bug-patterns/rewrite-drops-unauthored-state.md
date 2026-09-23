@@ -93,6 +93,45 @@ the identity default fires on each one. So the same defect returns one level
 down, and the second time it is the attributes, which is where the database's
 identity actually lives.
 
+**The carry has to be fixed per rebuild SHAPE, not per element type.** There are
+two, and fixing one says nothing about the other. A rebuild that swaps one element
+into an otherwise untouched list leaves every sibling passing through as stored
+bytes, which is why sibling elements kept reading as safe and why the first two
+rounds of this only ever touched the target. A rebuild that empties the list and
+reconstructs all of it has no passthrough siblings at all, so a statement naming one
+association re-minted the identity of every entity, attribute, index and association
+in the module — hundreds of elements for a one-word edit. The second shape is the
+more dangerous by a wide margin and looked like the same bug already fixed.
+
+**The statement in the report is rarely the whole blast radius; the call site is.**
+The reported symptom named one command. What actually shared the defective rebuild
+were six, and the costliest of them was a `RENAME`, which nobody connects to
+data loss — an entity's name is its table name, so a re-minted identity makes the
+platform drop the table and create an empty one instead of renaming it, losing a
+whole table where the reported command lost a column. Enumerating every caller of
+the converter closes a class in one pass and finds the sites no reproduction can
+reach, including ones exposed only through a library API and not through the
+command language at all. Reproducing the reported statement and stopping there
+finds one of six.
+
+**A sweep that reports work it then discards looks exactly like a sweep that never
+ran.** A rename printed "Updated 3 reference(s) in 1 document(s)" and the build then
+raised exactly three errors naming exactly those three references. That coincidence
+is the diagnosis: the scanner found them and a later write to the same unit put the
+old values back — here the same read-modify-write persisting a model captured
+*before* the sweep. When a fix-up and a rewrite both touch one unit, the rewrite
+wins, so look for the second writer rather than for a gap in the first.
+
+**A green build can cover one arm of a fix and not another, depending on who
+authored the document.** The same stale qualified name raised an error on a
+platform-authored element and none on one the tool had written itself, because the
+tool's version still carried a valid element pointer beside the name and the
+platform resolves the pointer. So a synthetic reproduction proved half the fix and
+silently skipped the rest; the other half only shows against a document the real
+modeler wrote. This is the same subject-dependence as the identity case, where an
+element the tool created has its two identities equal from birth and cannot detect
+a re-mint at all.
+
 **An identity derived from another identity is invisible to every same-vs-same
 check.** A fresh random value makes a document differ from itself, which elision
 notices and a churn test catches. A value computed from a property that is itself
