@@ -71,14 +71,30 @@ import (
 // GUID had "changed" and refused a write that corrupts nothing — blocking a documented
 // statement on a doctype script that had been passing for months.
 //
-// So the pairing here is $ID **plus the member's identity**: same $Type, and the same
-// Name where the element has one. What that costs is one arm of coverage — a RENAME
-// that re-minted a GUID would no longer be refused, since the name is what changed.
-// That arm is checked directly where it is decidable, by the carry tests in
-// mdl/backend/modelsdk (TestIssue1119_AlterPreservesAttributeGUIDs has a
-// RenameAttribute case asserting the GUID moves to the new name). A backstop that
-// refuses correct writes is worse than a backstop with a hole: the first makes the
-// tool unusable for work the user is entitled to do, and this one had already done so.
+// So the pairing here is $ID **plus the member's identity**: the same Name where the
+// element has one, and the same $Type where it has none (see sameMember).
+//
+// The $Type is deliberately not compared for a named element. An earlier version
+// did, and it went blind to the one conversion mxcli performs: MOVE ENTITY re-types
+// an Association as a CrossAssociation in place, under the same $ID and Name — the
+// very arm that exposed ako/mxcli#503. The transplant never pairs across a $Type, so
+// comparing it guarded against nothing the transplant can produce.
+//
+// What the guard does NOT cover, each checked instead where it is decidable:
+//
+//   - A RENAME that re-minted a GUID, because the name is what changed. The carry
+//     tests in mdl/backend/modelsdk cover it (TestIssue1119_AlterPreservesAttributeGUIDs,
+//     RenameAttribute case).
+//   - Any element that changes UNIT — MOVE ENTITY's entity and attributes, or the
+//     cross-association when the FROM side moves. The guard compares one unit's
+//     written bytes with that same unit's stored bytes, and in the target unit the
+//     moved $ID pairs with nothing. TestIssue503_MovePreservesStorageGUIDs covers it.
+//   - A pair where only one side has a Name. Nothing converts between those shapes,
+//     so calling them one member would be a guess.
+//
+// A backstop that refuses correct writes is worse than a backstop with a hole: the
+// first makes the tool unusable for work the user is entitled to do, and this one had
+// already done so. The holes are listed so nobody mistakes a quiet guard for coverage.
 
 // GUIDChange is one element that kept its $ID across a write while its GUID
 // changed — the shape of the #1119 defect.
@@ -101,10 +117,10 @@ type GUIDChange struct {
 // a GUID that only one side carries — an optional property Mendix fills in on
 // load must not be invented, and one it stopped writing must not be preserved.
 //
-// Nor is a pair whose $Type or Name disagrees. Sharing an $ID after the transplant
+// Nor is a pair that is not the same member. Sharing an $ID after the transplant
 // does not make two elements the same MEMBER — see the note above the type — so the
-// member's own identity has to agree before a GUID difference means anything. An
-// element with no Name (an index, say) is matched on $Type alone, which is all it has.
+// member's own identity has to agree before a GUID difference means anything: its
+// Name where it has one (whatever its $Type), its $Type where it has none.
 //
 // A document that cannot be unmarshalled yields no changes rather than an error.
 // This runs on the write path, where failing a write because the guard could not
@@ -151,11 +167,26 @@ func StorageGUIDChanges(contents, stored []byte) []GUIDChange {
 // sameMember reports whether two elements sharing an $ID are the same member, and
 // so whether a GUID difference between them is a rewrite rather than the
 // transplant having paired two unrelated elements.
+//
+// A named element is its name. The $Type is deliberately NOT compared there: the
+// transplant never pairs across a $Type (pairDoc stops at the mismatch), so two
+// types sharing an $ID can only be an element a writer converted in place and
+// kept the $ID of — MOVE ENTITY re-typing an Association as a CrossAssociation
+// (ako/mxcli#503). That is one member, and its GUID is still the database's
+// identity for it.
+//
+// A nameless element (an index) has nothing but its $Type to go on. And a pair
+// where only one side is named is not the same member: nothing converts between
+// those shapes, so agreeing on it would be a guess.
 func sameMember(a, b elementGUID) bool {
-	if a.typ != b.typ {
+	switch {
+	case a.name != "" && b.name != "":
+		return a.name == b.name
+	case a.name == "" && b.name == "":
+		return a.typ == b.typ
+	default:
 		return false
 	}
-	return a.name == b.name
 }
 
 // elementGUID is one GUID-bearing element: its GUID, and the two properties that

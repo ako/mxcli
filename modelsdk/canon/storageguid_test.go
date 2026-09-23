@@ -339,14 +339,36 @@ func TestStorageGUIDChanges_TransplantPairingIsNotMemberIdentity(t *testing.T) {
 			why:        "the member survived and its database identity was replaced",
 		},
 		{
-			// A $Type change at the same $ID is not the same member either. Nothing
-			// authors this today; it is here so the type half of sameMember is pinned
-			// rather than incidentally true.
-			name:       "DifferentType_NotAChange",
-			stored:     attr(3, 30, "Same", "DomainModels$Attribute"),
-			next:       attr(3, 3, "Same", "DomainModels$Association"),
+			// For a NAMED element the $Type is not part of the test. The transplant
+			// never pairs across a $Type, so a kept $ID with a new $Type is a writer's
+			// in-place conversion — MOVE ENTITY re-typing an Association as a
+			// CrossAssociation (#503). An earlier version pinned this as "not a
+			// change" on the grounds that nothing authored it; MoveEntity did, and the
+			// guard went blind to exactly the arm that had exposed #503. The realistic
+			// shape is in TestStorageGUIDChanges_TypeConversionIsStillTheSameMember.
+			name:       "DifferentTypeSameName_IsAChange",
+			stored:     attr(3, 30, "Same", "DomainModels$Association"),
+			next:       attr(3, 3, "Same", "DomainModels$CrossAssociation"),
+			wantChange: true,
+			why:        "a re-typed member that kept its $ID and name is still that member",
+		},
+		{
+			// A nameless element has only its $Type, so there a different $Type is a
+			// different member.
+			name:       "NamelessDifferentType_NotAChange",
+			stored:     bson.D{{Key: "$Type", Value: "DomainModels$EntityIndex"}, {Key: "$ID", Value: bin(3)}, {Key: "GUID", Value: bin(30)}},
+			next:       bson.D{{Key: "$Type", Value: "DomainModels$Attribute"}, {Key: "$ID", Value: bin(3)}, {Key: "GUID", Value: bin(3)}},
 			wantChange: false,
-			why:        "two different kinds of element are not one member",
+			why:        "a nameless element is identified by its $Type alone",
+		},
+		{
+			// A name on only one side: nothing converts between those shapes, so
+			// calling them one member would be a guess.
+			name:       "OneSideNamed_NotAChange",
+			stored:     bson.D{{Key: "$Type", Value: "DomainModels$EntityIndex"}, {Key: "$ID", Value: bin(3)}, {Key: "GUID", Value: bin(30)}},
+			next:       attr(3, 3, "Code", "DomainModels$Attribute"),
+			wantChange: false,
+			why:        "one named and one nameless element are not known to be one member",
 		},
 		{
 			// A nameless element (an index) has only its $Type, so it must still be
@@ -368,4 +390,73 @@ func TestStorageGUIDChanges_TransplantPairingIsNotMemberIdentity(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestStorageGUIDChanges_TypeConversionIsStillTheSameMember pins the arm that
+// ako/mxcli#503 was found through. MOVE ENTITY of an association's TO side
+// converts that association IN PLACE, in the same unit and under the same $ID,
+// from DomainModels$Association to DomainModels$CrossAssociation. It is the same
+// member with the same database identity, only re-typed, so a re-minted GUID on it
+// loses the association's data exactly as it would on an ALTER.
+//
+// Requiring an equal $Type made the guard skip this pair. That requirement bought
+// nothing: TransplantIDs never pairs across a $Type (pairDoc stops at the
+// mismatch — TestTransplantIgnoresMismatchedTypes), so an $ID shared by two
+// DIFFERENT types can only be one a writer kept on purpose, which is a conversion.
+// The mis-pairing the member check exists for is same-type, different-name, and
+// that case stays quiet (TestStorageGUIDChanges_TransplantPairingIsNotMemberIdentity).
+func TestStorageGUIDChanges_TypeConversionIsStillTheSameMember(t *testing.T) {
+	// assocDM is the source domain model: the association either still regular,
+	// or already converted, carrying the given GUID.
+	assocDM := func(t *testing.T, converted bool, name string, guid byte) []byte {
+		t.Helper()
+		list, typ, target := "Associations", "DomainModels$Association", bson.E{Key: "ChildPointer", Value: bin(5)}
+		if converted {
+			list, typ, target = "CrossAssociations", "DomainModels$CrossAssociation", bson.E{Key: "Child", Value: "Other.Account"}
+		}
+		return marshal(t, bson.D{
+			{Key: "$Type", Value: "DomainModels$DomainModel"},
+			{Key: "$ID", Value: bin(1)},
+			{Key: list, Value: bson.A{
+				bson.D{
+					{Key: "$Type", Value: typ},
+					{Key: "$ID", Value: bin(9)},
+					{Key: "GUID", Value: bin(guid)},
+					{Key: "Name", Value: name},
+					{Key: "ParentPointer", Value: bin(2)},
+					target,
+				},
+			}},
+		})
+	}
+	stored := assocDM(t, false, "AccountPasswordData_Account", 90)
+
+	t.Run("ConvertedWithReMintedGUID_IsAChange", func(t *testing.T) {
+		// The pre-#503 crossAssocFromGenAssoc: $ID kept, GUID = $ID.
+		got := StorageGUIDChanges(assocDM(t, true, "AccountPasswordData_Account", 9), stored)
+		if len(got) != 1 {
+			t.Fatalf("got %d change(s), want 1 — a re-typed association that lost its GUID "+
+				"is the #503 data loss: %+v", len(got), got)
+		}
+		if got[0].Type != "DomainModels$CrossAssociation" {
+			t.Errorf("change reported on %s, want the written type DomainModels$CrossAssociation", got[0].Type)
+		}
+		if err := StorageGUIDError("Administration.DomainModel", assocDM(t, true, "AccountPasswordData_Account", 9), stored); err == nil {
+			t.Error("StorageGUIDError returned nil for the #503 shape")
+		}
+	})
+
+	t.Run("ConvertedWithGUIDKept_IsNotAChange", func(t *testing.T) {
+		// The fixed conversion (a raw transform) keeps the GUID and must be let through.
+		if got := StorageGUIDChanges(assocDM(t, true, "AccountPasswordData_Account", 90), stored); len(got) != 0 {
+			t.Errorf("reported %d change(s) for a conversion that kept its GUID: %+v", len(got), got)
+		}
+	})
+
+	t.Run("ConvertedUnderADifferentName_IsNotAChange", func(t *testing.T) {
+		// Type AND name both differ: nothing says this is the same member.
+		if got := StorageGUIDChanges(assocDM(t, true, "SomethingElse", 9), stored); len(got) != 0 {
+			t.Errorf("reported %d change(s) for a different member: %+v", len(got), got)
+		}
+	})
 }
