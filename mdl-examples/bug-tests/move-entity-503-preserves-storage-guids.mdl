@@ -68,7 +68,9 @@ CREATE MODULE BugMoveGuid503B;
 --
 -- Measured with a binary predating both fixes here, so it is a third defect on this
 -- command and not something these fixes introduced — but it is why this file keeps
--- one endpoint of each pair put.
+-- one endpoint of each pair put. Filed as ako/mxcli#628: MoveEntity scans
+-- AssociationsItems() and never CrossAssociationsItems(), so a cross-association
+-- that already exists is invisible to the move.
 
 -- Pair 1 — the TO side moves, so the cross-association STAYS in the source module
 -- and its qualified name does not change.
