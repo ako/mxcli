@@ -135,10 +135,12 @@ func TestImportRange_UnauthoredKeepsTheCardinalityInference(t *testing.T) {
 	}
 }
 
-// DESCRIBE always emits one of the three forms — never nothing. Omitting it
-// would leave the builder inferring on re-exec, and an object-rooted mapping set
-// to All (Studio Pro's default, shipped in the blank app) would come back as
-// First. That silent rewrite is what #881 reported.
+// DESCRIBE emits the range whenever it carries information. The one case it
+// omits is All against an OBJECT variable — Studio Pro's default for an
+// object-rooted mapping — where `all` read as "returns a list" (upstream #1176).
+// Omitting it is safe only because the builder writes a missing keyword as All
+// explicitly; before that fix, silence re-entered the inference and came back
+// as First, which is the silent rewrite #881 reported.
 func TestFormatImportMappingRange(t *testing.T) {
 	first, no := true, false
 	for _, tc := range []struct {
@@ -151,10 +153,12 @@ func TestFormatImportMappingRange(t *testing.T) {
 		{
 			// Mendix's own SUB_Feedback_PostToAppInsights: range All, variable an
 			// object. Describing this as `first` — which reading SingleObject does —
-			// changes the activity on re-exec.
+			// changes the activity on re-exec; describing it as `all` reads as a
+			// list (upstream #1176). The bare form is what the builder writes back
+			// as exactly this.
 			"all against an object variable",
 			&microflows.ResultHandlingMapping{SingleObject: true, RangeSingleObject: &no},
-			" all",
+			"",
 		},
 		{"limit", &microflows.ResultHandlingMapping{LimitExpression: "10"}, " limit 10"},
 		{"limit+offset", &microflows.ResultHandlingMapping{LimitExpression: "10", OffsetExpression: "5"}, " limit 10 offset 5"},
@@ -205,5 +209,36 @@ func TestImportRange_UnauthoredObjectRootedWritesAllNotFirst(t *testing.T) {
 	if !h.SingleObject {
 		t.Error("SingleObject = false, want true — the object-rooted mapping still " +
 			"binds an object; only the RANGE changed")
+	}
+}
+
+// upstream #1176: an object-returning import described as
+//
+//	$objectResponse = import from mapping M.IMM($s) all;
+//
+// — `all` on an activity that binds one object reads as "returns a list". The
+// bare form must describe it, and it must round-trip: re-executing the bare form
+// has to store the same activity that `all` stores, or dropping the keyword
+// from DESCRIBE silently rewrites the model (the #881 defect, in reverse).
+func TestImportRange_ObjectResultDescribesWithoutAll(t *testing.T) {
+	bare := buildImportRange(t, false, &ast.ImportFromMappingStmt{})
+	if got := formatImportMappingRange(bare); got != "" {
+		t.Errorf("object-rooted, unauthored range: describe emits %q, want \"\" — "+
+			"`all` on an object result reads as a list", got)
+	}
+
+	all := buildImportRange(t, false, &ast.ImportFromMappingStmt{All: true})
+	if bare.SingleObject != all.SingleObject ||
+		microflows.RangeSingleObjectOf(bare) != microflows.RangeSingleObjectOf(all) ||
+		(bare.ForceSingleOccurrence == nil) != (all.ForceSingleOccurrence == nil) ||
+		(bare.ForceSingleOccurrence != nil && *bare.ForceSingleOccurrence != *all.ForceSingleOccurrence) {
+		t.Errorf("bare and `all` build different activities (bare %+v, all %+v) — "+
+			"omitting `all` from DESCRIBE would rewrite the model on re-exec", bare, all)
+	}
+
+	// A list result keeps its `all`: there it is the Range the reader expects.
+	list := buildImportRange(t, true, &ast.ImportFromMappingStmt{})
+	if got := formatImportMappingRange(list); got != " all" {
+		t.Errorf("list-rooted, unauthored range: describe emits %q, want \" all\"", got)
 	}
 }

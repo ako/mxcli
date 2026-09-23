@@ -1573,13 +1573,17 @@ func formatImportXmlAction(ctx *ExecContext, a *microflows.ImportXmlAction, enti
 // formatImportMappingRange renders the activity's Range — Studio Pro's
 // All / First / Custom setting.
 //
-// ALWAYS emits one of the three, never nothing. Omitting it would leave the
-// builder inferring cardinality from the mapping's root shape, and an
-// object-rooted mapping set to All is a real state that inference turns into
-// First — Studio Pro's own default, shipped in the blank app's
-// FeedbackModule.IMM_PostResponse. Before this, all three settings described
-// identically, so the describe→edit→exec cycle silently rewrote the activity.
-// (issue #881)
+// Before #881 all three settings described identically, so the
+// describe→edit→exec cycle silently rewrote the activity; each is now distinct.
+//
+// The one form left bare is All against an OBJECT variable — Studio Pro's
+// default for an object-rooted mapping (the blank app's
+// FeedbackModule.IMM_PostResponse). There `all` read as "returns a list"
+// (upstream #1176). Bare is exact, not a shorthand: the builder writes a
+// missing keyword as All explicitly and infers the object from the mapping.
+// That equivalence is what makes omitting it safe — before the builder did
+// so, silence stored First and the runtime threw on import. A list result
+// keeps its `all`.
 func formatImportMappingRange(h *microflows.ResultHandlingMapping) string {
 	if h == nil {
 		return ""
@@ -1602,6 +1606,9 @@ func formatImportMappingRange(h *microflows.ResultHandlingMapping) string {
 	// Studio Pro's "All" as `first`.
 	if microflows.RangeSingleObjectOf(h) {
 		return " first"
+	}
+	if h.SingleObject {
+		return ""
 	}
 	return " all"
 }
