@@ -147,20 +147,11 @@ same attributes — makes the runtime treat it as a different entity and **destr
 its rows**. An unchanged reboot is the control, and preserves them. See
 [PROPOSAL_marketplace_module_upgrade.md §8](docs/11-proposals/PROPOSAL_marketplace_module_upgrade.md).
 
-Re-measured for an **attribute** on 11.13.0 + PostgreSQL 16 while fixing #1119,
-and one result changes how you test for this: changing only the attribute `GUID`s
-of a 607-row entity made the runtime drop and recreate their columns
-(`ConnectionBus: Executing 14 database synchronization command(s)`), and
-**a recreated column with a model default is silently backfilled with that
-default.** A `Boolean default true` read back as 607 non-null `true` and looked
-untouched — until the run was repeated with every row seeded `false`, which came
-back `true`. So the loss can arrive wearing plausible data, not empty cells:
-`count(col)` proves nothing, **seed a non-default value and compare values**. The
-column order in `\d` also shifts, which is the cheap tell that a column was
-dropped and re-added rather than altered. Note too that an entity **mxcli
-created** is immune — its `GUID` equals its `$ID` from birth, so a rewrite
-reproduces the same value — which is precisely how this survives testing against
-anything but a Studio Pro-authored entity.
+Re-measured per **attribute** (#1119): the columns are dropped and recreated, and
+**a recreated column with a model default comes back filled with that default** —
+so `count(col)` proves nothing; seed a non-default value and compare values. That
+trap and the rest of the method:
+[rewrite-drops-unauthored-state](docs-wiki/bug-patterns/rewrite-drops-unauthored-state.md).
 
 Consequences for any write path:
 
@@ -170,56 +161,41 @@ Consequences for any write path:
    because the model is perfectly valid. This is the same class as the identity
    properties in `canon.identityFields` and belongs in that decision.
 
-   **The write path now refuses it** (`canon.StorageGUIDError`, called from
-   `reconcileWithStored` so both choke points get it): an element that comes out
-   of `canon.Reconcile` sharing an `$ID` with a stored element but carrying a
-   different `GUID` is refused, naming the element. It runs *after* the
-   transplant, which is what makes it exact — before it, a rebuilt element's
-   freshly minted `$ID` matches nothing. It does not repair, because carrying a
-   `GUID` on the transplant's structural pairing would trade a dropped column for
-   a new member adopting a removed one's data; the carry belongs where the write
-   knows which element is which (`carryChildIdentity`, keyed on the `$ID` the
-   executor tracked). The one deliberate GUID transplant — the marketplace module
-   update, which is why an update does not destroy a module's data — opts out by
-   name via `UpdateRawUnitOwningStorageGUIDs`. Passing that because "the guard was
+   **The write path refuses it** — `canon.StorageGUIDError`, called from
+   `reconcileWithStored` (after the transplant, which is what makes the pairing
+   exact) so both choke points get it. It refuses rather than repairs: the carry
+   belongs where the write knows which element is which (`carryChildIdentity`).
+   The one deliberate GUID transplant, the marketplace module update, opts out by
+   name via `UpdateRawUnitOwningStorageGUIDs` — passing that because "the guard was
    in the way" is how #1119 ships again.
 
-   #1119 is the cautionary case and the reason the guard exists: #657 fixed this
-   for the entity element, nobody carried the raw onto its **children**, and every
-   ALTER — `SET DOCUMENTATION` included — reset all 28 of an entity's attribute
-   GUIDs and emptied 607 rows on the next deploy. Note why no existing guard fired:
-   the new GUID is derived from an `$ID` the transplant holds stable, so the second
-   identical write is byte-identical and elided. **A corruption that does not repeat
-   is invisible to every same-vs-same check**, including a re-run of the same
-   script — compare against a copy taken before the first write, never against the
-   previous run.
+   The carry is fixed per rebuild **shape**, not per element type: swapping one
+   element into a list leaves its siblings passing through as stored bytes (#657,
+   #1119), while emptying the list and rebuilding all of it has no safe siblings at
+   all (#1169). The reported statement is rarely the blast radius — enumerate the
+   converter's **call sites**.
 2. **`$ID` renumbering is irrelevant to data safety** — the inverse of the natural
-   assumption. Studio Pro renumbers every `$ID` in a module on update (94 of 94)
-   and preserves every `GUID` (9 of 9), which is exactly why its update does not
-   lose data. `$ID` matters for *intra-unit pointer consistency* (see below);
-   `GUID` matters for the database.
+   assumption. Studio Pro renumbers every `$ID` in a module on update and preserves
+   every `GUID`, which is exactly why its update does not lose data. `$ID` matters
+   for *intra-unit pointer consistency* (see below); `GUID` for the database.
 3. **A new element must get a fresh `GUID`**, and an element copied from another
    model must not keep the source's — two elements sharing a `GUID` are one entity
    as far as the runtime is concerned.
-4. **Moving an element between modules does not exempt it** — it is the most
-   expensive case, not a lesser one. Measured on 11.13.0 + PostgreSQL 16 with the
-   same 250-row starting state both ways: with the `GUID` preserved the runtime
-   **renames** the table (`myfirstmodule$x` → `administration$x`, three DDL
-   commands) and every row survives; with it re-minted the old table is dropped and
-   an empty one created, losing all 250. The runtime resolves the entity by `GUID`,
-   not by table name, so a move loses a whole **table** where an ALTER loses a
-   column (#503). Converting to a different `$Type` on the way needs a **raw
-   transform** — `SetRaw` passes the stored `$Type` through, and gen's
-   `SetDataStorageGuid` is unusable twice over (wrong key, and `string` where the
-   property is a 16-byte binary) — with the target key set taken from
-   `generated/metamodel`.
+4. **Moving an element between modules is the most expensive case, not a lesser
+   one.** Measured on 11.13.0 + PostgreSQL 16, same 250-row start both ways: with the
+   `GUID` preserved the runtime **renames** the table and every row survives; with it
+   re-minted the old table is dropped and an empty one created, losing all 250. The
+   runtime resolves the entity by `GUID`, not by table name, so a move loses a whole
+   **table** where an ALTER loses a column (#503). A `$Type` change on the way needs a
+   **raw transform** — not `SetRaw` (it passes the stored `$Type` through), not gen's
+   `SetDataStorageGuid` (wrong key, and `string` where the property is binary). A
+   `RENAME ENTITY` is the same case, since the entity name *is* the table name (#1169).
 
-**Before trusting any GUID test, check the subject.** An entity **mxcli created**
-has `GUID == $ID` from birth, so a rewrite that re-mints `GUID = $ID` reproduces
-the same value and the defect is undetectable. Only a **Studio Pro-authored**
-element can fail. This voided a live-database control and left an MDL repro script
-unable to fail (both caught by running the pre-fix binary against them), so it is
-the first thing to suspect when a GUID test passes.
+**Before trusting any GUID test, check the subject.** An element **mxcli created**
+has `GUID == $ID` from birth, so re-minting `GUID = $ID` reproduces the same value
+and the defect is undetectable — only a **Studio Pro-authored** element can fail.
+This has already voided a live-database control and an MDL repro script. Suspect it
+first whenever a GUID test passes.
 
 ### The Tunnel Is Linux-Only, On Purpose — Do Not "Restore" It
 
