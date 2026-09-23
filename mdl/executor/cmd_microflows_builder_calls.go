@@ -339,17 +339,9 @@ func (fb *flowBuilder) addCallJavaActionAction(s *ast.CallJavaActionStmt) model.
 		if entityTypeParams[arg.Name] {
 			// Entity type parameter: value is the entity qualified name, not the variable reference.
 			// When the argument is a variable like $Email, resolve its entity type from varTypes.
-			valueExpr := fb.exprToString(arg.Value)
-			entityName := strings.Trim(valueExpr, "'")
-			if strings.HasPrefix(entityName, "$") {
-				varName := strings.TrimPrefix(entityName, "$")
-				if resolvedType, ok := fb.varTypes[varName]; ok {
-					entityName = resolvedType
-				}
-			}
 			value = &microflows.EntityTypeCodeActionParameterValue{
 				BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
-				Entity:      entityName,
+				Entity:      fb.entityTypeArgument(arg.Value),
 			}
 		} else if isEmptyJavaActionArgument(arg.Value) {
 			if microflowTypeParams[arg.Name] {
@@ -531,19 +523,9 @@ func (fb *flowBuilder) addCallJavaScriptActionAction(s *ast.CallJavaScriptAction
 		var value microflows.CodeActionParameterValue
 		valueExpr := fb.exprToString(arg.Value)
 		if entityTypeParams[arg.Name] {
-			// Entity-type parameter: the value is an entity qualified name.
-			// When the argument is a variable like $Order, resolve the entity
-			// it holds from varTypes, mirroring the Java-action builder.
-			entityName := strings.Trim(valueExpr, "'")
-			if strings.HasPrefix(entityName, "$") {
-				varName := strings.TrimPrefix(entityName, "$")
-				if resolvedType, ok := fb.varTypes[varName]; ok {
-					entityName = resolvedType
-				}
-			}
 			value = &microflows.EntityTypeCodeActionParameterValue{
 				BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
-				Entity:      entityName,
+				Entity:      fb.entityTypeArgument(arg.Value),
 			}
 		} else {
 			value = &microflows.BasicCodeActionParameterValue{
@@ -588,6 +570,25 @@ func (fb *flowBuilder) addCallJavaScriptActionAction(s *ast.CallJavaScriptAction
 	fb.finishCustomErrorHandler(activity.ID, activityX, s.ErrorHandling, s.OutputVariable)
 
 	return activity.ID
+}
+
+// entityTypeArgument returns the entity qualified name an entity-type
+// (`entity <>`) code-action argument names. The value is stored as a bare
+// name under EntityTypeCodeActionParameterValue.Entity, so it is NOT the
+// argument's expression text: the visitor keeps an argument's trailing
+// whitespace so expressions round-trip as written, and an argument on its own
+// line therefore arrives as "Mod.Entity\n". Stored verbatim that names an
+// entity that does not exist — CE0115 at build, with `mxcli check` clean
+// (mendixlabs/mxcli#1171). A variable argument such as $Order resolves to the
+// entity it holds.
+func (fb *flowBuilder) entityTypeArgument(expr ast.Expression) string {
+	entityName := strings.Trim(strings.TrimSpace(fb.exprToString(expr)), "'")
+	if varName, ok := strings.CutPrefix(entityName, "$"); ok {
+		if resolvedType, ok := fb.varTypes[varName]; ok {
+			entityName = resolvedType
+		}
+	}
+	return entityName
 }
 
 func isEmptyJavaActionArgument(expr ast.Expression) bool {
