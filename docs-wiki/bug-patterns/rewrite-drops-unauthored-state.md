@@ -121,10 +121,21 @@ reads the same pairing as "these are the same element" inherits every wrong matc
 blocked write: a statement that dropped six differently-named members and added one had
 the new member paired with a removed one, and the guard refused a write that corrupted
 nothing. Anything consuming an approximate correspondence has to add its own test of
-identity — here the member's name and type — and the cost of that test is a narrower
-guard, which is the right trade: a backstop that refuses correct work makes documented
+identity — here the member's name — and the cost of that test is a narrower guard,
+which is the right trade: a backstop that refuses correct work makes documented
 operations unusable, while a backstop with a hole still catches everything it did
 before.
+
+**Test only for what the approximate pairing can actually get wrong.** The first
+version of that identity test also compared `$Type`. The transplant never pairs
+across a `$Type`, so that half caught nothing the pairing could produce. What it did
+catch was the one writer that keeps an `$ID` through a type change on purpose: the
+move that converts an association to a cross-association in place. That was the
+guard's only view of that data loss, and the same arm had exposed it in the first
+place. A restriction that excludes no error of the input only removes coverage, and
+it does so silently, because a quiet guard reads as a clean write. Ask what each
+clause of the test excludes, measured against the pairing's real failure modes, and
+list every hole the test leaves.
 
 **The same error message can carry two defects, and fixing one leaves it byte-identical.**
 A refusal naming one element persisted unchanged after a real fix to the carry, same

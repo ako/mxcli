@@ -161,8 +161,9 @@ Consequences for any write path:
    properties in `canon.identityFields` and belongs in that decision.
 
    **The write path refuses it** — `canon.StorageGUIDError`, pairing on `$ID` +
-   `$Type` + `Name`: the transplant's pairing is structural, so a shared `$ID` alone
-   is NOT one member, and reading it as one made the guard refuse correct writes. It
+   `Name` (`$Type` only if nameless — comparing it hid #503's in-place re-type): the
+   transplant's pairing is structural, so a shared `$ID` alone is NOT one member, and
+   reading it as one made the guard refuse correct writes. It
    refuses rather than repairs; the carry belongs with the write, which knows which
    element is which (`carryChildIdentity`) — keyed on name as well as `$ID`, since
    `CREATE OR MODIFY` declares members with no ID.
