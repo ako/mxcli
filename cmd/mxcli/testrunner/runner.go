@@ -79,6 +79,11 @@ type RunOptions struct {
 	// and inherits ITS constants, and the Docker path configures the container.
 	ConstantOverrides map[string]string
 
+	// MxBuildPath overrides mxbuild resolution for a --local run, as
+	// `run --local --mxbuild-path` does. Empty means resolve: Studio Pro's
+	// bundled mxbuild on macOS/Windows, the cached CDN download on Linux.
+	MxBuildPath string
+
 	// Timeout for runtime startup and test execution.
 	Timeout time.Duration
 

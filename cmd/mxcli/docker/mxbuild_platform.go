@@ -20,12 +20,17 @@ import (
 // did neither: it called DownloadMxBuild directly, so on macOS and Windows it
 // executed whatever Linux binary the cache held. (issue #916)
 
+// MxBuildPathEnv names the environment variable that overrides mxbuild
+// resolution for the local loop, as --mxbuild-path does. The flag wins when both
+// are set. (issue #1086)
+const MxBuildPathEnv = "MXCLI_MXBUILD_PATH"
+
 // ResolveMxBuildForLocal picks the mxbuild that `run --local` / `test --local`
 // can actually execute on this host, and reports why when none can.
 //
 // Order, and why:
 //
-//  1. An explicit --mxbuild-path wins. It was documented as an override and was
+//  1. An explicit --mxbuild-path wins, then MXCLI_MXBUILD_PATH. It was documented as an override and was
 //     silently ignored by the local path, so a user hitting the platform
 //     mismatch had no way out.
 //  2. On a non-Linux host, Studio Pro BEFORE the cache. The cache may legitimately
@@ -44,6 +49,9 @@ func ResolveMxBuildForLocal(explicitPath, version string, w io.Writer) (string, 
 // so the macOS and Windows branches are testable from any host — the platform
 // mismatch this fixes cannot otherwise be exercised in CI.
 func resolveMxBuildForLocalOn(goos, explicitPath, version string, w io.Writer) (string, error) {
+	if explicitPath == "" {
+		explicitPath = os.Getenv(MxBuildPathEnv)
+	}
 	if explicitPath != "" {
 		resolved, err := resolveMxBuild(explicitPath, version)
 		if err != nil {
