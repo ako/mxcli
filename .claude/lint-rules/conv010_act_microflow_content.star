@@ -8,6 +8,7 @@
 #   - ShowMessageAction (show message)
 #   - DownloadFileAction (download file)
 #   - MicroflowCallAction (call sub-microflow for logic delegation)
+#   - NanoflowCallAction (the same delegation from an ACT_ NANOFLOW)
 #
 # Business logic should be delegated to SUB_ microflows.
 # Requires FULL catalog (REFRESH CATALOG FULL).
@@ -37,6 +38,18 @@ ALLOWED_ACTIONS = (
     "ShowMessageAction",
     "DownloadFileAction",
     "MicroflowCallAction",
+    # An ACT_ NANOFLOW delegates with a nanoflow call, not a microflow call.
+    # microflows() yields nanoflows too (the catalog's `microflows` table carries
+    # a MicroflowType column), so CONV010 lints them — and without this entry it
+    # flagged the very delegation it demands: an ACT_ nanoflow could satisfy the
+    # rule in no way at all. Reported from a real project, which patched its own
+    # copy of the rule and asked for it upstream (ako/mxcli#644).
+    #
+    # This is the third time this allowlist has been short. It has held the wrong
+    # vocabulary (storage names, matching nothing) and been missing an activity a
+    # permitted one necessarily creates (ExclusiveMerge). The pattern is the same
+    # each time: a rule that cannot be satisfied reads as the code being wrong.
+    "NanoflowCallAction",
     # Storage names — belt and braces; see the note above.
     "ShowFormAction",
     "CloseFormAction",

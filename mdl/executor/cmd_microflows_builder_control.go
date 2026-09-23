@@ -963,7 +963,17 @@ func (fb *flowBuilder) addWhileStatement(s *ast.WhileStmt) model.ID {
 	loopWidth := max(bodyBounds.Width+2*LoopPadding, MinLoopWidth)
 	loopHeight := max(bodyBounds.Height+2*LoopPadding, MinLoopHeight)
 
-	innerStartX := LoopPadding
+	// A child's Position is its CENTRE, so the first one's centre must sit half an
+	// activity in from the padding or its left edge hangs outside the box. This
+	// read `LoopPadding` alone and put every while loop's first activity at x=50
+	// with its left edge at -10 — MPR011 on every while loop mxcli wrote, single
+	// level included (ako/mxcli#645).
+	//
+	// The doc comment above says the layout "matches addLoopStatement but without
+	// iterator icon space", and dropping the iterator space is right; taking
+	// ActivityWidth/2 with it was not, because that term is not iterator space —
+	// it is what converts a centre to a left edge. The Y line below always had it.
+	innerStartX := LoopPadding + ActivityWidth/2
 	innerStartY := LoopPadding + ActivityHeight/2
 
 	// posX is where the builder would CENTRE the next element. A loop box placed

@@ -55,10 +55,18 @@ func TestCONV010AllowsWhatTheCatalogCallsUIActions(t *testing.T) {
 	src := readRule(t, "conv010_act_microflow_content.star")
 
 	// The activities CONV010 documents as permitted in an ACT_ microflow.
+	//
+	// NanoflowCallAction is here because microflows() yields NANOFLOWS too, so
+	// CONV010 lints an ACT_ nanoflow — which delegates with a nanoflow call, not
+	// a microflow call. Without it the rule flagged the delegation it demands and
+	// an ACT_ nanoflow could satisfy it in no way at all (ako/mxcli#644). That is
+	// the third short allowlist here: the wrong vocabulary once, a missing
+	// ExclusiveMerge once, and now the client-side half of "call a sub-flow".
 	permitted := []microflows.MicroflowAction{
 		&microflows.ShowPageAction{},
 		&microflows.ClosePageAction{},
 		&microflows.MicroflowCallAction{},
+		&microflows.NanoflowCallAction{},
 	}
 
 	for _, action := range permitted {
