@@ -171,7 +171,21 @@ end;
 
 `describe microflow` renders the clause back, so the binding round-trips.
 
-### Two traps, both verified on mxbuild 11.13.0
+### Three traps, verified on mxbuild 11.13.0 (the microflow one on 11.12.0)
+
+**A queued microflow must return nothing.** A `call microflow … in queue …` whose
+target declares `returns …` fails the build with **CE7033** *"A microflow used for
+background execution must have a Microflow return type of 'Nothing'."*, reported at
+the call activity. `mxcli check` reports it as **MDL088** — without a project when
+the script creates the microflow, and under `--references` for one already stored.
+Drop the `returns` clause (and the `return` value) from the worker microflow:
+
+```sql
+create microflow Ops.ACT_Work ($Note: String)   -- no `returns`
+begin
+  log info node 'Ops' 'working';
+end;
+```
 
 **A queued Java action must return Nothing.** Anything else fails the build with
 **CE7038** *"A Java action used for background execution must have a return type

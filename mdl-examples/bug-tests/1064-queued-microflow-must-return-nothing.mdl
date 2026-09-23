@@ -1,0 +1,25 @@
+-- CONTROL for 1064-queued-microflow-must-return-nothing.fail.mdl — must PASS.
+--
+-- mendixlabs/mxcli#1064 — a microflow run on a task queue must return nothing
+-- (CE7033 otherwise). The same call on a void microflow is what Mendix accepts:
+-- measured on mxbuild 11.12.0, 0 errors.
+--
+-- Verify:
+--   mxcli check 1064-queued-microflow-must-return-nothing.mdl
+
+create module Q1064;
+/
+create queue Q1064.Work (Parallelism: 1);
+/
+create microflow Q1064.ACT_Work ()
+begin
+  log info node 'Q1064' 'working';
+end;
+/
+create microflow Q1064.ACT_Enqueue ()
+begin
+  call microflow Q1064.ACT_Work() in queue Q1064.Work;
+  -- The same Boolean-free flow called without a queue is an ordinary call.
+  call microflow Q1064.ACT_Work();
+end;
+/
