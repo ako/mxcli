@@ -33,6 +33,7 @@ type BusinessEventAttributeDef struct {
 
 // DropBusinessEventServiceStmt represents DROP BUSINESS EVENT SERVICE.
 type DropBusinessEventServiceStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 

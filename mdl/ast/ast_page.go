@@ -45,6 +45,7 @@ type DataGridColumnDef struct {
 
 // DropPageStmt represents: DROP PAGE Module.Name
 type DropPageStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 
@@ -56,6 +57,7 @@ func (s *DropPageStmt) isStatement() {}
 // a layout written by mistake — the CE0848 shape in mendixlabs/mxcli#1063 was
 // exactly that — had no headless remedy at all.
 type DropLayoutStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 
@@ -63,6 +65,7 @@ func (s *DropLayoutStmt) isStatement() {}
 
 // DropSnippetStmt represents: DROP SNIPPET Module.Name
 type DropSnippetStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 

@@ -42,6 +42,42 @@ func init() {
 		SeeAlso: []string{"microflow", "domain-model.entity", "page", "document-folder"},
 	})
 
+	// IF EXISTS sits on every document-level alternative of dropStatement, so it
+	// is documented once here for the same reason OR MODIFY is (#531).
+	Register(SyntaxFeature{
+		Path:    "drop-if-exists",
+		Summary: "DROP … IF EXISTS — a drop that can be re-run",
+		Keywords: []string{
+			"drop if exists", "if exists", "drop", "re-run", "rerun",
+			"idempotent", "not found", "replayable", "cleanup",
+		},
+		Syntax: "DROP <document type> IF EXISTS Module.Name;\n" +
+			"DROP MODULE IF EXISTS ModuleName;\n" +
+			"DROP CONFIGURATION IF EXISTS 'Name';\n" +
+			"DROP FOLDER IF EXISTS 'path' IN Module;\n\n" +
+			"-- Every document-level DROP accepts IF EXISTS: entity, association,\n" +
+			"-- enumeration, constant, microflow, nanoflow, rule, page, layout,\n" +
+			"-- snippet, menu, module, queue, scheduled event, regular expression,\n" +
+			"-- java/javascript action, odata client/service, business event service,\n" +
+			"-- workflow, image collection, json structure, message definition\n" +
+			"-- collection, import/export mapping, rest client, published rest\n" +
+			"-- service, data transformer, model, consumed mcp service, knowledge\n" +
+			"-- base, agent, configuration, folder.\n" +
+			"--\n" +
+			"-- A missing target -- or a missing module -- is reported as skipped\n" +
+			"-- instead of stopping the script. Any other failure still errors. The\n" +
+			"-- bare DROP keeps SQL semantics and fails on a missing target.\n" +
+			"--\n" +
+			"-- Sub-document drops have their own guard: ALTER ENTITY … DROP ATTRIBUTE\n" +
+			"-- IF EXISTS, DROP INDEX IF EXISTS, ALTER ENUMERATION … DROP VALUE IF\n" +
+			"-- EXISTS, DROP USER ROLE IF EXISTS, DROP DEMO USER IF EXISTS.",
+		Example: "-- a stub that broke a page/workflow cycle, dropped once the real page exists\n" +
+			"DROP PAGE IF EXISTS FieldService.Stub;\n" +
+			"DROP MICROFLOW IF EXISTS FieldService.ACT_Old;\n" +
+			"DROP FOLDER IF EXISTS 'Scratch' IN FieldService;",
+		SeeAlso: []string{"create-modifiers"},
+	})
+
 	// The folder clause is the other cross-cutting CREATE modifier, and gets one
 	// topic for the same reason OR MODIFY does: it applies to every document
 	// type, so documenting it in all 27 places would guarantee 27 chances to

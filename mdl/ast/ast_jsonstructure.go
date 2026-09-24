@@ -24,6 +24,7 @@ func (s *CreateJsonStructureStmt) isStatement() {}
 
 // DropJsonStructureStmt represents: DROP JSON STRUCTURE Module.Name
 type DropJsonStructureStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 

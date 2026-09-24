@@ -448,6 +448,12 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 		return err
 	}
 
+	// DROP … IF EXISTS names something that may legitimately be absent, module
+	// included; exec skips it, so check must not refuse it (#531).
+	if g, ok := stmt.(ast.IfExistsDrop); ok && g.DropIfExists() {
+		return nil
+	}
+
 	switch s := stmt.(type) {
 	// Statements that reference modules
 	case *ast.CreateEntityStmt:
