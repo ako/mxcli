@@ -2,7 +2,7 @@
 title: First-class expressions for expression-typed MDL properties
 status: draft
 date: 2026-09-08
-revised: 2026-09-23
+revised: 2026-09-24
 related:
   - https://github.com/mendixlabs/mxcli/issues/750
   - PROPOSAL_expression_type_checking.md
@@ -174,11 +174,16 @@ Two of #750's targets are **not** expression slots and drop out:
   (`MDLDomainModel.g4`, `attributeConstraint`) — Mendix computes the value with
   a microflow, and no expression is stored. Attribute `default` already takes
   `literal | expression`.
-- **REST/OData "filter and mapping expressions".** No such slot exists in
+- **REST "filter and mapping expressions".** No such slot exists in
   `MDLService.g4`: REST `Path:` / `Body: template` are `{param}` text templates
-  with their own escaping, and OData/REST mappings bind attributes by name. If a
-  real expression slot turns up there it joins slice 3; nothing is designed for
-  it speculatively.
+  with their own escaping, and REST mappings bind attributes by name.
+
+*(Revised 2026-09-24.)* An earlier revision said the same of OData; that was
+wrong. The **consumed OData client** has four expression slots —
+`HttpUsername`, `HttpPassword`, `ClientCertificate` and every `headers (…)`
+value — and `mdl-examples/doctype-tests/10-odata-examples.mdl` (level 8.2,
+`FullConfigAPI`) shows the cost: every literal is written `'''admin'''`. They
+join slice 3, and their describer has a live round-trip bug (§6.2, slice 0b).
 
 ## 4. What this unlocks
 
@@ -235,6 +240,35 @@ proposals compose rather than compete.
    the form and the executor decides by the declared kind — but it is the one
    place this change widens a generic rule, so it wants a maintainer decision.
 
+5. **Flip the meaning of a quoted OData credential/header (§6.4 option a)?**
+   *Measured 2026-09-24* — grep of `mdl-examples/`, `.claude/skills/` and
+   `docs-site/src/` for OData `Http*` and `headers` values:
+
+   | Where | Spelling | Stores today | Under (a) |
+   |---|---|---|---|
+   | `mdl-examples/doctype-tests/10-odata-examples.mdl` (5 values) | triple-quoted, `'''admin'''` | string literal `'admin'` — correct | a string whose text is `'admin'`, quote characters included — **wrong** |
+   | `.claude/skills/mendix/odata-data-sharing/reference/walkthroughs.md` (4 clients) | single-quoted, `HttpUsername: 'MxAdmin'`, `HttpPassword: '1'` | identifier `MxAdmin`, integer `1` — **wrong** | string literals `'MxAdmin'`, `'1'` — correct |
+
+   The create path copies the value through unchanged (`cmd_odata.go`,
+   `Username: stmt.HttpUsername`), so the shipped skill — the text agents copy
+   from — teaches a spelling that stores an expression Mendix cannot use as a
+   credential (CE0117 or a type error expected; not yet measured with
+   `mx check`).
+
+   So both spellings are in use and **each option breaks one of them**: (c)
+   leaves the skill's spelling silently wrong; (a) silently puts quote
+   characters into every triple-quoted credential. What makes (a) still the
+   better choice is that its failure is *detectable*: under (a), a value in
+   these four slots whose text itself begins and ends with `'` is almost
+   certainly the legacy form, and `check` can flag it (a real password that
+   starts and ends with a quote character is the only false positive). Under
+   (c) the wrong spelling is indistinguishable from a deliberate identifier
+   expression. Proposal: (a) plus that check, as an error for one release, then
+   a warning.
+
+   Independent of the decision: the skill's four clients are a live defect and
+   should be fixed now, in the triple-quoted form that is correct today.
+
 ## 6. Implementation plan
 
 ### 6.1 Slot inventory
@@ -247,9 +281,19 @@ proposals compose rather than compete.
 | `ALTER PAGE SET DynamicClasses = … ON w` | expression | `alterPageAssignment` (`MDLParser.g4`) | n/a |
 | page/snippet `Variables: { $v: T = '…' }` | expression | `variableDeclaration: VARIABLE COLON dataType EQUALS STRING_LITERAL` | `cmd_pages_describe.go` — `mdlQuote(defaultVal)` |
 | workflow / user-task `due date '…'` | expression | `DUE DATE_TYPE STRING_LITERAL` (`MDLWorkflow.g4`) | `cmd_workflows.go` — `mdlQuoted(DueDate)` |
+| OData client `HttpUsername:` / `HttpPassword:` | expression | `odataPropertyAssignment` → `odataPropertyValue` (`MDLService.g4`) | `cmd_odata.go` — `formatExprValue` (**round-trip bug**, slice 0b) |
+| OData client `ClientCertificate:` | expression | as above | `cmd_odata.go` — raw `'%s'`, **unescaped** (slice 0b) |
+| OData client `headers ( 'K': … )` value | expression | `odataHeaderEntry: STRING_LITERAL COLON odataPropertyValue` | `cmd_odata.go` — `formatExprValue`; the key is printed raw `'%s'` |
 | user task `targeting users/groups xpath '…'` | XPath | `TARGETING … XPATH STRING_LITERAL` | `cmd_workflows.go` — `mdlQuoted(us.XPath)` |
 | offline `sync … where` | XPath | `WHERE (xpathConstraint \| STRING_LITERAL)` | **done** |
 | widget `Visible:` / `Editable:` | XPath-shaped | `xpathConstraint` | **done** |
+
+**Not expressions, despite appearances:** OData client `ProxyHost`,
+`ProxyPort`, `ProxyUsername` and `ProxyPassword` are `ByNameRef`s to a constant
+(`modelsdk/gen/rest/types.go`, `ConsumedODataService.proxyHost`), not
+expression strings. The comment in `10-odata-examples.mdl` blaming "the BSON
+shape" describes a by-name reference being written as a string. That is a
+separate bug, and a first-class expression would not fix it.
 
 Explicitly not yet in: workflow `timer '…'`, `decide by veto '…'`,
 `fallback '…'` and `description '…'`. Verify the stored kind of each against the
@@ -283,6 +327,36 @@ property (`expressionWidgetProps` in `validate_widgets.go`, plus
 `mdl/executor/`; prove it by reverting the check. Append a finding to
 `.claude/skills/fix-issue/findings/<pages area>.jsonl`.
 
+**Slice 0b — bug: OData client `describe` loses a quote level.**
+
+`formatExprValue` (`cmd_odata.go`) returns a stored value unchanged when it
+already starts and ends with `'`, on the theory that it is "already a quoted
+Mendix expression string literal". But the visitor *unquotes* the MDL string
+(`odataValueText` → `unquoteString`), so the MDL text must carry one more level
+of quoting than the stored expression. Measured on `8f08e229` by feeding the
+real `formatExprValue` output back through the same unquoting:
+
+| stored expression | `describe` emits | re-`exec` stores | round-trips |
+|---|---|---|---|
+| `'admin'` | `'admin'` | `admin` | **no** |
+| `'it''s'` | `'it''s'` | `it's` | **no** |
+| `@Mod.C` | `'@Mod.C'` | `@Mod.C` | yes |
+| `'a' + @Mod.C` | `'''a'' + @Mod.C'` | `'a' + @Mod.C` | yes |
+
+The failing rows are the *common* case — exactly the literals the example file
+writes as `'''admin'''`. After one describe → exec cycle the credential is the
+bare identifier `admin`, which Mendix parses as an expression and rejects
+(CE0117 expected; not yet measured with `mx check`). `ClientCertificate` is
+worse: it is printed as a raw `'%s'`, so a stored `'my-cert'` becomes
+`''my-cert''`, which does not re-parse as one string. Header keys are printed
+raw too.
+
+Fix: drop the fast path and always `mdlQuote` (escape every `'`). Test first: a
+describe → parse → store round trip for each row above plus `ClientCertificate`
+and a header, where the rows that pass today are the control. This is
+independent of the feature and should ship first; slice 3 then replaces the
+quoted output with the bare form.
+
 **Slice 1 — XPath family: `targeting … xpath [ … ]`.**
 
 | File | Change |
@@ -312,6 +386,10 @@ property (`expressionWidgetProps` in `validate_widgets.go`, plus
 | `mdl/grammar/domains/MDLPage.g4` | `variableDeclaration: VARIABLE COLON dataType EQUALS (STRING_LITERAL \| expression)` — a lone `STRING_LITERAL` keeps its legacy meaning (§6.3) |
 | `mdl/grammar/domains/MDLWorkflow.g4` | `DUE DATE_TYPE (STRING_LITERAL \| expression)` in workflow and user-task clauses |
 | `mdl/grammar/MDLParser.g4` | `alterPageAssignment`: expression alternative, validated against the property's type |
+| `mdl/grammar/domains/MDLService.g4` | `odataPropertyValue`: add `expression` **last**, after `AT qualifiedName` and `qualifiedName`, so `@Mod.C` and `microflow M.F` keep their meaning in non-expression properties; same for the `odataHeaderEntry` value |
+| `mdl/visitor/visitor_odata.go` | for `HttpUsername` / `HttpPassword` / `ClientCertificate` / header values only: parse the value as `expression` and store it rendered, so `'admin'` stores `'admin'` (§6.4 option a; under option c a `STRING_LITERAL` keeps today's meaning instead). The `*IsLiteral` flags (read by `resolveCredential` for the design-time `$metadata` fetch) become "is a single string-literal expression" |
+| `mdl/executor/cmd_odata.go` | `describe` emits the bare form for these slots |
+| `mdl-examples/doctype-tests/10-odata-examples.mdl` | rewrite level 8.2 in the bare form (§6.4); keep one quoted case as the compatibility test |
 | matching visitors, `cmd_pages_describe.go`, `cmd_workflows.go` | as slice 2 |
 
 ### 6.3 The one semantic trap: a quoted value keeps meaning "expression text"
@@ -331,7 +409,89 @@ That is today's behaviour; the plan does not make it worse, and the
 skills showing the bare form is what steers people off it. Recorded here so no
 reviewer "fixes" the grammar by making a `STRING_LITERAL` a string value — that
 would silently re-interpret every existing script. The ordering in slice 2
-(`propertyValueV3` before `expression`) is what enforces it.
+(`propertyValueV3` before `expression`) is what enforces it. The one proposed
+exception, argued separately because its trade-off is the opposite, is the
+OData client's four slots (§6.4).
+
+### 6.4 Worked example: the OData client
+
+`10-odata-examples.mdl`, level 8.2, today:
+
+```mdl
+create odata client OdTest.FullConfigAPI (
+  ...
+  -- HttpUsername/HttpPassword/ClientCertificate are Mendix expression fields:
+  -- the stored value must be a Mendix expression string, so a string literal
+  -- needs single quotes inside the MDL string (use doubled '' to escape).
+  HttpUsername: '''admin''',
+  HttpPassword: '''secret''',
+  ClientCertificate: '''my-cert''',
+  ErrorHandlingMicroflow: microflow OdTest.HandleError
+)
+-- Header values are Mendix expression fields too; wrap literal values in
+-- single quotes (escaped as doubled '') so the BSON stores a valid
+-- string-literal expression rather than a bare identifier.
+headers (
+  'X-Api-Key': '''abc123''',
+  'Accept': '''application/json'''
+);
+```
+
+After slice 3, under option (a) below — the same stored bytes as today's
+`'''admin'''` spelling, and no explanatory comments needed:
+
+```mdl
+create odata client OdTest.FullConfigAPI (
+  ...
+  HttpUsername: 'admin',
+  HttpPassword: 'secret',
+  ClientCertificate: 'my-cert',
+  ErrorHandlingMicroflow: microflow OdTest.HandleError
+)
+headers (
+  'X-Api-Key': 'abc123',
+  'Accept': 'application/json'
+);
+```
+
+and a compound value, which today has to be written
+`'''Key '' + @OdTest.ApiKey'`, becomes `'X-Api-Key': 'Key ' + @OdTest.ApiKey`.
+
+This is the one slot family where the §6.3 trap bites hardest, because the
+first-class form and the legacy form **look the same and mean different
+things**: `HttpUsername: 'admin'` today stores the expression `admin` (an
+identifier), and a user reading the rewritten example will expect it to store
+the string `'admin'`. The two cannot both hold. Options, for the maintainer:
+
+- **(a) Flip the meaning in these four slots**: a `STRING_LITERAL` becomes a
+  Mendix string literal, so `'admin'` stores `'admin'`. Readable, and matches
+  what everyone who ever wrote `'''admin'''` meant — but it silently changes the
+  stored value for any existing script that relied on `'admin'` storing
+  `admin`, and it changes today's quoted spelling of a compound value: a single
+  literal whose text is `'a' + @Mod.C` would store a string containing a plus
+  sign instead of the concatenation. Needs a check-time warning on the ambiguous
+  forms for one release (§5, question 5), and the examples file rewritten in the
+  same PR.
+- **(b) Keep the meaning, and write the bare form with a marker**, e.g.
+  `HttpUsername: expr 'admin'` — no ambiguity, but it adds a keyword and gives
+  up most of the readability gain in the case that matters most.
+- **(c) Keep the meaning and do nothing extra**: the example stays
+  `'''admin'''` for literals and the gain is only for compound expressions.
+
+There is precedent inside MDL for (a). The consumed **REST** client already
+spells a header the way (a) would — `headers: ('Accept' = 'application/json')`
+in `06-rest-client-examples.mdl` — because `restClientHeaderItem` parses the
+value into `Value` / `Prefix` / `Variable` rather than taking expression text.
+So today the same HTTP header is written `'Accept' = 'application/json'` on a
+REST client and `'Accept': '''application/json'''` on an OData client. Option
+(a) removes that inconsistency; (c) keeps it.
+
+Recommendation: **(a)**, scoped to these four OData slots. Unlike
+`dynamicclasses` — where a plain class name is rare and an `if` is the norm —
+an OData credential or header is almost always a literal or a constant, so the
+quoted form *is* the common case and has to read correctly. The trade-off is a
+real behaviour change — both spellings are in use today — and is measured in
+open question 5.
 
 ## 7. Test plan
 
