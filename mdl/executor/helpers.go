@@ -6,6 +6,7 @@ package executor
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
@@ -261,6 +262,15 @@ func validateWidgetReferences(ctx *ExecContext, widgets []*ast.WidgetV3, sc *scr
 		}
 	}
 
+	if len(refs.menus) > 0 {
+		known := buildMenuDocumentQualifiedNames(ctx)
+		for _, ref := range refs.menus {
+			if known != nil && !known[ref] && !sc.menus[ref] {
+				errors = append(errors, menuNotFoundMessage(ref, known))
+			}
+		}
+	}
+
 	if len(refs.images) > 0 {
 		// No same-script exemption: MDL cannot create an image collection entry,
 		// so an image reference can only ever resolve against the project.
@@ -279,6 +289,7 @@ type widgetRefCollector struct {
 	snippets   []string
 	entities   []string
 	images     []string
+	menus      []string
 }
 
 // dedupe collapses repeated references within each category, preserving first
@@ -293,6 +304,7 @@ func (c *widgetRefCollector) dedupe() {
 	c.snippets = uniqueStrings(c.snippets)
 	c.entities = uniqueStrings(c.entities)
 	c.images = uniqueStrings(c.images)
+	c.menus = uniqueStrings(c.menus)
 }
 
 // uniqueStrings returns s with duplicate values removed, preserving order.
@@ -315,7 +327,7 @@ func uniqueStrings(s []string) []string {
 func (c *widgetRefCollector) empty() bool {
 	return len(c.microflows) == 0 && len(c.nanoflows) == 0 &&
 		len(c.pages) == 0 && len(c.snippets) == 0 && len(c.entities) == 0 &&
-		len(c.images) == 0
+		len(c.images) == 0 && len(c.menus) == 0
 }
 
 func (c *widgetRefCollector) collectFromWidgets(widgets []*ast.WidgetV3) {
@@ -363,6 +375,15 @@ func (c *widgetRefCollector) collectFromWidget(w *ast.WidgetV3) {
 		}
 	}
 
+	// A menu widget's menu document (`Menu: Module.Menu`). Only on the three
+	// menu widgets: `Menu` means nothing on any other.
+	switch strings.ToLower(w.Type) {
+	case "navigationtree", "menubar", "simplemenubar":
+		if m := strings.TrimSpace(w.GetStringProp("Menu")); m != "" {
+			c.menus = append(c.menus, m)
+		}
+	}
+
 	// Recurse into children
 	c.collectFromWidgets(w.Children)
 }
@@ -395,6 +416,43 @@ func (c *widgetRefCollector) collectFromAction(action *ast.ActionV3) {
 // ----------------------------------------------------------------------------
 // Qualified Name Builders (used by validation and autocomplete)
 // ----------------------------------------------------------------------------
+
+// buildMenuDocumentQualifiedNames returns the project's menu documents by
+// qualified name, or nil when they could not be listed — then nothing is
+// reported, rather than every reference being called missing.
+func buildMenuDocumentQualifiedNames(ctx *ExecContext) map[string]bool {
+	h, err := getHierarchy(ctx)
+	if err != nil {
+		return nil
+	}
+	mds, err := ctx.Backend.ListMenuDocuments()
+	if err != nil {
+		return nil
+	}
+	result := make(map[string]bool, len(mds))
+	for _, md := range mds {
+		result[h.GetQualifiedName(md.ContainerID, md.Name)] = true
+	}
+	return result
+}
+
+// menuNotFoundMessage names the menu documents that do exist, since MDL has no
+// statement that lists them.
+func menuNotFoundMessage(ref string, known map[string]bool) string {
+	names := make([]string, 0, len(known))
+	for qn := range known {
+		names = append(names, qn)
+	}
+	sort.Strings(names)
+	const max = 10
+	if len(names) > max {
+		names = append(names[:max:max], "…")
+	}
+	if len(names) == 0 {
+		return fmt.Sprintf("menu document not found: %s — the project has none; create one with `create menu`", ref)
+	}
+	return fmt.Sprintf("menu document not found: %s — the project has: %s", ref, strings.Join(names, ", "))
+}
 
 // buildMicroflowQualifiedNames returns a set of all microflow qualified names in the project.
 func buildMicroflowQualifiedNames(ctx *ExecContext) map[string]bool {
