@@ -33,6 +33,7 @@ type scriptContext struct {
 	pages        map[string]bool // Pages created (Module.Page)
 	snippets     map[string]bool // Snippets created (Module.Snippet)
 	layouts      map[string]bool // Layouts created (Module.Layout)
+	menus        map[string]bool // Menu documents created (Module.Menu)
 	constants    map[string]bool // Constants created (Module.Constant)
 	workflows    map[string]bool // Workflows created (Module.Workflow)
 
@@ -85,6 +86,7 @@ func newScriptContext() *scriptContext {
 		workflows:    make(map[string]bool),
 		snippets:     make(map[string]bool),
 		layouts:      make(map[string]bool),
+		menus:        make(map[string]bool),
 		constants:    make(map[string]bool),
 
 		javaActions:       make(map[string][]string),
@@ -207,6 +209,10 @@ func (sc *scriptContext) collectSingle(stmt ast.Statement) {
 	case *ast.CreateLayoutStmt:
 		if s.Name.Module != "" {
 			sc.layouts[s.Name.String()] = true
+		}
+	case *ast.CreateMenuStmt:
+		if s.Name.Module != "" {
+			sc.menus[s.Name.String()] = true
 		}
 	case *ast.CreateWorkflowStmt:
 		if s.Name.Module != "" {
@@ -632,6 +638,16 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 		if argErrors := validateFlowArguments(ctx, s.Parameters, pageWidgets, sc); len(argErrors) > 0 {
 			return mdlerrors.NewValidationf("page '%s' has argument errors:\n  - %s",
 				s.Name.String(), strings.Join(argErrors, "\n  - "))
+		}
+	case *ast.CreateLayoutStmt:
+		// A layout's widgets name things too — a menu widget's menu document
+		// above all, since layouts are where menu widgets live. Before
+		// ako/mxcli#573 no layout was reference-checked at all, so
+		// `simplemenubar b (Menu: M.Typo)` passed --references and mxbuild
+		// answered CE1613 "The selected menu 'M.Typo' no longer exists."
+		if refErrors := validateWidgetReferences(ctx, s.Widgets, sc); len(refErrors) > 0 {
+			return mdlerrors.NewValidationf("layout '%s' has reference errors:\n  - %s",
+				s.Name.String(), strings.Join(refErrors, "\n  - "))
 		}
 	case *ast.CreateSnippetStmtV3:
 		if s.Name.Module != "" && !sc.modules[s.Name.Module] {

@@ -147,6 +147,31 @@ alter layout LayoutTest.App_Default {
 };
 
 -- ----------------------------------------------------------------------------
+-- A phone layout's bottom bar: a SIMPLEMENUBAR rendering a menu document, the
+-- shape Atlas_Core.Phone_BottomBar has. Any menu widget takes `menu:` (a menu
+-- document) or `profile:` (a navigation profile), never both.
+-- ----------------------------------------------------------------------------
+
+create or modify menu LayoutTest.Phone_Menu (
+  menu item 'Home' icon Atlas_Core.Atlas.home;
+  menu item 'Account' icon Atlas_Core.Atlas.user;
+);
+
+create or replace layout LayoutTest.Phone_Bottom (
+  layouttype: 'Phone',
+  class: 'layout-atlas layout-atlas-phone'
+) {
+  scrollcontainer scrollContainer1 {
+    region bottom (class: 'region-bottombar') {
+      simplemenubar bottomBar (menu: LayoutTest.Phone_Menu, class: 'bottom-nav-text-icons')
+    }
+    region center (class: 'region-content') {
+      placeholder Main
+    }
+  }
+}
+
+-- ----------------------------------------------------------------------------
 -- DESCRIBE emits re-executable MDL, which is how a layout is copied: describe
 -- an Atlas layout, change the qualified name, run it.
 --

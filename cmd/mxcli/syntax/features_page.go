@@ -447,6 +447,7 @@ CREATE PAGE Sales.Detail (Title: 'Detail', Layout: Atlas_Core.Atlas_Default) {
 		Keywords: []string{
 			"layout", "layouts", "create layout", "scrollcontainer", "region",
 			"placeholder", "navigationtree", "topbar", "sidebar", "frame",
+			"menubar", "simplemenubar", "bottom bar", "phone layout", "menu document",
 		},
 		Syntax: "CREATE [OR REPLACE] LAYOUT Module.Name (\n" +
 			"  layouttype: 'Responsive' | 'Phone' | 'Tablet' | 'ModalPopup'   -- web\n" +
@@ -460,6 +461,10 @@ CREATE PAGE Sales.Detail (Title: 'Detail', Layout: Atlas_Core.Atlas_Default) {
 			"      -- widgets, plus:\n" +
 			"      NAVIGATIONTREE name (Profile: 'Responsive')   -- vertical, for a sidebar\n" +
 			"      MENUBAR name (Profile: 'Responsive')          -- horizontal, for a topbar\n" +
+			"      SIMPLEMENUBAR name (Menu: Module.Menu        -- a phone layout's bottom bar\n" +
+			"                    [, Orientation: Horizontal | Vertical])\n" +
+			"      -- Every menu widget renders EITHER a navigation profile (Profile: '…')\n" +
+			"      -- OR a menu document (Menu: Module.Menu, see CREATE MENU) — not both.\n" +
 			"      PLACEHOLDER Main\n" +
 			"    }\n" +
 			"  }\n" +
@@ -481,6 +486,24 @@ CREATE PAGE Sales.Detail (Title: 'Detail', Layout: Atlas_Core.Atlas_Default) {
 			"    }\n" +
 			"    REGION left (Size: 232, SizeMode: 'Pixels', Class: 'region-sidebar') {\n" +
 			"      NAVIGATIONTREE navMenu (Profile: 'Responsive')\n" +
+			"    }\n" +
+			"    REGION center (Class: 'region-content') {\n" +
+			"      PLACEHOLDER Main\n" +
+			"    }\n" +
+			"  }\n" +
+			"}\n\n" +
+			"-- A phone layout's bottom bar, as Atlas_Core.Phone_BottomBar has it —\n" +
+			"-- a simple menu bar rendering a menu document:\n" +
+			"CREATE OR MODIFY MENU MyModule.Phone_Menu (\n" +
+			"  menu item 'Home' page MyModule.Home_Phone icon Atlas_Core.Atlas.home;\n" +
+			");\n" +
+			"CREATE OR REPLACE LAYOUT MyModule.Phone_Bottom (\n" +
+			"  layouttype: 'Phone',\n" +
+			"  class: 'layout-atlas layout-atlas-phone'\n" +
+			") {\n" +
+			"  SCROLLCONTAINER scrollContainer1 {\n" +
+			"    REGION bottom (Class: 'region-bottombar') {\n" +
+			"      SIMPLEMENUBAR bottomBar (Menu: MyModule.Phone_Menu, Class: 'bottom-nav-text-icons')\n" +
 			"    }\n" +
 			"    REGION center (Class: 'region-content') {\n" +
 			"      PLACEHOLDER Main\n" +

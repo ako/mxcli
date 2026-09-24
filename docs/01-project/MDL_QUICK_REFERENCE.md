@@ -1488,6 +1488,7 @@ MDL uses explicit property declarations for pages:
 | Placeholder | `placeholder Main` | The slot a page's content goes into. The name is API — a page binds as `Module.Layout.<Name>`. Name one `Main`: that is how Mendix picks the main placeholder (`Forms$Layout` has no property for it). At least one is required |
 | Navigation tree | `navigationtree name (profile: 'Responsive')` | The sidebar menu (vertical); the profile is a navigation profile name |
 | Menu bar | `menubar name (profile: 'Responsive')` | The topbar menu (horizontal); same stored shape as a navigation tree |
+| Simple menu bar | `simplemenubar name (menu: Module.Menu [, orientation: Horizontal\|Vertical])` | A phone layout's bottom bar (Atlas `Phone_BottomBar`). Any menu widget takes `menu: Module.Menu` (a menu document) **or** `profile: '…'`, never both |
 | Region as ALTER target | `<scrollContainerName>.<slot>` | A region has no name — its slot is its identity. `INSERT INTO layoutContainer.top { … }`. Only `INSERT INTO`; use a widget name for `BEFORE`/`AFTER` |
 
 **Snippets & Building Blocks (read-only discovery):**
