@@ -341,11 +341,24 @@ func buildOQLFromTable(ctx *parser.TableReferenceContext) ast.OQLTableRef {
 		}
 	}
 
-	if id := ctx.IDENTIFIER(); id != nil {
-		ref.Alias = id.GetText()
-	}
+	ref.Alias = oqlSourceAliasText(ctx.OqlSourceAlias())
 
 	return ref
+}
+
+// oqlSourceAliasText returns the alias an oqlSourceAlias names, without the AS.
+func oqlSourceAliasText(ctx parser.IOqlSourceAliasContext) string {
+	if ctx == nil {
+		return ""
+	}
+	a := ctx.(*parser.OqlSourceAliasContext)
+	if id := a.IDENTIFIER(); id != nil {
+		return id.GetText()
+	}
+	if kw := a.Keyword(); kw != nil {
+		return kw.GetText()
+	}
+	return ""
 }
 
 // buildOQLJoinTable converts a JoinClauseContext into an OQLTableRef.
@@ -369,9 +382,7 @@ func buildOQLJoinTable(ctx *parser.JoinClauseContext) ast.OQLTableRef {
 				ref.Entity = sub.Tables[0].Entity
 			}
 		}
-		if id := tr.IDENTIFIER(); id != nil {
-			ref.Alias = id.GetText()
-		}
+		ref.Alias = oqlSourceAliasText(tr.OqlSourceAlias())
 	} else if assocPath := ctx.AssociationPath(); assocPath != nil {
 		// Association path JOIN
 		ap := assocPath.(*parser.AssociationPathContext)
@@ -384,10 +395,8 @@ func buildOQLJoinTable(ctx *parser.JoinClauseContext) ast.OQLTableRef {
 			ref.Entity = getQualifiedNameText(lastQN)
 		}
 
-		// Alias is the IDENTIFIER on the JoinClause (not on AssociationPath)
-		if id := ctx.IDENTIFIER(); id != nil {
-			ref.Alias = id.GetText()
-		}
+		// Alias is on the JoinClause (not on AssociationPath)
+		ref.Alias = oqlSourceAliasText(ctx.OqlSourceAlias())
 	}
 
 	// ON condition

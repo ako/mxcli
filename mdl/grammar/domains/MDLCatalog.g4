@@ -308,21 +308,36 @@ fromClause
     ;
 
 tableReference
-    : qualifiedName (AS? IDENTIFIER)?
-    | LPAREN oqlQuery RPAREN (AS? IDENTIFIER)?
+    : qualifiedName oqlSourceAlias?
+    | LPAREN oqlQuery RPAREN oqlSourceAlias?
     ;
 
 joinClause
     : joinType? JOIN tableReference (ON expression)?
-    | joinType? JOIN associationPath (AS? IDENTIFIER)?
+    | joinType? JOIN associationPath oqlSourceAlias?
+    ;
+
+// A source alias (FROM / JOIN / derived table).
+//
+// MDL's keywords are not OQL's, so a name like ROLE, STATUS or VALUE is a legal
+// alias in a Mendix model, and DESCRIBE prints it verbatim — which made the
+// round trip fail to parse (mendixlabs/mxcli#1174). After an explicit AS only
+// an alias can follow, so any keyword is accepted there. Without AS the alias
+// stays IDENTIFIER-only: `from M.Sale s left join …` must keep LEFT as the join.
+oqlSourceAlias
+    : AS (IDENTIFIER | keyword)
+    | IDENTIFIER
     ;
 
 // OQL association path formats:
 // - Association/Entity (e.g., Shop.BillingAddress_Customer/Shop.Customer)
 // - alias/Association/Entity (e.g., c/Shop.DeliveryAddress_Customer/Shop.Address)
+//
+// The leading alias takes a keyword for the same reason as oqlSourceAlias: it
+// names a source that may itself have been declared `as Role`.
 associationPath
-    : IDENTIFIER SLASH qualifiedName SLASH qualifiedName  // alias/Association/Entity
-    | qualifiedName SLASH qualifiedName                    // Association/Entity
+    : (IDENTIFIER | keyword) SLASH qualifiedName SLASH qualifiedName  // alias/Association/Entity
+    | qualifiedName SLASH qualifiedName                                // Association/Entity
     ;
 
 joinType
