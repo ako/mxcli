@@ -292,8 +292,9 @@ proposals compose rather than compete.
 `ProxyPort`, `ProxyUsername` and `ProxyPassword` are `ByNameRef`s to a constant
 (`modelsdk/gen/rest/types.go`, `ConsumedODataService.proxyHost`), not
 expression strings. The comment in `10-odata-examples.mdl` blaming "the BSON
-shape" describes a by-name reference being written as a string. That is a
-separate bug, and a first-class expression would not fix it.
+shape" describes a by-name reference being written with an expression's `@`.
+A first-class expression would not fix it; §6.5 gives these slots their own
+spelling, `constant Mod.C`.
 
 Explicitly not yet in: workflow `timer '…'`, `decide by veto '…'`,
 `fallback '…'` and `description '…'`. Verify the stored kind of each against the
@@ -492,6 +493,69 @@ an OData credential or header is almost always a literal or a constant, so the
 quoted form *is* the common case and has to read correctly. The trade-off is a
 real behaviour change — both spellings are in use today — and is measured in
 open question 5.
+
+### 6.5 The other half of the boundary: `constant Mod.C` for named-constant references
+
+*(Added 2026-09-24.)* `@Mod.C` is Mendix **expression** syntax — it is how an
+expression reads a constant's value, and it is valid only where an expression
+is. MDL currently also uses it in places that are **not** expressions but
+by-name references to a constant document, where the stored value is the
+qualified name `Mod.C` and nothing is ever evaluated. First-class expressions
+make that overloading untenable: once an expression slot takes
+`ServiceUrl: @Mod.C` bare, the same four characters must not mean "a reference"
+two lines further down.
+
+The rule: **spell a reference by its target kind, the way microflow references
+already are.**
+
+```mdl
+create odata client OdTest.FullConfigAPI (
+  ServiceUrl: @OdTest.ServiceUrl,                  -- expression: reads the value
+  ErrorHandlingMicroflow: microflow OdTest.HandleError,  -- reference (exists today)
+  ProxyHost: constant OdTest.ProxyHost,            -- reference (new)
+  ProxyPort: constant OdTest.ProxyPort
+)
+```
+
+`@` stays expression-only; `microflow`, `nanoflow`, `page`, `constant` name
+what a by-name slot points at. The kind keyword also gives `check --references`
+the target type to resolve against, which a bare qualified name does not.
+
+**Slot inventory.** Every `@`-spelled slot, classified by its metamodel type
+(`modelsdk/gen/`):
+
+| Slot | Metamodel | Kind | Today | Status |
+|---|---|---|---|---|
+| OData client `ServiceUrl` | `ConsumedODataService.serviceUrl` `Primitive[string]` | expression | `@Mod.C`, also `'@Mod.C'` | correct; stays `@` |
+| OData client `ProxyHost` / `ProxyPort` / `ProxyUsername` / `ProxyPassword` | `ByNameRef` (`rest/types.go`) | reference | `@Mod.C` → stored `"@Mod.C"` verbatim by `addStrIf` (`odata_write.go`) | **broken** — `@` kept in the name |
+| database connection `connection string` / `username` / `password` | `ByNameRef` → `Constants$Constant` (`databaseconnector/types.go`) | reference | `@Mod.C`; visitor strips `@`, sets `*IsRef` | works; gains `constant` spelling |
+| REST client `Username:` / `Password:` (and other constant-capable properties) | `Rest$ConstantValue.value` `ByNameRef` | reference | `@Mod.C`, legacy `$Mod.C`; visitor rewrites both to `$Mod.C` | works; two spellings already, `constant` becomes the canonical one |
+| expression `atomicExpression` | — | expression | `@Mod.C` | correct; this is what `@` means |
+
+**Plan** (its own slice, 4 — independent of slices 0–3; the proxy fix alone
+could ship as a bug):
+
+| File | Change |
+|---|---|
+| `mdl/grammar/domains/MDLService.g4` | `odataPropertyValue`, `restClientProperty`, `databaseConnectionOption`: add `CONSTANT qualifiedName` beside the existing `AT qualifiedName` (the `CONSTANT` token exists) |
+| `mdl/visitor/visitor_odata.go` | `constant Mod.C` → `Mod.C` for the four proxy slots; `@Mod.C` there is stripped the same way (fixes the stored `"@Mod.C"`) — accepted for compatibility |
+| `mdl/visitor/visitor_rest.go`, `visitor_dbconnection.go` | `constant` branch producing the same value as today's `@` branch |
+| `mdl/executor/cmd_odata.go`, REST and database-connection describers | emit `constant Mod.C` for by-name constant slots |
+| `mdl/executor/` (reference validation) | `constant X` must resolve to a constant; `constant` in an expression slot, or `@` in a reference slot, is a check-time hint naming the other spelling |
+| `mdl-examples/doctype-tests/10-odata-examples.mdl` | replace the "omit proxy, BSON shape isn't well-defined" comment with a working `ProxyHost: constant …` case |
+
+**Compatibility.** `@Mod.C` keeps parsing in all three reference families,
+permanently, as §3.2 does for quoted expressions; only `describe` changes. In
+the REST client `$Mod.C` stays accepted too.
+
+**Needs a Studio Pro reference before the proxy half is built.** The metamodel
+says `ProxyHost` stores the qualified name `Mod.C`, which is what
+`ProxyHost: Mod.C` (no `@`) already writes today — yet the comment in
+`10-odata-examples.mdl` reports that form fails with CE0117. Either the comment
+is stale, or something else is required (a `ProxyType` other than
+`DefaultProxy`, a constant of a particular type for the port, or a different
+field). Per CLAUDE.md this is settled by a Studio Pro–configured client with a
+custom proxy, dumped with `mxcli bson dump`, not by guessing.
 
 ## 7. Test plan
 
