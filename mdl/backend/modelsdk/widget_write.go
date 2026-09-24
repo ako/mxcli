@@ -644,9 +644,10 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 	case *pages.NavigationTree:
 		g := genPg.NewNavigationTree()
 		applyWidgetBase(g, &x.BaseWidget)
-		src := genPg.NewNavigationSource()
-		assignID(src)
-		src.SetNavigationProfileQualifiedName(orDefaultStr(x.NavigationProfile, "Responsive"))
+		src, err := menuSourceToGen(x.Name, x.Menu, x.NavigationProfile)
+		if err != nil {
+			return nil, err
+		}
 		g.SetMenuSource(src)
 		return g, nil
 
@@ -655,10 +656,24 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 		// a menu bar is the horizontal navigation a topbar carries.
 		g := genPg.NewMenuBar()
 		applyWidgetBase(g, &x.BaseWidget)
-		src := genPg.NewNavigationSource()
-		assignID(src)
-		src.SetNavigationProfileQualifiedName(orDefaultStr(x.NavigationProfile, "Responsive"))
+		src, err := menuSourceToGen(x.Name, x.Menu, x.NavigationProfile)
+		if err != nil {
+			return nil, err
+		}
 		g.SetMenuSource(src)
+		return g, nil
+
+	case *pages.SimpleMenuBar:
+		// The bottom bar of Atlas's phone layouts (ako/mxcli#573). A menu bar's
+		// keys plus Orientation, measured on Atlas_Core.Phone_BottomBar.
+		g := genPg.NewSimpleMenuBar()
+		applyWidgetBase(g, &x.BaseWidget)
+		src, err := menuSourceToGen(x.Name, x.Menu, x.NavigationProfile)
+		if err != nil {
+			return nil, err
+		}
+		g.SetMenuSource(src)
+		g.SetOrientation(orDefaultStr(string(x.Orientation), string(pages.MenuOrientationHorizontal)))
 		return g, nil
 
 	case *pages.GroupBox:
@@ -1879,4 +1894,24 @@ func scrollRegionToGen(r *pages.ScrollContainerRegion) (element.Element, error) 
 		g.AddWidgets(wg)
 	}
 	return g, nil
+}
+
+// menuSourceToGen builds the MenuSource every menu widget carries: a
+// Forms$MenuDocumentSource when it renders a menu document, otherwise a
+// Forms$NavigationSource naming a profile (Responsive when none is given).
+// The two are alternatives for one slot, so both set is an error.
+func menuSourceToGen(widget, menu, profile string) (element.Element, error) {
+	if menu != "" {
+		if profile != "" {
+			return nil, fmt.Errorf("menu widget %q names both menu document %q and navigation profile %q; it renders one", widget, menu, profile)
+		}
+		src := genPg.NewMenuDocumentSource()
+		assignID(src)
+		src.SetMenuQualifiedName(menu)
+		return src, nil
+	}
+	src := genPg.NewNavigationSource()
+	assignID(src)
+	src.SetNavigationProfileQualifiedName(orDefaultStr(profile, "Responsive"))
+	return src, nil
 }

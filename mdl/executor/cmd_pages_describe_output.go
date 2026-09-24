@@ -304,15 +304,26 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		// — a page binds to it as Module.Layout.<Name>.
 		fmt.Fprintf(ctx.Output, "%splaceholder %s\n", prefix, mdlIdent(w.Name))
 
-	case "Forms$NavigationTree", "Pages$NavigationTree", "Forms$MenuBar", "Pages$MenuBar":
+	case "Forms$NavigationTree", "Pages$NavigationTree", "Forms$MenuBar", "Pages$MenuBar",
+		"Forms$SimpleMenuBar", "Pages$SimpleMenuBar":
 		keyword := "navigationtree"
-		if strings.HasSuffix(w.Type, "$MenuBar") {
+		switch {
+		case strings.HasSuffix(w.Type, "$SimpleMenuBar"):
+			keyword = "simplemenubar"
+		case strings.HasSuffix(w.Type, "$MenuBar"):
 			keyword = "menubar"
 		}
 		header := fmt.Sprintf("%s %s", keyword, mdlIdent(w.Name))
 		var props []string
-		if w.NavigationProfile != "" {
+		if w.Menu != "" {
+			props = append(props, fmt.Sprintf("Menu: %s", w.Menu))
+		} else if w.NavigationProfile != "" {
 			props = append(props, fmt.Sprintf("Profile: %s", mdlQuote(w.NavigationProfile)))
+		}
+		// Horizontal is the default the builder applies, so only Vertical
+		// needs saying.
+		if w.MenuOrientation == "Vertical" {
+			props = append(props, "Orientation: Vertical")
 		}
 		props = appendAppearanceProps(props, w)
 		formatWidgetProps(ctx.Output, prefix, header, props, "\n")
