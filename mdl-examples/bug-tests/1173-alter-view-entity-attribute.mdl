@@ -1,0 +1,50 @@
+-- ============================================================================
+-- mendixlabs/mxcli#1173: ALTER ENTITY ... ADD ATTRIBUTE on a view entity
+-- ============================================================================
+--
+-- Symptom (before fix): "ALTER ENTITY ... ADD ATTRIBUTE on a view entity writes a
+-- stored attribute (CE6770), and check does not catch it". `mxcli check -p
+-- --references` passed, exec printed "Added attribute 'Region' to entity
+-- MyFirstModule.SaleStats" with exit 0, and `mx check` then reported
+-- [CE6770] "View Entity is out of sync with the OQL Query." DROP ATTRIBUTE on a
+-- view entity gave the same error (measured on 11.12.1).
+--
+-- After fix: check and exec both refuse ADD/DROP ATTRIBUTE on a view entity and
+-- point at `create or modify view entity`, which changes the query and the
+-- attribute list together — the form below, which builds with 0 errors.
+--
+-- Rejected (references mode, against a project that already has the view):
+--   alter entity MyFirstModule.SaleStats add attribute Region: String(200);
+--   alter entity MyFirstModule.SaleStats drop attribute Total;
+-- Still accepted: rename attribute (the column is bound by alias, not by name).
+-- ============================================================================
+
+create entity MyFirstModule.Sale (
+  Amount: Integer,
+  CustomerName: String(200)
+);
+
+create view entity MyFirstModule.SaleStats (
+  CustomerName: String(200),
+  Total: Integer
+) as (
+  select
+    s.CustomerName as CustomerName,
+    sum(s.Amount) as Total
+  from MyFirstModule.Sale as s
+  group by s.CustomerName
+);
+
+-- The supported way to add a column: restate the view with the new column.
+create or modify view entity MyFirstModule.SaleStats (
+  CustomerName: String(200),
+  Total: Integer,
+  Orders: Integer
+) as (
+  select
+    s.CustomerName as CustomerName,
+    sum(s.Amount) as Total,
+    count(s.Amount) as Orders
+  from MyFirstModule.Sale as s
+  group by s.CustomerName
+);
