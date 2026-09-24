@@ -189,7 +189,8 @@ func (b *Builder) buildViewEntity(ctx *parser.CreateEntityStatementContext) {
 
 	// OQL Query - use token stream to preserve whitespace, and walk parse tree for structured data
 	if oqlCtx := ctx.OqlQuery(); oqlCtx != nil {
-		raw := extractOriginalText(oqlCtx)
+		firstIndent, firstIsIndent := leadingLineWhitespace(oqlCtx)
+		raw := dedentOQL(extractOriginalText(oqlCtx), firstIndent, firstIsIndent)
 		stmt.Query = ast.OQLQuery{
 			RawQuery: raw,
 			Parsed:   buildOQLParsed(oqlCtx.(*parser.OqlQueryContext), raw),
@@ -197,6 +198,70 @@ func (b *Builder) buildViewEntity(ctx *parser.CreateEntityStatementContext) {
 	}
 
 	b.statements = append(b.statements, stmt)
+}
+
+// leadingLineWhitespace returns the text between the start of the line holding
+// ctx's first token and that token, and whether it is all whitespace. It is the
+// indentation of the query's first line, which extractOriginalText drops.
+func leadingLineWhitespace(ctx antlr.ParserRuleContext) (string, bool) {
+	start := ctx.GetStart()
+	if start == nil || start.GetInputStream() == nil || start.GetStart() < 0 {
+		return "", false
+	}
+	col := start.GetColumn()
+	if col <= 0 {
+		return "", true
+	}
+	prefix := start.GetInputStream().GetText(start.GetStart()-col, start.GetStart()-1)
+	return prefix, strings.TrimLeft(prefix, " \t") == ""
+}
+
+// dedentOQL removes the indentation a view entity's query carries only because
+// of where it sits in the script, so what is stored is the query itself.
+//
+// DESCRIBE indents every stored line by two spaces inside `as (…)`. The source
+// text starts at the first token, so line 1 arrives without its indentation and
+// lines 2…n with all of it; storing that verbatim added two spaces to lines 2…n
+// on every describe → exec cycle (ako/mxcli#653). The common leading-whitespace
+// prefix of the non-blank lines — line 1 counted at its position in the script
+// when only whitespace precedes it — is stripped from lines 2…n. Nothing else
+// is touched: relative indentation, comments and line breaks are the author's.
+func dedentOQL(raw string, firstIndent string, firstIsIndent bool) string {
+	lines := strings.Split(raw, "\n")
+	if len(lines) < 2 {
+		return raw
+	}
+	common, have := "", false
+	if firstIsIndent {
+		common, have = firstIndent, true
+	}
+	for _, line := range lines[1:] {
+		trimmed := strings.TrimLeft(line, " \t")
+		if trimmed == "" || trimmed == "\r" {
+			continue
+		}
+		indent := line[:len(line)-len(trimmed)]
+		if !have {
+			common, have = indent, true
+			continue
+		}
+		n := 0
+		for n < len(common) && n < len(indent) && common[n] == indent[n] {
+			n++
+		}
+		common = common[:n]
+	}
+	if common == "" {
+		return raw
+	}
+	for i := 1; i < len(lines); i++ {
+		if strings.HasPrefix(lines[i], common) {
+			lines[i] = lines[i][len(common):]
+		} else if strings.HasPrefix(common, lines[i]) {
+			lines[i] = "" // a blank line shorter than the indentation
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // buildOQLParsed walks the ANTLR OQL parse tree and returns a structured OQLParsed.
