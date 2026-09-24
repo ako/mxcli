@@ -1292,6 +1292,12 @@ type Activity struct {
 	// by the catalog builder and are empty for activities that call neither.
 	ServiceRef string
 	ActionRef  string
+	// UseRequestTimeout mirrors "Use a timeout" on a Call REST service
+	// activity; TimeoutExpression is the number of seconds, which Studio Pro
+	// stores as an expression string (e.g. "300"). Both are zero for other
+	// action types.
+	UseRequestTimeout bool
+	TimeoutExpression string
 }
 
 // ActivitiesFor returns an iterator over all activities for a given microflow.
@@ -1300,7 +1306,8 @@ func (ctx *LintContext) ActivitiesFor(microflowQualifiedName string) iter.Seq[Ac
 		rows, err := ctx.db.Query(`
 			SELECT Id, Name, Caption, ActivityType, ActionType,
 			       MicroflowId, MicroflowQualifiedName, ModuleName, EntityRef,
-			       ServiceRef, ActionRef
+			       ServiceRef, ActionRef,
+			       COALESCE(UseRequestTimeout, 0), COALESCE(TimeoutExpression, '')
 			FROM activities
 			WHERE MicroflowQualifiedName = ?
 			ORDER BY Sequence
@@ -1315,9 +1322,11 @@ func (ctx *LintContext) ActivitiesFor(microflowQualifiedName string) iter.Seq[Ac
 			var a Activity
 			var name, caption, actionType, entityRef sql.NullString
 			var serviceRef, actionRef sql.NullString
+			var useRequestTimeout int
 			err := rows.Scan(&a.ID, &name, &caption, &a.ActivityType, &actionType,
 				&a.MicroflowID, &a.MicroflowQualifiedName, &a.ModuleName, &entityRef,
-				&serviceRef, &actionRef)
+				&serviceRef, &actionRef,
+				&useRequestTimeout, &a.TimeoutExpression)
 			if err != nil {
 				ctx.recordQueryError("ActivitiesFor (row scan)", err)
 				continue
@@ -1328,6 +1337,7 @@ func (ctx *LintContext) ActivitiesFor(microflowQualifiedName string) iter.Seq[Ac
 			a.EntityRef = entityRef.String
 			a.ServiceRef = serviceRef.String
 			a.ActionRef = actionRef.String
+			a.UseRequestTimeout = useRequestTimeout != 0
 
 			if !yield(a) {
 				return

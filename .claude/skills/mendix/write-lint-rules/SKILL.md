@@ -351,6 +351,8 @@ def count_not(node):
 | `entity_ref` | string | Referenced entity qualified name |
 | `service_ref` | string | Called service document (REST / web service / OData client); empty when the activity calls none |
 | `action_ref` | string | Operation or action within that service; empty when the activity calls none |
+| `use_request_timeout` | bool | Call REST service: whether "Use a timeout" is enabled. False for other action types |
+| `timeout_expression` | string | Call REST service: the timeout in seconds, stored as an expression, e.g. `"300"` |
 
 ### rest_client
 | Property | Type | Example |
