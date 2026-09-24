@@ -23,6 +23,7 @@ func (s *CreateRegularExpressionStmt) isStatement() {}
 
 // DropRegularExpressionStmt represents: DROP REGULAR EXPRESSION Module.Name;
 type DropRegularExpressionStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 

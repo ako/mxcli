@@ -78,6 +78,7 @@ func (s *AlterODataClientStmt) isStatement() {}
 
 // DropODataClientStmt represents: DROP ODATA CLIENT Module.Name
 type DropODataClientStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 
@@ -196,6 +197,7 @@ func (s *AlterODataServiceStmt) isStatement() {}
 
 // DropODataServiceStmt represents: DROP ODATA SERVICE Module.Name
 type DropODataServiceStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 

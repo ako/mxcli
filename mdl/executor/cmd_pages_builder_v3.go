@@ -419,6 +419,8 @@ func (pb *pageBuilder) buildWidgetV3(w *ast.WidgetV3) (pages.Widget, error) {
 		widget, err = pb.buildNavigationTreeV3(w)
 	case "menubar":
 		widget, err = pb.buildMenuBarV3(w)
+	case "simplemenubar":
+		widget, err = pb.buildSimpleMenuBarV3(w)
 	case "placeholder":
 		widget, err = pb.buildPlaceholderV3(w)
 	case "radiobuttons":
@@ -2670,13 +2672,14 @@ func cloneWidgets(widgets []*ast.WidgetV3) []*ast.WidgetV3 {
 	return result
 }
 
+// cloneWidget copies the whole struct first, so a field added to WidgetV3 is
+// carried without touching this function (Specialization and TypeIsGeneric were
+// once dropped here); only the map and the children need a deep copy.
 func cloneWidget(w *ast.WidgetV3) *ast.WidgetV3 {
-	clone := &ast.WidgetV3{
-		Type:       w.Type,
-		Name:       w.Name,
-		Properties: make(map[string]interface{}, len(w.Properties)),
-		Children:   cloneWidgets(w.Children),
-	}
+	c := *w
+	clone := &c
+	clone.Properties = make(map[string]interface{}, len(w.Properties))
+	clone.Children = cloneWidgets(w.Children)
 	for k, v := range w.Properties {
 		clone.Properties[k] = v // Property values are immutable (strings, ints, etc.)
 	}
@@ -2794,7 +2797,11 @@ func (pb *pageBuilder) buildNavigationTreeV3(w *ast.WidgetV3) (pages.Widget, err
 			},
 			Name: w.Name,
 		},
-		NavigationProfile: w.GetStringProp("Profile"),
+	}
+	var err error
+	nt.Menu, nt.NavigationProfile, err = menuSourceV3(w)
+	if err != nil {
+		return nil, err
 	}
 	return nt, nil
 }
@@ -2822,7 +2829,7 @@ func (pb *pageBuilder) buildPlaceholderV3(w *ast.WidgetV3) (pages.Widget, error)
 // buildMenuBarV3 builds the horizontal navigation a topbar carries. Same shape
 // as a navigation tree — see widget_write.go.
 func (pb *pageBuilder) buildMenuBarV3(w *ast.WidgetV3) (pages.Widget, error) {
-	return &pages.MenuBar{
+	mb := &pages.MenuBar{
 		BaseWidget: pages.BaseWidget{
 			BaseElement: model.BaseElement{
 				ID:       model.ID(types.GenerateID()),
@@ -2830,8 +2837,57 @@ func (pb *pageBuilder) buildMenuBarV3(w *ast.WidgetV3) (pages.Widget, error) {
 			},
 			Name: w.Name,
 		},
-		NavigationProfile: w.GetStringProp("Profile"),
-	}, nil
+	}
+	var err error
+	mb.Menu, mb.NavigationProfile, err = menuSourceV3(w)
+	if err != nil {
+		return nil, err
+	}
+	return mb, nil
+}
+
+// buildSimpleMenuBarV3 builds the bar Atlas's phone layouts carry in their
+// bottom region (ako/mxcli#573). Unlike a menu bar it has an orientation, and
+// the one Atlas ships renders a menu document rather than a profile.
+func (pb *pageBuilder) buildSimpleMenuBarV3(w *ast.WidgetV3) (pages.Widget, error) {
+	sb := &pages.SimpleMenuBar{
+		BaseWidget: pages.BaseWidget{
+			BaseElement: model.BaseElement{
+				ID:       model.ID(types.GenerateID()),
+				TypeName: "Forms$SimpleMenuBar",
+			},
+			Name: w.Name,
+		},
+		Orientation: pages.MenuOrientationHorizontal,
+	}
+	switch o := w.GetStringProp("Orientation"); strings.ToLower(o) {
+	case "", "horizontal":
+	case "vertical":
+		sb.Orientation = pages.MenuOrientationVertical
+	default:
+		return nil, mdlerrors.NewValidationf("simplemenubar %s: Orientation must be Horizontal or Vertical, got %q", w.Name, o)
+	}
+	var err error
+	sb.Menu, sb.NavigationProfile, err = menuSourceV3(w)
+	if err != nil {
+		return nil, err
+	}
+	return sb, nil
+}
+
+// menuSourceV3 reads which items a menu widget renders: a menu document
+// (`Menu: Module.Menu`, stored as a Forms$MenuDocumentSource) or a navigation
+// profile (`Profile: 'Phone'`, a Forms$NavigationSource). They are two subtypes
+// of one MenuSource slot, so naming both is refused rather than resolved by a
+// precedence nobody wrote down. Neither leaves both empty, and the writer
+// defaults to the Responsive profile.
+func menuSourceV3(w *ast.WidgetV3) (menu, profile string, err error) {
+	menu = w.GetStringProp("Menu")
+	profile = w.GetStringProp("Profile")
+	if menu != "" && profile != "" {
+		return "", "", mdlerrors.NewValidationf("%s %s: give either Menu: (a menu document) or Profile: (a navigation profile), not both", strings.ToLower(w.Type), w.Name)
+	}
+	return menu, profile, nil
 }
 
 // missingWidgetMessage explains why a widget has no definition, and — the part

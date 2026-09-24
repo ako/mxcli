@@ -199,7 +199,8 @@ func init() {
 			"   inherits its source attribute's length (MDL031).\n" +
 			"4. A SOURCE may be double-quoted like SQL (`s.\"Month\"`), an ALIAS may not\n" +
 			"   (MDL072). So a view attribute can never be called `Month` or `Year` —\n" +
-			"   that one is renamed, not quoted.\n\n" +
+			"   that one is renamed, not quoted. An MDL keyword that is NOT an OQL one\n" +
+			"   (Role, Status, Value) is a fine FROM / JOIN alias after `as`.\n\n" +
 			"UNION / UNION ALL are supported and round-trip; column count and types must\n" +
 			"line up across branches, and an ORDER BY applies to the whole result.",
 		Example: "-- A reserved word as a SOURCE: quote it. The alias is renamed instead.\n" +

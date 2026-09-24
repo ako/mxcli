@@ -1,0 +1,48 @@
+-- Bug test: `DataSource: Module.Entity` on a data grid was silently dropped.
+-- Issue ako/mxcli#576.
+--
+-- The bare-entity shorthand matched no dataSourceExprV3 alternative, fell
+-- through to the generic `keyword: propertyValueV3` branch, and was stored as a
+-- plain string that nothing read. `check` passed, `exec` printed "Created page",
+-- `describe page` showed the grid with no source, and mxbuild reported CE0488
+-- "No entity configured for the data source of this widgets container", plus
+-- CE1571 for the row action's $currentObject argument.
+--
+-- The shorthand now means DATABASE Module.Entity (on a data view that is refused
+-- by name, MDL-WIDGET09, rather than dropped).
+--
+-- Run with: mxcli exec 576-datasource-bare-entity-shorthand.mdl -p app.mpr
+--   then:   describe page bug576.Shorthand
+--   expect: datagrid dgShort (DataSource: DATABASE bug576.Car, ...)
+--   and `mxcli docker check` reports no CE0488 / CE1571 on dgShort.
+create module bug576;
+
+create persistent entity bug576.Car (
+  Name: string(200)
+);
+
+create page bug576.Detail (Title: 'Car', Layout: Atlas_Core.Atlas_Default, Params: { $Car: bug576.Car }) {
+  dataview dvCar (DataSource: $Car) {
+    textbox txtName (Label: 'Name', Attribute: Name)
+  }
+};
+
+create page bug576.Shorthand (Title: 'Cars', Layout: Atlas_Core.Atlas_Default) {
+  datagrid dgShort (DataSource: bug576.Car, onClick: SHOW_PAGE bug576.Detail(Car: $currentObject)) {
+    column colName (Caption: 'Name', Attribute: Name)
+  }
+};
+
+-- Control: the explicit spelling, which always worked.
+create page bug576.Explicit (Title: 'Cars', Layout: Atlas_Core.Atlas_Default) {
+  datagrid dgExplicit (DataSource: DATABASE bug576.Car, onClick: SHOW_PAGE bug576.Detail(Car: $currentObject)) {
+    column colName (Caption: 'Name', Attribute: Name)
+  }
+};
+
+-- Scope: the shorthand applies to the built-in datagrid / listview / gallery /
+-- dataview keywords only. A pluggable widget's `datasource:` is its own .mpk key
+-- (the Barcode Scanner's is an ATTRIBUTE: `datasource: Module.Entity.Code`) and
+-- keeps its meaning. `alter page … set DataSource = Module.Entity` was never a
+-- silent drop — it refuses with "DataSource value must be a datasource
+-- expression" — and is unchanged.

@@ -148,6 +148,32 @@ create page MyModule.Home (title: 'Home', layout: MyModule.App_Default) {
 | Placeholder | `placeholder Main` | The hole a page's content goes into. No properties, no body |
 | Navigation tree | `navigationtree name (profile: 'Responsive')` | The sidebar menu — vertical. The profile is a navigation profile name |
 | Menu bar | `menubar name (profile: 'Responsive')` | The topbar menu — horizontal. Same stored shape as a navigation tree |
+| Simple menu bar | `simplemenubar name (menu: Module.Menu, class: 'bottom-nav-text-icons')` | A **phone** layout's bottom bar. `orientation: Vertical` for the other direction |
+
+**A menu widget renders a profile OR a menu document.** `profile: 'Phone'` draws
+the navigation profile's menu; `menu: Module.Menu` draws a standalone menu
+document (`create menu`, see `mxcli syntax navigation.menu-document`). Naming
+both is refused. Atlas's `Phone_BottomBar` points its simple menu bar at
+`Atlas_Core.Phone_Menu` — the blank app's *sample* menu (Home / Layouts /
+Templates / Widgets), which is why a phone app on that layout shows those items
+instead of its own. The fix is a phone layout of your own whose bottom bar names
+your own menu document, not an edit to Atlas's layout:
+
+```sql
+create or modify menu MyModule.Phone_Menu (
+  menu item 'Home' page MyModule.Home_Phone icon Atlas_Core.Atlas.home;
+);
+create or replace layout MyModule.Phone_Bottom (
+  layouttype: 'Phone', class: 'layout-atlas layout-atlas-phone'
+) {
+  scrollcontainer scrollContainer1 {
+    region bottom (class: 'region-bottombar') {
+      simplemenubar bottomBar (menu: MyModule.Phone_Menu, class: 'bottom-nav-text-icons')
+    }
+    region center (class: 'region-content') { placeholder Main }
+  }
+}
+```
 
 Region properties: `size` (integer), `sizemode` (`Fixed` / `Pixels` / `Auto`),
 `class`. Unset is Studio Pro's `200` / `Auto`.

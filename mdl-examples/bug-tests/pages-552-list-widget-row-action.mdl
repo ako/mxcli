@@ -46,8 +46,7 @@ create page Mod.List (Title: 'Cars', Layout: Atlas_Core.Atlas_Default) {
 };
 
 -- NOT a case for this file: the bare-entity shorthand `DataSource: Mod.Car` on a
--- data grid is SILENTLY DROPPED (the stored widget has no data source at all),
--- so mxbuild reports CE0488 and then a real CE1571. The guard still stands down
--- on it — it refuses only what it can prove is discarded, and a source it cannot
--- read is unknown, not absent — but that case belongs to the shorthand bug, not
--- here. Measured on mxbuild 11.14.0; see ako/mxcli#576.
+-- data grid was SILENTLY DROPPED until ako/mxcli#576 (mxbuild 11.14.0 reported
+-- CE0488 and then a real CE1571). It now binds as DATABASE Mod.Car, so the row
+-- context is known; mdl-examples/bug-tests/576-datasource-bare-entity-shorthand.mdl
+-- covers it.

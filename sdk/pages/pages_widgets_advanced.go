@@ -16,8 +16,11 @@ type NavigationTree struct {
 	BaseWidget
 	// NavigationProfile names the profile the menu is drawn from. It is stored
 	// inside a Forms$NavigationSource under MenuSource, not on the tree itself.
-	NavigationProfile string            `json:"navigationProfile,omitempty"`
-	Items             []*NavigationItem `json:"items,omitempty"`
+	NavigationProfile string `json:"navigationProfile,omitempty"`
+	// Menu names a Menus$MenuDocument instead, stored in a
+	// Forms$MenuDocumentSource. At most one of Menu and NavigationProfile is set.
+	Menu  string            `json:"menu,omitempty"`
+	Items []*NavigationItem `json:"items,omitempty"`
 }
 
 // NavigationItem represents an item in navigation.
@@ -40,6 +43,8 @@ type NavigationItem struct {
 type MenuBar struct {
 	BaseWidget
 	NavigationProfile string `json:"navigationProfile,omitempty"`
+	// Menu names a menu document instead of a profile — see NavigationTree.
+	Menu string `json:"menu,omitempty"`
 
 	// MenuSource is the older polymorphic form, kept because the type is
 	// exported. Nothing reads or writes it.
@@ -66,11 +71,22 @@ type CustomMenuSource struct {
 
 func (CustomMenuSource) isMenuSource() {}
 
-// SimpleMenuBar represents a simple menu bar.
+// SimpleMenuBar represents a simple menu bar — the widget Atlas's phone
+// layouts put in their bottom region (ako/mxcli#573).
+//
+// Measured on Atlas_Core.Phone_BottomBar (11.14.0): Appearance, MenuSource,
+// Name, Orientation, TabIndex, with MenuSource a Forms$MenuDocumentSource
+// naming Atlas_Core.Phone_Menu. Like every menu widget it can take a
+// navigation profile instead; at most one of Menu and NavigationProfile is set.
 type SimpleMenuBar struct {
 	BaseWidget
-	Orientation MenuOrientation `json:"orientation"`
-	MenuSource  MenuSource      `json:"menuSource,omitempty"`
+	Orientation       MenuOrientation `json:"orientation"`
+	Menu              string          `json:"menu,omitempty"`
+	NavigationProfile string          `json:"navigationProfile,omitempty"`
+
+	// MenuSource is the older polymorphic form, kept because the type is
+	// exported. Nothing reads or writes it.
+	MenuSource MenuSource `json:"menuSource,omitempty"`
 }
 
 // MenuOrientation represents menu orientation.

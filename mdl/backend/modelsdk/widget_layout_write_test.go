@@ -161,3 +161,82 @@ func TestMenuBarToGen_WrapsTheProfileInAMenuSource(t *testing.T) {
 		}
 	}
 }
+
+// ako/mxcli#573: Atlas_Core.Phone_BottomBar's bottom bar is a
+// Forms$SimpleMenuBar, and mxcli could not author one — so a phone layout
+// written in MDL had no bottom bar at all.
+//
+// The shape is measured on that widget in a blank 11.14.0 project: Appearance,
+// MenuSource, Name, Orientation, TabIndex, with the menu document named inside a
+// Forms$MenuDocumentSource — not on the bar, and not as a navigation profile.
+func TestSimpleMenuBarToGen_WrapsTheMenuInAMenuDocumentSource(t *testing.T) {
+	g, err := widgetToGen(&pages.SimpleMenuBar{
+		BaseWidget:  pages.BaseWidget{Name: "simpleMenuBar1"},
+		Menu:        "Atlas_Core.Phone_Menu",
+		Orientation: pages.MenuOrientationHorizontal,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := encodeToMap(t, g)
+	if doc["$Type"] != "Forms$SimpleMenuBar" {
+		t.Fatalf("$Type = %v", doc["$Type"])
+	}
+	src, ok := doc["MenuSource"].(map[string]any)
+	if !ok {
+		t.Fatalf("MenuSource missing or not a document; keys = %v", keysOf(doc))
+	}
+	if src["$Type"] != "Forms$MenuDocumentSource" {
+		t.Errorf("MenuSource $Type = %v, want Forms$MenuDocumentSource", src["$Type"])
+	}
+	if src["Menu"] != "Atlas_Core.Phone_Menu" {
+		t.Errorf("Menu = %v, want Atlas_Core.Phone_Menu", src["Menu"])
+	}
+	if doc["Orientation"] != "Horizontal" {
+		t.Errorf("Orientation = %v, want Horizontal", doc["Orientation"])
+	}
+	for _, k := range keysOf(doc) {
+		switch k {
+		case "$ID", "$Type", "Appearance", "MenuSource", "Name", "Orientation", "TabIndex":
+		default:
+			t.Errorf("wrote %q, which Forms$SimpleMenuBar does not have", k)
+		}
+	}
+}
+
+// Every menu widget takes its items from either a navigation profile or a menu
+// document; the two are different MenuSource subtypes, and naming both is a
+// contradiction rather than a preference order.
+func TestMenuWidgetToGen_MenuSourceKind(t *testing.T) {
+	cases := []struct {
+		name     string
+		w        pages.Widget
+		wantType string
+		wantKey  string
+		wantVal  string
+	}{
+		{"simple bar, profile", &pages.SimpleMenuBar{BaseWidget: pages.BaseWidget{Name: "b"}, NavigationProfile: "Phone"},
+			"Forms$NavigationSource", "NavigationProfile", "Phone"},
+		{"menu bar, document", &pages.MenuBar{BaseWidget: pages.BaseWidget{Name: "b"}, Menu: "M.Top"},
+			"Forms$MenuDocumentSource", "Menu", "M.Top"},
+		{"tree, document", &pages.NavigationTree{BaseWidget: pages.BaseWidget{Name: "t"}, Menu: "M.Side"},
+			"Forms$MenuDocumentSource", "Menu", "M.Side"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			g, err := widgetToGen(c.w)
+			if err != nil {
+				t.Fatal(err)
+			}
+			src, _ := encodeToMap(t, g)["MenuSource"].(map[string]any)
+			if src["$Type"] != c.wantType || src[c.wantKey] != c.wantVal {
+				t.Errorf("MenuSource = %v, want %s{%s: %s}", src, c.wantType, c.wantKey, c.wantVal)
+			}
+		})
+	}
+
+	_, err := widgetToGen(&pages.SimpleMenuBar{BaseWidget: pages.BaseWidget{Name: "b"}, Menu: "M.X", NavigationProfile: "Phone"})
+	if err == nil {
+		t.Error("a menu widget naming both a menu document and a profile was accepted")
+	}
+}

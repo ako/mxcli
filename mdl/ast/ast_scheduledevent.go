@@ -57,6 +57,7 @@ func (s *CreateScheduledEventStmt) isStatement() {}
 
 // DropScheduledEventStmt represents: DROP SCHEDULED EVENT Module.Name;
 type DropScheduledEventStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 

@@ -468,44 +468,44 @@ createMenuStatement
     ;
 
 dropStatement
-    : DROP ENTITY qualifiedName
-    | DROP ASSOCIATION qualifiedName
-    | DROP ENUMERATION qualifiedName
-    | DROP CONSTANT qualifiedName
-    | DROP MICROFLOW qualifiedName
-    | DROP NANOFLOW qualifiedName
-    | DROP RULE qualifiedName
-    | DROP PAGE qualifiedName
-    | DROP LAYOUT qualifiedName
-    | DROP SNIPPET qualifiedName
-    | DROP MENU_KW qualifiedName
-    | DROP MODULE qualifiedName
-    | DROP QUEUE qualifiedName
-    | DROP SCHEDULED EVENT qualifiedName
-    | DROP REGULAR EXPRESSION qualifiedName
-    | DROP JAVA ACTION qualifiedName
-    | DROP JAVASCRIPT ACTION qualifiedName
+    : DROP ENTITY ifExists? qualifiedName
+    | DROP ASSOCIATION ifExists? qualifiedName
+    | DROP ENUMERATION ifExists? qualifiedName
+    | DROP CONSTANT ifExists? qualifiedName
+    | DROP MICROFLOW ifExists? qualifiedName
+    | DROP NANOFLOW ifExists? qualifiedName
+    | DROP RULE ifExists? qualifiedName
+    | DROP PAGE ifExists? qualifiedName
+    | DROP LAYOUT ifExists? qualifiedName
+    | DROP SNIPPET ifExists? qualifiedName
+    | DROP MENU_KW ifExists? qualifiedName
+    | DROP MODULE ifExists? qualifiedName
+    | DROP QUEUE ifExists? qualifiedName
+    | DROP SCHEDULED EVENT ifExists? qualifiedName
+    | DROP REGULAR EXPRESSION ifExists? qualifiedName
+    | DROP JAVA ACTION ifExists? qualifiedName
+    | DROP JAVASCRIPT ACTION ifExists? qualifiedName
     | DROP INDEX qualifiedName ON qualifiedName
-    | DROP ODATA CLIENT qualifiedName
-    | DROP ODATA SERVICE qualifiedName
-    | DROP BUSINESS EVENT SERVICE qualifiedName
-    | DROP WORKFLOW qualifiedName
-    | DROP IMAGE COLLECTION qualifiedName
+    | DROP ODATA CLIENT ifExists? qualifiedName
+    | DROP ODATA SERVICE ifExists? qualifiedName
+    | DROP BUSINESS EVENT SERVICE ifExists? qualifiedName
+    | DROP WORKFLOW ifExists? qualifiedName
+    | DROP IMAGE COLLECTION ifExists? qualifiedName
     | DROP ANNOTATION STRING_LITERAL IN identifierOrKeyword
     | DROP ANNOTATION AT_KW LPAREN NUMBER_LITERAL COMMA NUMBER_LITERAL RPAREN IN identifierOrKeyword
-    | DROP JSON STRUCTURE qualifiedName
-    | DROP MESSAGE DEFINITION COLLECTION qualifiedName
-    | DROP IMPORT MAPPING qualifiedName
-    | DROP EXPORT MAPPING qualifiedName
-    | DROP REST CLIENT qualifiedName
-    | DROP PUBLISHED REST SERVICE qualifiedName
-    | DROP DATA TRANSFORMER qualifiedName
-    | DROP MODEL qualifiedName                               // DROP MODEL Module.Name (agent-editor)
-    | DROP CONSUMED MCP SERVICE qualifiedName                // DROP CONSUMED MCP SERVICE Module.Name
-    | DROP KNOWLEDGE BASE qualifiedName                      // DROP KNOWLEDGE BASE Module.Name
-    | DROP AGENT qualifiedName                               // DROP AGENT Module.Name
-    | DROP CONFIGURATION STRING_LITERAL
-    | DROP FOLDER STRING_LITERAL IN (qualifiedName | IDENTIFIER)
+    | DROP JSON STRUCTURE ifExists? qualifiedName
+    | DROP MESSAGE DEFINITION COLLECTION ifExists? qualifiedName
+    | DROP IMPORT MAPPING ifExists? qualifiedName
+    | DROP EXPORT MAPPING ifExists? qualifiedName
+    | DROP REST CLIENT ifExists? qualifiedName
+    | DROP PUBLISHED REST SERVICE ifExists? qualifiedName
+    | DROP DATA TRANSFORMER ifExists? qualifiedName
+    | DROP MODEL ifExists? qualifiedName                               // DROP MODEL Module.Name (agent-editor)
+    | DROP CONSUMED MCP SERVICE ifExists? qualifiedName                // DROP CONSUMED MCP SERVICE Module.Name
+    | DROP KNOWLEDGE BASE ifExists? qualifiedName                      // DROP KNOWLEDGE BASE Module.Name
+    | DROP AGENT ifExists? qualifiedName                               // DROP AGENT Module.Name
+    | DROP CONFIGURATION ifExists? STRING_LITERAL
+    | DROP FOLDER ifExists? STRING_LITERAL IN (qualifiedName | IDENTIFIER)
     ;
 
 renameStatement

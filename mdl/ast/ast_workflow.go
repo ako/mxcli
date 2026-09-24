@@ -60,6 +60,7 @@ func (s *CreateWorkflowStmt) isStatement() {}
 
 // DropWorkflowStmt represents: DROP WORKFLOW Module.Name
 type DropWorkflowStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 
