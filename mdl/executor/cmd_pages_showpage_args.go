@@ -81,9 +81,10 @@ func contextVarFor(ds *ast.DataSourceV3) string {
 // The list is an allow-list on purpose. Concluding "there is no context object
 // here" is only safe when every widget between the page root and this one is
 // known to bind nothing, and a widget's data source is not always readable from
-// the AST: `datagrid dg (DataSource: Mod.Entity)` — the bare-entity shorthand —
-// leaves a plain string rather than a parsed *ast.DataSourceV3, and a pluggable
-// widget names its source under its own key. Anything not listed here therefore
+// the AST: a pluggable widget names its source under its own key, and a
+// DataSource value that is not a parsed *ast.DataSourceV3 cannot be read. (The
+// bare-entity shorthand `DataSource: Mod.Entity` was that case until it parsed
+// as DATABASE, ako/mxcli#576.) Anything not listed here therefore
 // degrades the context to UNKNOWN rather than to ABSENT, so a row-scoped button
 // is never refused (mdl-examples/bug-tests/295-showpage-null-variable.mdl is that
 // case, and it is exactly what the first cut of #1029 broke).
@@ -132,16 +133,17 @@ func argContextForOwnAction(w *ast.WidgetV3, parent pageArgContext) pageArgConte
 	if bindsDataInAnUnreadableShape(w) {
 		// The widget plainly binds data, so a context object EXISTS — but this
 		// pass cannot say what it is called. Unknown, not absent, and the guard
-		// stands down exactly as it does for ALTER PAGE. The bare-entity
-		// shorthand `datagrid dg (DataSource: M.E)` is this case.
+		// stands down exactly as it does for ALTER PAGE.
 		return pageArgContext{}
 	}
 	return parent
 }
 
 // bindsDataInAnUnreadableShape reports whether w names a data source this pass
-// cannot parse into a *ast.DataSourceV3 — the bare-entity shorthand, or a
-// pluggable widget naming its source under its own key.
+// cannot parse into a *ast.DataSourceV3. The visitor no longer produces one
+// under `DataSource` (the bare-entity shorthand parses as DATABASE since
+// ako/mxcli#576); this stays as the defensive half of the doctrine that the
+// guard refuses only what it can prove is discarded.
 func bindsDataInAnUnreadableShape(w *ast.WidgetV3) bool {
 	for name, v := range w.Properties {
 		if !strings.EqualFold(name, "DataSource") {
