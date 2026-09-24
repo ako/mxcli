@@ -1,0 +1,33 @@
+-- Bug test for upstream issue #1174: an OQL source alias that is an MDL
+-- keyword did not parse, so DESCRIBE output could not be fed back to exec.
+--
+-- Reported on v0.23.0 / Mendix 11.12.1:
+--
+--   line 7:62 mismatched input 'ROLE' expecting IDENTIFIER
+--   line 9:0 mismatched input ')' expecting {SELECT, HAVING}
+--
+-- ROLE is reserved in MDL but not in OQL, so `AS ROLE` is legal in the model
+-- (mx check 0 errors) and DESCRIBE prints it verbatim. The grammar now takes
+-- any keyword as a FROM / JOIN / derived-table alias after an explicit AS, and
+-- as the leading alias of an association path. Without AS it stays
+-- IDENTIFIER-only, so `from M.Sale s left join …` keeps LEFT as the join.
+--
+-- Expected: `mxcli check` passes; exec creates the view; `mx check` reports
+-- 0 errors; DESCRIBE prints `AS ROLE` and exec'ing that text changes nothing.
+
+create persistent entity MyFirstModule.Sale1174 ( Amount: Integer );
+
+create association MyFirstModule.Sale1174_UserRole
+  from MyFirstModule.Sale1174 to System.UserRole;
+
+create view entity MyFirstModule.SaleStats1174 (
+  RoleName: String(100),
+  Total: Integer
+) as (
+  SELECT
+    ROLE.Name as RoleName,
+    SUM(s.Amount) as Total
+  FROM MyFirstModule.Sale1174 as s
+  LEFT JOIN s/MyFirstModule.Sale1174_UserRole/System.UserRole AS ROLE
+  GROUP BY ROLE.Name
+);

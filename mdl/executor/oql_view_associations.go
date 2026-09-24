@@ -68,6 +68,7 @@ var oqlIDColumnRe = regexp.MustCompile(`(?i)^([A-Za-z_]\w*)\s*\.\s*id$`)
 // viewAssociationColumns returns the select columns of oql that declare an
 // association, in select order.
 func viewAssociationColumns(oql string) []viewAssociationColumn {
+	oql = stripOQLComments(oql)
 	selectClause := extractSelectClause(oql)
 	if selectClause == "" {
 		return nil
