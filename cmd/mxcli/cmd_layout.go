@@ -51,7 +51,9 @@ what the new relationships require.
 
 This REPLACES the positions of every entity in the modules it touches, including
 any you arranged by hand. Use --dry-run to see the moves first. Marketplace
-modules and System are never touched.`,
+modules and System are never touched.
+
+To re-arrange microflows and nanoflows, use 'mxcli layout flows'.`,
 	Example: `  mxcli layout -p app.mpr
   mxcli layout -p app.mpr --module CapTrack
   mxcli layout -p app.mpr --dry-run`,

@@ -24,8 +24,13 @@ import (
 // proposed flow must not touch the project, and a refusal that aborted the
 // build would leave the user with no diff at all rather than a diff plus the
 // warning exec will give them anyway.
+//
+// ResetLayout is for `mxcli layout flows`, which rebuilds a stored flow only for
+// its geometry: nothing is carried over from the flow being replaced, not even a
+// hand-placed StartEvent, so every position is the layout engine's own.
 type buildFlowOpts struct {
 	AllowCreate bool
+	ResetLayout bool
 }
 
 // builtFlow is a Microflow assembled from a statement, plus what the write
@@ -399,7 +404,7 @@ func buildMicroflowFromStmt(ctx *ExecContext, s *ast.CreateMicroflowStmt, opts b
 		// pinned the start of every rewritten flow, stranding it across the
 		// canvas from activities the same script had just moved (#951). An
 		// explicit @start(x, y) on the first statement overrides both.
-		startPosition: storedStartPosition(ctx, existingID),
+		startPosition: carriedStartPosition(ctx, existingID, opts),
 		posX:          200,
 		posY:          200,
 		baseY:         200, // Base Y for happy path
@@ -748,4 +753,13 @@ func lookupFolder(ctx *ExecContext, moduleID model.ID, folderPath string) (model
 		}
 	}
 	return current, true
+}
+
+// carriedStartPosition is storedStartPosition unless the build is resetting the
+// layout, which carries nothing over.
+func carriedStartPosition(ctx *ExecContext, existingID model.ID, opts buildFlowOpts) *model.Point {
+	if opts.ResetLayout {
+		return nil
+	}
+	return storedStartPosition(ctx, existingID)
 }
