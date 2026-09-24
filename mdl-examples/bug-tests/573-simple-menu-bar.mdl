@@ -1,0 +1,62 @@
+-- ============================================================================
+-- ako/mxcli#573 — Forms$SimpleMenuBar is authorable
+-- ============================================================================
+--
+-- Atlas's phone layouts carry their bottom bar as a Forms$SimpleMenuBar that
+-- renders a MENU DOCUMENT. mxcli could neither author one nor describe it:
+--
+--   region bottom (Class: 'region-bottombar') {
+--     -- Forms$SimpleMenuBar (simpleMenuBar1)  -- NOT re-executable: mxcli cannot
+--     --   author this widget, so re-running this script would drop it
+--   }
+--
+-- so a phone layout written in MDL had no bottom bar. `simplemenubar` now takes
+-- `Menu: Module.Menu` (a menu document) or `Profile: '...'` (a navigation
+-- profile), and `Orientation: Horizontal | Vertical`. Menu bars and navigation
+-- trees take `Menu:` the same way — it is the same MenuSource slot.
+--
+-- Run: mxcli exec mdl-examples/bug-tests/573-simple-menu-bar.mdl -p app.mpr
+--      mxcli -p app.mpr -c "describe layout Bug573.Phone_Bottom"
+-- ============================================================================
+
+create module Bug573;
+
+create or modify menu Bug573.Bottom_Menu (
+  menu item 'Home' icon Atlas_Core.Atlas.home;
+  menu item 'Agenda' icon Atlas_Core.Atlas.calendar;
+  menu item 'Profile' icon Atlas_Core.Atlas.user;
+);
+
+create or replace layout Bug573.Phone_Bottom (
+  layouttype: 'Phone',
+  class: 'layout-atlas layout-atlas-phone'
+) {
+  scrollcontainer scrollContainer1 {
+    region bottom (class: 'region-bottombar') {
+      simplemenubar bottomBar (menu: Bug573.Bottom_Menu, class: 'bottom-nav-text-icons')
+    }
+    region center (class: 'region-content') {
+      placeholder Main
+    }
+  }
+}
+
+-- The other source, the other orientation, and the two sibling menu widgets
+-- pointed at a menu document.
+create or replace layout Bug573.Responsive_Menus (
+  layouttype: 'Responsive',
+  class: 'layout-atlas layout-atlas-responsive-default'
+) {
+  scrollcontainer layoutContainer {
+    region top (size: 60, sizemode: 'Fixed', class: 'region-topbar') {
+      menubar topMenu (menu: Bug573.Bottom_Menu)
+    }
+    region left (size: 232, sizemode: 'Pixels', class: 'region-sidebar') {
+      navigationtree sideMenu (menu: Bug573.Bottom_Menu)
+      simplemenubar sideBar (profile: 'Responsive', orientation: Vertical)
+    }
+    region center (class: 'region-content') {
+      placeholder Main
+    }
+  }
+}
