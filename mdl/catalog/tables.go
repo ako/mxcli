@@ -1026,6 +1026,7 @@ func (c *Catalog) createTables() error {
 			MemberName TEXT,
 			AccessType TEXT NOT NULL,
 			XPathConstraint TEXT,
+			DefaultMemberAccessRights TEXT,
 			ModuleName TEXT,
 			ProjectId TEXT,
 			SnapshotId TEXT

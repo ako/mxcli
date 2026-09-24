@@ -395,6 +395,7 @@ Returned by `permissions()` (all types) or `permissions_for()` (entity-specific)
 | `member_name` | string | Attribute name (for MEMBER_READ/MEMBER_WRITE) |
 | `xpath_constraint` | string | XPath constraint or empty |
 | `is_constrained` | bool | True if XPath constraint is set |
+| `default_member_access_rights` | string | The rule's "default rights for new members": `"None"`, `"ReadOnly"` or `"ReadWrite"`. Empty for non-entity permissions |
 
 ### user_role
 | Property | Type | Example |

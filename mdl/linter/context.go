@@ -312,13 +312,17 @@ type Permission struct {
 	MemberName      string // populated for MEMBER_READ/MEMBER_WRITE, empty for entity-level
 	XPathConstraint string // empty means unconstrained
 	IsConstrained   bool   // convenience: XPathConstraint != ""
+	// DefaultMemberAccessRights is the rule's "default rights for new members"
+	// setting: None, ReadOnly or ReadWrite. Empty when not applicable.
+	DefaultMemberAccessRights string
 }
 
 // PermissionsFor returns an iterator over all permissions for a given entity.
 func (ctx *LintContext) PermissionsFor(entityQualifiedName string) iter.Seq[Permission] {
 	return func(yield func(Permission) bool) {
 		rows, err := ctx.db.Query(`
-			SELECT ModuleRoleName, ElementName, MemberName, AccessType, XPathConstraint, ModuleName
+			SELECT ModuleRoleName, ElementName, MemberName, AccessType, XPathConstraint,
+			       COALESCE(DefaultMemberAccessRights, ''), ModuleName
 			FROM permissions
 			WHERE ElementType = 'ENTITY' AND ElementName = ?
 			ORDER BY ModuleRoleName, AccessType
@@ -332,7 +336,8 @@ func (ctx *LintContext) PermissionsFor(entityQualifiedName string) iter.Seq[Perm
 		for rows.Next() {
 			var p Permission
 			var memberName, xpathConstraint, moduleName sql.NullString
-			err := rows.Scan(&p.ModuleRoleName, &p.EntityName, &memberName, &p.AccessType, &xpathConstraint, &moduleName)
+			err := rows.Scan(&p.ModuleRoleName, &p.EntityName, &memberName, &p.AccessType, &xpathConstraint,
+				&p.DefaultMemberAccessRights, &moduleName)
 			if err != nil {
 				ctx.recordQueryError("PermissionsFor (row scan)", err)
 				continue
@@ -359,6 +364,9 @@ type AllPermission struct {
 	XPathConstraint string
 	IsConstrained   bool
 	ModuleName      string
+	// DefaultMemberAccessRights is the rule's "default rights for new members"
+	// setting: None, ReadOnly or ReadWrite. Empty for non-entity permissions.
+	DefaultMemberAccessRights string
 }
 
 // Permissions returns an iterator over all permissions in the catalog.
@@ -370,7 +378,8 @@ func (ctx *LintContext) Permissions() iter.Seq[AllPermission] {
 		rows, err := ctx.db.Query(`
 			SELECT ModuleRoleName, ElementType, ElementName,
 				COALESCE(MemberName, ''), AccessType,
-				COALESCE(XPathConstraint, ''), COALESCE(ModuleName, '')
+				COALESCE(XPathConstraint, ''), COALESCE(DefaultMemberAccessRights, ''),
+				COALESCE(ModuleName, '')
 			FROM permissions
 			ORDER BY ElementType, ElementName, ModuleRoleName, AccessType
 		`)
@@ -383,7 +392,8 @@ func (ctx *LintContext) Permissions() iter.Seq[AllPermission] {
 		for rows.Next() {
 			var p AllPermission
 			if err := rows.Scan(&p.ModuleRoleName, &p.ElementType, &p.ElementName,
-				&p.MemberName, &p.AccessType, &p.XPathConstraint, &p.ModuleName); err != nil {
+				&p.MemberName, &p.AccessType, &p.XPathConstraint,
+				&p.DefaultMemberAccessRights, &p.ModuleName); err != nil {
 				continue
 			}
 			p.IsConstrained = p.XPathConstraint != ""
