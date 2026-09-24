@@ -292,6 +292,14 @@ func convertASTAction(ctx *ExecContext, value any, moduleName string, moduleID m
 // ============================================================================
 
 func applyInsertWidgetMutator(ctx *ExecContext, mutator backend.PageMutator, op *ast.InsertWidgetOp, moduleName string, moduleID model.ID) error {
+	opWidgets, err := expandAlterFragments(ctx, op.Widgets, moduleName, moduleID)
+	if err != nil {
+		return err
+	}
+	expanded := *op
+	expanded.Widgets = opWidgets
+	op = &expanded
+
 	// Check for duplicate widget names before building
 	for _, w := range op.Widgets {
 		if w.Name != "" && mutator.FindWidget(w.Name) {
@@ -364,6 +372,24 @@ func applyInsertWidgetMutator(ctx *ExecContext, mutator backend.PageMutator, op 
 	return mutator.InsertWidget(op.Target.Widget, op.Target.Column, backend.InsertPosition(op.Position), widgets)
 }
 
+// expandAlterFragments expands `use fragment` / `use building block` sentinels
+// in the widgets an INSERT or REPLACE carries, the same expansion CREATE PAGE
+// applies to its body. It runs before anything else looks at the widgets, so
+// the duplicate-name check, the column/template routing and the builder all see
+// the fragment's widgets rather than the sentinel (#572). The input is cloned:
+// expansion rewrites Children in place and the statement's AST is not ours.
+func expandAlterFragments(ctx *ExecContext, widgets []*ast.WidgetV3, moduleName string, moduleID model.ID) ([]*ast.WidgetV3, error) {
+	pb := &pageBuilder{
+		ctx:        ctx,
+		backend:    ctx.Backend,
+		moduleID:   moduleID,
+		moduleName: moduleName,
+		execCache:  ctx.Cache,
+		fragments:  ctx.Fragments,
+	}
+	return pb.expandFragments(cloneWidgets(widgets))
+}
+
 // ============================================================================
 // DROP widget via mutator
 // ============================================================================
@@ -381,6 +407,14 @@ func applyDropWidgetMutator(mutator backend.PageMutator, op *ast.DropWidgetOp) e
 // ============================================================================
 
 func applyReplaceWidgetMutator(ctx *ExecContext, mutator backend.PageMutator, op *ast.ReplaceWidgetOp, moduleName string, moduleID model.ID) error {
+	newWidgets, err := expandAlterFragments(ctx, op.NewWidgets, moduleName, moduleID)
+	if err != nil {
+		return err
+	}
+	expanded := *op
+	expanded.NewWidgets = newWidgets
+	op = &expanded
+
 	// Check for duplicate widget names (skip the widget being replaced)
 	for _, w := range op.NewWidgets {
 		if w.Name != "" && w.Name != op.Target.Widget && w.Name != op.Target.Column && mutator.FindWidget(w.Name) {

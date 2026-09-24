@@ -2670,13 +2670,14 @@ func cloneWidgets(widgets []*ast.WidgetV3) []*ast.WidgetV3 {
 	return result
 }
 
+// cloneWidget copies the whole struct first, so a field added to WidgetV3 is
+// carried without touching this function (Specialization and TypeIsGeneric were
+// once dropped here); only the map and the children need a deep copy.
 func cloneWidget(w *ast.WidgetV3) *ast.WidgetV3 {
-	clone := &ast.WidgetV3{
-		Type:       w.Type,
-		Name:       w.Name,
-		Properties: make(map[string]interface{}, len(w.Properties)),
-		Children:   cloneWidgets(w.Children),
-	}
+	c := *w
+	clone := &c
+	clone.Properties = make(map[string]interface{}, len(w.Properties))
+	clone.Children = cloneWidgets(w.Children)
 	for k, v := range w.Properties {
 		clone.Properties[k] = v // Property values are immutable (strings, ints, etc.)
 	}
