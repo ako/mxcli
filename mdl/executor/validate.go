@@ -698,6 +698,13 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 				return mdlerrors.NewNotFound("module", s.Name.Module)
 			}
 		}
+		// ADD/DROP ATTRIBUTE on a view entity is refused by exec; say so here
+		// too, or check passes a script that exec stops halfway (#1173).
+		if s.Operation == ast.AlterEntityAddAttribute || s.Operation == ast.AlterEntityDropAttribute {
+			if err := validateViewEntityAttributeSet(ctx, s, sc); err != nil {
+				return err
+			}
+		}
 		// Validate enumeration references in ADD ATTRIBUTE
 		if s.Operation == ast.AlterEntityAddAttribute && s.Attribute != nil {
 			attr := s.Attribute
@@ -1373,4 +1380,28 @@ func allPageWidgets(s *ast.CreatePageStmtV3) []*ast.WidgetV3 {
 		out = append(out, ph.Widgets...)
 	}
 	return out
+}
+
+// validateViewEntityAttributeSet reports an ADD/DROP ATTRIBUTE whose target is a
+// view entity — one the script creates, or one already in the project. An entity
+// the script (re)creates as anything else is judged by that statement instead.
+func validateViewEntityAttributeSet(ctx *ExecContext, s *ast.AlterEntityStmt, sc *scriptContext) error {
+	qn := s.Name.String()
+	isView := sc.viewEntities[qn]
+	if !isView && !sc.entities[qn] && s.Name.Module != "" && ctx.Connected() {
+		if ent, err := findEntity(ctx, s.Name.Module, s.Name.Name); err == nil {
+			isView = isViewEntity(ent)
+		}
+	}
+	if !isView {
+		return nil
+	}
+	if s.Operation == ast.AlterEntityAddAttribute {
+		name := ""
+		if s.Attribute != nil {
+			name = s.Attribute.Name
+		}
+		return viewEntityAttributeSetRefusal(qn, "add", name)
+	}
+	return viewEntityAttributeSetRefusal(qn, "drop", s.AttributeName)
 }
