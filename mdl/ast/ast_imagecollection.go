@@ -25,6 +25,7 @@ func (s *CreateImageCollectionStmt) isStatement() {}
 
 // DropImageCollectionStmt represents: DROP IMAGE COLLECTION Module.Name
 type DropImageCollectionStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 

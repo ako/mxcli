@@ -24,6 +24,7 @@ type DataTransformerStepDef struct {
 
 // DropDataTransformerStmt represents: DROP DATA TRANSFORMER Module.Name
 type DropDataTransformerStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 

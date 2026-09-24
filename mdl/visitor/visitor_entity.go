@@ -859,6 +859,19 @@ func (b *Builder) ExitAlterEntityAction(ctx *parser.AlterEntityActionContext) {
 
 // ExitDropStatement handles DROP ENTITY/ASSOCIATION/ENUMERATION/MODULE/MICROFLOW/PAGE/SNIPPET
 func (b *Builder) ExitDropStatement(ctx *parser.DropStatementContext) {
+	// IF EXISTS is one grammar rule shared by every document-level alternative,
+	// so it is applied here once, to whichever statement the chain below builds,
+	// rather than in each branch where the next doctype would forget it (#531).
+	built := len(b.statements)
+	defer func() {
+		if ctx.IfExists() == nil || len(b.statements) == built {
+			return
+		}
+		if g, ok := b.statements[len(b.statements)-1].(ast.IfExistsDrop); ok {
+			g.SetDropIfExists(true)
+		}
+	}()
+
 	// DROP CONFIGURATION uses STRING_LITERAL, not qualifiedName — handle first
 	if ctx.CONFIGURATION() != nil {
 		if sl := ctx.STRING_LITERAL(); sl != nil {

@@ -56,6 +56,7 @@ func (s *CreateConfigurationStmt) isStatement() {}
 
 // DropConfigurationStmt represents DROP CONFIGURATION 'name'.
 type DropConfigurationStmt struct {
+	DropGuard
 	Name string
 }
 

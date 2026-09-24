@@ -131,6 +131,7 @@ func (s *CreateAssociationStmt) isStatement() {}
 
 // DropAssociationStmt represents: DROP ASSOCIATION Module.Name
 type DropAssociationStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 
