@@ -31,12 +31,44 @@ type ThemeProperty struct {
 	// mxbuild refuses with CE6084 "Expected design property Hide on to be of type
 	// Toggle button group, but found Option" (ako/mxcli#511).
 	MultiSelect bool `json:"multiSelect"`
+	// OldNames are the keys this property had in earlier theme versions. A
+	// page authored against one still stores the old key, and mxbuild reports
+	// CE6087 "Design properties have been renamed in your theme and need to be
+	// updated" on it unless the page is excluded (measured on 11.13.0 with Atlas
+	// Core 4.1.3, where "Align content" became "Align content (deprecated)").
+	OldNames []string `json:"oldNames"`
+	// Margin and Padding are the steps of a `"type": "Spacing"` property. Its
+	// old names live on each side of each step, spelled "<old key>::<old
+	// value>": Atlas's one Spacing property replaced the per-side dropdowns
+	// "Spacing top" … "Spacing left", so an old key maps to one side.
+	Margin  []ThemeSpacingStep `json:"margin"`
+	Padding []ThemeSpacingStep `json:"padding"`
 }
 
 // ThemeOption represents a single option within a dropdown/picker design property.
 type ThemeOption struct {
 	Name  string `json:"name"`
 	Class string `json:"class"`
+	// OldNames are earlier names of this option. On an ordinary property they
+	// are old VALUES ("Left align as row"); on a multi-select property they are
+	// the separate toggles the option replaced ("Hide on phone" became Hide on:
+	// Phone), i.e. old KEYS.
+	OldNames []string `json:"oldNames"`
+}
+
+// ThemeSpacingStep is one step ("None", "S", "M", …) of a Spacing property.
+type ThemeSpacingStep struct {
+	Name   string            `json:"name"`
+	Top    *ThemeSpacingSide `json:"top"`
+	Right  *ThemeSpacingSide `json:"right"`
+	Bottom *ThemeSpacingSide `json:"bottom"`
+	Left   *ThemeSpacingSide `json:"left"`
+}
+
+// ThemeSpacingSide is one side of a Spacing step.
+type ThemeSpacingSide struct {
+	Class    string   `json:"class"`
+	OldNames []string `json:"oldNames"`
 }
 
 // ThemeRegistry holds all design property definitions loaded from the project's themesource.
