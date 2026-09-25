@@ -1,0 +1,44 @@
+-- ============================================================================
+-- ako/mxcli#664: an association ComboBox's EXPRESSION caption was dropped
+-- ============================================================================
+--
+-- Symptom: describe → exec of Administration.Account_New (Administration
+-- v4.3.2, Mendix 11.13.0):
+--   [error] [CE0642] "Property 'Caption' is required." at Combo box 'comboBox2'
+--
+-- Cause: comboBox2 stores its caption as an expression —
+-- optionsSourceAssociationCaptionType = expression,
+-- optionsSourceAssociationCaptionExpression = '$currentObject/Description' —
+-- and DESCRIBE read only the attribute caption (`CaptionAttribute:`), so the
+-- widget came back with none. The WRITE side already worked: the explicit
+-- property pass persists both storage keys. `check` nonetheless warned
+-- (MDL-WIDGET06) that each "will be dropped", which was false.
+--
+-- Fix: DESCRIBE emits the two storage keys for an expression caption, and
+-- MDL-WIDGET06 fires only for keys the explicit pass cannot write.
+--
+-- Verify: `mxcli check` shows no MDL-WIDGET06; exec, then describe → exec
+-- (expect "Unchanged page"), then `mxcli docker check` — 0 errors.
+-- ============================================================================
+
+create entity MyFirstModule.Region ( Code: String(10), Description: String(200) );
+create entity MyFirstModule.Office ( Name: String(200) );
+create association MyFirstModule.Office_Region from MyFirstModule.Office to MyFirstModule.Region;
+/
+
+create or replace page MyFirstModule.Office_Edit
+( Title: 'Office', Layout: Atlas_Core.Atlas_Default, Params: { $Office: MyFirstModule.Office } )
+{
+  dataview dv (datasource: $Office) {
+    combobox cmbRegion (
+      Label: 'Region',
+      Attribute: Office_Region,
+      DataSource: database from MyFirstModule.Region,
+      optionsSourceAssociationCaptionType: expression,
+      optionsSourceAssociationCaptionExpression: '$currentObject/Code + '' — '' + $currentObject/Description'
+    )
+  }
+}
+/
+
+describe page MyFirstModule.Office_Edit;

@@ -866,6 +866,14 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 				if w.CaptionAttribute != "" {
 					props = append(props, fmt.Sprintf("CaptionAttribute: %s", w.CaptionAttribute))
 				}
+				// An expression caption has no MDL alias; its storage keys are the
+				// spelling the explicit-property pass writes, as for any
+				// pluggable-widget property (#664).
+				if w.CaptionExpression != "" {
+					props = append(props,
+						"optionsSourceAssociationCaptionType: expression",
+						fmt.Sprintf("optionsSourceAssociationCaptionExpression: %s", mdlQuote(w.CaptionExpression)))
+				}
 			}
 			// A pluggable widget's on-change action (ComboBox `onChangeEvent`).
 			// Emitted for the same reason as the built-in inputs above: without
