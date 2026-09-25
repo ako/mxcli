@@ -587,13 +587,15 @@ What this settles:
    (it is not used) but it is churn under ADR-0008, and the value reappears
    the moment someone ticks "override" in Studio Pro. Belongs with slice 0b.
 
-**The constant's type is the user's choice.** Studio Pro lets the constant
-behind a proxy field be String, Integer or Long — the reference uses a String
-`'232'` for the port, but an Integer would do. So `constant X` is validated
-only for *being a constant*; mxcli does not constrain its type. If Mendix
-rejects a type in a given slot, `mx check` reports it against the real
-version's rules, the same division of labour as xpathFunctionName's comment
-describes.
+**The constant's type is the user's choice — measured.** In `ako/TestApp`
+commit `11a8fca` ("Proxy port") the port constant `Odata.Bug1073_ProxyPort` was
+changed from String `'232'` to Integer `232`; Studio Pro reports no errors
+(Long was also tried and reported clean), and the client's `ProxyPort` still
+stores the bare name `Odata.Bug1073_ProxyPort` — the reference is identical
+whatever the constant's type. So `constant X` is validated only for *being a
+constant*; mxcli does not constrain its type. If Mendix rejects a type in some
+slot, `mx check` reports it against the real version's rules, the same
+division of labour as xpathFunctionName's comment describes.
 
 ## 7. Test plan
 
