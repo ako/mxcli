@@ -271,7 +271,7 @@ func TestLoopBodyIfAnnotationPromotedToParentFlows(t *testing.T) {
 // TestLoopCaptionPreserved covers the loop caption case — previously untested
 // per PR review. The fix for the outer-IF caption contamination bug also applied
 // the same snapshot/restore pattern to addLoopStatement and addWhileStatement.
-func TestLoopCaptionPreserved(t *testing.T) {
+func TestLoopCaptionNotStorable(t *testing.T) {
 	innerReturn := &ast.ReturnStmt{Value: &ast.LiteralExpr{Value: true, Kind: ast.LiteralBoolean}}
 	loop := &ast.LoopStmt{
 		LoopVariable: "item",
@@ -299,13 +299,18 @@ func TestLoopCaptionPreserved(t *testing.T) {
 	if len(loops) != 1 {
 		t.Fatalf("expected 1 LoopedActivity, got %d", len(loops))
 	}
-	if loops[0].Caption != "Process each item" {
-		t.Errorf("loop caption: got %q, want %q", loops[0].Caption, "Process each item")
+	// The builder must NOT carry a caption onto a LoopedActivity. generated/metamodel
+	// declares no Caption on Microflows$LoopedActivity, so the value cannot reach
+	// storage: measured on 11.6.6, `@caption` on a loop is absent from `describe`
+	// after `exec`, while `@annotation` round-trips. Setting it here wrote a field
+	// nothing reads and contradicted MDL042 (mendixlabs/mxcli#1187).
+	if loops[0].Caption != "" {
+		t.Errorf("loop caption: got %q, want %q — a loop caption is not storable, MDL042 reports it", loops[0].Caption, "")
 	}
 }
 
-// TestWhileLoopCaptionPreserved — same coverage for the WHILE shape.
-func TestWhileLoopCaptionPreserved(t *testing.T) {
+// TestWhileLoopCaptionNotStorable — same coverage for the WHILE shape.
+func TestWhileLoopCaptionNotStorable(t *testing.T) {
 	whileStmt := &ast.WhileStmt{
 		Condition: &ast.BinaryExpr{
 			Left:     &ast.VariableExpr{Name: "n"},
@@ -337,8 +342,10 @@ func TestWhileLoopCaptionPreserved(t *testing.T) {
 	if len(loops) != 1 {
 		t.Fatalf("expected 1 LoopedActivity (WHILE), got %d", len(loops))
 	}
-	if loops[0].Caption != "Until n >= 10" {
-		t.Errorf("while caption: got %q, want %q", loops[0].Caption, "Until n >= 10")
+	// Same as the for-each case above: a while builds the same LoopedActivity, so
+	// its caption is equally unstorable and equally reported as MDL042.
+	if loops[0].Caption != "" {
+		t.Errorf("while caption: got %q, want %q — a while caption is not storable, MDL042 reports it", loops[0].Caption, "")
 	}
 }
 
