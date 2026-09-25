@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
+	"github.com/mendixlabs/mxcli/sdk/javaactions"
 )
 
 func (b *Builder) buildModules() error {
@@ -353,6 +354,29 @@ func (b *Builder) buildEnumerations() error {
 	return nil
 }
 
+// catalogCodeActionType encodes a Java action return or parameter type for the
+// catalog. A type-parameter reference is prefixed rather than written as its
+// bare name: Studio Pro accepts any name for a type parameter, including a
+// primitive's, and a bare `String` made an action returning its type parameter
+// called String indistinguishable from one returning the primitive
+// (mendixlabs/mxcli#1183). The prefix follows the `Kind:Name` shape
+// microflows_data.ReturnType already uses; no primitive contains a colon.
+//
+//	TypeParameter:T        — an object of the entity bound to T
+//	EntityTypeParameter:T  — the entity-type selector that binds T
+//
+// DESCRIBE keeps the bare name, which is its MDL syntax; this is the catalog's
+// encoding only.
+func catalogCodeActionType(t interface{ TypeString() string }) string {
+	switch tp := t.(type) {
+	case *javaactions.TypeParameter:
+		return "TypeParameter:" + tp.TypeParameter
+	case *javaactions.EntityTypeParameterType:
+		return "EntityTypeParameter:" + tp.TypeParameterName
+	}
+	return t.TypeString()
+}
+
 func (b *Builder) buildJavaActions() error {
 	actions, err := b.reader.ListJavaActionsFull()
 	if err != nil {
@@ -392,7 +416,7 @@ func (b *Builder) buildJavaActions() error {
 
 		returnType := ""
 		if ja.ReturnType != nil {
-			returnType = ja.ReturnType.TypeString()
+			returnType = catalogCodeActionType(ja.ReturnType)
 		}
 
 		_, err := stmt.Exec(
@@ -417,7 +441,7 @@ func (b *Builder) buildJavaActions() error {
 			}
 			paramType := ""
 			if p.ParameterType != nil {
-				paramType = p.ParameterType.TypeString()
+				paramType = catalogCodeActionType(p.ParameterType)
 			}
 			if _, err := paramStmt.Exec(
 				string(p.ID),
