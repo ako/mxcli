@@ -1689,6 +1689,18 @@ func formSettingsToGen(pageName string) element.Element {
 // `Attribute`, that not one of the 31 documents carries; writing a key Mendix
 // does not store is what makes a document mxbuild accepts and Studio Pro cannot
 // open (CLAUDE.md, "Overlay Writes: Never Invent a Key").
+// dynamicAddressToGen builds a link address read from an attribute at runtime.
+// Pinned against FeedbackModule.PopupSuccess (Feedback v4.0.2): IsDynamic true,
+// Value "", and an AttributeRef with a null EntityRef naming the attribute.
+func dynamicAddressToGen(attrQN string) element.Element {
+	s := genPg.NewStaticOrDynamicString()
+	assignID(s)
+	s.SetIsDynamic(true)
+	s.SetValue("")
+	s.SetAttributeRef(attributeRefToGen(attrQN))
+	return s
+}
+
 func staticAddressToGen(address string) element.Element {
 	s := genPg.NewStaticOrDynamicString()
 	assignID(s)
@@ -1774,7 +1786,11 @@ func clientActionToGen(a pages.ClientAction) (element.Element, error) {
 			linkType = "Web"
 		}
 		g.SetLinkType(linkType)
-		g.SetAddress(staticAddressToGen(x.Address))
+		if x.AddressAttribute != "" {
+			g.SetAddress(dynamicAddressToGen(x.AddressAttribute))
+		} else {
+			g.SetAddress(staticAddressToGen(x.Address))
+		}
 		return g, nil
 	case *pages.SignOutClientAction:
 		// sign_out → Forms$SignOutClientAction. One property, and the reference

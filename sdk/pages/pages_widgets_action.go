@@ -308,6 +308,9 @@ type LinkClientAction struct {
 	model.BaseElement
 	LinkType LinkType `json:"linkType"`
 	Address  string   `json:"address,omitempty"`
+	// AddressAttribute, when set, makes the address dynamic: the runtime reads
+	// it from this attribute (Module.Entity.Attr) and Address is ignored.
+	AddressAttribute string `json:"addressAttribute,omitempty"`
 }
 
 func (LinkClientAction) isClientAction() {}
