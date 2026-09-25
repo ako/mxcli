@@ -186,8 +186,12 @@ create odata client ProductClient.ProductDataApiClient (
   timeout: 300,
   ServiceUrl: '@ProductClient.ProductDataApiLocation',
   UseAuthentication: Yes,
-  HttpUsername: 'MxAdmin',
-  HttpPassword: '1'
+  -- HttpUsername/HttpPassword hold a Mendix EXPRESSION. A literal credential
+  -- is a string literal inside the MDL string, so its quotes are doubled;
+  -- 'MxAdmin' alone would store the identifier MxAdmin. A constant needs no
+  -- extra quotes: HttpPassword: @ProductClient.ApiPassword
+  HttpUsername: '''MxAdmin''',
+  HttpPassword: '''1'''
 );
 
 -- OData client with local file - relative path (offline development)
@@ -198,8 +202,8 @@ CREATE ODATA CLIENT ProductClient.ProductDataApiClient (
   Timeout: 300,
   ServiceUrl: '@ProductClient.ProductDataApiLocation',
   UseAuthentication: Yes,
-  HttpUsername: 'MxAdmin',
-  HttpPassword: '1'
+  HttpUsername: '''MxAdmin''',
+  HttpPassword: '''1'''
 );
 
 -- OData client with local file - relative path without ./
@@ -209,8 +213,8 @@ CREATE ODATA CLIENT ProductClient.ProductDataApiClient (
   Timeout: 300,
   ServiceUrl: '@ProductClient.ProductDataApiLocation',
   UseAuthentication: Yes,
-  HttpUsername: 'MxAdmin',
-  HttpPassword: '1'
+  HttpUsername: '''MxAdmin''',
+  HttpPassword: '''1'''
 );
 
 -- OData client with local file - absolute file:// URI
@@ -220,8 +224,8 @@ CREATE ODATA CLIENT ProductClient.ProductDataApiClient (
   Timeout: 300,
   ServiceUrl: '@ProductClient.ProductDataApiLocation',
   UseAuthentication: Yes,
-  HttpUsername: 'MxAdmin',
-  HttpPassword: '1'
+  HttpUsername: '''MxAdmin''',
+  HttpPassword: '''1'''
 );
 
 -- External entities (mapped from published service)
