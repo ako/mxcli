@@ -137,16 +137,16 @@ func outputConsumedODataServiceMDL(ctx *ExecContext, svc *model.ConsumedODataSer
 
 	var props []string
 	if folderPath != "" {
-		props = append(props, fmt.Sprintf("  Folder: '%s'", folderPath))
+		props = append(props, fmt.Sprintf("  Folder: %s", mdlQuote(folderPath)))
 	}
 	if svc.Version != "" {
-		props = append(props, fmt.Sprintf("  Version: '%s'", svc.Version))
+		props = append(props, fmt.Sprintf("  Version: %s", mdlQuote(svc.Version)))
 	}
 	if svc.ODataVersion != "" {
 		props = append(props, fmt.Sprintf("  ODataVersion: %s", svc.ODataVersion))
 	}
 	if svc.MetadataUrl != "" {
-		props = append(props, fmt.Sprintf("  MetadataUrl: '%s'", svc.MetadataUrl))
+		props = append(props, fmt.Sprintf("  MetadataUrl: %s", mdlQuote(svc.MetadataUrl)))
 	}
 	if svc.TimeoutExpression != "" {
 		props = append(props, fmt.Sprintf("  Timeout: %s", svc.TimeoutExpression))
@@ -170,7 +170,7 @@ func outputConsumedODataServiceMDL(ctx *ExecContext, svc *model.ConsumedODataSer
 			}
 		}
 		if cfg.ClientCertificate != "" {
-			props = append(props, fmt.Sprintf("  ClientCertificate: '%s'", cfg.ClientCertificate))
+			props = append(props, fmt.Sprintf("  ClientCertificate: %s", formatExprValue(cfg.ClientCertificate)))
 		}
 	}
 
@@ -212,7 +212,7 @@ func outputConsumedODataServiceMDL(ctx *ExecContext, svc *model.ConsumedODataSer
 			if i == len(cfg.HeaderEntries)-1 {
 				comma = ""
 			}
-			fmt.Fprintf(ctx.Output, "  '%s': %s%s\n", h.Key, formatExprValue(h.Value), comma)
+			fmt.Fprintf(ctx.Output, "  %s: %s%s\n", mdlQuote(h.Key), formatExprValue(h.Value), comma)
 		}
 		fmt.Fprintln(ctx.Output, ");")
 	} else {
@@ -1783,15 +1783,17 @@ func validateODataClientExists(ctx *ExecContext, ref ast.QualifiedName) error {
 	return mdlerrors.NewNotFoundMsg("odata client", ref.String(), fmt.Sprintf("odata client not found: %s", ref))
 }
 
-// formatExprValue formats a Mendix expression value for MDL output.
-// If the value is already a quoted string literal (starts/ends with '), it's output as-is.
-// Otherwise, it's wrapped in single quotes for round-trip compatibility.
+// formatExprValue formats a stored Mendix expression value for MDL output.
+//
+// It always quotes, even a value that already starts and ends with a quote. The
+// stored text IS the expression, and the visitor unquotes the MDL string, so
+// Studio Pro's literal credential `'abc'` has to print with its own quotes
+// doubled inside a second pair. Passing an already-quoted value through
+// unchanged made a re-exec of DESCRIBE store `abc` — an identifier, not a
+// string (ako/TestApp Odata.Bug1073). mdlQuote is the inverse of the visitor's
+// unquoteString, backslashes included.
 func formatExprValue(val string) string {
-	if len(val) >= 2 && val[0] == '\'' && val[len(val)-1] == '\'' {
-		return val // Already a quoted Mendix expression string literal
-	}
-	// Wrap in quotes, escaping internal single quotes
-	return "'" + strings.ReplaceAll(val, "'", "''") + "'"
+	return mdlQuote(val)
 }
 
 // extractMicroflowRef strips a leading "microflow " keyword (any case) from a
