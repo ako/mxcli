@@ -83,3 +83,54 @@ func TestAppearanceAlwaysEmitsDesignProperties(t *testing.T) {
 		t.Errorf("DesignProperties = %v, want the empty typed-array marker [3]", val)
 	}
 }
+
+// A compound design property's nested Properties list carries typed-array marker
+// 2, while the Appearance's own DesignProperties list carries 3 — both hold
+// Forms$DesignPropertyValue children, so the marker cannot be keyed on the child
+// $Type. Measured across every Studio Pro-authored document in a Mendix 11.13.0
+// app: 373 of 373 CompoundDesignPropertyValue.Properties lists are marker 2,
+// 1821 of 1821 Appearance.DesignProperties lists marker 3. mxcli wrote 3 for
+// both, so a describe → exec round trip of FeedbackModule.ShareFeedback
+// (Feedback v4.0.2) turned every nested marker-2 list into 3.
+func TestAppearanceCompoundDesignPropertyMarkers(t *testing.T) {
+	dps := []pages.DesignPropertyValue{
+		{Key: "Spacing", ValueType: "compound", Compound: []pages.DesignPropertyValue{
+			{Key: "margin-bottom", ValueType: "option", Option: "None"},
+		}},
+	}
+	out, err := (&codec.Encoder{}).Encode(newAppearance("", "", "", dps))
+	if err != nil {
+		t.Fatalf("encode appearance: %v", err)
+	}
+	var doc bson.D
+	if err := bson.Unmarshal(out, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	val, _ := lookupKey(doc, "DesignProperties")
+	outer, ok := val.(bson.A)
+	if !ok || len(outer) != 2 {
+		t.Fatalf("DesignProperties = %v, want marker + one entry", val)
+	}
+	if outer[0] != int32(3) {
+		t.Errorf("DesignProperties marker = %v, want 3 (Studio Pro)", outer[0])
+	}
+
+	entry, ok := outer[1].(bson.D)
+	if !ok {
+		t.Fatalf("DesignProperties[1] = %T, want a document", outer[1])
+	}
+	v, _ := lookupKey(entry, "Value")
+	compound, ok := v.(bson.D)
+	if !ok {
+		t.Fatalf("Spacing Value = %T, want a document", v)
+	}
+	p, _ := lookupKey(compound, "Properties")
+	inner, ok := p.(bson.A)
+	if !ok || len(inner) != 2 {
+		t.Fatalf("CompoundDesignPropertyValue.Properties = %v, want marker + one entry", p)
+	}
+	if inner[0] != int32(2) {
+		t.Errorf("CompoundDesignPropertyValue.Properties marker = %v, want 2 (Studio Pro)", inner[0])
+	}
+}

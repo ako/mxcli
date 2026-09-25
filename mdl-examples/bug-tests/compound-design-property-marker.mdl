@@ -1,0 +1,38 @@
+-- @version: 10.0+
+-- ============================================================================
+-- Compound design property's nested Properties list written with marker 3.
+--
+-- Symptom: a compound (nested) design property such as Atlas 'Spacing' →
+--   margin-bottom serialized its Forms$CompoundDesignPropertyValue.Properties
+--   list with BSON typed-array marker 3. Studio Pro writes 2 — measured 373 of
+--   373 such lists across the pages, layouts, building blocks and page templates
+--   of a Mendix 11.13.0 app, against 1821 of 1821 marker 3 for the enclosing
+--   Forms$Appearance.DesignProperties list. A describe → exec round trip of
+--   FeedbackModule.ShareFeedback (Feedback v4.0.2) turned every nested list from
+--   2 to 3. mx check does not complain.
+--
+-- Cause: the codec picked a PartList's marker from the CHILD element's $Type
+--   alone. Both lists hold Forms$DesignPropertyValue, so no child-type
+--   registration could give one 3 and the other 2; both fell to the default 3.
+--
+-- Fix: codec.RegisterPropertyListMarker keys a marker on the owning $Type and
+--   property; Forms$CompoundDesignPropertyValue / Properties is registered as 2.
+--   Pages, snippets and layouts share the one Appearance writer, so all three
+--   are covered.
+--
+-- Verify: exec this, then
+--   mxcli bson dump -p app.mpr --type page --object BugCompoundDPMarker.SpacingPage --format ndsl
+--   shows `DesignProperties [marker=3]` and, under the Spacing value,
+--   `Properties [marker=2]`.
+-- ============================================================================
+
+create module BugCompoundDPMarker;
+
+create page BugCompoundDPMarker.SpacingPage (
+  title: 'Spacing Page',
+  layout: Atlas_Core.Atlas_Default
+) {
+  container container1 (designproperties: ['Spacing': ['margin-bottom': 'None']]) {
+    dynamictext text1 (content: 'Spaced')
+  }
+}
