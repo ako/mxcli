@@ -7,6 +7,12 @@ package catalog
 //
 // History:
 //
+//	14 — import_mappings_data / export_mappings_data: Id is the document's ID
+//	    (was an AUTOINCREMENT integer) and Excluded is recorded; source gains
+//	    ElementId. Two mappings may share a name when one is excluded, and the
+//	    catalog could not tell them apart (mendixlabs/mxcli#1185). 13 and 12
+//	    were bumped on parallel branches and the merge kept "12", so caches
+//	    built at 12 never rebuilt for 13; this bump carries both.
 //	13 — entity_event_handlers_data + view, and the `event` edge in refs
 //	    (ENTITY -> MICROFLOW). Same reason as 11: refs are only written by
 //	    REFRESH CATALOG FULL, so without the bump a cached catalog keeps
@@ -40,7 +46,7 @@ package catalog
 //	    SnapshotSource / SourceId / SourceBranch / SourceRevision columns
 //	    from every row (issue #576).
 //	1 — initial flat schema with denormalized snapshot columns on every row.
-const CatalogSchemaVersion = "12"
+const CatalogSchemaVersion = "14"
 
 // MetaSchemaVersion is the catalog_meta key that records the schema version
 // the cache was built against.
@@ -1077,7 +1083,7 @@ func (c *Catalog) createTables() error {
 
 		// import_mappings
 		`CREATE TABLE IF NOT EXISTS import_mappings_data (
-			Id INTEGER PRIMARY KEY AUTOINCREMENT,
+			Id TEXT PRIMARY KEY,
 			Name TEXT NOT NULL,
 			QualifiedName TEXT NOT NULL,
 			ModuleName TEXT NOT NULL,
@@ -1085,6 +1091,7 @@ func (c *Catalog) createTables() error {
 			ElementCount INTEGER DEFAULT 0,
 			Documentation TEXT,
 			Folder TEXT,
+			Excluded BOOLEAN DEFAULT 0,
 			ProjectId TEXT,
 			SnapshotId TEXT
 		)`,
@@ -1092,7 +1099,7 @@ func (c *Catalog) createTables() error {
 
 		// export_mappings
 		`CREATE TABLE IF NOT EXISTS export_mappings_data (
-			Id INTEGER PRIMARY KEY AUTOINCREMENT,
+			Id TEXT PRIMARY KEY,
 			Name TEXT NOT NULL,
 			QualifiedName TEXT NOT NULL,
 			ModuleName TEXT NOT NULL,
@@ -1101,6 +1108,7 @@ func (c *Catalog) createTables() error {
 			ElementCount INTEGER DEFAULT 0,
 			Documentation TEXT,
 			Folder TEXT,
+			Excluded BOOLEAN DEFAULT 0,
 			ProjectId TEXT,
 			SnapshotId TEXT
 		)`,
@@ -1270,11 +1278,11 @@ func (c *Catalog) createTables() error {
 				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
 			FROM json_structures
 			UNION ALL
-			SELECT CAST(Id AS TEXT), 'IMPORT_MAPPING' as ObjectType, Name, QualifiedName, ModuleName, Folder, Documentation as Description,
+			SELECT Id, 'IMPORT_MAPPING' as ObjectType, Name, QualifiedName, ModuleName, Folder, Documentation as Description,
 				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
 			FROM import_mappings
 			UNION ALL
-			SELECT CAST(Id AS TEXT), 'EXPORT_MAPPING' as ObjectType, Name, QualifiedName, ModuleName, Folder, Documentation as Description,
+			SELECT Id, 'EXPORT_MAPPING' as ObjectType, Name, QualifiedName, ModuleName, Folder, Documentation as Description,
 				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
 			FROM export_mappings
 			UNION ALL
@@ -1297,7 +1305,8 @@ func (c *Catalog) createTables() error {
 			QualifiedName,
 			ObjectType,
 			SourceText,
-			ModuleName
+			ModuleName,
+			ElementId UNINDEXED
 		)`,
 
 		// Indexes for common queries — target the underlying *_data tables.

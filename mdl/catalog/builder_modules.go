@@ -866,10 +866,10 @@ func (b *Builder) buildImportMappings() error {
 	}
 
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO import_mappings_data (Name, QualifiedName, ModuleName,
-			SchemaSource, ElementCount, Documentation, Folder,
+		INSERT INTO import_mappings_data (Id, Name, QualifiedName, ModuleName,
+			SchemaSource, ElementCount, Documentation, Folder, Excluded,
 			ProjectId, SnapshotId)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
@@ -893,6 +893,7 @@ func (b *Builder) buildImportMappings() error {
 		}
 
 		_, err := stmt.Exec(
+			string(im.ID),
 			im.Name,
 			qualifiedName,
 			moduleName,
@@ -900,6 +901,7 @@ func (b *Builder) buildImportMappings() error {
 			len(im.Elements),
 			im.Documentation,
 			folderPath,
+			im.Excluded,
 			projectID, snapshotID,
 		)
 		if err != nil {
@@ -918,10 +920,10 @@ func (b *Builder) buildExportMappings() error {
 	}
 
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO export_mappings_data (Name, QualifiedName, ModuleName,
-			SchemaSource, NullValueOption, ElementCount, Documentation, Folder,
+		INSERT INTO export_mappings_data (Id, Name, QualifiedName, ModuleName,
+			SchemaSource, NullValueOption, ElementCount, Documentation, Folder, Excluded,
 			ProjectId, SnapshotId)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
@@ -945,6 +947,7 @@ func (b *Builder) buildExportMappings() error {
 		}
 
 		_, err := stmt.Exec(
+			string(em.ID),
 			em.Name,
 			qualifiedName,
 			moduleName,
@@ -953,6 +956,7 @@ func (b *Builder) buildExportMappings() error {
 			len(em.Elements),
 			em.Documentation,
 			folderPath,
+			em.Excluded,
 			projectID, snapshotID,
 		)
 		if err != nil {
