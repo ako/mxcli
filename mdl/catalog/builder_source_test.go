@@ -21,15 +21,15 @@ import (
 // runDescribes must therefore return what failed, so the caller can report it.
 func TestRunDescribes_ReturnsFailuresInsteadOfSwallowingThem(t *testing.T) {
 	items := []sourceItem{
-		{SourceEntity, "Mod.Customer", "Mod"},
-		{SourceNanoflow, "Mod.ACT_Save", "Mod"},
-		{SourceRule, "Mod.RL_IsActive", "Mod"},
-		{SourceMicroflow, "Mod.IVK_Save", "Mod"},
+		{SourceEntity, "Mod.Customer", "Mod", ""},
+		{SourceNanoflow, "Mod.ACT_Save", "Mod", ""},
+		{SourceRule, "Mod.RL_IsActive", "Mod", ""},
+		{SourceMicroflow, "Mod.IVK_Save", "Mod", ""},
 	}
 
 	// Stands in for the executor dispatch before the fix: nanoflows and rules
 	// were unreachable, everything else described fine.
-	describe := func(objType, qn string) (string, error) {
+	describe := func(objType, qn, _ string) (string, error) {
 		switch objType {
 		case SourceNanoflow:
 			return "", errors.New("nanoflow not found: " + qn)
@@ -74,9 +74,9 @@ func TestRunDescribes_ReturnsFailuresInsteadOfSwallowingThem(t *testing.T) {
 // A describe that returns no error but also no text still produces no row. That
 // is the same silent drop wearing a different mask, so it counts as a failure.
 func TestRunDescribes_EmptyOutputCountsAsFailure(t *testing.T) {
-	items := []sourceItem{{SourcePage, "Mod.Home", "Mod"}}
+	items := []sourceItem{{SourcePage, "Mod.Home", "Mod", ""}}
 
-	_, failures := runDescribes(items, func(string, string) (string, error) {
+	_, failures := runDescribes(items, func(string, string, string) (string, error) {
 		return "", nil
 	}, 1, nil)
 
@@ -90,10 +90,10 @@ func TestRunDescribes_EmptyOutputCountsAsFailure(t *testing.T) {
 
 func TestRunDescribes_AllSucceeding(t *testing.T) {
 	items := []sourceItem{
-		{SourceEntity, "Mod.A", "Mod"},
-		{SourceEntity, "Mod.B", "Mod"},
+		{SourceEntity, "Mod.A", "Mod", ""},
+		{SourceEntity, "Mod.B", "Mod", ""},
 	}
-	results, failures := runDescribes(items, func(_, qn string) (string, error) {
+	results, failures := runDescribes(items, func(_, qn, _ string) (string, error) {
 		return "create entity " + qn + ";", nil
 	}, 4, nil)
 
@@ -108,7 +108,7 @@ func TestRunDescribes_AllSucceeding(t *testing.T) {
 }
 
 func TestRunDescribes_NoItems(t *testing.T) {
-	results, failures := runDescribes(nil, func(string, string) (string, error) {
+	results, failures := runDescribes(nil, func(string, string, string) (string, error) {
 		t.Fatal("describe called with no items")
 		return "", nil
 	}, 4, nil)

@@ -33,15 +33,15 @@ func describePage(ctx *ExecContext, name ast.QualifiedName) error {
 		return mdlerrors.NewBackend("list pages", err)
 	}
 
-	var foundPage *pages.Page
-	for _, p := range allPages {
-		modID := h.FindModuleID(p.ContainerID)
-		modName := h.GetModuleName(modID)
-		if p.Name == name.Name && (name.Module == "" || modName == name.Module) {
-			foundPage = p
-			break
-		}
-	}
+	// Describe the live page, not an excluded twin of the same name (#914) —
+	// or, under the catalog's source build, the pinned document (#1185).
+	foundPage, _ := pickDescribed(ctx, allPages,
+		func(p *pages.Page) model.ID { return p.ID },
+		func(p *pages.Page) bool {
+			return p.Name == name.Name && (name.Module == "" || h.GetModuleName(h.FindModuleID(p.ContainerID)) == name.Module)
+		},
+		func(p *pages.Page) bool { return p.Excluded },
+	)
 
 	if foundPage == nil {
 		return mdlerrors.NewNotFound("page", name.String())
