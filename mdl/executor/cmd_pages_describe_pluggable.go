@@ -1011,6 +1011,27 @@ func extractCustomWidgetPropertyImage(ctx *ExecContext, w map[string]any, proper
 	return ""
 }
 
+// extractCustomWidgetPropertyExpression reads an expression-typed property's
+// stored Expression, or "" when it is unset.
+func extractCustomWidgetPropertyExpression(w map[string]any, propertyKey string) string {
+	obj, ok := w["Object"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	propTypeKeyMap := buildPropertyTypeKeyMap(w, false)
+	for _, prop := range getBsonArrayElements(obj["Properties"]) {
+		propMap, ok := prop.(map[string]any)
+		if !ok || propTypeKeyMap[extractBinaryID(propMap["TypePointer"])] != propertyKey {
+			continue
+		}
+		if value, ok := propMap["Value"].(map[string]any); ok {
+			expr, _ := value["Expression"].(string)
+			return expr
+		}
+	}
+	return ""
+}
+
 func extractCustomWidgetPropertyString(ctx *ExecContext, w map[string]any, propertyKey string) string {
 	obj, ok := w["Object"].(map[string]any)
 	if !ok {

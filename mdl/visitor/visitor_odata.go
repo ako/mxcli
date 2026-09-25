@@ -43,14 +43,13 @@ func (b *Builder) ExitCreateODataClientStatement(ctx *parser.CreateODataClientSt
 			stmt.ServiceUrl = value
 		case "useauthentication":
 			stmt.UseAuthentication = strings.EqualFold(value, "true") || strings.EqualFold(value, "yes")
+		// Expression-typed: the expression as written, not an unquoted value.
 		case "httpusername":
-			stmt.HttpUsername = value
-			stmt.HttpUsernameIsLiteral = odataValueIsLiteral(prop)
+			stmt.HttpUsername, stmt.HttpUsernameIsLiteral = odataExpressionValue(prop.OdataPropertyValue(), prop.Expression())
 		case "httppassword":
-			stmt.HttpPassword = value
-			stmt.HttpPasswordIsLiteral = odataValueIsLiteral(prop)
+			stmt.HttpPassword, stmt.HttpPasswordIsLiteral = odataExpressionValue(prop.OdataPropertyValue(), prop.Expression())
 		case "clientcertificate":
-			stmt.ClientCertificate = value
+			stmt.ClientCertificate, _ = odataExpressionValue(prop.OdataPropertyValue(), prop.Expression())
 		case "configurationmicroflow":
 			// "Configuration microflow" — returns System.ConsumedODataConfiguration.
 			stmt.ConfigurationMicroflow = value
@@ -308,18 +307,6 @@ func odataValueText(val *parser.OdataPropertyValueContext) string {
 	return ""
 }
 
-// odataValueIsLiteral reports whether an OData property value was written as a
-// quoted string rather than a constant reference. odataValueText strips a
-// literal's quotes, so this is the only thing that still tells the two apart —
-// and mxcli can only use a literal for the design-time $metadata fetch.
-func odataValueIsLiteral(prop *parser.OdataPropertyAssignmentContext) bool {
-	valCtx := prop.OdataPropertyValue()
-	if valCtx == nil {
-		return false
-	}
-	return valCtx.(*parser.OdataPropertyValueContext).STRING_LITERAL() != nil
-}
-
 // odataAssignmentValueText extracts the string value from an OData property assignment.
 func odataAssignmentValueText(prop *parser.OdataPropertyAssignmentContext) string {
 	valCtx := prop.OdataPropertyValue()
@@ -421,13 +408,8 @@ func parseODataHeaders(ctx parser.IOdataHeadersClauseContext) []ast.HeaderDef {
 	for _, entryCtx := range clause.AllOdataHeaderEntry() {
 		entry := entryCtx.(*parser.OdataHeaderEntryContext)
 		key := unquoteString(entry.STRING_LITERAL().GetText())
-		value := ""
-		isLiteral := false
-		if valCtx := entry.OdataPropertyValue(); valCtx != nil {
-			vc := valCtx.(*parser.OdataPropertyValueContext)
-			value = odataValueText(vc)
-			isLiteral = vc.STRING_LITERAL() != nil
-		}
+		// A header value is a Mendix expression, kept as written.
+		value, isLiteral := odataExpressionValue(entry.OdataPropertyValue(), entry.Expression())
 		headers = append(headers, ast.HeaderDef{Key: key, Value: value, ValueIsLiteral: isLiteral})
 	}
 

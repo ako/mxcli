@@ -110,10 +110,10 @@ create odata client OdataPlm.MxPlmOdataApiClient (
   ODataVersion: OData4,
   MetadataUrl: 'https://graphstudio.mendixdemo.com/dataondemand/Mx-PLM-example/MxPlmExample/$metadata',
   timeout: 300,
-  ServiceUrl: '@OdataPlm.MxPlmOdataApiClient_Location',
+  ServiceUrl: OdataPlm.MxPlmOdataApiClient_Location,
   UseAuthentication: Yes,
-  HttpUsername: '@Main.MxPlmGraphClient_username',
-  HttpPassword: '@Main.MxPlmGraphClient_password'
+  HttpUsername: @Main.MxPlmGraphClient_username,
+  HttpPassword: @Main.MxPlmGraphClient_password
 );
 /
 ```

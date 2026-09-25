@@ -1,0 +1,39 @@
+-- mendixlabs/mxcli#750: an OData client's ServiceUrl names a constant, the same
+-- way ProxyHost does. Studio Pro picks the service URL as a constant (CE6825:
+-- "'Service url' must be a constant") and stores the reference in
+-- HttpConfiguration.CustomLocation as `@Module.Name` (ako/TestApp Odata.Bug1073:
+-- "@Odata.Bug1073_Location").
+--
+-- All three spellings below store CustomLocation "@OdSvc.Location"; describe
+-- prints the bare name, `ServiceUrl: OdSvc.Location`, like `ProxyHost:
+-- Odata.Bug1073_ProxyHost`. The bare name used to be refused as "not a constant
+-- reference". A literal URL is still refused.
+
+create constant OdSvc.Location
+type string
+default 'https://api.example.com/odata/v4/';
+/
+
+create odata client OdSvc.Bare (
+  ODataVersion: OData4,
+  MetadataUrl: 'https://api.example.com/odata/v4/$metadata',
+  ServiceUrl: OdSvc.Location
+);
+/
+
+create odata client OdSvc.At (
+  ODataVersion: OData4,
+  MetadataUrl: 'https://api.example.com/odata/v4/$metadata',
+  ServiceUrl: @OdSvc.Location
+);
+/
+
+create odata client OdSvc.QuotedAt (
+  ODataVersion: OData4,
+  MetadataUrl: 'https://api.example.com/odata/v4/$metadata',
+  ServiceUrl: '@OdSvc.Location'
+);
+/
+
+alter odata client OdSvc.QuotedAt set ServiceUrl = OdSvc.Location;
+/

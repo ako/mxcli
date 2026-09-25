@@ -1500,7 +1500,7 @@ func (pb *pageBuilder) buildClientActionV3(action *ast.ActionV3) (pages.ClientAc
 		// Handle THEN action (show page)
 		if action.ThenAction != nil && action.ThenAction.Type == "showPage" {
 			pageID, err := pb.resolvePageRef(action.ThenAction.Target)
-			if err != nil {
+			if err != nil && !pb.danglingRefOK(err) {
 				return nil, mdlerrors.NewBackend("resolve page", err)
 			}
 			createAct.PageID = pageID
@@ -1511,7 +1511,7 @@ func (pb *pageBuilder) buildClientActionV3(action *ast.ActionV3) (pages.ClientAc
 
 	case "showPage":
 		_, err := pb.resolvePageRef(action.Target)
-		if err != nil {
+		if err != nil && !pb.danglingRefOK(err) {
 			return nil, mdlerrors.NewBackend("resolve page", err)
 		}
 
@@ -1565,7 +1565,7 @@ func (pb *pageBuilder) buildClientActionV3(action *ast.ActionV3) (pages.ClientAc
 
 	case "microflow":
 		mfID, err := pb.resolveMicroflow(action.Target)
-		if err != nil {
+		if err != nil && !pb.danglingRefOK(err) {
 			return nil, mdlerrors.NewBackend("resolve microflow", err)
 		}
 
@@ -1609,7 +1609,7 @@ func (pb *pageBuilder) buildClientActionV3(action *ast.ActionV3) (pages.ClientAc
 
 	case "nanoflow":
 		nfID, err := pb.resolveNanoflowByName(action.Target)
-		if err != nil {
+		if err != nil && !pb.danglingRefOK(err) {
 			return nil, mdlerrors.NewBackend("resolve nanoflow", err)
 		}
 

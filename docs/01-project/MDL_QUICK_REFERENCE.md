@@ -377,7 +377,7 @@ CREATE ODATA CLIENT MyModule.LocalService2 (
   ODataVersion: OData4,
   MetadataUrl: './metadata/service.xml',
   Timeout: 300,
-  ServiceUrl: '@MyModule.ServiceLocation'  -- Must be a constant reference
+  ServiceUrl: MyModule.ServiceLocation  -- Must be a constant reference
 );
 ```
 

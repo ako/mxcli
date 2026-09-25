@@ -133,7 +133,7 @@ func TestResolveCredential(t *testing.T) {
 		{"a dotted literal stays a literal", "s3.cret", true, "s3.cret", true},
 		// The value is a Mendix EXPRESSION. Studio Pro stores a literal
 		// credential as the string literal `'MxAdmin'`, quotes included, and so
-		// does MDL's `HttpUsername: '''MxAdmin'''`. The fetch must send its
+		// does MDL's `HttpUsername: 'MxAdmin'`. The fetch must send its
 		// content, not the quotes — sending `'MxAdmin'` is a 401 against the
 		// very service the odata-data-sharing walkthrough imports from.
 		{"a string-literal expression sends its content", "'MxAdmin'", true, "MxAdmin", true},
@@ -157,18 +157,18 @@ func TestResolveCredential(t *testing.T) {
 	}
 }
 
-// The spelling the odata-data-sharing skill now teaches, end to end: parse the
-// MDL, then build the credentials the design-time fetch will send. The stored
-// value must be the expression `'MxAdmin'` (what Studio Pro stores) and the
-// fetch must send `MxAdmin` — before the fix, fixing the skill traded a runtime
-// defect for a 401 at design time.
+// The spelling the odata-data-sharing skill teaches, end to end: parse the MDL,
+// then build the credentials the design-time fetch will send. The stored value
+// must be the expression `'MxAdmin'` (what Studio Pro stores) and the fetch must
+// send `MxAdmin`. Since these properties became first-class expressions the MDL
+// is `'MxAdmin'` itself; before, it was the doubled-quote form.
 func TestMetadataAuth_StringLiteralCredentialFromMDL(t *testing.T) {
 	prog := parseMDL(t, `create odata client M.Api (
   ODataVersion: OData4,
   MetadataUrl: 'http://localhost:8080/odata/api/v1/$metadata',
   UseAuthentication: Yes,
-  HttpUsername: '''MxAdmin''',
-  HttpPassword: '''1'''
+  HttpUsername: 'MxAdmin',
+  HttpPassword: '1'
 );`)
 	stmt := prog.Statements[0].(*ast.CreateODataClientStmt)
 	if stmt.HttpUsername != "'MxAdmin'" {

@@ -157,7 +157,11 @@ Example:
 		// is worth reporting when validating a script, but it is ordinary for a
 		// re-run, and refusing it would break scripts that work today.
 		if !skipCheck && projectPath != "" {
-			if refErrs := exec.ValidateProgram(prog); len(refErrs) > 0 {
+			refErrs, refWarnings := exec.ValidateProgramWithWarnings(prog)
+			for _, w := range refWarnings {
+				fmt.Fprintf(os.Stderr, "Reference warning: %s\n", w)
+			}
+			if len(refErrs) > 0 {
 				for _, refErr := range refErrs {
 					fmt.Fprintf(os.Stderr, "Reference error: %v\n", refErr)
 				}
