@@ -1133,7 +1133,7 @@ func (pb *pageBuilder) buildSnippetCallV3(w *ast.WidgetV3) (*pages.SnippetCallWi
 	snippetName := w.GetSnippet()
 	if snippetName != "" {
 		snippetID, err := pb.resolveSnippetRef(snippetName)
-		if err != nil {
+		if err != nil && !pb.danglingRefOK(err) {
 			return nil, mdlerrors.NewBackend(fmt.Sprintf("resolve snippet %s", snippetName), err)
 		}
 		sc.SnippetID = snippetID

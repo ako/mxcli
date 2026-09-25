@@ -47,6 +47,13 @@ This catches everything Level 1 catches, plus:
 
 This is the check you should run before executing a script. It's fast (reads the project but doesn't modify it) and catches most mistakes.
 
+References inside an **excluded** document (`@excluded`, or a page or snippet
+that stays excluded because its stored namesake is) are reported as
+`Reference warnings` rather than errors, because Mendix does not validate
+excluded documents. A page's or snippet's missing *data source* still fails the
+check: the widgets inside it bind against that source's entity, and cannot be
+written without it.
+
 ### Name conflicts with the project
 
 A plain `create` of something the project already has is reported here rather
