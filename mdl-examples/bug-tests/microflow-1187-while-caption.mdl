@@ -1,0 +1,77 @@
+-- mendixlabs/mxcli#1187 — @caption on a while loop was dropped with no diagnostic.
+--
+-- A `while` builds the same Microflows$LoopedActivity as a for-each `loop`, and
+-- generated/metamodel declares no Caption on it, so the caption has nowhere to go.
+-- MDL042 was raised only for `loop`, so a `while` passed `check`, was written by
+-- `exec`, and came back from `describe` with the caption gone.
+--
+-- EXPECTED after the fix — `mxcli check` reports MDL042 twice, once per loop:
+--   ⚠ @caption on a while loop has no effect … [MDL042]
+--   ⚠ @caption on a loop has no effect … [MDL042]
+-- and NOT for the @annotation forms, which are stored and round-trip.
+--
+-- In Studio Pro: neither loop shows a caption; both show the attached note.
+
+create or modify entity MyFirstModule.LoopCaptionProbe (
+  Name: string(100)
+);
+/
+
+-- The reporter's repro: @caption on a while.
+create or modify microflow MyFirstModule.MF_1187_WhileCaption ()
+returns integer as $Months
+begin
+  declare $Months integer = 0;
+  @caption 'Are there months left to count?'
+  while $Months < 3
+  begin
+    set $Months = $Months + 1;
+  end while;
+  return $Months;
+end;
+/
+
+-- The case that was already reported, kept beside it so a regression in either
+-- direction shows up in the same run.
+create or modify microflow MyFirstModule.MF_1187_LoopCaption ()
+returns integer as $Count
+begin
+  declare $Count integer = 0;
+  retrieve $Probes from MyFirstModule.LoopCaptionProbe;
+  @caption 'Count the probes'
+  loop $Probe in $Probes
+  begin
+    set $Count = $Count + 1;
+  end loop;
+  return $Count;
+end;
+/
+
+-- The supported spelling for both: @annotation is stored and comes back from
+-- describe, so neither of these may report MDL042.
+create or modify microflow MyFirstModule.MF_1187_WhileAnnotation ()
+returns integer as $Months
+begin
+  declare $Months integer = 0;
+  @annotation 'Counts up to three months'
+  while $Months < 3
+  begin
+    set $Months = $Months + 1;
+  end while;
+  return $Months;
+end;
+/
+
+create or modify microflow MyFirstModule.MF_1187_LoopAnnotation ()
+returns integer as $Count
+begin
+  declare $Count integer = 0;
+  retrieve $Probes from MyFirstModule.LoopCaptionProbe;
+  @annotation 'Counts every probe'
+  loop $Probe in $Probes
+  begin
+    set $Count = $Count + 1;
+  end loop;
+  return $Count;
+end;
+/

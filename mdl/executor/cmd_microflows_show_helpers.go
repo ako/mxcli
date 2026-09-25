@@ -797,9 +797,9 @@ func emitObjectAnnotations(
 	if split, ok := obj.(*microflows.InheritanceSplit); ok && split.Caption != "" {
 		*lines = append(*lines, indentStr+fmt.Sprintf("@caption %s", mdlQuote(split.Caption)))
 	}
-	if loop, ok := obj.(*microflows.LoopedActivity); ok && loop.Caption != "" {
-		*lines = append(*lines, indentStr+fmt.Sprintf("@caption %s", mdlQuote(loop.Caption)))
-	}
+	// No @caption for a LoopedActivity: the metamodel declares none on it, so a
+	// stored loop never carries one and this only ever emitted MDL that check
+	// would then report as MDL042 (mendixlabs/mxcli#1187).
 
 	// @annotation (attached Annotation objects)
 	*lines = append(*lines, annotationsByTarget.lines(currentID, pos, objectHeight(obj), indentStr)...)
