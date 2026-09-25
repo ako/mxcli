@@ -1089,6 +1089,8 @@ func activityToStarlark(a Activity) starlark.Value {
 		"entity_ref":               starlark.String(a.EntityRef),
 		"service_ref":              starlark.String(a.ServiceRef),
 		"action_ref":               starlark.String(a.ActionRef),
+		"use_request_timeout":      starlark.Bool(a.UseRequestTimeout),
+		"timeout_expression":       starlark.String(a.TimeoutExpression),
 	})
 }
 

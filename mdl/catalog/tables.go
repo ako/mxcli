@@ -545,6 +545,8 @@ func (c *Catalog) createTables() error {
 			ActionType TEXT,
 			ServiceRef TEXT,
 			ActionRef TEXT,
+			UseRequestTimeout INTEGER DEFAULT 0,
+			TimeoutExpression TEXT,
 			Description TEXT,
 			ProjectId TEXT,
 			SnapshotId TEXT
