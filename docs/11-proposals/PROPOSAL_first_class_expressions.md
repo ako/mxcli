@@ -533,7 +533,7 @@ the target type to resolve against, which a bare qualified name does not.
 
 | Slot | Metamodel | Kind | Today | Status |
 |---|---|---|---|---|
-| OData client `ServiceUrl` | `ConsumedODataService.serviceUrl` `Primitive[string]` | expression | `@Mod.C`, also `'@Mod.C'` | correct; stays `@` |
+| OData client `ServiceUrl` | `HttpConfiguration.CustomLocation` `Primitive[string]`, always `@Module.Name` | reference (decided 2026-09-25: Studio Pro picks it as a constant, CE6825) | bare, `@Mod.C`, `'@Mod.C'`; stored `@Mod.C` | **done**: written and described like `ProxyHost` |
 | OData client `ProxyHost` / `ProxyPort` / `ProxyUsername` / `ProxyPassword` | `ByNameRef` (`rest/types.go`) | reference | `@Mod.C` → stored `"@Mod.C"` verbatim by `addStrIf` (`odata_write.go`) | **broken** — `@` kept in the name |
 | database connection `connection string` / `username` / `password` | `ByNameRef` → `Constants$Constant` (`databaseconnector/types.go`) | reference | `@Mod.C`; visitor strips `@`, sets `*IsRef` | works; gains `constant` spelling |
 | REST client `Username:` / `Password:` (and other constant-capable properties) | `Rest$ConstantValue.value` `ByNameRef` | reference | `@Mod.C`, legacy `$Mod.C`; visitor rewrites both to `$Mod.C` | works; two spellings already, `constant` becomes the canonical one |

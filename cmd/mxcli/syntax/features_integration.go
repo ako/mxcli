@@ -44,7 +44,7 @@ func init() {
 			"  ODataVersion: OData4,\n" +
 			"  MetadataUrl: 'https://.../$metadata',\n" +
 			"  Timeout: 300,\n" +
-			"  ServiceUrl: @Module.ServiceUrlConstant,    -- must be a constant ref\n" +
+			"  ServiceUrl: Module.ServiceUrlConstant,    -- must be a constant ref\n" +
 			"  -- Configuration source dropdown — pick ONE: constants only (omit\n" +
 			"  -- both microflows), Configuration microflow, OR Headers microflow.\n" +
 			"  -- Both MDL keywords map to the same BSON field; Studio Pro picks\n" +
@@ -61,7 +61,7 @@ func init() {
 			"  (Attr: Type, ...);\n\n" +
 			"CREATE EXTERNAL ENTITIES FROM Module.Client\n" +
 			"  [INTO Module] [ENTITIES (Name1, Name2)];",
-		Example: "CREATE CONSTANT MyModule.SvcUrl TYPE String DEFAULT 'https://api.example.com/odata/v4/';\n\nCREATE ODATA CLIENT MyModule.SalesforceAPI (\n  Version: '1.0',\n  ODataVersion: OData4,\n  MetadataUrl: 'https://api.example.com/odata/$metadata',\n  Timeout: 300,\n  ServiceUrl: @MyModule.SvcUrl\n);\n\nCREATE EXTERNAL ENTITIES FROM MyModule.SalesforceAPI INTO Integration;",
+		Example: "CREATE CONSTANT MyModule.SvcUrl TYPE String DEFAULT 'https://api.example.com/odata/v4/';\n\nCREATE ODATA CLIENT MyModule.SalesforceAPI (\n  Version: '1.0',\n  ODataVersion: OData4,\n  MetadataUrl: 'https://api.example.com/odata/$metadata',\n  Timeout: 300,\n  ServiceUrl: MyModule.SvcUrl\n);\n\nCREATE EXTERNAL ENTITIES FROM MyModule.SalesforceAPI INTO Integration;",
 		SeeAlso: []string{"odata", "odata.publish", "odata.show"},
 	})
 

@@ -184,7 +184,7 @@ create odata client ProductClient.ProductDataApiClient (
   ODataVersion: OData4,
   MetadataUrl: 'http://localhost:8080/odata/productdataapi/v1/$metadata',
   timeout: 300,
-  ServiceUrl: '@ProductClient.ProductDataApiLocation',
+  ServiceUrl: ProductClient.ProductDataApiLocation,
   UseAuthentication: Yes,
   -- HttpUsername/HttpPassword hold a Mendix expression, written as-is:
   -- 'MxAdmin' is the string, @ProductClient.ApiPassword (no quotes) reads a
@@ -199,7 +199,7 @@ CREATE ODATA CLIENT ProductClient.ProductDataApiClient (
   ODataVersion: OData4,
   MetadataUrl: './metadata/productdataapi.xml',
   Timeout: 300,
-  ServiceUrl: '@ProductClient.ProductDataApiLocation',
+  ServiceUrl: ProductClient.ProductDataApiLocation,
   UseAuthentication: Yes,
   HttpUsername: 'MxAdmin',
   HttpPassword: '1'
@@ -210,7 +210,7 @@ CREATE ODATA CLIENT ProductClient.ProductDataApiClient (
   ODataVersion: OData4,
   MetadataUrl: 'metadata/productdataapi.xml',
   Timeout: 300,
-  ServiceUrl: '@ProductClient.ProductDataApiLocation',
+  ServiceUrl: ProductClient.ProductDataApiLocation,
   UseAuthentication: Yes,
   HttpUsername: 'MxAdmin',
   HttpPassword: '1'
@@ -221,7 +221,7 @@ CREATE ODATA CLIENT ProductClient.ProductDataApiClient (
   ODataVersion: OData4,
   MetadataUrl: 'file:///Users/team/contracts/productdataapi.xml',
   Timeout: 300,
-  ServiceUrl: '@ProductClient.ProductDataApiLocation',
+  ServiceUrl: ProductClient.ProductDataApiLocation,
   UseAuthentication: Yes,
   HttpUsername: 'MxAdmin',
   HttpPassword: '1'

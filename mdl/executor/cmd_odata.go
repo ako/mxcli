@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -158,7 +159,13 @@ func outputConsumedODataServiceMDL(ctx *ExecContext, svc *model.ConsumedODataSer
 	// HTTP configuration
 	if cfg := svc.HttpConfiguration; cfg != nil {
 		if cfg.OverrideLocation && cfg.CustomLocation != "" {
-			props = append(props, fmt.Sprintf("  ServiceUrl: %s", formatExprValue(cfg.CustomLocation)))
+			// The constant's bare name, as ProxyHost prints (serviceURLConstant).
+			// A stored value that is not `@Module.Name` keeps the quoted form.
+			if ref := strings.TrimPrefix(cfg.CustomLocation, "@"); strings.HasPrefix(cfg.CustomLocation, "@") && qualifiedConstantName.MatchString(ref) {
+				props = append(props, fmt.Sprintf("  ServiceUrl: %s", ref))
+			} else {
+				props = append(props, fmt.Sprintf("  ServiceUrl: %s", formatExprValue(cfg.CustomLocation)))
+			}
 		}
 		// HttpUsername / HttpPassword / ClientCertificate and header values are
 		// Mendix expressions, and MDL writes an expression as-is: the stored
@@ -1035,11 +1042,12 @@ func createODataClient(ctx *ExecContext, stmt *ast.CreateODataClientStmt) error 
 							svc.HttpConfiguration = &model.HttpConfiguration{}
 						}
 						if stmt.ServiceUrl != "" {
-							if err := validateServiceURL(stmt.ServiceUrl); err != nil {
+							location, err := serviceURLConstant(stmt.ServiceUrl)
+							if err != nil {
 								return err
 							}
 							svc.HttpConfiguration.OverrideLocation = true
-							svc.HttpConfiguration.CustomLocation = stmt.ServiceUrl
+							svc.HttpConfiguration.CustomLocation = location
 						}
 						svc.HttpConfiguration.UseAuthentication = stmt.UseAuthentication
 						if stmt.HttpUsername != "" {
@@ -1141,18 +1149,17 @@ func createODataClient(ctx *ExecContext, stmt *ast.CreateODataClientStmt) error 
 			ClientCertificate: stmt.ClientCertificate,
 		}
 		if stmt.ServiceUrl != "" {
-			// ServiceUrl must be a constant reference (e.g., @Module.ConstantName)
-			if !strings.HasPrefix(stmt.ServiceUrl, "@") {
-				return fmt.Errorf(`ServiceUrl must now be a constant reference (e.g., '@Module.ApiLocation').
-Previously literal URLs were allowed; this enforces the Mendix best practice of externalizing configuration.
+			location, err := serviceURLConstant(stmt.ServiceUrl)
+			if err != nil {
+				return fmt.Errorf(`ServiceUrl must name a constant (e.g., Module.ApiLocation) — Studio Pro CE6825.
 Create a constant first:
   CREATE CONSTANT Module.ApiLocation TYPE String DEFAULT 'https://api.example.com/';
 Then reference it:
-  ServiceUrl: '@Module.ApiLocation'
+  ServiceUrl: Module.ApiLocation
 Got: %s`, stmt.ServiceUrl)
 			}
 			cfg.OverrideLocation = true
-			cfg.CustomLocation = stmt.ServiceUrl
+			cfg.CustomLocation = location
 		}
 		for _, h := range stmt.Headers {
 			cfg.HeaderEntries = append(cfg.HeaderEntries, &model.HttpHeaderEntry{
@@ -1299,14 +1306,15 @@ func alterODataClient(ctx *ExecContext, stmt *ast.AlterODataClientStmt) error {
 				case "description":
 					svc.Description = strVal
 				case "serviceurl":
-					if err := validateServiceURL(strVal); err != nil {
+					location, err := serviceURLConstant(strVal)
+					if err != nil {
 						return err
 					}
 					if svc.HttpConfiguration == nil {
 						svc.HttpConfiguration = &model.HttpConfiguration{}
 					}
 					svc.HttpConfiguration.OverrideLocation = true
-					svc.HttpConfiguration.CustomLocation = strVal
+					svc.HttpConfiguration.CustomLocation = location
 				case "useauthentication":
 					if svc.HttpConfiguration == nil {
 						svc.HttpConfiguration = &model.HttpConfiguration{}
@@ -1737,14 +1745,26 @@ func dropODataService(ctx *ExecContext, stmt *ast.DropODataServiceStmt) error {
 	return mdlerrors.NewNotFoundMsg("OData service", fmt.Sprint(stmt.Name), fmt.Sprintf("OData service not found: %s", stmt.Name))
 }
 
-// validateServiceURL returns an error if url is not a constant reference (@Module.Name).
-// CE6825: Studio Pro requires the Service URL to be a constant, not a string literal.
-func validateServiceURL(url string) error {
-	if !strings.HasPrefix(url, "@") {
-		return mdlerrors.NewValidation("ServiceUrl must be a constant reference (e.g., @Module.ServiceUrlConstant) — Studio Pro CE6825: 'Service url' must be a constant")
+// serviceURLConstant turns a ServiceUrl value into what Studio Pro stores in
+// HttpConfiguration.CustomLocation: `@Module.Name`.
+//
+// ServiceUrl names a constant, like ProxyHost — Studio Pro picks the service URL
+// as a constant (CE6825: "'Service url' must be a constant") and stores the
+// reference as `@Module.Name` (ako/TestApp Odata.Bug1073:
+// "@Odata.Bug1073_Location"). So it takes the proxy references' spellings: the
+// bare name, `@Module.Name` and the quoted `'@Module.Name'`. Anything that is
+// not a constant's name — a literal URL — is refused.
+func serviceURLConstant(value string) (string, error) {
+	ref := extractConstantRef(value)
+	if !qualifiedConstantName.MatchString(ref) {
+		return "", mdlerrors.NewValidation(fmt.Sprintf(
+			"ServiceUrl must name a constant (e.g., ServiceUrl: Module.ApiLocation) — Studio Pro CE6825: 'Service url' must be a constant; got %s", value))
 	}
-	return nil
+	return "@" + ref, nil
 }
+
+// qualifiedConstantName matches `Module.Name` (or deeper), without an @.
+var qualifiedConstantName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$`)
 
 // validateMetadataURL returns an error if the MetadataUrl is obviously malformed.
 // A valid value must be an http/https URL, a file:// URL, or a path that contains

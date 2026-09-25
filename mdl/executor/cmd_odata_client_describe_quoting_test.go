@@ -89,11 +89,17 @@ func TestDescribeODataClient_StoredValuesSurviveReExec(t *testing.T) {
 	got, out := describeAndReparse(t, stored, "Api/O'Clients")
 
 	cfg := stored.HttpConfiguration
+	// ServiceUrl names a constant: describe prints the bare name and exec adds
+	// the @ back (serviceURLConstant), so compare what exec would store.
+	location, err := serviceURLConstant(got.ServiceUrl)
+	if err != nil {
+		t.Fatalf("describe printed a ServiceUrl exec refuses: %v\n%s", err, out)
+	}
 	for _, c := range []struct{ field, want, got string }{
 		{"Version", stored.Version, got.Version},
 		{"MetadataUrl", stored.MetadataUrl, got.MetadataUrl},
 		{"Folder", "Api/O'Clients", got.Folder},
-		{"ServiceUrl", cfg.CustomLocation, got.ServiceUrl},
+		{"ServiceUrl", cfg.CustomLocation, location},
 		{"ClientCertificate", cfg.ClientCertificate, got.ClientCertificate},
 	} {
 		if c.got != c.want {
