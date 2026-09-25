@@ -2123,10 +2123,38 @@ func resolveCredential(value string, isLiteral bool, consts map[string]string) (
 		v, found := consts[strings.ToLower(ref)]
 		return v, found && v != ""
 	}
+	// The value is a Mendix expression. A string literal — Studio Pro's own
+	// spelling of a literal credential, `'MxAdmin'` — sends its content; any
+	// other expression that starts with a quote (`'Key ' + @M.C`) cannot be
+	// evaluated here and is reported unresolved rather than sent as text.
+	if strings.HasPrefix(value, "'") {
+		s, ok := mendixStringLiteral(value)
+		return s, ok && s != ""
+	}
 	if isLiteral {
 		return value, true
 	}
 	return "", false
+}
+
+// mendixStringLiteral reports whether expr is exactly one Mendix string literal
+// (`'…'`, a quote inside doubled) and returns its content.
+func mendixStringLiteral(expr string) (string, bool) {
+	if len(expr) < 2 || expr[0] != '\'' || expr[len(expr)-1] != '\'' {
+		return "", false
+	}
+	inner := expr[1 : len(expr)-1]
+	var b strings.Builder
+	for i := 0; i < len(inner); i++ {
+		if inner[i] == '\'' {
+			if i+1 >= len(inner) || inner[i+1] != '\'' {
+				return "", false // a lone quote ends the literal early: not one literal
+			}
+			i++
+		}
+		b.WriteByte(inner[i])
+	}
+	return b.String(), true
 }
 
 // constantReference reports whether a property value names a constant, and which
