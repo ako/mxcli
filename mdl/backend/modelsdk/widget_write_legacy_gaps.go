@@ -224,23 +224,34 @@ func imageViewerSourceToGen(ds pages.DataSource) (element.Element, error) {
 	}
 }
 
-// nanoflowSourceToGen builds a Forms$NanoflowSource — a list widget's "nanoflow"
-// data source.
+// nanoflowSourceToGen builds a Forms$NanoflowSource — a "nanoflow" data source
+// on a data view, list view or pluggable widget.
 //
-// Built raw, and this one is a judgement rather than a limitation: gen's
-// NanoflowSource offers ForceFullObjects and NanoflowQualifiedName, binding the
-// nanoflow name DIRECTLY on the source, while Studio Pro nests it inside a
-// Forms$NanoflowSettings child alongside ParameterMappings — which is what
-// sdk/mpr writes. Writing gen's shape would put the name in a key Studio Pro
-// does not read there, the same class of defect as the storage-name overrides
-// (CLAUDE.md). Legacy's shape is the one with a working project behind it.
+// Unlike its microflow sibling, the nanoflow source is FLAT: ForceFullObjects,
+// Nanoflow and ParameterMappings sit directly on the source, which is exactly
+// gen's shape. Measured: all 5 Studio Pro-authored Forms$NanoflowSource
+// documents in Feedback v4.0.2 (Mendix 11.13.0) carry those three keys and no
+// others. This used to nest a Forms$NanoflowSettings child by analogy with
+// Forms$MicroflowSettings — a type that does not exist — and mxbuild, finding
+// no Nanoflow key on the source, reported CE2633 "No nanoflow configured for
+// the data source of this data view".
 func nanoflowSourceToGen(d *pages.NanoflowSource) element.Element {
-	g := newElem("Forms$NanoflowSource", string(d.ID))
-	settings := newElem("Forms$NanoflowSettings", "")
-	addStr(settings, "Nanoflow", d.Nanoflow)
-	addEmptyTypedList(settings, "ParameterMappings", 3)
-	addPart(g, "NanoflowSettings", settings)
-	return g
+	src := genPg.NewNanoflowSource()
+	if d.ID != "" {
+		src.SetID(element.ID(d.ID))
+	}
+	assignID(src)
+	src.SetForceFullObjects(false)
+	src.SetNanoflowQualifiedName(d.Nanoflow)
+	for _, pm := range d.ParameterMappings {
+		m := genPg.NewNanoflowParameterMapping()
+		assignID(m)
+		// Parameter is a BY_NAME reference: <NanoflowQName>.<ParameterName>.
+		m.SetParameterQualifiedName(d.Nanoflow + "." + pm.ParameterName)
+		bindParameterMappingValue(m, pm.Variable, pm.VariableKind, pm.Expression)
+		src.AddParameterMappings(m)
+	}
+	return src
 }
 
 // emptyClientTemplate is the Forms$ClientTemplate an image's AlternativeText

@@ -1123,6 +1123,12 @@ func flowFromDataSourceDoc(ds bson.D) (microflow, nanoflow string) {
 	if s := bsonnav.DGetDoc(ds, "MicroflowSettings"); s != nil {
 		return bsonnav.DGetString(s, "Microflow"), ""
 	}
+	// A Forms$NanoflowSource names its nanoflow directly (Studio Pro's shape);
+	// the nested NanoflowSettings is what mxcli wrote before CE2633 was fixed,
+	// and such pages are still out there.
+	if nf := bsonnav.DGetString(ds, "Nanoflow"); nf != "" {
+		return "", nf
+	}
 	if s := bsonnav.DGetDoc(ds, "NanoflowSettings"); s != nil {
 		return "", bsonnav.DGetString(s, "Nanoflow")
 	}
@@ -3129,15 +3135,15 @@ func serializeDataSourceBson(ds pages.DataSource) bson.D {
 			}},
 		}
 	case *pages.NanoflowSource:
+		// Flat, unlike the microflow source: no settings child. Measured on 5 of
+		// 5 Studio Pro-authored nanoflow sources (Feedback v4.0.2, 11.13.0); the
+		// nested Forms$NanoflowSettings shape is CE2633 "No nanoflow configured".
 		return bson.D{
 			{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
 			{Key: "$Type", Value: "Forms$NanoflowSource"},
-			{Key: "NanoflowSettings", Value: bson.D{
-				{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
-				{Key: "$Type", Value: "Forms$NanoflowSettings"},
-				{Key: "Nanoflow", Value: d.Nanoflow},
-				{Key: "ParameterMappings", Value: bson.A{int32(3)}},
-			}},
+			{Key: "ForceFullObjects", Value: false},
+			{Key: "Nanoflow", Value: d.Nanoflow},
+			{Key: "ParameterMappings", Value: bson.A{int32(2)}},
 		}
 	default:
 		return nil

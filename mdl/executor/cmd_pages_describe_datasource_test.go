@@ -328,9 +328,32 @@ func TestDataSourceArgsOmittedWhenThereAreNone(t *testing.T) {
 	}
 }
 
-// TestDataSourceArgsNanoflow pins the sibling shape: a nanoflow source stores
-// its arguments under NanoflowSettings, and losing them there fails the build
-// the same way.
+// TestDataSourceArgsNanoflowFlat — Studio Pro stores a nanoflow source FLAT:
+// Nanoflow and ParameterMappings directly on the source (5 of 5 in Feedback
+// v4.0.2 at 11.13.0). Its arguments must be read from there.
+func TestDataSourceArgsNanoflowFlat(t *testing.T) {
+	ds := map[string]any{
+		"$Type":            "Forms$NanoflowSource",
+		"ForceFullObjects": false,
+		"Nanoflow":         "Mod.NF_Rows",
+		"ParameterMappings": []any{
+			int32(2),
+			map[string]any{"Parameter": "Mod.NF_Rows.Ctx", "Expression": "$currentObject"},
+		},
+	}
+	got := parseDataSource(ds)
+	if got == nil {
+		t.Fatal("nanoflow datasource not read")
+	}
+	want := "nanoflow Mod.NF_Rows(Ctx: $currentObject)"
+	if expr := dataSourceExpr(got); expr != want {
+		t.Errorf("rendered %q, want %q", expr, want)
+	}
+}
+
+// TestDataSourceArgsNanoflow pins the nested shape mxcli wrote before CE2633
+// was fixed (arguments under NanoflowSettings) — such pages still exist, so
+// describe keeps reading it.
 func TestDataSourceArgsNanoflow(t *testing.T) {
 	ds := map[string]any{
 		"$Type": "Forms$NanoflowSource",

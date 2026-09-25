@@ -1,0 +1,69 @@
+-- ============================================================================
+-- Data view sourced from a NANOFLOW — CE2633 "No nanoflow configured"
+-- ============================================================================
+--
+-- Symptom: a data view with `DataSource: nanoflow Module.NF` — for example a
+-- describe → exec round trip of FeedbackModule.ShareFeedback (Feedback v4.0.2)
+-- — passed `mxcli check` and exec, then mxbuild 11.13.0 reported:
+--
+--   [error] [CE2633] "No nanoflow configured for the data source of this data
+--   view. Select a nanoflow or change the data source." at Data view 'dataView5'
+--
+-- Cause: mxcli wrote the Forms$NanoflowSource NESTED, by analogy with its
+-- microflow sibling (which really does nest a Forms$MicroflowSettings):
+--
+--   DataSource: Forms$NanoflowSource
+--     NanoflowSettings: Forms$NanoflowSettings
+--       Nanoflow: "…"
+--       ParameterMappings [marker=3]: []
+--
+-- Studio Pro's shape is FLAT — measured on 5 of 5 Studio Pro-authored nanoflow
+-- sources in Feedback v4.0.2 — so mxbuild found no Nanoflow key on the source:
+--
+--   DataSource: Forms$NanoflowSource
+--     ForceFullObjects: false
+--     Nanoflow: "…"
+--     ParameterMappings [marker=2]: []
+--
+-- Fix: the CREATE PAGE writer (nanoflowSourceToGen) and the ALTER PAGE setter
+-- (serializeDataSourceBson) write the flat shape; describe and the ALTER PAGE
+-- entity-context lookup read both shapes, since pages written before the fix
+-- still carry the nested one.
+--
+-- Verify (needs a project, so `make check-mdl` only syntax-checks this):
+--
+--   mxcli exec dataview-nanoflow-source-ce2633.mdl -p app.mpr
+--   mxcli docker check -p app.mpr
+--
+-- Expect 0 errors. Before the fix: CE2633 at Data view 'dvItem'.
+-- ============================================================================
+
+create module BugNF2633;
+
+@position(100, 100)
+create non-persistent entity BugNF2633.Item (
+  Name: string(100)
+);
+
+create nanoflow BugNF2633.DS_Item ()
+returns BugNF2633.Item as $Item
+begin
+  $Item = create BugNF2633.Item (Name = 'from nanoflow');
+  return $Item;
+end;
+/
+
+create page BugNF2633.Item_View (
+  Title: 'Item',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  layoutgrid lg1 {
+    row r1 {
+      column c1 (DesktopWidth: autofill) {
+        dataview dvItem (DataSource: nanoflow BugNF2633.DS_Item) {
+          textbox txtName (Label: 'Name', Attribute: Name)
+        }
+      }
+    }
+  }
+};

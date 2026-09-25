@@ -162,6 +162,12 @@ func init() {
 		MandatoryListMarkers: map[string]int32{"ParameterMappings": 2},
 		NullFields:           []string{"ProgressMessage", "ConfirmationInfo"},
 	})
+	// A nanoflow DATA SOURCE is flat — no settings child — and carries its
+	// (possibly empty) mapping list directly, marker 2. Measured: 5 of 5 Studio
+	// Pro-authored Forms$NanoflowSource in Feedback v4.0.2 at 11.13.0.
+	codec.RegisterTypeDefaults("Forms$NanoflowSource", codec.TypeDefaults{
+		MandatoryListMarkers: map[string]int32{"ParameterMappings": 2},
+	})
 	// TextBox: many null slots when unbound (attribute ref, screen-reader label,
 	// source variable, label template, visibility/editability/native settings).
 	codec.RegisterTypeDefaults("Forms$TextBox", codec.TypeDefaults{
@@ -1366,9 +1372,8 @@ func dataViewSourceToGen(ds pages.DataSource) (element.Element, error) {
 		ms.SetMicroflowSettings(microflowSettingsToGen(d.Microflow, d.ParameterMappings))
 		return ms, nil
 
-	// A NANOFLOW data source. Its sibling above goes through gen; this one is
-	// built raw because gen binds the nanoflow name directly on the source while
-	// Studio Pro nests it in a Forms$NanoflowSettings child — see
+	// A NANOFLOW data source. Flat, unlike the microflow source above: the
+	// nanoflow binds directly on the source, no settings child (CE2633) — see
 	// nanoflowSourceToGen.
 	case *pages.NanoflowSource:
 		return nanoflowSourceToGen(d), nil
@@ -1481,9 +1486,8 @@ func listViewSourceToGen(ds pages.DataSource) (element.Element, error) {
 		ms.SetMicroflowSettings(microflowSettingsToGen(d.Microflow, d.ParameterMappings))
 		return ms, nil
 
-	// A NANOFLOW data source. Its sibling above goes through gen; this one is
-	// built raw because gen binds the nanoflow name directly on the source while
-	// Studio Pro nests it in a Forms$NanoflowSettings child — see
+	// A NANOFLOW data source. Flat, unlike the microflow source above: the
+	// nanoflow binds directly on the source, no settings child (CE2633) — see
 	// nanoflowSourceToGen.
 	case *pages.NanoflowSource:
 		return nanoflowSourceToGen(d), nil
@@ -1547,9 +1551,8 @@ func customWidgetDataSourceToGen(ds pages.DataSource) (element.Element, error) {
 		ms.SetMicroflowSettings(microflowSettingsToGen(d.Microflow, d.ParameterMappings))
 		return ms, nil
 
-	// A NANOFLOW data source. Its sibling above goes through gen; this one is
-	// built raw because gen binds the nanoflow name directly on the source while
-	// Studio Pro nests it in a Forms$NanoflowSettings child — see
+	// A NANOFLOW data source. Flat, unlike the microflow source above: the
+	// nanoflow binds directly on the source, no settings child (CE2633) — see
 	// nanoflowSourceToGen.
 	case *pages.NanoflowSource:
 		return nanoflowSourceToGen(d), nil
