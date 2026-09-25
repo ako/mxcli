@@ -1,0 +1,37 @@
+-- ============================================================================
+-- A `label`'s design properties were neither checked nor typed from the theme
+-- ============================================================================
+--
+-- Symptom: describe → `check --references` of FeedbackModule.ShareFeedback_Logo
+-- (Feedback v4.0.2, Atlas Core 4.1.3, Mendix 11.13.0) warned MDL-WIDGET11 on the
+-- containers' renamed 'Spacing bottom' but NOT on label1's
+-- 'Spacing bottom': 'Outer none', which mxbuild reports as CE6087 all the same.
+-- And `label l (DesignProperties: ['Style': '#ff0000'])` checked clean, exec'd,
+-- and failed the build:
+--   [CE6085] "Unknown option #ff0000 for design property Style." at Label
+--
+-- Cause: MDL keyword `label` (Forms$Label) had no entry in
+-- mdlKeywordToDesignPropsKey, so it resolved to the theme key "label", which no
+-- design-properties.json defines. The validator skipped the widget; the builder
+-- saw only the "Widget" base group, so the Label's own ColorPicker "Style" was
+-- unknown and a free colour fell back to an Option value.
+--
+-- Fix: `label` → "Label", the key bsonTypeToDesignPropsKey already used for a
+-- stored Forms$Label.
+--
+-- Verify: `mxcli check --references` — the page below is clean; changing
+-- lblSpaced to 'Spacing bottom': 'Outer none' must warn MDL-WIDGET11 "renamed
+-- to Spacing". exec, then `mxcli docker check` — 0 errors.
+-- ============================================================================
+
+create or replace page MyFirstModule.LabelDesignProps_Test
+( Title: 'Label design properties', Layout: Atlas_Core.Atlas_Default )
+{
+  container c1 {
+    label lblOpt (Content: 'Option', DesignProperties: ['Style': 'Brand Primary', 'Align self': 'Left'])
+    label lblSpaced (Content: 'Spaced', DesignProperties: ['Spacing': ['margin-bottom': 'M'], 'Hide on': ['Phone': on]])
+  }
+}
+/
+
+describe page MyFirstModule.LabelDesignProps_Test;
