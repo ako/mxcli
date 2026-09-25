@@ -147,6 +147,11 @@ cross. A statement that carries `@position` is never moved, and becomes the star
 the row for the statements after it — so either place everything or nothing: a few
 hand-placed statements are not measured against what is laid out around them.
 
+To re-arrange a flow that already exists — one drawn in Studio Pro, or one whose
+positions no longer fit after edits — run `mxcli layout flows`. It applies this
+same layout to the stored flow and changes nothing but coordinates; see
+[Microflow and Nanoflow Layout](../tools/flow-layout.md).
+
 ### Start event
 
 The start event has no statement of its own, so `@start` goes on the **first**
