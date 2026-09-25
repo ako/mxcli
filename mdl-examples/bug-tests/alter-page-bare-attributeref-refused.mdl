@@ -1,0 +1,57 @@
+-- ============================================================================
+-- ALTER PAGE refuses to store a bare attribute reference
+-- ============================================================================
+--
+-- Symptom: on a copy of a real 11.13.0 project,
+--   alter page FeedbackModule.ShareFeedback_Logo {
+--     insert after textBox1 { image zzImg (ImageType: imageUrl, ImageUrl: '{1}',
+--                                          ImageUrlParams: [{1} = ImageB64]) }
+--   }
+-- reported "Altered page", and `mxcli docker check` then could not LOAD the
+-- project: ArgumentNullException setting 'Attribute' of an Attribute in a Page.
+-- The data view is sourced by a nanoflow the module does not ship, so there is
+-- no entity to qualify `ImageB64` against, and the image's template parameter
+-- was written as DomainModels$AttributeRef { Attribute: "ImageB64" }.
+--
+-- Cause: CREATE PAGE refused a bare reference in its encoder (encodePage), but
+-- ALTER PAGE patches the stored BSON tree in the page mutator and saves it with
+-- UpdateRawUnit, which never passes that encoder.
+--
+-- Fix: the refusal moved to the write choke point (modelsdk/mpr updateUnit and
+-- insertUnit, canon.BareAttributeRefError), beside the duplicate-$ID guard, so
+-- every raw write of any unit is covered.
+--
+-- Verify: exec this script → "Altered page"; `mxcli docker check` → 0 errors.
+-- Change the inserted image's parameter to `{1} = Subject` → the ALTER is
+-- refused ("attribute reference not qualified as Module.Entity.Attribute …
+-- "Subject" at …/imgQualified…"), and the stored page is unchanged.
+-- ============================================================================
+
+create entity MyFirstModule.AlterBareDraft (
+  Subject: String(200),
+  PictureUrl: String(400)
+);
+/
+
+@excluded
+create or modify page MyFirstModule.AlterBareDraft_Example
+( Title: 'Draft (example)', Layout: Atlas_Core.Atlas_Default )
+{
+  dataview dv (DataSource: nanoflow MyFirstModule.DS_MissingAlterBareDraft) {
+    textbox txtSubject (Label: 'Subject', Attribute: MyFirstModule.AlterBareDraft.Subject)
+  }
+}
+/
+
+-- Inside the data view there is no resolvable entity: only a qualified
+-- reference can be stored.
+alter page MyFirstModule.AlterBareDraft_Example {
+  insert after txtSubject {
+    image imgQualified (
+      ImageType: imageUrl,
+      ImageUrl: '{1}',
+      ImageUrlParams: [{1} = MyFirstModule.AlterBareDraft.PictureUrl]
+    )
+  }
+};
+/

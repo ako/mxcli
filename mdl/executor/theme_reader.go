@@ -179,12 +179,16 @@ var mdlKeywordToDesignPropsKey = map[string]string{
 	"layoutgrid":        "LayoutGrid",
 	"dynamictext":       "DynamicText",
 	"statictext":        "Label",
-	"staticimage":       "StaticImageViewer",
-	"dynamicimage":      "DynamicImageViewer",
-	"navigationlist":    "NavigationList",
-	"snippetcall":       "SnippetCall",
-	"header":            "Header",
-	"footer":            "Footer",
+	// `label` writes Forms$Label (bsonTypeToDesignPropsKey below reads the same
+	// key). Unmapped, the validator skipped every label and the builder typed a
+	// Label's "Style" colour as an option — CE6085 at build time.
+	"label":          "Label",
+	"staticimage":    "StaticImageViewer",
+	"dynamicimage":   "DynamicImageViewer",
+	"navigationlist": "NavigationList",
+	"snippetcall":    "SnippetCall",
+	"header":         "Header",
+	"footer":         "Footer",
 }
 
 // pluggableKeywordIDs maps an MDL keyword to the pluggable widget id it writes,

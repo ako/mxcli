@@ -50,6 +50,29 @@ func readDoc(t *testing.T, name string) string {
 // `mxcli syntax` topic is NOT sitting in the docs' "no MDL surface at all"
 // table. The syntax registry is populated from the code, so it cannot claim a
 // topic for something that does not exist.
+// shippedCapabilities pairs a capability with the syntax topic that PROVES it
+// ships. A topic is registered from Go code, so the pairing cannot go stale in
+// the direction that matters: delete the feature and the topic goes with it.
+//
+// The last three were added after an audit found the matrix claiming all three
+// were unavailable: "Microflow rules" and "Message definitions" sat under "Not
+// Yet Implemented" (i.e. "no MDL surface at all") while both were authorable,
+// and Layouts were described as "Read-only, no syntax topic" in three separate
+// gap lists. None of it was caught, because this table did not name them — a
+// hand-maintained guard only guards what someone remembered to add.
+var shippedCapabilities = []struct{ topic, claim string }{
+	{"database-connection", "Ext. DB connector"},
+	{"queue", "Task queue"},
+	{"scheduled-event", "Scheduled events"},
+	{"regular-expression", "Regular expressions"},
+	{"image-collection", "Image collection"},
+	{"navigation.menu-document", "Menus"},
+	{"workflow", "Workflows"},
+	{"layout", "Layouts"},
+	{"microflow.rule", "Microflow rules"},
+	{"message-definition", "Message definitions"},
+}
+
 func TestCapabilityDocsDoNotClaimShippedFeaturesAreMissing(t *testing.T) {
 	matrix := readDoc(t, "MDL_FEATURE_MATRIX.md")
 
@@ -66,15 +89,7 @@ func TestCapabilityDocsDoNotClaimShippedFeaturesAreMissing(t *testing.T) {
 	// Each capability that must not appear as unimplemented, keyed by the syntax
 	// topic that proves it ships. A topic is registered from Go code, so this
 	// pairing cannot go stale in the direction that matters.
-	for _, c := range []struct{ topic, claim string }{
-		{"database-connection", "Ext. DB connector"},
-		{"queue", "Task queue"},
-		{"scheduled-event", "Scheduled events"},
-		{"regular-expression", "Regular expressions"},
-		{"image-collection", "Image collection"},
-		{"navigation.menu-document", "Menus"},
-		{"workflow", "Workflows"},
-	} {
+	for _, c := range shippedCapabilities {
 		if ByPath(c.topic) == nil {
 			t.Errorf("no `mxcli syntax %s` topic — either the feature was removed "+
 				"(then drop this row) or the topic is missing (then add it)", c.topic)
@@ -119,6 +134,39 @@ func TestMissingCapabilitiesIsMarkedAsDated(t *testing.T) {
 		if !strings.Contains(r, "Supported") && !strings.Contains(r, "Still missing") &&
 			!strings.Contains(r, "Read-only") {
 			t.Errorf("summary row has no status cell:\n%s", r)
+		}
+	}
+}
+
+// TestMissingSyntaxTopicsAreActuallyMissing closes the hole that let Layouts be
+// listed as "Read-only, no syntax topic" while `mxcli syntax layout` answered.
+//
+// This is a direct contradiction rather than a judgement call, which is why it
+// can be asserted mechanically: the section states a topic does not exist, and
+// the registry says it does. Deliberately narrower than the Skills/Examples gap
+// lists, where an entry can be true at the same time as a syntax topic exists —
+// Regular Expressions has a topic AND genuinely has no skill.
+func TestMissingSyntaxTopicsAreActuallyMissing(t *testing.T) {
+	matrix := readDoc(t, "MDL_FEATURE_MATRIX.md")
+
+	start := strings.Index(matrix, "### Missing Syntax Topics")
+	if start < 0 {
+		t.Fatal(`MDL_FEATURE_MATRIX.md has no "### Missing Syntax Topics" section — ` +
+			`if it was renamed, update this guard rather than deleting it`)
+	}
+	section := matrix[start:]
+	if end := strings.Index(section, "\n### "); end > 0 {
+		section = section[:end]
+	}
+
+	for _, c := range shippedCapabilities {
+		if ByPath(c.topic) == nil {
+			continue // covered by the sibling test, which reports it there
+		}
+		if strings.Contains(section, c.claim) {
+			t.Errorf("MDL_FEATURE_MATRIX.md lists %q under \"Missing Syntax Topics\", "+
+				"but `mxcli syntax %s` resolves — the doc tells a reader to look for "+
+				"syntax that is already published", c.claim, c.topic)
 		}
 	}
 }

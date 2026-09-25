@@ -33,8 +33,10 @@ project rather than one page, and because the diagnostic is a stack trace.
 that points at the wrong thing. Mendix reconstructs each stored property into a
 typed identifier as it loads, and a value that cannot be parsed into that type
 takes the loader down. The shapes seen so far: a one-qualifier member name
-written where an attribute reference is expected (an attribute is bare or
-`Module.Entity.Attribute`, never `Module.Name`); an unqualified entity name in a
+written where an attribute reference is expected (a stored
+`DomainModels$AttributeRef` is `Module.Entity.Attribute` and nothing else — a
+bare name fails to load as surely as `Module.Name`, and the writer now refuses
+both for every unit, ALTER's raw patches included); an unqualified entity name in a
 generalization; a literal string where the property is a `ConstantIdentifier`;
 an empty `DestinationEntity`; an index column pointing at a GUID that no longer
 exists; a sequence flow dangling from a `break`; an association whose `ParentPointer`
