@@ -14,6 +14,7 @@ import (
 	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genCw "github.com/mendixlabs/mxcli/modelsdk/gen/customwidgets"
 	genDm "github.com/mendixlabs/mxcli/modelsdk/gen/domainmodels"
+	genEnum "github.com/mendixlabs/mxcli/modelsdk/gen/enumerations"
 	genPg "github.com/mendixlabs/mxcli/modelsdk/gen/pages"
 	genTexts "github.com/mendixlabs/mxcli/modelsdk/gen/texts"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
@@ -49,6 +50,12 @@ func init() {
 		EmptyStringFields: []string{"LocalVariable", "PageParameter", "SnippetParameter", "SubKey", "Widget"},
 		FalseFields:       []string{"UseAllPages"},
 	})
+	// A compound design property's nested Properties list is marker 2, though it
+	// holds the same Forms$DesignPropertyValue children as the Appearance's
+	// DesignProperties list (marker 3) — so it is keyed on the owner, not the
+	// child type. Measured 373 of 373 across Studio Pro-authored pages, layouts,
+	// building blocks and page templates in a Mendix 11.13.0 app.
+	codec.RegisterPropertyListMarker("Forms$CompoundDesignPropertyValue", "Properties", 2)
 	// A ClientTemplate's Parameters list is always emitted with marker 2, even empty
 	// (unusual — most empty lists are marker 3).
 	codec.RegisterTypeDefaults("Forms$ClientTemplate", codec.TypeDefaults{
@@ -107,6 +114,13 @@ func init() {
 		NullFields: []string{"ConditionalVisibilitySettings", "NativeAccessibilitySettings"},
 	})
 	codec.RegisterListMarker("Forms$Title", 2)
+	// Label (Studio Pro's Label widget): a null visibility slot — the one it has;
+	// no NativeAccessibilitySettings — and marker 2 as a widget. Measured on the
+	// three Forms$Label in a stock Administration + Feedback project (11.13.0).
+	codec.RegisterTypeDefaults("Forms$Label", codec.TypeDefaults{
+		NullFields: []string{"ConditionalVisibilitySettings"},
+	})
+	codec.RegisterListMarker("Forms$Label", 2)
 	// Conditional visibility/editability settings (issue #627). When a widget
 	// carries one, applyWidgetBase emits the node; these defaults fill the
 	// sub-fields Studio Pro writes: empty-string Attribute, null SourceVariable, and
@@ -115,11 +129,15 @@ func init() {
 	// Attribute is "" (not null): it is a BY_NAME AttributeIdentifier and Mendix
 	// 11.12's reader rejects a null there (StorageLoadException, "not a valid
 	// AttributeIdentifier").
+	// Markers measured on all 12 conditional-visibility settings in a stock
+	// Administration + Feedback project (Mendix 11.13.0): Conditions is [2] and
+	// ModuleRoles [1], empty or not. They were written as the default [3].
 	codec.RegisterTypeDefaults("Forms$ConditionalVisibilitySettings", codec.TypeDefaults{
-		NullFields:        []string{"SourceVariable"},
-		EmptyStringFields: []string{"Attribute"},
-		MandatoryLists:    []string{"Conditions", "ModuleRoles"},
+		NullFields:           []string{"SourceVariable"},
+		EmptyStringFields:    []string{"Attribute"},
+		MandatoryListMarkers: map[string]int32{"Conditions": 2, "ModuleRoles": 1},
 	})
+	codec.RegisterListMarker("Enumerations$Condition", 2)
 	codec.RegisterTypeDefaults("Forms$ConditionalEditabilitySettings", codec.TypeDefaults{
 		NullFields:        []string{"SourceVariable"},
 		EmptyStringFields: []string{"Attribute"},
@@ -161,6 +179,12 @@ func init() {
 	codec.RegisterTypeDefaults("Forms$CallNanoflowClientAction", codec.TypeDefaults{
 		MandatoryListMarkers: map[string]int32{"ParameterMappings": 2},
 		NullFields:           []string{"ProgressMessage", "ConfirmationInfo"},
+	})
+	// A nanoflow DATA SOURCE is flat — no settings child — and carries its
+	// (possibly empty) mapping list directly, marker 2. Measured: 5 of 5 Studio
+	// Pro-authored Forms$NanoflowSource in Feedback v4.0.2 at 11.13.0.
+	codec.RegisterTypeDefaults("Forms$NanoflowSource", codec.TypeDefaults{
+		MandatoryListMarkers: map[string]int32{"ParameterMappings": 2},
 	})
 	// TextBox: many null slots when unbound (attribute ref, screen-reader label,
 	// source variable, label template, visibility/editability/native settings).
@@ -413,6 +437,17 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 
 	case *pages.Title:
 		g := genPg.NewTitle()
+		applyWidgetBase(g, &x.BaseWidget)
+		g.SetCaption(captionToGen(x.Caption))
+		return g, nil
+
+	case *pages.Label:
+		// Studio Pro's Label widget. Stored with exactly Appearance, Caption,
+		// ConditionalVisibilitySettings, Name and TabIndex — measured on the
+		// three in a stock Administration v4.3.2 + Feedback v4.0.2 project at
+		// 11.13.0. gen's Label also declares top-level Class/Style and
+		// AccessibilitySettings; they are left unset, so not written.
+		g := genPg.NewLabel()
 		applyWidgetBase(g, &x.BaseWidget)
 		g.SetCaption(captionToGen(x.Caption))
 		return g, nil
@@ -985,6 +1020,18 @@ func conditionalVisibilityToGen(cvs *pages.ConditionalVisibilitySettings) elemen
 	assignID(g)
 	g.SetExpression(cvs.Expression)
 	g.SetIgnoreSecurity(false)
+	// "Visible: based on attribute value": the attribute plus one condition per
+	// value it can hold (ako/mxcli attribute-condition visibility).
+	if cvs.Attribute != "" {
+		g.SetAttributeQualifiedName(cvs.Attribute)
+		for _, c := range cvs.Conditions {
+			cg := genEnum.NewCondition()
+			assignID(cg)
+			cg.SetAttributeValue(c.Value)
+			cg.SetEditableVisible(c.Visible)
+			g.AddConditions(cg)
+		}
+	}
 	return g
 }
 
@@ -1366,9 +1413,8 @@ func dataViewSourceToGen(ds pages.DataSource) (element.Element, error) {
 		ms.SetMicroflowSettings(microflowSettingsToGen(d.Microflow, d.ParameterMappings))
 		return ms, nil
 
-	// A NANOFLOW data source. Its sibling above goes through gen; this one is
-	// built raw because gen binds the nanoflow name directly on the source while
-	// Studio Pro nests it in a Forms$NanoflowSettings child — see
+	// A NANOFLOW data source. Flat, unlike the microflow source above: the
+	// nanoflow binds directly on the source, no settings child (CE2633) — see
 	// nanoflowSourceToGen.
 	case *pages.NanoflowSource:
 		return nanoflowSourceToGen(d), nil
@@ -1481,9 +1527,8 @@ func listViewSourceToGen(ds pages.DataSource) (element.Element, error) {
 		ms.SetMicroflowSettings(microflowSettingsToGen(d.Microflow, d.ParameterMappings))
 		return ms, nil
 
-	// A NANOFLOW data source. Its sibling above goes through gen; this one is
-	// built raw because gen binds the nanoflow name directly on the source while
-	// Studio Pro nests it in a Forms$NanoflowSettings child — see
+	// A NANOFLOW data source. Flat, unlike the microflow source above: the
+	// nanoflow binds directly on the source, no settings child (CE2633) — see
 	// nanoflowSourceToGen.
 	case *pages.NanoflowSource:
 		return nanoflowSourceToGen(d), nil
@@ -1547,9 +1592,8 @@ func customWidgetDataSourceToGen(ds pages.DataSource) (element.Element, error) {
 		ms.SetMicroflowSettings(microflowSettingsToGen(d.Microflow, d.ParameterMappings))
 		return ms, nil
 
-	// A NANOFLOW data source. Its sibling above goes through gen; this one is
-	// built raw because gen binds the nanoflow name directly on the source while
-	// Studio Pro nests it in a Forms$NanoflowSettings child — see
+	// A NANOFLOW data source. Flat, unlike the microflow source above: the
+	// nanoflow binds directly on the source, no settings child (CE2633) — see
 	// nanoflowSourceToGen.
 	case *pages.NanoflowSource:
 		return nanoflowSourceToGen(d), nil
@@ -1689,6 +1733,18 @@ func formSettingsToGen(pageName string) element.Element {
 // `Attribute`, that not one of the 31 documents carries; writing a key Mendix
 // does not store is what makes a document mxbuild accepts and Studio Pro cannot
 // open (CLAUDE.md, "Overlay Writes: Never Invent a Key").
+// dynamicAddressToGen builds a link address read from an attribute at runtime.
+// Pinned against FeedbackModule.PopupSuccess (Feedback v4.0.2): IsDynamic true,
+// Value "", and an AttributeRef with a null EntityRef naming the attribute.
+func dynamicAddressToGen(attrQN string) element.Element {
+	s := genPg.NewStaticOrDynamicString()
+	assignID(s)
+	s.SetIsDynamic(true)
+	s.SetValue("")
+	s.SetAttributeRef(attributeRefToGen(attrQN))
+	return s
+}
+
 func staticAddressToGen(address string) element.Element {
 	s := genPg.NewStaticOrDynamicString()
 	assignID(s)
@@ -1774,7 +1830,11 @@ func clientActionToGen(a pages.ClientAction) (element.Element, error) {
 			linkType = "Web"
 		}
 		g.SetLinkType(linkType)
-		g.SetAddress(staticAddressToGen(x.Address))
+		if x.AddressAttribute != "" {
+			g.SetAddress(dynamicAddressToGen(x.AddressAttribute))
+		} else {
+			g.SetAddress(staticAddressToGen(x.Address))
+		}
 		return g, nil
 	case *pages.SignOutClientAction:
 		// sign_out → Forms$SignOutClientAction. One property, and the reference

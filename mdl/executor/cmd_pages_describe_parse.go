@@ -32,6 +32,26 @@ func extractConditionalSettings(widget *rawWidget, w map[string]any) {
 		if expr, ok := cvs["Expression"].(string); ok && expr != "" {
 			widget.VisibleIf = expr
 		}
+		// Attribute-based: one Enumerations$Condition per value. Without this the
+		// setting was never read, so describe → exec wrote the widget always
+		// visible (Administration.Account_Edit: 8 conditions → 0).
+		if attr, ok := cvs["Attribute"].(string); ok && attr != "" {
+			widget.VisibleAttr = shortAttributeName(attr)
+			for _, c := range getBsonArrayElements(cvs["Conditions"]) {
+				cm, ok := c.(map[string]any)
+				if !ok {
+					continue
+				}
+				if shown, _ := cm["EditableVisible"].(bool); !shown {
+					continue
+				}
+				v, _ := cm["AttributeValue"].(string)
+				if v == emptyConditionValue {
+					v = "empty"
+				}
+				widget.VisibleValues = append(widget.VisibleValues, v)
+			}
+		}
 	}
 	if ces, ok := w["ConditionalEditabilitySettings"].(map[string]any); ok && ces != nil {
 		if expr, ok := ces["Expression"].(string); ok && expr != "" {

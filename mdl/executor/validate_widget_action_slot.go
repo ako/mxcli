@@ -55,7 +55,7 @@ var actionSlotKeys = []string{"Action", "OnClick", "OnChange"}
 // can name the one token the author left out rather than printing the whole
 // grammar. Keyed lowercase; looked up case-insensitively.
 var underSpecified = map[string]string{
-	"open_link":     "a URL — `Action: OPEN_LINK 'https://example.com'`",
+	"open_link":     "a URL — `Action: OPEN_LINK 'https://example.com'`, or an attribute holding one — `Action: OPEN_LINK $currentObject/URL`",
 	"complete_task": "an outcome name — `Action: COMPLETE_TASK 'Approved'`",
 	"show_page":     "a page — `Action: SHOW_PAGE Module.Page`",
 	"create_object": "an entity — `Action: CREATE_OBJECT Module.Entity`",

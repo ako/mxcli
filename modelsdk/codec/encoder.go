@@ -162,7 +162,7 @@ func (e *Encoder) buildDoc(elem element.Element) (bson.D, error) {
 			if idx < 0 {
 				continue
 			}
-			val, err := e.encodeEntry(rebuild[idx])
+			val, err := e.encodeEntry(elem.TypeName(), rebuild[idx])
 			if err != nil {
 				return nil, err
 			}
@@ -253,7 +253,7 @@ func (e *Encoder) buildDoc(elem element.Element) (bson.D, error) {
 			continue
 		}
 		// Dirty field: encode new value.
-		val, err := e.encodeEntry(rebuild[idx])
+		val, err := e.encodeEntry(elem.TypeName(), rebuild[idx])
 		if err != nil {
 			return nil, err
 		}
@@ -270,7 +270,7 @@ func (e *Encoder) buildDoc(elem element.Element) (bson.D, error) {
 		if idx < 0 || seen[idx] {
 			continue
 		}
-		val, err := e.encodeEntry(rebuild[idx])
+		val, err := e.encodeEntry(elem.TypeName(), rebuild[idx])
 		if err != nil {
 			return nil, err
 		}
@@ -283,7 +283,7 @@ func (e *Encoder) buildDoc(elem element.Element) (bson.D, error) {
 }
 
 // encodeEntry produces the BSON value for a single dirty property.
-func (e *Encoder) encodeEntry(rb rebuildEntry) (any, error) {
+func (e *Encoder) encodeEntry(ownerType string, rb rebuildEntry) (any, error) {
 	wp := rb.wp
 
 	// Child (Part) property.
@@ -308,7 +308,7 @@ func (e *Encoder) encodeEntry(rb rebuildEntry) (any, error) {
 		if wp.Dirty() {
 			// Full rebuild: all children re-encoded.
 			arr := make(bson.A, 0, 1+len(children))
-			arr = append(arr, partListMarker(children))
+			arr = append(arr, propertyListMarker(ownerType, rb.name, children))
 			for _, child := range children {
 				childDoc, err := e.buildDoc(child)
 				if err != nil {
@@ -320,7 +320,11 @@ func (e *Encoder) encodeEntry(rb rebuildEntry) (any, error) {
 		}
 		// Selective rebuild: dirty children re-encoded, clean ones pass through raw bytes.
 		arr := make(bson.A, 0, 1+len(children))
-		arr = append(arr, int32(3))
+		marker := int32(3)
+		if m, ok := lookupPropertyListMarker(ownerType, rb.name); ok {
+			marker = m
+		}
+		arr = append(arr, marker)
 		for _, child := range children {
 			if child.IsDirty() {
 				childDoc, err := e.buildDoc(child)
@@ -380,6 +384,16 @@ func zeroGUIDBinary() any {
 // partListMarker returns the leading typed-array marker for a PartList, derived
 // from the child element $Type (defaulting to 3). An empty list keeps the
 // default — empty mandatory lists are entity member collections, all marker 3.
+// propertyListMarker is partListMarker with the owning $Type and key consulted
+// first: a marker registered for the property (RegisterPropertyListMarker) wins
+// over one derived from the children, and applies to an empty list too.
+func propertyListMarker(ownerType, key string, children []element.Element) int32 {
+	if m, ok := lookupPropertyListMarker(ownerType, key); ok {
+		return m
+	}
+	return partListMarker(children)
+}
+
 func partListMarker(children []element.Element) int32 {
 	if len(children) == 0 {
 		return 3

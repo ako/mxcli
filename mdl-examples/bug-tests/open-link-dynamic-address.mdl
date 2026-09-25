@@ -1,0 +1,46 @@
+-- ============================================================================
+-- open_link with a DYNAMIC address (read from an attribute at runtime)
+-- ============================================================================
+--
+-- Symptom: DESCRIBE PAGE on FeedbackModule.PopupSuccess (Feedback v4.0.2,
+-- Mendix 11.13.0) emitted
+--
+--   Action: -- open_link with a dynamic address (FeedbackModule.ResponseHelper.URL) — MDL cannot author this; the button is left as-is,
+--
+-- The comment left `Action:` without a value and swallowed the separator, so
+-- exec of the describe output failed:
+--   Parse error: line 35:0 extraneous input '}' expecting the start of a statement
+-- And "left as-is" was never true: CREATE OR REPLACE PAGE rebuilds the page,
+-- so dropping the Action line wrote a button with no action at all — measured,
+-- with `mx check` clean.
+--
+-- Fixes:
+--  1) `open_link $currentObject/Attr` authors the dynamic address (Studio Pro's
+--     "Address: attribute"), and DESCRIBE emits it, so the round trip keeps
+--     the action byte-for-byte.
+--  2) A `--` note in a widget's property list is placed on its own line, so
+--     what describe still cannot spell (e.g. an address over an association)
+--     no longer breaks parsing.
+--
+-- Verify: exec, then `mxcli docker check` — 0 errors; `describe page` shows
+-- `Action: open_link $currentObject/URL`.
+-- ============================================================================
+
+create entity MyFirstModule.LinkTarget (
+  Title: String(200),
+  URL: String(2000)
+);
+/
+
+create or replace page MyFirstModule.LinkTarget_View
+( Title: 'Link', Layout: Atlas_Core.Atlas_Default, Params: { $LinkTarget: MyFirstModule.LinkTarget } )
+{
+  dataview dv (datasource: $LinkTarget) {
+    actionbutton btnStatic (Caption: 'Docs', Action: open_link 'https://docs.mendix.com')
+    actionbutton btnDynamic (Caption: 'Open', Action: open_link $currentObject/URL, ButtonStyle: Primary)
+    linkbutton lnkDynamic (Caption: 'Open as link', Action: open_link $currentObject/URL)
+  }
+}
+/
+
+describe page MyFirstModule.LinkTarget_View;

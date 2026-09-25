@@ -831,6 +831,15 @@ func parseWidgetPropertyV3(ctx parser.IWidgetPropertyV3Context, widget *ast.Widg
 
 	// Visible: [expression] (conditional visibility) or Visible: false (static)
 	if propCtx.VISIBLE() != nil {
+		// `Visible: Attr in (v1, …)` — Studio Pro's "based on attribute value".
+		if propCtx.IN() != nil {
+			vw := &ast.VisibleWhenV3{Attribute: buildAttributePathV3(propCtx.AttributePathV3())}
+			for _, v := range propCtx.AllVisibleValueV3() {
+				vw.Values = append(vw.Values, unquoteIdentifier(v.GetText()))
+			}
+			widget.Properties["VisibleWhen"] = vw
+			return
+		}
 		if xc := propCtx.XpathConstraint(); xc != nil {
 			widget.Properties["VisibleIf"] = buildConditionalExpression(xc)
 		} else if valCtx := propCtx.PropertyValueV3(); valCtx != nil {
@@ -1050,8 +1059,9 @@ func buildActionV3(ctx parser.IActionExprV3Context) *ast.ActionV3 {
 	actCtx := ctx.(*parser.ActionExprV3Context)
 	action := &ast.ActionV3{}
 
-	if v := actCtx.VARIABLE(); v != nil {
+	if v := actCtx.VARIABLE(); v != nil && actCtx.OPEN_LINK() == nil {
 		// $handler — a fragment action parameter; resolved at expansion.
+		// (OPEN_LINK $currentObject/Attr also carries a VARIABLE.)
 		action.Type = "param"
 		action.Target = strings.TrimPrefix(v.GetText(), "$")
 	} else if actCtx.NOTHING() != nil {
@@ -1111,6 +1121,13 @@ func buildActionV3(ctx parser.IActionExprV3Context) *ast.ActionV3 {
 		action.Type = "openLink"
 		if str := actCtx.STRING_LITERAL(); str != nil {
 			action.LinkURL = unquoteString(str.GetText())
+		}
+		// A dynamic address: `open_link $currentObject/URL`.
+		if v := actCtx.VARIABLE(); v != nil {
+			action.LinkVariable = v.GetText()
+			if pathCtx := actCtx.AttributePathV3(); pathCtx != nil {
+				action.LinkAttribute = buildAttributePathV3(pathCtx)
+			}
 		}
 	} else if actCtx.SIGN_OUT() != nil {
 		action.Type = "signOut"

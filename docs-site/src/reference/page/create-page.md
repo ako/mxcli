@@ -78,6 +78,7 @@ The widget tree inside `{ ... }` defines the page content. Widgets are nested hi
 | Widget | Description | Key Properties |
 |--------|-------------|----------------|
 | `DYNAMICTEXT` | Display-only text bound to an attribute | `Attribute` |
+| `LABEL` | Studio Pro's Label widget (`Forms$Label`): a fixed, translatable caption. `describe` emits it for existing labels; prefer `DYNAMICTEXT` for new text | `Content` |
 | `IMAGE` | Generic image | `Width`, `Height` |
 | `STATICIMAGE` | Fixed image from project resources | `Width`, `Height` |
 | `DYNAMICIMAGE` | Image from an entity attribute | `Width`, `Height` |

@@ -66,6 +66,19 @@ dynamictext day  (content: '{1}', contentparams: [{1} = DueOn format (dateFormat
 > NullReferenceException when the widget is opened. Bind every placeholder, or use
 > a plain static `content: 'text'`.
 
+### LABEL Widget
+
+Studio Pro's Label widget (`Forms$Label`) — a fixed caption. Stock marketplace
+modules still carry it (Administration's `Account_Edit`, the Feedback module), so
+`describe page` emits it; for new text prefer `dynamictext`.
+
+```sql
+label label4 (content: 'Attachment', class: 'text-semibold')
+```
+
+Do not write `statictext`: it stores `Forms$Text`, a type Mendix 11 cannot load
+(MDL-WIDGET29).
+
 ### ACTIONBUTTON Widget
 
 Create a button with action binding:
@@ -114,6 +127,8 @@ describe icon collection Atlas_Core.Atlas_Filled   -- every icon + its reference
 - `action: nanoflow Module.NanoflowName` - Call nanoflow (client-side)
 - `action: nanoflow Module.NanoflowName(Param: $value)` - Call nanoflow with parameters
 - `action: nanoflow Module.NanoflowName($Param = $value)` - Also accepted (microflow-style)
+- `action: open_link 'https://example.com'` - Open a fixed web address
+- `action: open_link $currentObject/URL` - Open the address held in an attribute of the enclosing data container's object (inside a data container only; not over an association)
 - **Every parameter needs an argument, or an enclosing data container of its
   type.** A flow called with a parameter nothing fills is **CE1571**; `mxcli
   check -p` reports it. This is the same on every widget that takes an action,

@@ -715,8 +715,12 @@ type rawWidget struct {
 	// identity is a single field DESCRIBE has to put back.
 	Specialization string
 	// Conditional visibility/editability
-	VisibleIf  string // Expression from ConditionalVisibilitySettings
-	EditableIf string // Expression from ConditionalEditabilitySettings
+	VisibleIf string // Expression from ConditionalVisibilitySettings
+	// "Visible: based on attribute value": the attribute's short name and the
+	// values that SHOW the widget, as MDL spells them (`empty` for "(empty)").
+	VisibleAttr   string
+	VisibleValues []string
+	EditableIf    string // Expression from ConditionalEditabilitySettings
 	// Design properties from Appearance
 	DesignProperties []rawDesignProp
 	// Explicit widget properties (for generic PLUGGABLEWIDGET output)
