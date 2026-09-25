@@ -16,8 +16,11 @@
 --
 -- Fix: always mdlQuote — the inverse of the visitor's unquoteString.
 --
--- This is the form DESCRIBE now prints for that client. Each value re-stores the
--- expression Studio Pro stored: 'abc', @Module.Const, 'Key ' + @Module.Const.
+-- Since then these properties became first-class expressions (#750, §6.4 of
+-- PROPOSAL_first_class_expressions.md): MDL writes the expression as-is, and
+-- DESCRIBE prints it that way. This is the form DESCRIBE now prints for that
+-- client. Each value re-stores the expression Studio Pro stored: 'abc',
+-- @Module.Const, 'Key ' + @Module.Const.
 
 create constant OdQuote.ApiLocation
 type string
@@ -33,12 +36,12 @@ create odata client OdQuote.QuotedApi (
   MetadataUrl: 'https://api.example.com/odata/v4/$metadata',
   ServiceUrl: '@OdQuote.ApiLocation',
   UseAuthentication: Yes,
-  HttpUsername: '''abc''',
-  HttpPassword: '@OdQuote.ApiKey',
-  ClientCertificate: '''my-cert'''
+  HttpUsername: 'abc',
+  HttpPassword: @OdQuote.ApiKey,
+  ClientCertificate: 'my-cert'
 )
 headers (
-  'X-Api-Key': '''Key '' + @OdQuote.ApiKey',
-  'X-O''Key': '''it''''s'''
+  'X-Api-Key': 'Key ' + @OdQuote.ApiKey,
+  'X-O''Key': 'it''s'
 );
 /

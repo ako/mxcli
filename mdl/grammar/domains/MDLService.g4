@@ -159,12 +159,21 @@ odataPropertyValue
     | qualifiedName
     ;
 
+// A Mendix expression is accepted after the plain value forms, so `'admin'`,
+// `@Mod.Const`, `microflow Mod.F` and `OData4` keep their parse and only what
+// those reject (`'Bearer ' + @Mod.Token`) reaches it. The visitor stores the
+// source text for the expression-typed properties (HttpUsername, HttpPassword,
+// ClientCertificate, header values) and refuses an expression anywhere else,
+// so a plain-value property cannot silently read it as empty
+// (PROPOSAL_first_class_expressions.md §6.4).
 odataPropertyAssignment
     : identifierOrKeyword COLON odataPropertyValue
+    | identifierOrKeyword COLON expression
     ;
 
 odataAlterAssignment
     : identifierOrKeyword EQUALS odataPropertyValue
+    | identifierOrKeyword EQUALS expression
     ;
 
 odataAuthenticationClause
@@ -234,6 +243,7 @@ odataHeadersClause
 
 odataHeaderEntry
     : STRING_LITERAL COLON odataPropertyValue
+    | STRING_LITERAL COLON expression
     ;
 
 // =============================================================================

@@ -19,6 +19,11 @@ import (
 // an identifier, not a string. Measured on a Studio Pro-authored client
 // (ako/TestApp@37e0cc0, Odata.Bug1073). ClientCertificate, header keys and the
 // plain string properties were printed as a raw '%s', unescaped.
+//
+// Since these properties became first-class expressions (§6.4 of
+// PROPOSAL_first_class_expressions.md) describe prints the stored expression
+// as-is and the visitor stores it as written, so `'abc'` round-trips as `'abc'`.
+// The contract these tests hold — exec(describe(x)) stores x — is unchanged.
 
 // describeAndReparse runs DESCRIBE on stored and parses the output with the real
 // visitor, returning what a re-exec would store.
@@ -84,11 +89,17 @@ func TestDescribeODataClient_StoredValuesSurviveReExec(t *testing.T) {
 	got, out := describeAndReparse(t, stored, "Api/O'Clients")
 
 	cfg := stored.HttpConfiguration
+	// ServiceUrl names a constant: describe prints the bare name and exec adds
+	// the @ back (serviceURLConstant), so compare what exec would store.
+	location, err := serviceURLConstant(got.ServiceUrl)
+	if err != nil {
+		t.Fatalf("describe printed a ServiceUrl exec refuses: %v\n%s", err, out)
+	}
 	for _, c := range []struct{ field, want, got string }{
 		{"Version", stored.Version, got.Version},
 		{"MetadataUrl", stored.MetadataUrl, got.MetadataUrl},
 		{"Folder", "Api/O'Clients", got.Folder},
-		{"ServiceUrl", cfg.CustomLocation, got.ServiceUrl},
+		{"ServiceUrl", cfg.CustomLocation, location},
 		{"ClientCertificate", cfg.ClientCertificate, got.ClientCertificate},
 	} {
 		if c.got != c.want {
