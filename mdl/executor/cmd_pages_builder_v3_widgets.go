@@ -921,6 +921,38 @@ func (pb *pageBuilder) buildTitleV3(w *ast.WidgetV3) (*pages.Title, error) {
 	return title, nil
 }
 
+// buildLabelV3 builds Studio Pro's Label widget (Forms$Label): a name, a
+// translatable caption and an appearance.
+//
+// DESCRIBE emits it for the Forms$Label that stock marketplace modules still
+// carry (Administration.Account_Edit, FeedbackModule.ShareFeedback). Before it
+// existed describe wrote `statictext`, which writes Forms$Text — a type Mendix
+// 11 cannot load — so the round trip had nothing correct to write back.
+func (pb *pageBuilder) buildLabelV3(w *ast.WidgetV3) (*pages.Label, error) {
+	label := &pages.Label{
+		BaseWidget: pages.BaseWidget{
+			BaseElement: model.BaseElement{
+				ID:       model.ID(types.GenerateID()),
+				TypeName: "Forms$Label",
+			},
+			Name: w.Name,
+		},
+	}
+	if content := w.GetContent(); content != "" {
+		label.Caption = &model.Text{
+			BaseElement: model.BaseElement{
+				ID:       model.ID(types.GenerateID()),
+				TypeName: "Texts$Text",
+			},
+			Translations: map[string]string{pb.textLang(): content},
+		}
+	}
+	if err := pb.registerWidgetName(w.Name, label.ID); err != nil {
+		return nil, err
+	}
+	return label, nil
+}
+
 func (pb *pageBuilder) buildButtonV3(w *ast.WidgetV3) (*pages.ActionButton, error) {
 	btn := &pages.ActionButton{
 		BaseWidget: pages.BaseWidget{

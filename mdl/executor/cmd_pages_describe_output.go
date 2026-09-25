@@ -485,7 +485,11 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			props = append(props, fmt.Sprintf("Content: %s", mdlQuote(w.Content)))
 		}
 		props = appendAppearanceProps(props, w)
-		formatWidgetProps(ctx.Output, prefix, "statictext", props, "\n")
+		// Forms$Text only survives in a project converted up from an old
+		// Mendix; writing one is refused (MDL-WIDGET29). Keep the name anyway,
+		// so the output parses and that refusal — not a parse error — is what
+		// the reader sees.
+		formatWidgetProps(ctx.Output, prefix, fmt.Sprintf("statictext %s", mdlIdent(w.Name)), props, "\n")
 
 	case "Forms$Title", "Pages$Title":
 		header := fmt.Sprintf("title %s", mdlIdent(w.Name))
@@ -864,7 +868,19 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		fmt.Fprintf(ctx.Output, "%s}\n", prefix)
 
 	case "Forms$Label", "Pages$Label":
-		fmt.Fprintf(ctx.Output, "%sstatictext (Content: %s)\n", prefix, mdlQuote(w.Content))
+		// Studio Pro's Label widget. This used to print `statictext (Content: …)`
+		// — no name, so the output did not parse, and `statictext` writes
+		// Forms$Text, which Mendix 11 cannot load (MDL-WIDGET29). Measured on
+		// Administration.Account_Edit and FeedbackModule.ShareFeedback(_Logo):
+		// each Forms$Label there is named (`label4`), so the name was dropped
+		// here, not missing in the model.
+		header := fmt.Sprintf("label %s", mdlIdent(w.Name))
+		props := []string{}
+		if w.Content != "" {
+			props = append(props, fmt.Sprintf("Content: %s", mdlQuote(w.Content)))
+		}
+		props = appendAppearanceProps(props, w)
+		formatWidgetProps(ctx.Output, prefix, header, props, "\n")
 
 	case "Forms$Gallery", "Pages$Gallery":
 		header := fmt.Sprintf("gallery %s", mdlIdent(w.Name))

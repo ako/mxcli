@@ -392,6 +392,7 @@ widgetTypeV3
     | ACTIONBUTTON
     | LINKBUTTON
     | TITLE
+    | LABEL                                           // Forms$Label (Studio Pro's Label widget)
     | DYNAMICTEXT
     | STATICTEXT
     | SNIPPETCALL
