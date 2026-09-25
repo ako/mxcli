@@ -563,6 +563,15 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 			if widget.EntityContext == "" {
 				widget.EntityContext = dataSourceEntityContext(ctx, named[0].DataSource)
 			}
+			// One CONFIGURED is not one DECLARED. The builder refuses the
+			// generic clause on a widget whose definition maps several
+			// datasources, whatever is configured — a File Uploader in files
+			// mode still declares `associatedImages` — so the generic spelling
+			// made every such page's description unexecutable (#1199). Name the
+			// key whenever the schema declares more than one the author can set.
+			if named[0].Key != "" && declaresSeveralAuthorableDataSources(w) {
+				widget.NamedDataSources = named
+			}
 		}
 		return []rawWidget{widget}
 
