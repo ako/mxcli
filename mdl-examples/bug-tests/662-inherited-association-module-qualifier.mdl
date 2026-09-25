@@ -1,0 +1,59 @@
+-- ============================================================================
+-- ako/mxcli#662: an association inherited through a generalization was
+-- written into the page entity's module
+-- ============================================================================
+--
+-- Symptom (describe → exec on the stock Administration.Account_New, where
+-- Administration.Account extends System.User):
+--   [error] [CE1613] "The selected association 'Administration.UserRoles' no longer exists."     at Combo box 'comboBox1'
+--   [error] [CE1613] "The selected association 'Administration.User_Language' no longer exists." at Combo box 'comboBox3'
+--   [error] [CE1613] "The selected association 'Administration.User_TimeZone' no longer exists." at Combo box 'comboBox2'
+-- with `check --references` and `exec` both reporting success.
+--
+-- Cause: a bare association name was qualified with the module of the context
+-- entity. UserRoles is declared on System.User, so the right module is System.
+-- (Before f0d1aea80 it was qualified with the option list's module, which was
+-- right here only because System.UserRole happens to live in System too.)
+--
+-- Fix: a bare name resolves to the association with that name on the context
+-- entity or one of its generalizations, qualified with its declaring module;
+-- each hop of an association path resolves from the entity that hop starts at.
+-- DESCRIBE now keeps the qualifier whenever the association is declared outside
+-- the context entity's module.
+--
+-- Verify: `mx check` must be clean after exec, and again after a
+-- describe → exec round trip. Comparing describe output is NOT a test — the
+-- bare name round-trips byte-identically while the model is broken.
+-- ============================================================================
+
+create entity MyFirstModule.Member extends System.User (
+  FullName: String(200)
+);
+/
+
+create or replace page MyFirstModule.Member_Edit
+( Title: 'Member', Layout: Atlas_Core.Atlas_Default, Params: { $Member: MyFirstModule.Member } )
+{
+  dataview dv (datasource: $Member) {
+    textbox txtName (label: 'Full name', attribute: FullName)
+    -- Bare names, declared on System.User: must be written as System.*.
+    combobox cmbRoles (
+      label: 'User role(s)',
+      attribute: UserRoles,
+      datasource: database System.UserRole,
+      CaptionAttribute: Name
+    )
+    combobox cmbLanguage (
+      label: 'Language',
+      attribute: User_Language,
+      datasource: database System.Language,
+      CaptionAttribute: Description
+    )
+    -- Association path whose hop is inherited.
+    textbox txtLangCode (label: 'Language code', attribute: User_Language/Code)
+  }
+}
+/
+
+-- Expect `attribute: System.UserRoles` / `System.User_Language` on the comboboxes.
+describe page MyFirstModule.Member_Edit;
