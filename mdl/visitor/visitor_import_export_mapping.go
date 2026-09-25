@@ -55,6 +55,7 @@ func (b *Builder) ExitCreateImportMappingStatement(ctx *parser.CreateImportMappi
 		if createStmt.OR() != nil && (createStmt.MODIFY() != nil || createStmt.REPLACE() != nil) {
 			stmt.CreateOrModify = true
 		}
+		stmt.Excluded = excludedAnnotation(createStmt)
 	}
 	b.statements = append(b.statements, stmt)
 }
@@ -194,6 +195,7 @@ func (b *Builder) ExitCreateExportMappingStatement(ctx *parser.CreateExportMappi
 		if createStmt.OR() != nil && (createStmt.MODIFY() != nil || createStmt.REPLACE() != nil) {
 			stmt.CreateOrModify = true
 		}
+		stmt.Excluded = excludedAnnotation(createStmt)
 	}
 	b.statements = append(b.statements, stmt)
 }
@@ -468,4 +470,17 @@ func applyMappingHandlingBackup(elem *ast.ImportMappingElementDef, ctx parser.IM
 		elem.Backup = "Ignore"
 	}
 	elem.BackupOverridable = c.OVERRIDABLE() != nil
+}
+
+// excludedAnnotation reports an `@excluded` on the create statement. DESCRIBE
+// prints one for an excluded mapping (#1185), so the statement has to read it
+// back or a describe -> exec round trip would lose the exclusion on a create.
+func excludedAnnotation(createStmt *parser.CreateStatementContext) bool {
+	for _, ann := range createStmt.AllAnnotation() {
+		annCtx := ann.(*parser.AnnotationContext)
+		if strings.EqualFold(annCtx.AnnotationName().GetText(), "excluded") {
+			return true
+		}
+	}
+	return false
 }

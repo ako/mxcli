@@ -48,6 +48,10 @@ var documentAnnotations = map[string]map[string]bool{
 	"rule":      {"excluded": true, "applyentityaccess": true},
 	// visitor_page_v3.go
 	"page": {"excluded": true},
+	// visitor_import_export_mapping.go — DESCRIBE prints @excluded for an
+	// excluded mapping (#1185), so the statement reads it back.
+	"importmapping": {"excluded": true},
+	"exportmapping": {"excluded": true},
 }
 
 // ValidateDocumentAnnotations reports (MDL059) an annotation the document it is
@@ -88,7 +92,8 @@ func documentAnnotationSuggestion(kind string) string {
 	accepted := documentAnnotations[kind]
 	if len(accepted) == 0 {
 		return fmt.Sprintf("A %s reads no annotations at all. Annotations before CREATE "+
-			"belong to entity (@position), association (@anchor), page/nanoflow (@excluded) "+
+			"belong to entity (@position), association (@anchor), page/nanoflow/import mapping/"+
+			"export mapping (@excluded) "+
 			"and microflow/rule (@excluded, @applyentityaccess); activity annotations "+
 			"(@position, @caption, @colour, …) go inside the flow body, on the statement "+
 			"they belong to.", kind)
