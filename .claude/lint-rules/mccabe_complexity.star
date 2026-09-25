@@ -18,7 +18,7 @@
 #   .name            - Simple name (e.g., "ProcessOrder")
 #   .qualified_name  - Full name (e.g., "MyModule.ProcessOrder")
 #   .module_name     - Module name
-#   .microflow_type  - "MICROFLOW" or "NANOFLOW"
+#   .microflow_type  - "MICROFLOW", "NANOFLOW" or "RULE"
 #   .description     - Documentation
 #   .return_type     - Return type
 #   .parameter_count - Number of parameters

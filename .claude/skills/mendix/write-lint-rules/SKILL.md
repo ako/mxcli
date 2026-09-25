@@ -164,6 +164,10 @@ def check():
 | `validation_rule_count` | int | Number of validation rules |
 | `has_event_handlers` | bool | True if entity has event handlers |
 | `is_external` | bool | True if entity is from an external service |
+| `has_created_date` | bool | True if the entity stores `createdDate` (an audit member, not counted in `attribute_count`) |
+| `has_changed_date` | bool | True if the entity stores `changedDate` |
+| `has_owner` | bool | True if the entity stores `owner` |
+| `has_changed_by` | bool | True if the entity stores `changedBy` |
 
 ### microflow
 | Property | Type | Example |
@@ -173,7 +177,7 @@ def check():
 | `qualified_name` | string | `"Sales.ACT_Customer_Create"` |
 | `module_name` | string | `"Sales"` |
 | `folder` | string | `"microflows/Customer"` — folder path within module |
-| `microflow_type` | string | `"microflow"` or `"nanoflow"` |
+| `microflow_type` | string | exactly `"MICROFLOW"`, `"NANOFLOW"` or `"RULE"` — upper-case, unlike `entity_type`. `microflows()` yields all three flavours, so a rule meant for microflows only must filter on `"MICROFLOW"` |
 | `description` | string | Documentation text |
 | `return_type` | string | Return type |
 | `parameter_count` | int | Number of parameters |
