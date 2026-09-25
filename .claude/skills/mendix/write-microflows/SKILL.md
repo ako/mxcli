@@ -593,7 +593,7 @@ $var/Module.AssociationName/attribute   -- Chained
 
 ### Annotation Pattern
 ```mdl
-@position(200, 200)
+@position(200, 200)          -- optional: omit it and mxcli lays the flow out; to re-arrange an existing flow run `mxcli layout flows`
 @caption 'Persist order'
 @color Green
 @annotation 'Note about the next activity'
