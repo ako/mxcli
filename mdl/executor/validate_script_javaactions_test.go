@@ -45,7 +45,7 @@ func TestValidate_JavaActionCreatedInScriptIsNotReportedMissing(t *testing.T) {
 	sc.collectDefinitions(prog)
 
 	mf := prog.Statements[1].(*ast.CreateMicroflowStmt)
-	if errs := validateMicroflowReferences(ctx, mf, sc); len(errs) != 0 {
+	if errs := validateFlowBodyReferences(ctx, mf.Body, sc); len(errs) != 0 {
 		t.Fatalf("reference errors for an action created in the same script: %v", errs)
 	}
 }
@@ -61,7 +61,7 @@ func TestValidate_JavaActionCreatedInScriptStillChecksParameterNames(t *testing.
 	sc.collectDefinitions(prog)
 
 	mf := prog.Statements[1].(*ast.CreateMicroflowStmt)
-	errs := validateMicroflowReferences(ctx, mf, sc)
+	errs := validateFlowBodyReferences(ctx, mf.Body, sc)
 	if len(errs) != 1 || !strings.Contains(errs[0], `has no parameter "Inputt"`) {
 		t.Fatalf("errors = %v, want one complaint about the misspelled parameter", errs)
 	}

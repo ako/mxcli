@@ -290,6 +290,18 @@ type widgetRefCollector struct {
 	entities   []string
 	images     []string
 	menus      []string
+	// dataSources holds the subset of the references above that a widget's
+	// DATA SOURCE names (flow or entity). An excluded document may keep a
+	// dangling action target, but not a dangling data source — see
+	// splitExcludedWidgetRefs.
+	dataSources map[string]bool
+}
+
+func (c *widgetRefCollector) addDataSource(ref string) {
+	if c.dataSources == nil {
+		c.dataSources = map[string]bool{}
+	}
+	c.dataSources[ref] = true
 }
 
 // dedupe collapses repeated references within each category, preserving first
@@ -343,14 +355,17 @@ func (c *widgetRefCollector) collectFromWidget(w *ast.WidgetV3) {
 		case "microflow":
 			if ds.Reference != "" {
 				c.microflows = append(c.microflows, ds.Reference)
+				c.addDataSource(ds.Reference)
 			}
 		case "nanoflow":
 			if ds.Reference != "" {
 				c.nanoflows = append(c.nanoflows, ds.Reference)
+				c.addDataSource(ds.Reference)
 			}
 		case "database":
 			if ds.Reference != "" {
 				c.entities = append(c.entities, ds.Reference)
+				c.addDataSource(ds.Reference)
 			}
 		}
 	}

@@ -4,6 +4,7 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -21,6 +22,14 @@ import (
 // ============================================================================
 // Page Builder
 // ============================================================================
+
+// danglingRefOK reports whether a failed reference resolution may be kept by
+// name: only for an excluded document, and only when the name resolved to
+// nothing (a backend failure is never swallowed). See tolerateDanglingRefs.
+func (pb *pageBuilder) danglingRefOK(err error) bool {
+	var nf *mdlerrors.NotFoundError
+	return pb.tolerateDanglingRefs && errors.As(err, &nf)
+}
 
 // pageBuilder constructs pages from AST.
 type pageBuilder struct {
@@ -64,6 +73,21 @@ type pageBuilder struct {
 	// node it is looking at; the builder's action path is several calls deep and
 	// would otherwise say only "this widget".
 	currentWidget string
+
+	// tolerateDanglingRefs is set when the document being built is EXCLUDED
+	// (by @excluded, or carried from the stored document). Mendix does not
+	// validate an excluded document, and one may name flows, pages or snippets
+	// the project does not contain — Feedback v4.0.2 ships such an example
+	// page. The writer stores an ACTION's or snippet call's target BY NAME, so
+	// an unresolved one is kept as written instead of failing the build.
+	//
+	// A DATA SOURCE is deliberately not tolerated: its flow's return type is
+	// what puts an entity in scope, and without it every attribute binding
+	// inside the container is written unqualified. Measured on Mendix 11.13.0:
+	// a bare `ImageB64` in an image's URL parameter made `mx check` fail to
+	// LOAD the project (ArgumentNullException setting 'Attribute'), even
+	// though the page was excluded. See validateExcludedWidgetRefs.
+	tolerateDanglingRefs bool
 
 	// Local page/snippet variables (Variables: { $name: Type = 'default' }).
 	// Used to distinguish a $localVar reference from a page parameter when
