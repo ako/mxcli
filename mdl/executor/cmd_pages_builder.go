@@ -81,12 +81,13 @@ type pageBuilder struct {
 	// page. The writer stores an ACTION's or snippet call's target BY NAME, so
 	// an unresolved one is kept as written instead of failing the build.
 	//
-	// A DATA SOURCE is deliberately not tolerated: its flow's return type is
-	// what puts an entity in scope, and without it every attribute binding
-	// inside the container is written unqualified. Measured on Mendix 11.13.0:
-	// a bare `ImageB64` in an image's URL parameter made `mx check` fail to
-	// LOAD the project (ArgumentNullException setting 'Attribute'), even
-	// though the page was excluded. See validateExcludedWidgetRefs.
+	// A data-source FLOW is kept by name too, but it is what puts an entity in
+	// scope: without it a bare attribute binding inside the container cannot
+	// be qualified, and one written bare made `mx check` fail to LOAD the
+	// project (ArgumentNullException setting 'Attribute', Mendix 11.13.0).
+	// DESCRIBE writes those bindings qualified there, the check refuses a bare
+	// one (checkUnscopedBindings), and the page writer refuses any bare
+	// attribute reference as a last line (refuseBareAttributeRefs).
 	tolerateDanglingRefs bool
 
 	// Local page/snippet variables (Variables: { $name: Type = 'default' }).

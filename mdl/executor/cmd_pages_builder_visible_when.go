@@ -44,18 +44,28 @@ func (pb *pageBuilder) applyVisibleWhen(widget pages.Widget, w *ast.WidgetV3) er
 		return mdlerrors.NewValidationf("%s %s: `Visible: %s in (…)` is not supported on this widget", w.Type, w.Name, vw.Attribute)
 	}
 	where := fmt.Sprintf("%s %s: Visible: %s in (…)", w.Type, w.Name, vw.Attribute)
-	if pb.entityContext == "" {
-		return mdlerrors.NewValidationf("%s: the attribute is read from the enclosing data container's object — place the widget inside a data container", where)
-	}
-	if strings.ContainsAny(vw.Attribute, "/.") {
-		return mdlerrors.NewValidationf("%s: name an attribute of the data container's own entity (%s); association paths are not supported", where, pb.entityContext)
+	if strings.Contains(vw.Attribute, "/") {
+		return mdlerrors.NewValidationf("%s: association paths are not supported — name an attribute of the data container's own entity", where)
 	}
 
-	declaring, ok := pb.declaringEntityFor(pb.entityContext, vw.Attribute)
-	if !ok {
-		return mdlerrors.NewValidationf("%s: %s has no attribute %s", where, pb.entityContext, vw.Attribute)
+	// The entity is the data container's, or — qualified, Module.Entity.Attr —
+	// named outright. DESCRIBE writes the qualified form under a container whose
+	// flow cannot be resolved, where there is no entity in scope at all.
+	entity, attrName := pb.entityContext, vw.Attribute
+	if parts := strings.Split(vw.Attribute, "."); len(parts) == 3 {
+		entity, attrName = parts[0]+"."+parts[1], parts[2]
+	} else if len(parts) != 1 {
+		return mdlerrors.NewValidationf("%s: name the attribute bare, or as Module.Entity.Attribute", where)
 	}
-	attrQN := declaring + "." + vw.Attribute
+	if entity == "" {
+		return mdlerrors.NewValidationf("%s: the attribute is read from the enclosing data container's object — place the widget inside a data container, or qualify it (Module.Entity.%s)", where, attrName)
+	}
+
+	declaring, ok := pb.declaringEntityFor(entity, attrName)
+	if !ok {
+		return mdlerrors.NewValidationf("%s: %s has no attribute %s", where, entity, attrName)
+	}
+	attrQN := declaring + "." + attrName
 
 	var all []string
 	switch t := pb.findAttributeType(attrQN).(type) {

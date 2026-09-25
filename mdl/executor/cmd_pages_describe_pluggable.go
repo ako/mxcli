@@ -634,7 +634,7 @@ func extractTextTemplateParameters(ctx *ExecContext, textTemplate map[string]any
 					result = append(result, "$"+sourceVarName+"."+attrName)
 				} else {
 					// No SourceVariable - use short attribute name
-					result = append(result, shortAttributeName(attr))
+					result = append(result, describeAttr(ctx, attr))
 				}
 				continue
 			}
@@ -893,7 +893,7 @@ func extractCustomWidgetPropertyAttributeRef(ctx *ExecContext, w map[string]any,
 		}
 		if attrRef, ok := value["AttributeRef"].(map[string]any); ok && attrRef != nil {
 			if attr, ok := attrRef["Attribute"].(string); ok && attr != "" {
-				return shortAttributeName(attr)
+				return describeAttr(ctx, attr)
 			}
 		}
 	}
@@ -1098,7 +1098,7 @@ func extractCustomWidgetPropertyAttributes(ctx *ExecContext, w map[string]any, p
 				// Check for AttributeRef
 				if attrRef, ok := objValue["AttributeRef"].(map[string]any); ok && attrRef != nil {
 					if attr, ok := attrRef["Attribute"].(string); ok && attr != "" {
-						result = append(result, shortAttributeName(attr))
+						result = append(result, describeAttr(ctx, attr))
 					}
 				}
 			}
@@ -1167,7 +1167,7 @@ func extractExplicitProperties(ctx *ExecContext, w map[string]any) []rawExplicit
 			if attr := extractString(attrRef["Attribute"]); attr != "" {
 				result = append(result, rawExplicitProp{
 					Key:   propKey,
-					Value: shortAttributeName(attr),
+					Value: describeAttr(ctx, attr),
 					IsRef: true,
 				})
 				continue

@@ -63,9 +63,13 @@ does not validate excluded documents (Feedback v4.0.2 ships an excluded page bou
 to nanoflows it lacks, and the project checks at 0 errors), so `check` and `exec`
 print them as `Reference warning` lines for excluded microflows, nanoflows, rules,
 and pages/snippets exec will write excluded (`@excluded`, or a stored namesake that
-is). **A page's or snippet's missing data source (or entity) still blocks:** the
-widgets inside bind against it, and written without it their bindings are bare
-names — on 11.13.0 that left a project `mx` could not load.
+is). **A missing data-source flow is a warning only when the bindings inside it are
+qualified** (`Attribute: Module.Entity.Attr`, `{1} = Module.Entity.Attr`,
+`Visible: Module.Entity.Attr in (…)`) — the form `describe` writes there. The
+widgets inside bind against the entity that flow returns, so with the flow missing
+a bare binding cannot be resolved; it is refused, naming the widget, because on
+11.13.0 a bare attribute reference left a project `mx` could not load. A missing
+entity still blocks.
 
 ### It also reports a name the PROJECT already has
 

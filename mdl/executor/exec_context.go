@@ -34,6 +34,12 @@ type ExecContext struct {
 	// Output is the writer for user-visible output (with line-limit guard).
 	Output io.Writer
 
+	// describeQualifyAttrs is set by DESCRIBE PAGE while it reads the widgets
+	// inside a data container whose flow cannot be resolved: no entity is in
+	// scope there, so an attribute binding keeps its stored Module.Entity.Attr
+	// name rather than the bare one exec could not qualify. See describeAttr.
+	describeQualifyAttrs bool
+
 	// Format controls output formatting (table, json, etc.).
 	Format OutputFormat
 

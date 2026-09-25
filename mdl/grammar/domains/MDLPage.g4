@@ -513,7 +513,7 @@ widgetPropertyV3
     | WIDTH COLON NUMBER_LITERAL                        // Width: 200
     | HEIGHT COLON NUMBER_LITERAL                      // Height: 100
     | VISIBLE COLON xpathConstraint                    // Visible: [IsActive = true]
-    | VISIBLE COLON attributePathV3 IN LPAREN visibleValueV3 (COMMA visibleValueV3)* RPAREN  // Visible: Status in (Running, empty)
+    | VISIBLE COLON qualifiedName IN LPAREN visibleValueV3 (COMMA visibleValueV3)* RPAREN  // Visible: Status in (Running, empty) | Mod.Entity.Attr in (…)
     | VISIBLE COLON propertyValueV3                   // Visible: false
     | EDITABLE COLON xpathConstraint                  // Editable: [Status != 'Closed']
     | EDITABLE COLON propertyValueV3                  // Editable: Never | Always
