@@ -2341,6 +2341,12 @@ func columnValueField(kind string) (string, bool) {
 }
 
 func setColumnPropertyMut(colDoc bson.D, propKeyMap map[string]string, propKindMap map[string]string, propName string, value any) error {
+	// No column property takes a list. A bracketed value arrives as a []string,
+	// and the %v below turned it into `[if$x/Ythen'a'else'b']` — the tokens
+	// already fused by the visitor — written into Expression as success.
+	if _, isList := value.([]string); isList {
+		return errExpressionNotAString(propName, value)
+	}
 	internalKey := resolveColumnPropertyKey(propName, propKeyMap)
 	if internalKey == "" {
 		return fmt.Errorf("column property %q not found — settable column properties on this grid are: %s",
@@ -2656,10 +2662,15 @@ func setRawWidgetPropertyMut(widget bson.D, propName string, value any) error {
 		}
 		return nil
 	case "dynamicclasses":
+		// One expression. A bracketed `[ … ]` — the spelling mendixlabs/mxcli#750
+		// proposes — arrives as a []string; it used to fall past the type check
+		// and return nil, reporting success with nothing written.
+		s, ok := value.(string)
+		if !ok {
+			return errExpressionNotAString("DynamicClasses", value)
+		}
 		if appearance := bsonnav.DGetDoc(widget, "Appearance"); appearance != nil {
-			if s, ok := value.(string); ok {
-				bsonnav.DSet(appearance, "DynamicClasses", s)
-			}
+			bsonnav.DSet(appearance, "DynamicClasses", s)
 		}
 		return nil
 	case "editable":
@@ -3176,4 +3187,19 @@ func (m *Mutator) lookupParameter(name string) (entity string, isSnippetParam bo
 		return entity, isSnippetParam, true
 	}
 	return "", false, false
+}
+
+// errExpressionNotAString refuses a bracketed list where a property takes a
+// single value. Returned rather than skipped: ALTER's check dry-runs the setter
+// (validateAlterSetProperties) and reports this error, and exec stops on it,
+// instead of either reporting success for a value that was never written.
+//
+// The list itself is not echoed: the visitor has already fused its tokens
+// (`if1>0then…`), which reads as a second, unrelated problem.
+func errExpressionNotAString(propName string, _ any) error {
+	return fmt.Errorf(
+		"property %q takes a single value, but was given a bracketed list — "+
+			"write an expression as a quoted string, doubling the quotes inside it: "+
+			"set %s = 'if $currentObject/Featured then ''a'' else ''b'''",
+		propName, propName)
 }

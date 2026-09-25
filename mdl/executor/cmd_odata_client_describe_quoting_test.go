@@ -19,6 +19,7 @@ import (
 // an identifier, not a string. Measured on a Studio Pro-authored client
 // (ako/TestApp@37e0cc0, Odata.Bug1073). ClientCertificate, header keys and the
 // plain string properties were printed as a raw '%s', unescaped.
+
 // describeAndReparse runs DESCRIBE on stored and parses the output with the real
 // visitor, returning what a re-exec would store.
 func describeAndReparse(t *testing.T, stored *model.ConsumedODataService, folder string) (*ast.CreateODataClientStmt, string) {
