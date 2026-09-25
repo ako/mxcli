@@ -112,8 +112,8 @@ create odata client OdataPlm.MxPlmOdataApiClient (
   timeout: 300,
   ServiceUrl: '@OdataPlm.MxPlmOdataApiClient_Location',
   UseAuthentication: Yes,
-  HttpUsername: '@Main.MxPlmGraphClient_username',
-  HttpPassword: '@Main.MxPlmGraphClient_password'
+  HttpUsername: @Main.MxPlmGraphClient_username,
+  HttpPassword: @Main.MxPlmGraphClient_password
 );
 /
 ```

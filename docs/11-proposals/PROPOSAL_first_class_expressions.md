@@ -1,6 +1,6 @@
 ---
 title: First-class expressions for expression-typed MDL properties
-status: draft
+status: partial
 date: 2026-09-08
 revised: 2026-09-25
 related:
@@ -241,6 +241,10 @@ proposals compose rather than compete.
    place this change widens a generic rule, so it wants a maintainer decision.
 
 5. **Flip the meaning of a quoted OData credential/header (§6.4 option a)?**
+   **Decided 2026-09-25: (a).** `HttpUsername: 'admin'` is the string
+   'admin'. Implemented with MDL-ODATA07 refusing both older spellings
+   (doubled quotes, and a quoted `@Mod.C`) as errors.
+
    *Measured 2026-09-24* — grep of `mdl-examples/`, `.claude/skills/` and
    `docs-site/src/` for OData `Http*` and `headers` values:
 
@@ -490,7 +494,7 @@ So today the same HTTP header is written `'Accept' = 'application/json'` on a
 REST client and `'Accept': '''application/json'''` on an OData client. Option
 (a) removes that inconsistency; (c) keeps it.
 
-Recommendation: **(a)**, scoped to these four OData slots. Unlike
+**Decided: (a)** (2026-09-25), scoped to these four OData slots. Unlike
 `dynamicclasses` — where a plain class name is rare and an `if` is the norm —
 an OData credential or header is almost always a literal or a constant, so the
 quoted form *is* the common case and has to read correctly. The trade-off is a

@@ -160,17 +160,21 @@ func outputConsumedODataServiceMDL(ctx *ExecContext, svc *model.ConsumedODataSer
 		if cfg.OverrideLocation && cfg.CustomLocation != "" {
 			props = append(props, fmt.Sprintf("  ServiceUrl: %s", formatExprValue(cfg.CustomLocation)))
 		}
+		// HttpUsername / HttpPassword / ClientCertificate and header values are
+		// Mendix expressions, and MDL writes an expression as-is: the stored
+		// `'abc'` prints as `'abc'`, the string (PROPOSAL_first_class_expressions.md
+		// §6.4). ServiceUrl above still takes the older quoted form.
 		if cfg.UseAuthentication {
 			props = append(props, "  UseAuthentication: Yes")
 			if cfg.Username != "" {
-				props = append(props, fmt.Sprintf("  HttpUsername: %s", formatExprValue(cfg.Username)))
+				props = append(props, fmt.Sprintf("  HttpUsername: %s", cfg.Username))
 			}
 			if cfg.Password != "" {
-				props = append(props, fmt.Sprintf("  HttpPassword: %s", formatExprValue(cfg.Password)))
+				props = append(props, fmt.Sprintf("  HttpPassword: %s", cfg.Password))
 			}
 		}
 		if cfg.ClientCertificate != "" {
-			props = append(props, fmt.Sprintf("  ClientCertificate: %s", formatExprValue(cfg.ClientCertificate)))
+			props = append(props, fmt.Sprintf("  ClientCertificate: %s", cfg.ClientCertificate))
 		}
 	}
 
@@ -212,7 +216,7 @@ func outputConsumedODataServiceMDL(ctx *ExecContext, svc *model.ConsumedODataSer
 			if i == len(cfg.HeaderEntries)-1 {
 				comma = ""
 			}
-			fmt.Fprintf(ctx.Output, "  %s: %s%s\n", mdlQuote(h.Key), formatExprValue(h.Value), comma)
+			fmt.Fprintf(ctx.Output, "  %s: %s%s\n", mdlQuote(h.Key), h.Value, comma)
 		}
 		fmt.Fprintln(ctx.Output, ");")
 	} else {
@@ -2100,18 +2104,19 @@ func metadataAuthFromStmt(ctx *ExecContext, stmt *ast.CreateODataClientStmt) *me
 // resolveCredential turns an MDL property value into the string to send on the
 // design-time fetch.
 //
-// Three spellings reach here and all three have to work, because the shape MDL
-// pushes users towards is the constant reference — mxcli requires a constant for
-// ServiceUrl, so a client written the documented way has constants for its
-// credentials too (mxcli-formula1 #23 follow-up):
+// The value is the Mendix expression the property holds, as written — these
+// properties are first-class expressions (PROPOSAL_first_class_expressions.md
+// §6.4):
 //
-//	HttpUsername: 'f1api'            a literal
-//	HttpUsername: @Module.ApiUser    a constant reference
-//	HttpUsername: '@Module.ApiUser'  the same reference, quoted
+//	HttpUsername: 'f1api'            a string: sends f1api
+//	HttpUsername: @Module.ApiUser    a constant: sends its design-time default
+//	HttpUsername: 'Key ' + @M.C      compound: cannot be evaluated, reported unresolved
 //
-// The quoted form is the trap: it is a STRING_LITERAL, so the isLiteral flag says
-// "literal" and the naive reading sends the eleven characters `@Module.ApiUser`
-// as the username. Worse than a 401, because it looks like it tried.
+// The constant reference matters because mxcli requires one for ServiceUrl, so a
+// client written the documented way has constants for its credentials too
+// (mxcli-formula1 #23 follow-up). The old quoted form `'@Module.ApiUser'` is now
+// the literal text and is refused at check time (MDL-ODATA07); the branches
+// below still resolve the bare-value inputs older statements produced.
 //
 // A constant's design-time default is exactly what Studio Pro uses for the same
 // fetch, so resolving it here is not a workaround — it is the value.

@@ -19,6 +19,11 @@ import (
 // an identifier, not a string. Measured on a Studio Pro-authored client
 // (ako/TestApp@37e0cc0, Odata.Bug1073). ClientCertificate, header keys and the
 // plain string properties were printed as a raw '%s', unescaped.
+//
+// Since these properties became first-class expressions (§6.4 of
+// PROPOSAL_first_class_expressions.md) describe prints the stored expression
+// as-is and the visitor stores it as written, so `'abc'` round-trips as `'abc'`.
+// The contract these tests hold — exec(describe(x)) stores x — is unchanged.
 
 // describeAndReparse runs DESCRIBE on stored and parses the output with the real
 // visitor, returning what a re-exec would store.
