@@ -1013,16 +1013,16 @@ func createODataClient(ctx *ExecContext, stmt *ast.CreateODataClientStmt) error 
 						svc.ErrorHandlingMicroflow = extractMicroflowRef(stmt.ErrorHandlingMicroflow)
 					}
 					if stmt.ProxyHost != "" {
-						svc.ProxyHost = stmt.ProxyHost
+						svc.ProxyHost = extractConstantRef(stmt.ProxyHost)
 					}
 					if stmt.ProxyPort != "" {
-						svc.ProxyPort = stmt.ProxyPort
+						svc.ProxyPort = extractConstantRef(stmt.ProxyPort)
 					}
 					if stmt.ProxyUsername != "" {
-						svc.ProxyUsername = stmt.ProxyUsername
+						svc.ProxyUsername = extractConstantRef(stmt.ProxyUsername)
 					}
 					if stmt.ProxyPassword != "" {
-						svc.ProxyPassword = stmt.ProxyPassword
+						svc.ProxyPassword = extractConstantRef(stmt.ProxyPassword)
 					}
 					// Update HTTP configuration
 					if stmt.ServiceUrl != "" || stmt.UseAuthentication || stmt.HttpUsername != "" ||
@@ -1121,10 +1121,10 @@ func createODataClient(ctx *ExecContext, stmt *ast.CreateODataClientStmt) error 
 		ConfigurationMicroflow: extractMicroflowRef(stmt.ConfigurationMicroflow),
 		HeadersMicroflow:       extractMicroflowRef(stmt.HeadersMicroflow),
 		ErrorHandlingMicroflow: extractMicroflowRef(stmt.ErrorHandlingMicroflow),
-		ProxyHost:              stmt.ProxyHost,
-		ProxyPort:              stmt.ProxyPort,
-		ProxyUsername:          stmt.ProxyUsername,
-		ProxyPassword:          stmt.ProxyPassword,
+		ProxyHost:              extractConstantRef(stmt.ProxyHost),
+		ProxyPort:              extractConstantRef(stmt.ProxyPort),
+		ProxyUsername:          extractConstantRef(stmt.ProxyUsername),
+		ProxyPassword:          extractConstantRef(stmt.ProxyPassword),
 	}
 
 	// Build HTTP configuration if any HTTP-level properties are set
@@ -1330,13 +1330,13 @@ func alterODataClient(ctx *ExecContext, stmt *ast.AlterODataClientStmt) error {
 				case "errorhandlingmicroflow":
 					svc.ErrorHandlingMicroflow = extractMicroflowRef(strVal)
 				case "proxyhost":
-					svc.ProxyHost = strVal
+					svc.ProxyHost = extractConstantRef(strVal)
 				case "proxyport":
-					svc.ProxyPort = strVal
+					svc.ProxyPort = extractConstantRef(strVal)
 				case "proxyusername":
-					svc.ProxyUsername = strVal
+					svc.ProxyUsername = extractConstantRef(strVal)
 				case "proxypassword":
-					svc.ProxyPassword = strVal
+					svc.ProxyPassword = extractConstantRef(strVal)
 				default:
 					return mdlerrors.NewUnsupported(fmt.Sprintf("unknown OData client property: %s", key))
 				}
@@ -1794,6 +1794,17 @@ func validateODataClientExists(ctx *ExecContext, ref ast.QualifiedName) error {
 // unquoteString, backslashes included.
 func formatExprValue(val string) string {
 	return mdlQuote(val)
+}
+
+// extractConstantRef strips a leading "@" from a constant reference. The proxy
+// properties are BY_NAME references to a constant, and Studio Pro stores the bare
+// qualified name (measured: ako/TestApp Odata.Bug1073, `ProxyHost:
+// "Odata.Bug1073_ProxyHost"`). `@Module.Const` is MDL's spelling of a constant
+// everywhere else, and it was written through verbatim — `"@Module.Const"` names
+// nothing, so the proxy resolved to no constant. Accepts the bare, `@` and
+// quoted-`@` spellings alike.
+func extractConstantRef(ref string) string {
+	return strings.TrimPrefix(ref, "@")
 }
 
 // extractMicroflowRef strips a leading "microflow " keyword (any case) from a
