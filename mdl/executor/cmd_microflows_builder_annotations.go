@@ -117,12 +117,13 @@ func (fb *flowBuilder) applyAnnotations(activityID model.ID, ann *ast.ActivityAn
 				if ann.Caption != "" {
 					activity.Caption = ann.Caption
 				}
-			case *microflows.LoopedActivity:
-				// LOOP / WHILE activities can carry a caption just like
-				// splits and action activities.
-				if ann.Caption != "" {
-					activity.Caption = ann.Caption
-				}
+				// No case for *microflows.LoopedActivity. A loop and a while build
+				// one, and generated/metamodel -- the arbiter -- declares no Caption
+				// on Microflows$LoopedActivity, so there is nowhere for the value to
+				// go: the gen writer emits none and the reader can never populate
+				// one. Assigning it here wrote a field nothing reads and contradicted
+				// MDL042, which tells the author the caption is dropped. The
+				// diagnostic is the whole of the support (mendixlabs/mxcli#1187).
 			}
 
 			break

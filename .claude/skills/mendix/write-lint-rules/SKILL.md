@@ -351,6 +351,8 @@ def count_not(node):
 | `entity_ref` | string | Referenced entity qualified name |
 | `service_ref` | string | Called service document (REST / web service / OData client); empty when the activity calls none |
 | `action_ref` | string | Operation or action within that service; empty when the activity calls none |
+| `use_request_timeout` | bool | Call REST service: whether "Use a timeout" is enabled. False for other action types |
+| `timeout_expression` | string | Call REST service: the timeout in seconds, stored as an expression, e.g. `"300"` |
 
 ### rest_client
 | Property | Type | Example |
@@ -395,6 +397,7 @@ Returned by `permissions()` (all types) or `permissions_for()` (entity-specific)
 | `member_name` | string | Attribute name (for MEMBER_READ/MEMBER_WRITE) |
 | `xpath_constraint` | string | XPath constraint or empty |
 | `is_constrained` | bool | True if XPath constraint is set |
+| `default_member_access_rights` | string | The rule's "default rights for new members": `"None"`, `"ReadOnly"` or `"ReadWrite"`. Empty for non-entity permissions |
 
 ### user_role
 | Property | Type | Example |

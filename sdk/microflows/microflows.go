@@ -455,6 +455,9 @@ type LoopSource interface {
 // LoopedActivity represents a loop construct (FOR EACH or WHILE).
 type LoopedActivity struct {
 	BaseMicroflowObject
+	// Caption is NOT storable: generated/metamodel declares no Caption on
+	// Microflows$LoopedActivity, so a value here is dropped at the gen boundary.
+	// Nothing sets it; `mxcli check` reports MDL042 instead (mendixlabs/mxcli#1187).
 	Caption           string                     `json:"caption,omitempty"`
 	Documentation     string                     `json:"documentation,omitempty"`
 	LoopSource        LoopSource                 `json:"loopSource,omitempty"`

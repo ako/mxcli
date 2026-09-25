@@ -206,10 +206,11 @@ begin
 end loop;
 ```
 
-> **`@caption` does nothing on a loop.** Mendix for-loops have no caption
-> property, so `@caption` on a `loop` is silently dropped (`mxcli check` flags
-> it as **MDL042**). To label a loop, use `@annotation 'text'` — it attaches a
-> note, exactly like drawing one onto the loop in Studio Pro.
+> **`@caption` does nothing on a loop or a while loop.** Both are the same loop
+> activity, which has no caption property, so `@caption` on a `loop` or a `while`
+> is dropped (`mxcli check` flags it as **MDL042**). To label either, use
+> `@annotation 'text'` — it attaches a note, exactly like drawing one onto the loop
+> in Studio Pro.
 
 **Note**:
 - Loop variable (`$Product`) is scoped to the loop body
