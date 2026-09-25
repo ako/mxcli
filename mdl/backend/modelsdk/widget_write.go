@@ -50,6 +50,12 @@ func init() {
 		EmptyStringFields: []string{"LocalVariable", "PageParameter", "SnippetParameter", "SubKey", "Widget"},
 		FalseFields:       []string{"UseAllPages"},
 	})
+	// A compound design property's nested Properties list is marker 2, though it
+	// holds the same Forms$DesignPropertyValue children as the Appearance's
+	// DesignProperties list (marker 3) — so it is keyed on the owner, not the
+	// child type. Measured 373 of 373 across Studio Pro-authored pages, layouts,
+	// building blocks and page templates in a Mendix 11.13.0 app.
+	codec.RegisterPropertyListMarker("Forms$CompoundDesignPropertyValue", "Properties", 2)
 	// A ClientTemplate's Parameters list is always emitted with marker 2, even empty
 	// (unusual — most empty lists are marker 3).
 	codec.RegisterTypeDefaults("Forms$ClientTemplate", codec.TypeDefaults{

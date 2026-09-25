@@ -93,6 +93,30 @@ func RegisterListMarker(childType string, marker int32) {
 	listMarkers[childType] = marker
 }
 
+// propertyListMarkers maps an owning $Type and PartList key to its marker. It
+// exists for lists whose marker depends on WHERE the list sits rather than on
+// what it holds: a Forms$DesignPropertyValue list is marker 3 as a
+// Forms$Appearance's DesignProperties and marker 2 as a
+// Forms$CompoundDesignPropertyValue's Properties (measured: 1821/1821 and
+// 373/373 across Studio Pro-authored documents in a Mendix 11.13.0 app), so a
+// RegisterListMarker on the child type cannot express it.
+var propertyListMarkers = map[string]map[string]int32{}
+
+// RegisterPropertyListMarker declares the typed-array marker for the PartList
+// stored under key on elements of ownerType. It takes precedence over a
+// child-type RegisterListMarker and also covers the list when it is empty.
+func RegisterPropertyListMarker(ownerType, key string, marker int32) {
+	if propertyListMarkers[ownerType] == nil {
+		propertyListMarkers[ownerType] = map[string]int32{}
+	}
+	propertyListMarkers[ownerType][key] = marker
+}
+
+func lookupPropertyListMarker(ownerType, key string) (int32, bool) {
+	m, ok := propertyListMarkers[ownerType][key]
+	return m, ok
+}
+
 func lookupListMarker(childType string) int32 {
 	if m, ok := listMarkers[childType]; ok {
 		return m
