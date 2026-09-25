@@ -14,6 +14,7 @@ import (
 	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genCw "github.com/mendixlabs/mxcli/modelsdk/gen/customwidgets"
 	genDm "github.com/mendixlabs/mxcli/modelsdk/gen/domainmodels"
+	genEnum "github.com/mendixlabs/mxcli/modelsdk/gen/enumerations"
 	genPg "github.com/mendixlabs/mxcli/modelsdk/gen/pages"
 	genTexts "github.com/mendixlabs/mxcli/modelsdk/gen/texts"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
@@ -115,11 +116,15 @@ func init() {
 	// Attribute is "" (not null): it is a BY_NAME AttributeIdentifier and Mendix
 	// 11.12's reader rejects a null there (StorageLoadException, "not a valid
 	// AttributeIdentifier").
+	// Markers measured on all 12 conditional-visibility settings in a stock
+	// Administration + Feedback project (Mendix 11.13.0): Conditions is [2] and
+	// ModuleRoles [1], empty or not. They were written as the default [3].
 	codec.RegisterTypeDefaults("Forms$ConditionalVisibilitySettings", codec.TypeDefaults{
-		NullFields:        []string{"SourceVariable"},
-		EmptyStringFields: []string{"Attribute"},
-		MandatoryLists:    []string{"Conditions", "ModuleRoles"},
+		NullFields:           []string{"SourceVariable"},
+		EmptyStringFields:    []string{"Attribute"},
+		MandatoryListMarkers: map[string]int32{"Conditions": 2, "ModuleRoles": 1},
 	})
+	codec.RegisterListMarker("Enumerations$Condition", 2)
 	codec.RegisterTypeDefaults("Forms$ConditionalEditabilitySettings", codec.TypeDefaults{
 		NullFields:        []string{"SourceVariable"},
 		EmptyStringFields: []string{"Attribute"},
@@ -985,6 +990,18 @@ func conditionalVisibilityToGen(cvs *pages.ConditionalVisibilitySettings) elemen
 	assignID(g)
 	g.SetExpression(cvs.Expression)
 	g.SetIgnoreSecurity(false)
+	// "Visible: based on attribute value": the attribute plus one condition per
+	// value it can hold (ako/mxcli attribute-condition visibility).
+	if cvs.Attribute != "" {
+		g.SetAttributeQualifiedName(cvs.Attribute)
+		for _, c := range cvs.Conditions {
+			cg := genEnum.NewCondition()
+			assignID(cg)
+			cg.SetAttributeValue(c.Value)
+			cg.SetEditableVisible(c.Visible)
+			g.AddConditions(cg)
+		}
+	}
 	return g
 }
 

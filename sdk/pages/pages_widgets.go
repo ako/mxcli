@@ -96,7 +96,19 @@ type ConditionalVisibilitySettings struct {
 	Expression     string        `json:"expression,omitempty"`
 	ModuleRoles    []model.ID    `json:"moduleRoles,omitempty"`
 	SourceVariable *PageVariable `json:"sourceVariable,omitempty"`
-	Attribute      model.ID      `json:"attribute,omitempty"`
+	// Attribute is Studio Pro's "based on attribute value": the qualified
+	// Module.Entity.Attr (a BY_NAME reference), with one Conditions entry per
+	// value of it. Empty for the expression and module-role forms.
+	Attribute  string           `json:"attribute,omitempty"`
+	Conditions []ValueCondition `json:"conditions,omitempty"`
+}
+
+// ValueCondition is one Enumerations$Condition: whether the widget is
+// visible (or editable) when the attribute holds Value. Studio Pro stores one
+// per value — every enumeration value plus "(empty)", or "true"/"false".
+type ValueCondition struct {
+	Value   string `json:"value"`
+	Visible bool   `json:"visible"`
 }
 
 // ConditionalEditabilitySettings represents editability conditions.
