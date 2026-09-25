@@ -162,7 +162,14 @@ func TestEmitObjectAnnotations_EscapesMultilineText(t *testing.T) {
 	}
 }
 
-func TestEmitObjectAnnotations_LoopCaption(t *testing.T) {
+// A LoopedActivity must emit NO @caption. generated/metamodel declares no Caption
+// on Microflows$LoopedActivity, so a stored loop can never carry one — emitting it
+// produced MDL that `check` then reports as MDL042 (mendixlabs/mxcli#1187). The
+// in-memory field is set here deliberately: even then, nothing may be emitted.
+// mdlQuote's escaping is covered directly by TestMdlQuote_* in
+// cmd_microflows_annotation_escape_test.go, so nothing is lost by not asserting it
+// on a caption that cannot exist.
+func TestEmitObjectAnnotations_LoopCaptionNotEmitted(t *testing.T) {
 	obj := &microflows.LoopedActivity{
 		BaseMicroflowObject: microflows.BaseMicroflowObject{
 			BaseElement: model.BaseElement{ID: mkID("loop")},
@@ -176,8 +183,8 @@ func TestEmitObjectAnnotations_LoopCaption(t *testing.T) {
 	emitObjectAnnotations(obj, &lines, "", nil, nil, nil, nil)
 
 	got := strings.Join(lines, "\n")
-	if !strings.Contains(got, "@caption 'Loop owner''s\\ncaption'") {
-		t.Fatalf("expected escaped loop caption, got:\n%s", got)
+	if strings.Contains(got, "@caption") {
+		t.Fatalf("a loop must not describe a @caption (it is not storable), got:\n%s", got)
 	}
 }
 

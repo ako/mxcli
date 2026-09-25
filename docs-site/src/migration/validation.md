@@ -11,7 +11,7 @@ mxcli check script.mdl
 # 2. Reference validation (checks entity/microflow names exist)
 mxcli check script.mdl -p app.mpr --references
 
-# 3. Lint the full project (41 built-in + 27 Starlark rules)
+# 3. Lint the full project (19 built-in + 31 Starlark rules)
 mxcli lint -p app.mpr
 
 # 4. Quality report (scored 0-100 per category)

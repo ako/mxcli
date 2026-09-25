@@ -374,6 +374,10 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 			// never legal. The body was not walked at all before, so nothing inside
 			// a while was checked.
 			v.checkQualifiedCallInExpression("while condition", stmt.Condition)
+			// A while loop is the same Microflows$LoopedActivity as a for-each loop,
+			// with a WhileLoopCondition instead of an iterator, so a @caption on it is
+			// dropped exactly the same way.
+			v.checkCaptionOnLoop(stmt.Annotations, "a while loop")
 			v.walkBody(stmt.Body)
 		case *ast.CallMicroflowStmt:
 			v.checkAssociationObjectArgs("microflow "+stmt.MicroflowName.String(), stmt.Arguments)
@@ -387,17 +391,7 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 			// mapping are alternatives. Same function exec calls.
 			v.checkWebServiceRequestBody(stmt)
 		case *ast.LoopStmt:
-			// Check: @caption on a loop is silently dropped — Mendix for-loops
-			// have no caption (Microflows$LoopedActivity has no Caption
-			// property; Studio Pro auto-labels them from the iterator). The
-			// supported way to label a loop is an annotation note.
-			if stmt.Annotations != nil && stmt.Annotations.Caption != "" {
-				v.addViolation("MDL042", linter.SeverityWarning,
-					"@caption on a loop has no effect — Mendix loops have no caption "+
-						"(the loop activity has no Caption property, so it is dropped). "+
-						"Use @annotation to attach a note to the loop instead.",
-					"Replace @caption with @annotation to label the loop")
-			}
+			v.checkCaptionOnLoop(stmt.Annotations, "a loop")
 			// Check: nested loop anti-pattern. This is a heuristic — a nested loop is
 			// only wasteful when the inner loop is a key LOOKUP (find one matching
 			// item). Intentional aggregation that must visit every element (group ×
@@ -1572,4 +1566,20 @@ func (v *microflowValidator) checkAnnotationLabels(body []ast.MicroflowStatement
 		}
 	}
 	walk(body)
+}
+
+// checkCaptionOnLoop raises MDL042 for a @caption on a loop or a while loop. Both
+// build a Microflows$LoopedActivity, which has no Caption property -- Studio Pro
+// labels a for-each loop from its iterator and a while loop from its condition --
+// so the caption is dropped on write. The supported way to label either is an
+// annotation note, which round-trips through DESCRIBE.
+func (v *microflowValidator) checkCaptionOnLoop(ann *ast.ActivityAnnotations, what string) {
+	if ann == nil || ann.Caption == "" {
+		return
+	}
+	v.addViolation("MDL042", linter.SeverityWarning,
+		"@caption on "+what+" has no effect — Mendix loops have no caption "+
+			"(the loop activity has no Caption property, so it is dropped). "+
+			"Use @annotation to attach a note to the loop instead.",
+		"Replace @caption with @annotation to label the loop")
 }

@@ -331,6 +331,9 @@ func actionFromGen(el element.Element) microflows.MicroflowAction {
 			ErrorHandlingType: microflows.ErrorHandlingType(rawStr(raw, "ErrorHandlingType")),
 			TimeoutExpression: rawStr(raw, "TimeOutExpression"),
 		}
+		if b, ok := raw.Lookup("UseRequestTimeOut").BooleanOK(); ok {
+			out.UseRequestTimeOut = b
+		}
 		out.ID = model.ID(a.ID())
 		if hc, ok := raw.Lookup("HttpConfiguration").DocumentOK(); ok {
 			out.HttpConfiguration = httpConfigFromRaw(hc)
