@@ -40,12 +40,12 @@ create or replace page MyFirstModule.P_DynClass
     dynamictext ovClass (
       Content: 'chip',
       Class: 'ss-chip',
-      DynamicClasses: 'if $currentObject/Name = ''Astute'' then ''ss-chip--astute'' else '''''
+      DynamicClasses: if $currentObject/Name = 'Astute' then 'ss-chip--astute' else ''
     )
     -- DynamicClasses on a container
     container ovBox (
       Class: 'ss-box',
-      DynamicClasses: 'if $currentObject/Name = '''' then ''ss-box--empty'' else '''''
+      DynamicClasses: if $currentObject/Name = '' then 'ss-box--empty' else ''
     ) {
       dynamictext boxLabel (content: 'inner')
     }
@@ -58,7 +58,7 @@ create or replace page MyFirstModule.P_DynClass
 -- hard error "widget has no pluggable Object" on core widgets).
 alter page MyFirstModule.P_DynClass {
   set Class = 'ss-later' on ovLater;
-  set DynamicClasses = 'if $currentObject/Name != '''' then ''ss-later--named'' else '''''  on ovLater;
+  set DynamicClasses = if $currentObject/Name != '' then 'ss-later--named' else ''  on ovLater;
 }
 
 describe page MyFirstModule.P_DynClass;

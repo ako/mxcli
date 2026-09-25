@@ -340,7 +340,7 @@ column colPrice (
   Sortable: false, Resizable: false,
   Hidable: hidden,
   ColumnWidth: manual, Size: 150,
-  DynamicCellClass: 'if($currentObject/Price > 100) then ''highlight'' else '''' ',
+  DynamicCellClass: if($currentObject/Price > 100) then 'highlight' else '' ,
   tooltip: 'Price in USD'
 )
 ```

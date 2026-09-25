@@ -538,6 +538,13 @@ widgetPropertyV3
     | (IDENTIFIER | keyword) COLON actionExprV3
     | IDENTIFIER COLON propertyValueV3                // Generic: any other property
     | keyword COLON propertyValueV3                  // Generic: keyword as property name (for pluggable widgets)
+    // A Mendix expression, written as-is: `dynamicclasses: if $currentObject/F
+    // then 'a' else ''`. LAST, so every value form above keeps its parse and only
+    // what they all reject reaches it. The visitor accepts it only for the
+    // expression-typed properties (DynamicClasses, a column's DynamicCellClass)
+    // and refuses it elsewhere, so no plain property can read it as empty
+    // (PROPOSAL_first_class_expressions.md, slice 2).
+    | (IDENTIFIER | keyword) COLON expression
     ;
 
 

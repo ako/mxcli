@@ -377,7 +377,7 @@ create page DgTest.DG07_Column_Properties (
     -- Status column with dynamic cell class based on value
     column colStatus (
       attribute: Status, caption: 'Status',
-      DynamicCellClass: 'if ($currentObject/Status = DgTest.Status.Active) then ''text-success'' else ''text-muted'''
+      DynamicCellClass: if ($currentObject/Status = DgTest.Status.Active) then 'text-success' else 'text-muted'
     )
   }
 };
