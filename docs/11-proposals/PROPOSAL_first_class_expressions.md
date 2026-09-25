@@ -2,7 +2,7 @@
 title: First-class expressions for expression-typed MDL properties
 status: draft
 date: 2026-09-08
-revised: 2026-09-24
+revised: 2026-09-25
 related:
   - https://github.com/mendixlabs/mxcli/issues/750
   - PROPOSAL_expression_type_checking.md
@@ -352,6 +352,9 @@ worse: it is printed as a raw `'%s'`, so a stored `'my-cert'` becomes
 `''my-cert''`, which does not re-parse as one string. Header keys are printed
 raw too.
 
+Reproduced on a Studio Pro–authored client in §6.5 (`HttpAuthenticationUserName`
+`'abc'` → `abc`), which also shows `CustomLocation` blanked by the round trip.
+
 Fix: drop the fast path and always `mdlQuote` (escape every `'`). Test first: a
 describe → parse → store round trip for each row above plus `ClientCertificate`
 and a header, where the rows that pass today are the control. This is
@@ -541,21 +544,56 @@ could ship as a bug):
 | `mdl/visitor/visitor_odata.go` | `constant Mod.C` → `Mod.C` for the four proxy slots; `@Mod.C` there is stripped the same way (fixes the stored `"@Mod.C"`) — accepted for compatibility |
 | `mdl/visitor/visitor_rest.go`, `visitor_dbconnection.go` | `constant` branch producing the same value as today's `@` branch |
 | `mdl/executor/cmd_odata.go`, REST and database-connection describers | emit `constant Mod.C` for by-name constant slots |
-| `mdl/executor/` (reference validation) | `constant X` must resolve to a constant; `constant` in an expression slot, or `@` in a reference slot, is a check-time hint naming the other spelling |
-| `mdl-examples/doctype-tests/10-odata-examples.mdl` | replace the "omit proxy, BSON shape isn't well-defined" comment with a working `ProxyHost: constant …` case |
+| `mdl/executor/` (reference validation) | `constant X` must resolve to a constant of any type (below); any `Proxy*` set requires `ProxyType: Override`; `constant` in an expression slot, or `@` in a reference slot, is a check-time hint naming the other spelling |
+| `mdl-examples/doctype-tests/10-odata-examples.mdl` | replace the "omit proxy, BSON shape isn't well-defined" comment with a working `ProxyType: Override, ProxyHost: constant …` case, mirroring `Odata.Bug1073` |
 
 **Compatibility.** `@Mod.C` keeps parsing in all three reference families,
 permanently, as §3.2 does for quoted expressions; only `describe` changes. In
 the REST client `$Mod.C` stays accepted too.
 
-**Needs a Studio Pro reference before the proxy half is built.** The metamodel
-says `ProxyHost` stores the qualified name `Mod.C`, which is what
-`ProxyHost: Mod.C` (no `@`) already writes today — yet the comment in
-`10-odata-examples.mdl` reports that form fails with CE0117. Either the comment
-is stale, or something else is required (a `ProxyType` other than
-`DefaultProxy`, a constant of a particular type for the port, or a different
-field). Per CLAUDE.md this is settled by a Studio Pro–configured client with a
-custom proxy, dumped with `mxcli bson dump`, not by guessing.
+**Measured against a Studio Pro reference (2026-09-25).** `ako/TestApp`
+commit `37e0cc0` ("proxy example odata") holds `Odata.Bug1073`, an OData client
+configured in Studio Pro with a custom proxy, each field bound to a constant.
+Its `Rest$ConsumedODataService` unit, decoded, next to two clients written by
+mxcli (`8f08e229`+) into a copy of the project — `RT` from the unchanged
+`describe` output, `AT` from the same with `ProxyHost: @…` and
+`HttpUsername: '''abc'''`:
+
+| Field | Studio Pro | `RT` (describe → exec) | `AT` |
+|---|---|---|---|
+| `ProxyType` | `Override` | `Override` | `Override` |
+| `ProxyHost` | `Odata.Bug1073_ProxyHost` | `Odata.Bug1073_ProxyHost` ✓ | `@Odata.Bug1073_ProxyHost` ✗ |
+| `ProxyPort` / `ProxyUsername` / `ProxyPassword` | qualified name | same ✓ | same ✓ |
+| `HttpConfiguration.HttpAuthenticationUserName` | `'abc'` | `abc` ✗ | `'abc'` ✓ |
+| `HttpConfiguration.HttpAuthenticationPassword` | `@Clients.OrdersRestClient_password` | same ✓ | same ✓ |
+| `HttpConfiguration.CustomLocation` (with `OverrideLocation: false`) | `@Odata.Bug1073_Location` | `""` ✗ | `""` ✗ |
+
+What this settles:
+
+1. **A by-name constant slot stores the bare qualified name, and the
+   unprefixed MDL form already writes it byte-for-byte.** The CE0117 claim in
+   `10-odata-examples.mdl`'s comment for the unprefixed form is stale; the
+   likelier cause at the time was `ProxyType` left at `DefaultProxy`. Studio
+   Pro sets `Override` whenever a custom proxy is configured, so `check` should
+   require `ProxyType: Override` when any `Proxy*` reference is set.
+2. **`@` in a reference slot is the live bug**: it is stored verbatim, and the
+   name no longer resolves. The `constant` keyword fixes it; accepting `@`
+   there means stripping it, as the database-connection visitor does.
+3. **Slice 0b reproduces on Studio Pro data**, not only on synthetic input:
+   `HttpUsername: 'abc'`, exactly as `describe` prints it, re-stores `abc`.
+4. **A further describe loss:** Studio Pro keeps a `CustomLocation`
+   expression while `OverrideLocation` is false, and `describe` omits
+   `ServiceUrl` in that state, so a round trip blanks it. Harmless at runtime
+   (it is not used) but it is churn under ADR-0008, and the value reappears
+   the moment someone ticks "override" in Studio Pro. Belongs with slice 0b.
+
+**The constant's type is the user's choice.** Studio Pro lets the constant
+behind a proxy field be String, Integer or Long — the reference uses a String
+`'232'` for the port, but an Integer would do. So `constant X` is validated
+only for *being a constant*; mxcli does not constrain its type. If Mendix
+rejects a type in a given slot, `mx check` reports it against the real
+version's rules, the same division of labour as xpathFunctionName's comment
+describes.
 
 ## 7. Test plan
 
