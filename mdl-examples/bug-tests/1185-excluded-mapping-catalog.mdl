@@ -1,0 +1,64 @@
+-- Bug test for upstream issue #1185: "documents with same [name] not
+-- discernable in catalog" (mxcli 0.24, mx 11.12.3).
+--
+-- Reported with "two import mappings with the same name, one included and one
+-- excluded": the catalog showed both, and "the excluded mapping source doesn't
+-- follow the established @excluded prefix convention".
+--
+-- Fixed:
+--   * DESCRIBE of an excluded import/export mapping starts with `@excluded`,
+--     and `@excluded create … mapping` reads it back (MDL059 no longer
+--     rejects it), so describe -> exec keeps the exclusion.
+--   * CATALOG.IMPORT_MAPPINGS / EXPORT_MAPPINGS carry the document's own Id and
+--     an Excluded column.
+--   * CATALOG.SOURCE describes each document by its Id (column ElementId), so
+--     same-named twins get their own rows instead of the live one twice.
+--
+-- MDL cannot create a same-named twin (a CREATE without OR MODIFY refuses an
+-- existing name), so this script covers the annotation round trip. To see the
+-- catalog side, rename IMM_1185_Old's stored Name to IMM_1185, then:
+--
+--   refresh catalog full source;
+--   select Id, Excluded from catalog.import_mappings where Name = 'IMM_1185';
+--   select ElementId, SourceText from catalog.source
+--     where QualifiedName = 'MyFirstModule.IMM_1185';
+--
+-- Expected: two distinct Ids, Excluded 0 and 1; the excluded row's source
+-- starts with `@excluded`. `mx check` reports 0 errors (an excluded document is
+-- not built).
+
+create json structure MyFirstModule.JSON_1185
+snippet '{"id": 1, "name": "x"}';
+
+create non-persistent entity MyFirstModule.Order1185 ( OrderId: integer, Name: string(200) );
+/
+
+create import mapping MyFirstModule.IMM_1185
+  with json structure MyFirstModule.JSON_1185
+{
+  create MyFirstModule.Order1185 {
+    OrderId = id,
+    Name = name
+  }
+};
+
+@excluded
+create import mapping MyFirstModule.IMM_1185_Old
+  with json structure MyFirstModule.JSON_1185
+{
+  create MyFirstModule.Order1185 {
+    OrderId = id
+  }
+};
+
+@excluded
+create export mapping MyFirstModule.EXM_1185_Old
+  with json structure MyFirstModule.JSON_1185
+{
+  MyFirstModule.Order1185 {
+    id = OrderId
+  }
+};
+
+describe import mapping MyFirstModule.IMM_1185_Old;
+describe export mapping MyFirstModule.EXM_1185_Old;

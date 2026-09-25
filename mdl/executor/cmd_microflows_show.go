@@ -228,7 +228,8 @@ func describeMicroflowMode(ctx *ExecContext, name ast.QualifiedName, normalized 
 
 	// Describe the live microflow: a module may hold an excluded twin of this
 	// name, and describing that one shows a body the app does not run (#914).
-	targetMf, _ := pickLive(allMicroflows,
+	targetMf, _ := pickDescribed(ctx, allMicroflows,
+		func(mf *microflows.Microflow) model.ID { return mf.ID },
 		func(mf *microflows.Microflow) bool {
 			return h.GetModuleName(h.FindModuleID(mf.ContainerID)) == name.Module && mf.Name == name.Name
 		},
@@ -397,7 +398,8 @@ func describeNanoflow(ctx *ExecContext, name ast.QualifiedName) error {
 	}
 
 	// Describe the live nanoflow, not an excluded twin of the same name (#914).
-	targetNf, _ := pickLive(allNanoflows,
+	targetNf, _ := pickDescribed(ctx, allNanoflows,
+		func(nf *microflows.Nanoflow) model.ID { return nf.ID },
 		func(nf *microflows.Nanoflow) bool {
 			return h.GetModuleName(h.FindModuleID(nf.ContainerID)) == name.Module && nf.Name == name.Name
 		},
@@ -1560,7 +1562,8 @@ func describeRule(ctx *ExecContext, name ast.QualifiedName) error {
 	}
 
 	// Describe the live rule, not an excluded twin of the same name (#914).
-	target, _ := pickLive(allRules,
+	target, _ := pickDescribed(ctx, allRules,
+		func(r *microflows.Rule) model.ID { return r.ID },
 		func(r *microflows.Rule) bool {
 			return h.GetModuleName(h.FindModuleID(r.ContainerID)) == name.Module && r.Name == name.Name
 		},

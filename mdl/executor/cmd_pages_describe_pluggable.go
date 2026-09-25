@@ -5,6 +5,7 @@ package executor
 import (
 	"context"
 	"strings"
+	"sync"
 )
 
 // buildPropertyTypeKeyMap builds a map from PropertyType $ID to PropertyKey for a CustomWidget.
@@ -1480,3 +1481,57 @@ func parseColumnSlotWidgets(ctx *ExecContext, value map[string]any, entityContex
 	}
 	return out
 }
+
+// declaresSeveralAuthorableDataSources reports whether a pluggable widget's
+// stored schema declares more than one datasource property MDL can set — the
+// same count the builder's refuseAmbiguousGenericDataSource makes, read from the
+// document instead of the definition.
+//
+// The two agree because a generated definition (the only kind a widget like the
+// File Uploader has) maps every top-level datasource the package declares. A
+// LINKED one is not counted: the platform fills it from the containing widget
+// and a definition may not map it. A widget with an EMBEDDED definition is not
+// counted either: those are hand-written, choose one datasource mapping per
+// mode, and so accept the generic clause — a database-mode ComboBox declares
+// two datasources and must keep describing as it always has.
+func declaresSeveralAuthorableDataSources(w map[string]any) bool {
+	widgetType, ok := w["Type"].(map[string]any)
+	if !ok {
+		return false
+	}
+	if id, _ := widgetType["WidgetId"].(string); embeddedDefinitionWidgetIDs()[id] {
+		return false
+	}
+	objType, ok := widgetType["ObjectType"].(map[string]any)
+	if !ok {
+		return false
+	}
+	n := 0
+	for _, pt := range getBsonArrayElements(objType["PropertyTypes"]) {
+		ptMap, ok := pt.(map[string]any)
+		if !ok {
+			continue
+		}
+		vt, ok := ptMap["ValueType"].(map[string]any)
+		if !ok || extractString(vt["Type"]) != "DataSource" {
+			continue
+		}
+		if linked, _ := vt["IsLinked"].(bool); linked {
+			continue
+		}
+		n++
+	}
+	return n > 1
+}
+
+var embeddedDefinitionWidgetIDs = sync.OnceValue(func() map[string]bool {
+	ids := map[string]bool{}
+	reg, err := NewWidgetRegistry()
+	if err != nil {
+		return ids
+	}
+	for _, def := range reg.All() {
+		ids[def.WidgetID] = true
+	}
+	return ids
+})

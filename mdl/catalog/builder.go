@@ -77,7 +77,10 @@ type CatalogReader interface {
 }
 
 // DescribeFunc generates MDL source for a given object type and qualified name.
-type DescribeFunc func(objectType string, qualifiedName string) (string, error)
+// id is the stored document's ID and pins the describe to it: two documents
+// may share a qualified name when one is excluded (#914), and describing by
+// name alone renders the live one for both (#1185).
+type DescribeFunc func(objectType string, qualifiedName string, id string) (string, error)
 
 // Builder populates catalog tables from MPR data.
 type Builder struct {

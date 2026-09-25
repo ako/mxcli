@@ -1008,27 +1008,29 @@ func referenceToStarlark(r Reference) starlark.Value {
 // allPermissionToStarlark converts an AllPermission to a Starlark struct.
 func allPermissionToStarlark(p AllPermission) starlark.Value {
 	return starlarkstruct.FromStringDict(starlark.String("permission"), starlark.StringDict{
-		"module_role_name": starlark.String(p.ModuleRoleName),
-		"element_type":     starlark.String(p.ElementType),
-		"element_name":     starlark.String(p.ElementName),
-		"member_name":      starlark.String(p.MemberName),
-		"access_type":      starlark.String(p.AccessType),
-		"xpath_constraint": starlark.String(p.XPathConstraint),
-		"is_constrained":   starlark.Bool(p.IsConstrained),
-		"module_name":      starlark.String(p.ModuleName),
+		"module_role_name":             starlark.String(p.ModuleRoleName),
+		"element_type":                 starlark.String(p.ElementType),
+		"element_name":                 starlark.String(p.ElementName),
+		"member_name":                  starlark.String(p.MemberName),
+		"access_type":                  starlark.String(p.AccessType),
+		"xpath_constraint":             starlark.String(p.XPathConstraint),
+		"is_constrained":               starlark.Bool(p.IsConstrained),
+		"module_name":                  starlark.String(p.ModuleName),
+		"default_member_access_rights": starlark.String(p.DefaultMemberAccessRights),
 	})
 }
 
 // permissionToStarlark converts a Permission to a Starlark struct.
 func permissionToStarlark(p Permission) starlark.Value {
 	return starlarkstruct.FromStringDict(starlark.String("entity_permission"), starlark.StringDict{
-		"module_role_name": starlark.String(p.ModuleRoleName),
-		"module_name":      starlark.String(p.ModuleName),
-		"entity_name":      starlark.String(p.EntityName),
-		"access_type":      starlark.String(p.AccessType),
-		"member_name":      starlark.String(p.MemberName),
-		"xpath_constraint": starlark.String(p.XPathConstraint),
-		"is_constrained":   starlark.Bool(p.IsConstrained),
+		"module_role_name":             starlark.String(p.ModuleRoleName),
+		"module_name":                  starlark.String(p.ModuleName),
+		"entity_name":                  starlark.String(p.EntityName),
+		"access_type":                  starlark.String(p.AccessType),
+		"member_name":                  starlark.String(p.MemberName),
+		"xpath_constraint":             starlark.String(p.XPathConstraint),
+		"is_constrained":               starlark.Bool(p.IsConstrained),
+		"default_member_access_rights": starlark.String(p.DefaultMemberAccessRights),
 	})
 }
 
@@ -1089,6 +1091,8 @@ func activityToStarlark(a Activity) starlark.Value {
 		"entity_ref":               starlark.String(a.EntityRef),
 		"service_ref":              starlark.String(a.ServiceRef),
 		"action_ref":               starlark.String(a.ActionRef),
+		"use_request_timeout":      starlark.Bool(a.UseRequestTimeout),
+		"timeout_expression":       starlark.String(a.TimeoutExpression),
 	})
 }
 

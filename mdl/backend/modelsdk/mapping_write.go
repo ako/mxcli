@@ -105,10 +105,22 @@ func (b *Backend) GetImportMappingByQualifiedName(moduleName, name string) (*mod
 	if err != nil {
 		return nil, err
 	}
+	// A name is not a unique key: a module may hold an excluded twin (#914).
+	// Prefer the live one, so DESCRIBE shows what the app runs and CREATE OR
+	// MODIFY edits it; fall back to the first excluded match (#1185).
+	var excluded *model.ImportMapping
 	for _, im := range all {
 		if im.Name == name && b.moduleNameFor(im.ID) == moduleName {
-			return im, nil
+			if !im.Excluded {
+				return im, nil
+			}
+			if excluded == nil {
+				excluded = im
+			}
 		}
+	}
+	if excluded != nil {
+		return excluded, nil
 	}
 	return nil, fmt.Errorf("import mapping not found: %s.%s", moduleName, name)
 }
@@ -300,10 +312,22 @@ func (b *Backend) GetExportMappingByQualifiedName(moduleName, name string) (*mod
 	if err != nil {
 		return nil, err
 	}
+	// A name is not a unique key: a module may hold an excluded twin (#914).
+	// Prefer the live one, so DESCRIBE shows what the app runs and CREATE OR
+	// MODIFY edits it; fall back to the first excluded match (#1185).
+	var excluded *model.ExportMapping
 	for _, em := range all {
 		if em.Name == name && b.moduleNameFor(em.ID) == moduleName {
-			return em, nil
+			if !em.Excluded {
+				return em, nil
+			}
+			if excluded == nil {
+				excluded = em
+			}
 		}
+	}
+	if excluded != nil {
+		return excluded, nil
 	}
 	return nil, fmt.Errorf("export mapping not found: %s.%s", moduleName, name)
 }

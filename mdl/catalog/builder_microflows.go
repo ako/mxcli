@@ -58,9 +58,10 @@ func (b *Builder) buildMicroflows() error {
 	if b.fullMode {
 		actStmt, err = b.tx.Prepare(`
 			INSERT INTO activities_data (Id, Name, Caption, ActivityType, Sequence, MicroflowId, MicroflowQualifiedName,
-				ModuleName, Folder, EntityRef, ActionType, ServiceRef, ActionRef, Description,
+				ModuleName, Folder, EntityRef, ActionType, ServiceRef, ActionRef,
+				UseRequestTimeout, TimeoutExpression, Description,
 				ProjectId, SnapshotId)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`)
 		if err != nil {
 			return err
@@ -158,6 +159,8 @@ func (b *Builder) buildMicroflows() error {
 				actionType := ""
 				serviceRef := ""
 				actionRef := ""
+				useRequestTimeout := 0
+				timeoutExpression := ""
 
 				if act, ok := obj.(*microflows.ActionActivity); ok {
 					if act.Action != nil {
@@ -170,6 +173,13 @@ func (b *Builder) buildMicroflows() error {
 						case *microflows.CallExternalAction:
 							serviceRef = a.ConsumedODataService
 							actionRef = a.Name
+						case *microflows.RestCallAction:
+							// "Use a timeout" plus the seconds, which Studio Pro
+							// stores as an expression string (e.g. "300").
+							if a.UseRequestTimeOut {
+								useRequestTimeout = 1
+							}
+							timeoutExpression = a.TimeoutExpression
 						}
 					}
 				}
@@ -188,6 +198,8 @@ func (b *Builder) buildMicroflows() error {
 					actionType,
 					serviceRef,
 					actionRef,
+					useRequestTimeout,
+					timeoutExpression,
 					"",
 					projectID, snapshotID,
 				)
@@ -250,6 +262,8 @@ func (b *Builder) buildMicroflows() error {
 				actionType := ""
 				serviceRef := ""
 				actionRef := ""
+				useRequestTimeout := 0
+				timeoutExpression := ""
 
 				if act, ok := obj.(*microflows.ActionActivity); ok {
 					if act.Action != nil {
@@ -262,6 +276,13 @@ func (b *Builder) buildMicroflows() error {
 						case *microflows.CallExternalAction:
 							serviceRef = a.ConsumedODataService
 							actionRef = a.Name
+						case *microflows.RestCallAction:
+							// "Use a timeout" plus the seconds, which Studio Pro
+							// stores as an expression string (e.g. "300").
+							if a.UseRequestTimeOut {
+								useRequestTimeout = 1
+							}
+							timeoutExpression = a.TimeoutExpression
 						}
 					}
 				}
@@ -280,6 +301,8 @@ func (b *Builder) buildMicroflows() error {
 					actionType,
 					serviceRef,
 					actionRef,
+					useRequestTimeout,
+					timeoutExpression,
 					"",
 					projectID, snapshotID,
 				)
@@ -341,7 +364,7 @@ func (b *Builder) buildMicroflows() error {
 				if _, err := actStmt.Exec(
 					string(obj.GetID()), activityName, "Activity", activityType, seq+1,
 					string(rule.ID), qualifiedName, moduleName, moduleName,
-					"", actionType, "", "", "",
+					"", actionType, "", "", 0, "", "",
 					projectID, snapshotID,
 				); err != nil {
 					return err
