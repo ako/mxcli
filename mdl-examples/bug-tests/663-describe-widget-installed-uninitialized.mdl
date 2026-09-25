@@ -1,0 +1,21 @@
+-- ako/mxcli#663: DESCRIBE WIDGET called an installed widget "unknown".
+--
+-- On a fresh clone (no .mxcli/ — it is gitignored) with Fieldset installed in
+-- widgets/, this reported:
+--
+--   Error: unknown widget "fieldset" — use an MDL keyword (barcodescanner, ...)
+--   or a full widget id (com.mendix.widget…).
+--
+-- DESCRIBE WIDGET now generates the project's widget definitions from its
+-- installed .mpk before resolving the name, as exec and check already did.
+--
+-- To reproduce, run against a project with Fieldset installed after
+-- `rm -rf .mxcli/widgets`:
+--   mxcli exec mdl-examples/bug-tests/663-describe-widget-installed-uninitialized.mdl -p app.mpr
+--
+-- Both spellings must describe the widget. The id form has to be QUOTED —
+-- the old error suggested it unquoted, which is a parse error.
+
+describe widget fieldset;
+
+describe widget 'com.mendix.widget.web.fieldset.Fieldset';

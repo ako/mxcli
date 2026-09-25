@@ -37,13 +37,11 @@ func DescribeWidget(arg, projectPath string) (*WidgetDescription, error) {
 	if err != nil {
 		return nil, mdlerrors.NewBackend("widget registry init", err)
 	}
-	if projectPath != "" {
-		_ = registry.LoadUserDefinitions(projectPath)
-	}
+	_ = LoadProjectWidgetDefinitions(registry, projectPath)
 
 	widgetID, def := resolveWidgetTarget(registry, arg)
 	if widgetID == "" {
-		return nil, widgetNotFoundError(registry, arg)
+		return nil, widgetNotFoundError(registry, arg, projectPath)
 	}
 
 	desc := WidgetDescription{WidgetID: widgetID}
@@ -236,19 +234,34 @@ var builtinWidgetAliases = map[string]string{
 }
 
 // widgetNotFoundError builds a helpful error listing the known MDL names.
-func widgetNotFoundError(registry *WidgetRegistry, arg string) error {
+//
+// Every remedy it names must work (ako/mxcli#663). It used to suggest "a full
+// widget id (com.mendix.widget…)", which is a parse error in DESCRIBE WIDGET —
+// the id has to be quoted there — and it listed only the embedded keywords of a
+// project whose installed widgets had simply not been loaded.
+func widgetNotFoundError(registry *WidgetRegistry, arg, projectPath string) error {
+	seen := map[string]bool{}
 	var names []string
-	for _, d := range registry.All() {
-		if d.MDLName != "" {
-			names = append(names, d.MDLName)
+	add := func(n string) {
+		if n != "" && !seen[n] {
+			seen[n] = true
+			names = append(names, n)
 		}
 	}
+	for _, d := range registry.All() {
+		add(d.MDLName)
+	}
 	for alias := range builtinWidgetAliases {
-		names = append(names, strings.ToLower(alias))
+		add(strings.ToLower(alias))
 	}
 	sort.Strings(names)
-	return fmt.Errorf("unknown widget %q — use an MDL keyword (%s) or a full widget id (com.mendix.widget…). Run `mxcli widget list` to see all",
-		arg, strings.Join(names, ", "))
+	scope := "installed in this project's widgets/"
+	if projectPath == "" {
+		scope = "built into mxcli (no project is open, so a project's installed widgets are not known; pass -p <app.mpr>)"
+	}
+	return fmt.Errorf("unknown widget %q: no widget by that name is %s. Known MDL keywords: %s. "+
+		"A widget can also be named by its quoted id ('com.mendix.widget.web.combobox.Combobox'); `mxcli widget list` shows the ids",
+		arg, scope, strings.Join(names, ", "))
 }
 
 // projectDirOf returns the directory containing widgets/ for a project path

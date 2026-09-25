@@ -144,6 +144,10 @@ dynamictext ovChip (
 )
 ```
 
+Write it quoted, not in brackets: `dynamicclasses: [ … ]` (and a column's
+`DynamicCellClass: [ … ]`) parses as a list, which no writer reads — `check`
+reports it as MDL-WIDGET32 rather than letting the value be dropped.
+
 **All can be combined on a single widget:**
 ```sql
 container ctnHero (

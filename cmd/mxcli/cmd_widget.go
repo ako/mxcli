@@ -230,12 +230,12 @@ func runWidgetList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create widget registry: %w", err)
 	}
 
-	// Load user definitions if project path available
+	// Load the project's widgets, generating their definitions from the
+	// installed .mpk first — `.mxcli/` is gitignored, so a fresh clone has none
+	// (ako/mxcli#663).
 	projectPath, _ := cmd.Flags().GetString("project")
-	if projectPath != "" {
-		if err := registry.LoadUserDefinitions(projectPath); err != nil {
-			log.Printf("warning: loading user widget definitions: %v", err)
-		}
+	if err := executor.LoadProjectWidgetDefinitions(registry, projectPath); err != nil {
+		log.Printf("warning: loading user widget definitions: %v", err)
 	}
 
 	defs := registry.All()

@@ -61,28 +61,7 @@ func LoadWidgetRegistry(projectPath string) *WidgetRegistry {
 		return nil
 	}
 	if projectPath != "" {
-		// Generate the project's .def.json files from its installed .mpk when
-		// they are missing or behind this build, exactly as the page builder
-		// does before it reads them (cmd_pages_builder.go). Without this the
-		// validator and the builder read DIFFERENT registries, and the
-		// difference pointed the wrong way: on a project that had never run
-		// `mxcli widget init`, `check -p --references` reported every installed
-		// widget as "not a widget in this project" while `exec --no-check`
-		// wrote the page and generated the definitions on its way past
-		// (mendixlabs/mxcli#1135). check is meant to be the strict gate and
-		// exec the thing that runs; here it was inverted, and the script it
-		// blocked was one describe had just emitted.
-		//
-		// The self-healing is what made it read as flaky: the first exec writes
-		// the definitions and every check after it passes.
-		//
-		// Best-effort. A project whose definitions cannot be written — read-only
-		// checkout, no widgets/ at all — gets the registry it got before, which
-		// is strictly better than failing the check over a cache.
-		if _, err := RefreshStaleWidgetDefinitions(projectPath); err != nil {
-			log.Printf("warning: updating widget definitions: %v", err)
-		}
-		_ = registry.LoadUserDefinitions(projectPath)
+		_ = LoadProjectWidgetDefinitions(registry, projectPath)
 		registry.projectPath = projectPath
 		// The validator and DESCRIBE WIDGET must agree about which properties a
 		// widget has; they read different sources, so the definition is topped up
@@ -91,6 +70,37 @@ func LoadWidgetRegistry(projectPath string) *WidgetRegistry {
 		enrichKnownPropertiesFromMPK(registry, projectPath)
 	}
 	return registry
+}
+
+// LoadProjectWidgetDefinitions loads a project's widget definitions into
+// registry, first generating `.mxcli/widgets/*.def.json` from the project's
+// installed .mpk when they are missing or behind this build — exactly as the
+// page builder does before it reads them (cmd_pages_builder.go).
+//
+// Every reader of the project's widgets must go through here. `.mxcli/` is
+// gitignored, so a clone, a CI container or a new machine never has the
+// definitions; a reader that only calls LoadUserDefinitions knows the nine
+// embedded widgets and calls every installed one unknown. That happened twice:
+// `check -p --references` reported installed widgets as "not a widget in this
+// project" while exec wrote the page (mendixlabs/mxcli#1135), and DESCRIBE
+// WIDGET / `widget list` called `fieldset` unknown while page authoring
+// accepted it and DESCRIBE PAGE emitted it (ako/mxcli#663).
+//
+// The self-healing is what made both read as flaky: the first exec writes the
+// definitions and every reader after it is right.
+//
+// Best-effort. A project whose definitions cannot be written — read-only
+// checkout, no widgets/ at all — gets the registry it got before, which is
+// strictly better than failing over a cache. The returned error is
+// LoadUserDefinitions' (a malformed .def.json), for callers that report it.
+func LoadProjectWidgetDefinitions(registry *WidgetRegistry, projectPath string) error {
+	if registry == nil || projectPath == "" {
+		return nil
+	}
+	if _, err := RefreshStaleWidgetDefinitions(projectPath); err != nil {
+		log.Printf("warning: updating widget definitions: %v", err)
+	}
+	return registry.LoadUserDefinitions(projectPath)
 }
 
 // ValidateWidgetPropertiesForStatement runs widget property validation on a
@@ -168,6 +178,9 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		// every widget kind and needs no definition: the SHAPE is wrong whatever
 		// the widget declares.
 		out = append(out, validateObjectEntryProperties(w, registry, locationPrefix)...)
+		// An expression property written in brackets — the spelling #750
+		// proposes — parses as a list and was discarded on write.
+		out = append(out, validateExpressionPropertyLists(w, locationPrefix)...)
 		// #1062: an action slot holding something that is not an action, which
 		// used to check clean, exec clean, build clean and render dead. Runs for
 		// every widget kind and needs no definition, for the same reason as the
