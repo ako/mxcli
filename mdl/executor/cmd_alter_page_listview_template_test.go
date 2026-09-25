@@ -14,7 +14,7 @@ import (
 )
 
 // alterPageWith runs one ALTER PAGE operation against a mock mutator.
-func alterPageWith(t *testing.T, mutator *mock.MockPageMutator, op ast.AlterPageOperation) error {
+func alterPageWith(t *testing.T, mutator *mock.MockPageMutator, op ast.AlterPageOperation, opts ...mockCtxOption) error {
 	t.Helper()
 	mod := mkModule("MyModule")
 	pg := mkPage(mod.ID, "TestPage")
@@ -42,7 +42,7 @@ func alterPageWith(t *testing.T, mutator *mock.MockPageMutator, op ast.AlterPage
 	}
 	h := mkHierarchy(mod)
 	withContainer(h, pg.ContainerID, mod.ID)
-	ctx, _ := newMockCtx(t, withBackend(mb), withHierarchy(h))
+	ctx, _ := newMockCtx(t, append([]mockCtxOption{withBackend(mb), withHierarchy(h)}, opts...)...)
 	return execAlterPage(ctx, &ast.AlterPageStmt{
 		PageName:   ast.QualifiedName{Module: "MyModule", Name: "TestPage"},
 		Operations: []ast.AlterPageOperation{op},

@@ -1,0 +1,34 @@
+-- Bug: no document-level DROP accepted IF EXISTS, so a script that dropped
+-- anything could not be re-run. ako/mxcli#531, from the ChipCoV3 test project
+-- (Mendix 11.14.0), where a stub page that broke a workflow/page cycle had to
+-- be dropped once and the statement then deleted from the script:
+--
+--   DROP PAGE IF EXISTS FieldService.Stub;
+--     line 1:13 extraneous input 'EXISTS' expecting the start of a statement
+--
+-- Expected: `mxcli check` passes; `mxcli exec` runs this script TWICE against the
+-- same project with no error — the first run drops what exists, the second
+-- reports each drop as "not found …, skipped (if exists)". A missing module is
+-- a skip too. Without IF EXISTS, the second run stops at the first drop.
+
+create or modify module M531;
+
+create or modify persistent entity M531.Scratch ( Name: string(50) );
+create or modify enumeration M531.OldStatus ( Open 'Open' );
+create or modify constant M531.OldLimit type integer default 5;
+create or modify microflow M531.ACT_Old () begin log 'old'; end;
+
+-- the drops a replayable script would carry after the documents above are gone
+drop microflow if exists M531.ACT_Old;
+drop constant if exists M531.OldLimit;
+drop enumeration if exists M531.OldStatus;
+drop entity if exists M531.Scratch;
+drop page if exists M531.Stub;
+drop snippet if exists M531.NeverThere;
+drop workflow if exists M531.NeverThere;
+drop folder if exists 'Scratch' in M531;
+drop module if exists M531_NeverThere;
+
+-- a second pass is the re-run: every target is already gone
+drop microflow if exists M531.ACT_Old;
+drop entity if exists M531.Scratch;

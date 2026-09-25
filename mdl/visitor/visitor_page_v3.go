@@ -907,10 +907,49 @@ func parseWidgetPropertyV3(ctx parser.IWidgetPropertyV3Context, widget *ast.Widg
 			return
 		}
 		if valCtx := propCtx.PropertyValueV3(); valCtx != nil {
+			if ds := bareEntityDataSource(kw.GetText(), widget.Type, valCtx); ds != nil {
+				widget.Properties["DataSource"] = ds
+				return
+			}
 			widget.Properties[kw.GetText()] = buildPropertyValueV3(valCtx)
 		}
 		return
 	}
+}
+
+// bareEntityWidgets are the widget keywords on which `DataSource:` can only mean
+// a data source. A pluggable widget is deliberately absent: its generic keys are
+// its own .mpk property keys, and two of them reuse the name — the Barcode
+// Scanner's `datasource: Module.Entity.Attr` binds an ATTRIBUTE, and Image's
+// `datasource` is its image-type enumeration.
+var bareEntityWidgets = map[string]bool{
+	"datagrid": true, "listview": true, "gallery": true, "dataview": true,
+}
+
+// bareEntityDataSource resolves the `DataSource: Module.Entity` shorthand to
+// `DataSource: DATABASE Module.Entity`, or returns nil when the property is not
+// that shorthand.
+//
+// No dataSourceExprV3 alternative starts with a bare name, so the shorthand fell
+// through to the generic `keyword: propertyValueV3` branch and was stored as a
+// plain string that nothing reads — GetDataSource() only sees *DataSourceV3. The
+// grid was written unbound: check passed, exec reported "Created page", and
+// mxbuild answered CE0488 (ako/mxcli#576). It is resolved here rather than as a
+// grammar alternative because only the widget type says what the key means.
+// A data view gets the DATABASE source too, and MDL-WIDGET09 refuses it by name.
+func bareEntityDataSource(key, widgetType string, valCtx parser.IPropertyValueV3Context) *ast.DataSourceV3 {
+	if !strings.EqualFold(key, "DataSource") || !bareEntityWidgets[widgetType] {
+		return nil
+	}
+	pv, ok := valCtx.(*parser.PropertyValueV3Context)
+	if !ok {
+		return nil
+	}
+	qn := pv.QualifiedName()
+	if qn == nil {
+		return nil
+	}
+	return &ast.DataSourceV3{Type: "database", Reference: getQualifiedNameText(qn)}
 }
 
 // buildDataSourceV3 builds a DataSource from the parse context.

@@ -82,6 +82,7 @@ type RestHeaderDef struct {
 
 // DropRestClientStmt represents: DROP REST CLIENT Module.Name
 type DropRestClientStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 
@@ -131,6 +132,7 @@ type PublishedRestOperationDef struct {
 
 // DropPublishedRestServiceStmt represents: DROP PUBLISHED REST SERVICE Module.Name
 type DropPublishedRestServiceStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 

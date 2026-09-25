@@ -24,6 +24,7 @@ func (s *CreateQueueStmt) isStatement() {}
 
 // DropQueueStmt represents: DROP QUEUE Module.Name;
 type DropQueueStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 

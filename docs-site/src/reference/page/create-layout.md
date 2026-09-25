@@ -121,6 +121,12 @@ Main, not by a property)
 | Placeholder | `PLACEHOLDER Main` | The hole a page's content goes into. No properties, no body |
 | Navigation tree | `NAVIGATIONTREE name (profile: 'Responsive')` | The sidebar menu — vertical |
 | Menu bar | `MENUBAR name (profile: 'Responsive')` | The topbar menu — horizontal |
+| Simple menu bar | `SIMPLEMENUBAR name (menu: Module.Menu [, orientation: Vertical])` | A phone layout's bottom bar, as Atlas's `Phone_BottomBar` has it. `orientation` defaults to `Horizontal` |
+
+Every menu widget renders **either** a navigation profile (`profile: 'Responsive'`)
+**or** a menu document (`menu: Module.Menu`, created with `CREATE MENU`) — the two
+are alternatives for the same slot, and naming both is refused. With neither, the
+`Responsive` profile is used.
 
 ## Examples
 

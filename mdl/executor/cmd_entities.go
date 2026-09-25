@@ -810,6 +810,26 @@ func isViewEntity(e *domainmodel.Entity) bool {
 		e.OqlQuery != "" || e.SourceDocumentRef != ""
 }
 
+// viewEntityAttributeSetRefusal refuses an ALTER ENTITY that adds or drops an
+// attribute of a view entity. A view entity's attributes are the columns of its
+// OQL query, each an OqlViewValue bound to a select alias, so changing the set
+// on its own leaves the entity out of sync with the query: ADD wrote a
+// StoredValue attribute with no column behind it and DROP left a column with no
+// attribute, both CE6770 "View Entity is out of sync with the OQL Query." on
+// 11.12.1 (mendixlabs/mxcli#1173). The query is the declaration, so the change
+// belongs in the statement that carries it. RENAME is not refused: the column is
+// bound by the value's Reference, not the attribute name, and it builds clean.
+func viewEntityAttributeSetRefusal(entityQN, verb, attrName string) error {
+	return mdlerrors.NewValidationf(
+		"cannot %s attribute '%s' on %s: it is a view entity, whose attributes are the "+
+			"columns of its OQL query — changing them on their own gives CE6770 "+
+			"\"View Entity is out of sync with the OQL Query.\"\n"+
+			"    Change the query and the attribute list together with "+
+			"'create or modify view entity %s (…) as (select …)'; "+
+			"'describe entity %s' prints the current definition to start from",
+		verb, attrName, entityQN, entityQN, entityQN)
+}
+
 // droppedEntityMembers reports the members present on existing but absent from
 // replacement — i.e. what a CREATE OR MODIFY replace would delete. Named
 // attributes are compared case-insensitively; the four audit system fields and
@@ -1068,6 +1088,9 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 		a := s.Attribute
 		if a == nil {
 			return mdlerrors.NewValidation("no attribute definition provided")
+		}
+		if isViewEntity(entity) {
+			return viewEntityAttributeSetRefusal(s.Name.String(), "add", a.Name)
 		}
 		// Pseudo-types: set entity flags instead of adding real attributes
 		switch a.Type.Kind {
@@ -1336,6 +1359,9 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 		ctx.ReportMutation("Modified", "attribute '%s' on entity %s", s.AttributeName, s.Name)
 
 	case ast.AlterEntityDropAttribute:
+		if isViewEntity(entity) {
+			return viewEntityAttributeSetRefusal(s.Name.String(), "drop", s.AttributeName)
+		}
 		// System attribute pseudo-names: drop by clearing entity flags
 		switch strings.ToLower(s.AttributeName) {
 		case "owner":

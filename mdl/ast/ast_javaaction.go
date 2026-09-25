@@ -46,6 +46,7 @@ func (s *CreateJavaActionStmt) isStatement() {}
 
 // DropJavaActionStmt represents: DROP JAVA ACTION Module.Name
 type DropJavaActionStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 
@@ -86,6 +87,7 @@ func (s *CreateJavaScriptActionStmt) isStatement() {}
 
 // DropJavaScriptActionStmt represents: DROP JAVASCRIPT ACTION Module.Name
 type DropJavaScriptActionStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 

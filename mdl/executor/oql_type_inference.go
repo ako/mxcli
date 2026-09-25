@@ -28,6 +28,7 @@ type OQLColumnInfo struct {
 func inferOQLTypes(ctx *ExecContext, oqlQuery string, declaredAttrs []ast.ViewAttribute) ([]OQLColumnInfo, []string) {
 	var warnings []string
 	var columns []OQLColumnInfo
+	oqlQuery = stripOQLComments(oqlQuery)
 
 	// Extract SELECT clause
 	selectClause := extractSelectClause(oqlQuery)
@@ -176,6 +177,7 @@ func unquoteOQLIdent(s string) string {
 // CASE expressions, literals, datepart, etc.).
 func ValidateOQLTypes(oql string, attrs []ast.ViewAttribute) []linter.Violation {
 	var violations []linter.Violation
+	oql = stripOQLComments(oql)
 
 	selectClause := extractSelectClause(oql)
 	if selectClause == "" {
@@ -1163,6 +1165,7 @@ func extractFunctionArg(expr string) string {
 // This function can be called without an Executor instance.
 func ValidateOQLSyntax(oql string) []linter.Violation {
 	var violations []linter.Violation
+	oql = stripOQLComments(oql)
 
 	// Check for association paths using '.' instead of '/'
 	assocDotPattern := regexp.MustCompile(`\b([a-zA-Z_][a-zA-Z0-9_]*)\.([A-Z][a-zA-Z0-9_]*)\.([A-Z][a-zA-Z0-9_]*_[A-Z][a-zA-Z0-9_]*)\b`)

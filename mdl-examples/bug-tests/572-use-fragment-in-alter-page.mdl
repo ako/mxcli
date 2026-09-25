@@ -1,0 +1,56 @@
+-- Bug #572: `use fragment` inside ALTER PAGE … INSERT / REPLACE passed `check`
+-- and failed in exec with
+--   "failed to build widget SaveCancelFooter: unsupported widget type: USE_FRAGMENT".
+-- Fragments were expanded only on the CREATE PAGE path; ALTER PAGE handed the
+-- USE_FRAGMENT sentinel straight to the widget builder.
+--
+-- Fix: applyInsertWidgetMutator / applyReplaceWidgetMutator expand fragments
+-- (and building blocks) before the duplicate-name check and the build, at any
+-- depth of the inserted tree.
+--
+-- Verify: mxcli check passes; exec inserts ctnFooter into dvRequest, and the
+-- REPLACE swaps txtNote's container for the fragment's.
+
+create module FragAlter;
+
+@position(100,100)
+create persistent entity FragAlter.ServiceRequest (
+  Title: string(100),
+  Note: string(200)
+);
+
+define fragment SaveCancelFooter as {
+  footer ctnFooter {
+    actionbutton btnSave (caption: 'Save', action: save_changes, buttonstyle: primary)
+    actionbutton btnCancel (caption: 'Cancel', action: cancel_changes)
+  }
+};
+
+create page FragAlter.ServiceRequest_NewEdit
+(
+  params: { $ServiceRequest: FragAlter.ServiceRequest },
+  title: 'Service Request',
+  layout: Atlas_Core.PopupLayout
+)
+{
+  dataview dvRequest (datasource: $ServiceRequest) {
+    textbox txtTitle (label: 'Title', attribute: Title)
+    container ctnNote {
+      textbox txtNote (label: 'Note', attribute: Note)
+    }
+  }
+};
+
+-- INSERT INTO with a fragment (the reported shape).
+alter page FragAlter.ServiceRequest_NewEdit {
+  insert into dvRequest { use fragment SaveCancelFooter as ins_ }
+};
+
+-- REPLACE with a fragment nested in a container.
+alter page FragAlter.ServiceRequest_NewEdit {
+  replace ctnNote with {
+    container ctnNoteNew {
+      use fragment SaveCancelFooter as rep_
+    }
+  }
+};

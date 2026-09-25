@@ -53,6 +53,17 @@ when the handler exists and `DROP EVENT HANDLER` errors when it does not, so
 neither a plain script nor a defensive drop-then-add is re-runnable. A statement
 family needs the guard on both halves or the workaround is unavailable too.
 
+**Put the guard where the family is, not on each member.** `IF EXISTS` arrived
+one statement at a time — attribute, index, enum value, user role, demo user —
+each with its own AST field and handler branch, and the document-level `DROP`
+(35 doctypes) still had none. It now lives once: the grammar rule on every
+alternative, one flag the visitor sets, and one check in the executor's
+dispatch. That is safe only because every drop handler reports a missing
+target the same way (`NotFoundError`, at lookup, before mutating), which a
+table test over every bare `DROP` measures. A new drop handler that says "not
+found" some other way fails that test rather than silently erroring under the
+guard.
+
 **A list rule without a separator reads as a value error.** Several parse
 failures in this area were reported against the *value* in the second item of a
 list — `add attribute A: integer default 9, add attribute B: …` — when the list

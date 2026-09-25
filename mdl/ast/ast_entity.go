@@ -57,6 +57,7 @@ func (s *CreateEntityStmt) isStatement() {}
 
 // DropEntityStmt represents: DROP ENTITY Module.Name
 type DropEntityStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 

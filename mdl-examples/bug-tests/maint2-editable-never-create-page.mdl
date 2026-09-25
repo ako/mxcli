@@ -27,12 +27,16 @@ create entity if not exists MaintTwo.WorkOrder (
 
 create or replace page MaintTwo.WorkOrder_View (
   Title: 'Work order',
-  Layout: Atlas_Core.Atlas_Default
+  Layout: Atlas_Core.Atlas_Default,
+  Params: { $WorkOrder: MaintTwo.WorkOrder }
 ) {
   layoutgrid lg {
     row r1 {
       column c1 (DesktopWidth: AutoFill) {
-        dataview dv (Datasource: MaintTwo.WorkOrder) {
+        -- A page parameter, not `Datasource: MaintTwo.WorkOrder`: that shorthand was
+        -- silently dropped (ako/mxcli#576) and left this data view unbound; it now
+        -- means DATABASE, which a data view refuses (MDL-WIDGET09).
+        dataview dv (Datasource: $WorkOrder) {
           -- Read-only: these persist as Editable "Never".
           textbox txtNumber (Attribute: Number, Editable: Never)
           textarea txtNotes (Attribute: Notes, Editable: Never)

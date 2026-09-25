@@ -85,6 +85,7 @@ func (s *CreateMenuStmt) isStatement() {}
 
 // DropMenuStmt is `drop menu Module.Name`.
 type DropMenuStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 

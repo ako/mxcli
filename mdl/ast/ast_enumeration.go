@@ -22,6 +22,7 @@ func (s *CreateModuleStmt) isStatement() {}
 
 // DropModuleStmt represents: DROP MODULE ModuleName
 type DropModuleStmt struct {
+	DropGuard
 	Name string
 }
 
@@ -29,6 +30,7 @@ func (s *DropModuleStmt) isStatement() {}
 
 // DropFolderStmt represents: DROP FOLDER 'path' IN Module
 type DropFolderStmt struct {
+	DropGuard
 	FolderPath string // Folder path (e.g., "Resources/Images")
 	Module     string // Module name
 }
@@ -90,6 +92,7 @@ const (
 
 // DropEnumerationStmt represents: DROP ENUMERATION Module.Name
 type DropEnumerationStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 
@@ -116,6 +119,7 @@ func (s *CreateConstantStmt) isStatement() {}
 
 // DropConstantStmt represents: DROP CONSTANT Module.Name
 type DropConstantStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 

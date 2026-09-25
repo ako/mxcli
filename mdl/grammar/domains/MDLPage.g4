@@ -421,6 +421,7 @@ widgetTypeV3
     | SCROLLREGION
     | NAVIGATIONTREE
     | MENUBAR
+    | SIMPLEMENUBAR   // Atlas phone bottom bar: renders a menu document (#573)
     // Object-list container keywords for pluggable widgets (Phase 1 — #538).
     // Each is the singular form of a Type:"object"+IsList:true widget property
     // (e.g. Accordion groups → GROUP). Routed at executor time via the parent
