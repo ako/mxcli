@@ -1,0 +1,36 @@
+-- ============================================================================
+-- ako/mxcli#653: describe → exec of a view entity adds 2 spaces of indentation
+-- to the stored OQL on every cycle
+-- ============================================================================
+--
+-- Symptom (before fix): "Each cycle reports `Modified view entity` and stores
+-- the query with every line after the first indented two spaces further."
+-- Describe indents every stored line by two spaces; exec stored the source text
+-- from the query's first token, so line 1 lost its indentation and lines 2…n
+-- kept all of it.
+--
+-- After fix: exec strips the indentation common to the query's lines (line 1
+-- counted at its column in the script), so the query below is stored as
+--   select
+--     sum(s.Amount) as Total
+--   from MyFirstModule.Sale653 as s
+-- and `describe entity MyFirstModule.Ind`, exec'd back, reports
+-- `Unchanged view entity` on every cycle, not just the first.
+--
+-- Verify:
+--   mxcli exec 653-view-entity-oql-indent-drift.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe entity MyFirstModule.Ind" > d.mdl
+--   mxcli exec d.mdl -p app.mpr      # repeat describe + exec: Unchanged each time
+-- ============================================================================
+
+create persistent entity MyFirstModule.Sale653 (
+  Amount: Decimal
+);
+
+create view entity MyFirstModule.Ind (
+  Total: Decimal
+) as (
+  select
+    sum(s.Amount) as Total
+  from MyFirstModule.Sale653 as s
+);

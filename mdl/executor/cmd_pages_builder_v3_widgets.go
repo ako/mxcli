@@ -955,31 +955,17 @@ func (pb *pageBuilder) buildButtonV3(w *ast.WidgetV3) (*pages.ActionButton, erro
 			},
 		}
 
-		// Handle CaptionParams (template parameters like {1}, {2})
-		if params := w.GetCaptionParams(); params != nil {
-			for _, p := range params {
-				param := &pages.ClientTemplateParameter{
-					BaseElement: model.BaseElement{
-						ID:       model.ID(types.GenerateID()),
-						TypeName: "Forms$ClientTemplateParameter",
-					},
-				}
-				// Check if it's an attribute reference or literal
-				if strVal, ok := p.Value.(string); ok {
-					if strings.HasPrefix(strVal, "'") || strings.HasPrefix(strVal, "\"") {
-						// Already a quoted string literal - use as-is
-						param.Expression = strVal
-					} else if strings.HasPrefix(strVal, "$") || strings.Contains(strVal, ".") {
-						// Attribute reference - resolve widget references to entity paths
-						param.AttributeRef = pb.resolveTemplateAttributePath(strVal)
-					} else {
-						// Unquoted literal value - wrap in quotes for expression
-						param.Expression = "'" + strVal + "'"
-					}
-				}
-				btn.CaptionTemplate.Parameters = append(btn.CaptionTemplate.Parameters, param)
-			}
+		// CaptionParams bind through the same resolver as a dynamictext's
+		// ContentParams, so `[{1} = Title]` binds the attribute on both. The
+		// button used to carry its own copy that wrote a bare name as the literal
+		// 'Title' (#632). `ContentParams:` is what DESCRIBE printed for a button
+		// before #632, so it is read too — otherwise re-executing an old
+		// description drops every parameter and leaves {1} unbound.
+		params := w.GetCaptionParams()
+		if params == nil {
+			params = w.GetContentParams()
 		}
+		btn.CaptionTemplate.Parameters = pb.buildClientTemplateParams(params)
 	}
 
 	// Handle ButtonStyle. Normalize case (so `primary` becomes `Primary`) and

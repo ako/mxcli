@@ -40,6 +40,10 @@ type logRecord struct {
 	Mode             string    `json:"mode"`
 	CommandsExecuted int       `json:"commands_executed"`
 	ErrorsCount      int       `json:"errors_count"`
+	PID              int       `json:"pid"`
+	// ParentPID is the mxcli process that spawned this one, when one did. It is
+	// a string because diaglog writes "" for a top-level run (ako/mxcli#629).
+	ParentPID string `json:"parent_pid"`
 }
 
 // invocation is one mxcli process: a session_start and the session_end that
@@ -52,6 +56,11 @@ type invocation struct {
 	Ended    bool
 	Commands int
 	Errors   int
+	PID      int
+	// Spawned marks a run mxcli started itself. `mxcli test` runs three before a
+	// single test executes, so counting them as calls the agent made overstates
+	// the loop and understates `test` (ako/mxcli#629).
+	Spawned bool
 }
 
 // Duration is wall time for an invocation that closed. An invocation that did
@@ -90,7 +99,11 @@ type loopReport struct {
 	// path through all ~250 os.Exit sites.
 	StatementErrors int `json:"runs_with_statement_errors"`
 	// Unclosed is runs with no session_end. See the comment at its increment.
-	Unclosed     int         `json:"unclosed"`
+	Unclosed int `json:"unclosed"`
+	// Spawned is runs mxcli started itself, excluded from every other figure
+	// here. They are real processes and their time is already inside their
+	// parent's, so counting them again would double it (ako/mxcli#629).
+	Spawned      int         `json:"spawned_by_mxcli"`
 	WallSeconds  float64     `json:"wall_seconds"`
 	ByVerb       []verbStats `json:"by_verb"`
 	CheckExecDup int         `json:"check_then_exec_pairs"`
@@ -167,22 +180,43 @@ func invocationScript(args []string) string {
 // so rather than pretending otherwise.
 func buildInvocations(records []logRecord) []invocation {
 	var out []invocation
+	open := map[int]int{} // pid -> index of its open invocation
 	cur := -1
 	for _, r := range records {
 		switch r.Msg {
 		case "session_start":
 			out = append(out, invocation{
-				Verb:   invocationVerb(r.Args, r.Mode),
-				Script: invocationScript(r.Args),
-				Start:  r.Time,
+				Verb:    invocationVerb(r.Args, r.Mode),
+				Script:  invocationScript(r.Args),
+				Start:   r.Time,
+				PID:     r.PID,
+				Spawned: r.ParentPID != "",
 			})
 			cur = len(out) - 1
+			if r.PID != 0 {
+				open[r.PID] = cur
+			}
 		case "session_end":
-			if cur >= 0 && !out[cur].Ended {
-				out[cur].End = r.Time
-				out[cur].Ended = true
-				out[cur].Commands = r.CommandsExecuted
-				out[cur].Errors = r.ErrorsCount
+			// Pair by pid when the log has one. `mxcli test` spawns three mxcli
+			// processes before a single test runs, so their session_ends arrive
+			// between the parent's start and its own end; closing "the most
+			// recent open invocation" hands the parent's close to a child and
+			// reports the parent as a failure. Measured: every `test` run showed
+			// as unclosed although all its tests passed (ako/mxcli#629).
+			i := cur
+			if r.PID != 0 {
+				j, ok := open[r.PID]
+				if !ok {
+					continue // an end whose start is outside this window
+				}
+				i = j
+				delete(open, r.PID)
+			}
+			if i >= 0 && !out[i].Ended {
+				out[i].End = r.Time
+				out[i].Ended = true
+				out[i].Commands = r.CommandsExecuted
+				out[i].Errors = r.ErrorsCount
 			}
 		}
 	}
@@ -199,10 +233,19 @@ func analyzeLoop(records []logRecord) loopReport {
 
 	for _, inv := range invs {
 		// The report never counts itself. Since ako/mxcli#617 every command is
-		// recorded from PersistentPreRun, which excludes `diag` for this reason;
+		// recorded from startSession, which excludes `diag` for this reason;
 		// the filter stays as the second guard, because a report whose numbers
 		// depend on one exclusion staying in place would drift silently.
 		if inv.Verb == "diag" || strings.HasPrefix(inv.Verb, "diag ") {
+			continue
+		}
+		// A run mxcli started itself is not a call anyone made. `mxcli test`
+		// spawns `-c DESCRIBE SETTINGS`, `-c SHOW MODULES` and an `exec` of the
+		// generated runner before the first test executes, so a session of 5
+		// test runs carried 15 phantom entries in the table the report exists to
+		// rank. Counted on its own line instead (ako/mxcli#629).
+		if inv.Spawned {
+			rep.Spawned++
 			continue
 		}
 		s, ok := stats[inv.Verb]
@@ -333,6 +376,12 @@ func renderLoopReport(rep loopReport, w io.Writer) {
 		fmt.Fprintf(w, "Finished with failed statements: %d (ran to the end and reported\n"+
 			"               errors — `exec --continue-on-error`. Separate from the\n"+
 			"               unclosed runs above, which exited instead)\n", rep.StatementErrors)
+	}
+
+	if rep.Spawned > 0 {
+		fmt.Fprintf(w, "Started by mxcli itself: %d (test, new, eval and the LSP run mxcli;\n"+
+			"               excluded above — their time is already inside the run\n"+
+			"               that started them)\n", rep.Spawned)
 	}
 
 	fmt.Fprintln(w, "\nBy command, most calls first:")

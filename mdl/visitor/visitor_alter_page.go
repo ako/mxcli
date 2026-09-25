@@ -135,6 +135,15 @@ func (b *Builder) buildAlterPageAssignment(ctx *parser.AlterPageAssignmentContex
 	// previously only possible by REPLACEing the whole widget, which silently
 	// drops any property the author did not restate.
 	if acCtx := ctx.ActionExprV3(); acCtx != nil {
+		// A named pluggable action slot — `set 'createFileAction' = microflow
+		// M.F` — keeps the author's key; the executor routes any action value
+		// whose key is not `Action` to the slot of that name (#995).
+		if id := ctx.IdentifierOrKeyword(); id != nil {
+			return identifierOrKeywordText(id), buildActionV3(acCtx)
+		}
+		if sl := ctx.STRING_LITERAL(); sl != nil {
+			return unquoteString(sl.GetText()), buildActionV3(acCtx)
+		}
 		return "Action", buildActionV3(acCtx)
 	}
 

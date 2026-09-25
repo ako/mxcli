@@ -3,6 +3,7 @@
 package executor
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 
@@ -88,7 +89,19 @@ func (r *Registry) Dispatch(ctx *ExecContext, stmt ast.Statement) error {
 	if h == nil {
 		return mdlerrors.NewUnsupported(fmt.Sprintf("unhandled statement type %T", stmt))
 	}
-	return h(ctx, stmt)
+	err := h(ctx, stmt)
+	// DROP … IF EXISTS: a missing target is a skip, not a failure (#531). The
+	// guard lives here rather than in the ~35 drop handlers because every one
+	// of them already reports a missing target as NotFoundError; any other
+	// error — not connected, a failed write — still propagates.
+	if g, ok := stmt.(ast.IfExistsDrop); ok && g.DropIfExists() && err != nil {
+		var nf *mdlerrors.NotFoundError
+		if errors.As(err, &nf) {
+			fmt.Fprintf(ctx.Output, "%s, skipped (if exists)\n", nf.Error())
+			return nil
+		}
+	}
+	return err
 }
 
 // Validate checks that every known AST statement type has a registered

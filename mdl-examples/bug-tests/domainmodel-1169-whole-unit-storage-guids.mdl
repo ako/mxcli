@@ -1,0 +1,126 @@
+-- ============================================================================
+-- mendixlabs/mxcli#1169 — a whole-unit rewrite must not re-mint any storage GUID
+-- ============================================================================
+--
+-- #1119 fixed the ALTER ENTITY path, which swaps ONE entity into an otherwise
+-- untouched list. `Backend.UpdateDomainModel` is the other shape: it removes and
+-- rebuilds the ENTIRE Entities and Associations lists, so every element arrived
+-- with no stored bytes and the codec's EmitGUID default wrote `GUID = $ID` across
+-- the whole module — entities, their attributes and indexes, and every
+-- association, including the ones the statement never named. The reporter measured
+-- 282 moved GUIDs in one module (37 entities, 224 attributes, 21 associations) and
+-- a runtime crash:
+--
+--   Cannot invoke "...Table.getTableName()" because "table" is null
+--
+-- The title said ALTER ASSOCIATION. The path is shared, and that is the point of
+-- this file: FIVE statements reach it, and the one that costs most is not an
+-- association statement at all.
+--
+--   RENAME ENTITY                       <- the expensive one
+--   RENAME ASSOCIATION
+--   ALTER ASSOCIATION ... SET COMMENT
+--   ALTER ASSOCIATION ... SET OWNER
+--   CREATE OR MODIFY ASSOCIATION        (re-run against an unchanged project)
+--
+-- WHY RENAME ENTITY IS THE WORST OF THEM
+--
+-- An entity's name IS its table name, and the runtime resolves the entity by its
+-- GUID, not by that name. Measured for #503 on 11.13.0 + PostgreSQL 16, same
+-- 250-row starting state both ways:
+--
+--   GUID preserved  -> the table is RENAMED: 250 -> 250 rows
+--   GUID re-minted  -> the old table is DROPPED and an empty one created: 250 -> 0
+--
+-- So this loses a whole TABLE where an ALTER loses a column. `mxcli`'s own help
+-- for CREATE OR MODIFY promised "preserves UUID. Safe to re-run" throughout — true
+-- of the `$ID`, false of the `GUID`.
+--
+-- WHAT THIS FILE IS FOR, AND WHAT IT CANNOT DO
+--
+-- MDL cannot read or assert a GUID, so this script cannot fail on the bug itself.
+-- What it does is exercise every statement that routes through the rewrite, so the
+-- fix can be checked against a REAL project — and because the write path refuses a
+-- GUID it would otherwise have moved (canon.StorageGUIDError), a regression in the
+-- carry shows up here as a REFUSED statement rather than as silence:
+--
+--   refusing to write unit ...: N element(s) kept their $ID but would be written
+--   with a different GUID ...
+--
+-- Run it against a project whose entities Studio Pro authored:
+--
+--   mxcli exec domainmodel-1169-whole-unit-storage-guids.mdl -p app.mpr
+--
+-- Expected: every statement succeeds. Note the trap this shares with #503's file —
+-- everything CREATEd below is created by mxcli, so its GUID equals its $ID from
+-- birth and a rewrite that re-mints `GUID = $ID` reproduces the very same value.
+-- Against a project of only mxcli-created entities this file passes whether or not
+-- the fix is present. The assertions therefore live where the GUID is visible — on
+-- the raw BSON, over a Studio Pro-authored fixture, in
+-- mdl/backend/modelsdk/issue1169_domainmodel_guid_test.go.
+-- ============================================================================
+
+CREATE MODULE BugUnitGuid1169;
+
+-- Several entities with several attributes each, because the defect's scale is the
+-- whole unit rather than the statement's target: a rewrite driven by ONE
+-- association below must leave all of these untouched.
+CREATE OR MODIFY PERSISTENT ENTITY BugUnitGuid1169.Customer (
+  Name: String(200),
+  Email: String(200),
+  Reference: String(50)
+);
+
+CREATE OR MODIFY PERSISTENT ENTITY BugUnitGuid1169.Order (
+  OrderNumber: String(50),
+  Total: Decimal,
+  Placed: DateTime
+);
+
+CREATE OR MODIFY PERSISTENT ENTITY BugUnitGuid1169.OrderLine (
+  Quantity: Integer,
+  UnitPrice: Decimal
+);
+
+-- An index carries a GUID of its own, and is the arm that made every statement
+-- below get refused once the entity carry was in place but the child carry was not.
+ALTER ENTITY BugUnitGuid1169.Customer ADD INDEX (Reference ASC);
+
+CREATE OR MODIFY ASSOCIATION BugUnitGuid1169.Order_Customer
+  FROM BugUnitGuid1169.Order TO BugUnitGuid1169.Customer TYPE Reference;
+
+CREATE OR MODIFY ASSOCIATION BugUnitGuid1169.OrderLine_Order
+  FROM BugUnitGuid1169.OrderLine TO BugUnitGuid1169.Order TYPE Reference;
+
+-- ---------------------------------------------------------------------------
+-- The five statements that reach the whole-unit rewrite.
+-- ---------------------------------------------------------------------------
+
+-- 1. An association edit that names ONE association and rewrote every element in
+--    the module. This is the reported statement.
+ALTER ASSOCIATION BugUnitGuid1169.Order_Customer
+  SET COMMENT 'Storage GUIDs must survive an association comment edit.';
+
+-- 2. The same, for a property Mendix actually stores on the association.
+ALTER ASSOCIATION BugUnitGuid1169.OrderLine_Order SET OWNER BOTH;
+
+-- 3. A re-run of an unchanged CREATE OR MODIFY. Nothing should land at all
+--    (ADR-0008 elides the write); before the fix this alone moved every GUID.
+CREATE OR MODIFY ASSOCIATION BugUnitGuid1169.Order_Customer
+  FROM BugUnitGuid1169.Order TO BugUnitGuid1169.Customer TYPE Reference;
+
+-- 4. RENAME ASSOCIATION: the identity must travel with the new name.
+RENAME ASSOCIATION BugUnitGuid1169.OrderLine_Order TO OrderRow_Order;
+
+-- 5. RENAME ENTITY — a table rename if the GUID is carried, a table DROP if it is
+--    not. Renaming the entity that holds the index and is the TO side of an
+--    association exercises the child carry and the pointer rewrite together.
+RENAME ENTITY BugUnitGuid1169.Customer TO Client;
+
+-- And the control for the whole file: after all of the above, describing the
+-- module must still show three entities with every attribute and index intact. An
+-- element LOST to the rewrite would be a different defect wearing the same
+-- symptom, and this is the one part MDL can check for itself.
+DESCRIBE ENTITY BugUnitGuid1169.Client;
+DESCRIBE ENTITY BugUnitGuid1169.Order;
+DESCRIBE ENTITY BugUnitGuid1169.OrderLine;

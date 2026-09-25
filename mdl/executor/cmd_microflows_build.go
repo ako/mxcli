@@ -445,6 +445,14 @@ func buildNanoflowFromStmt(ctx *ExecContext, s *ast.CreateNanoflowStmt, opts bui
 		return nil, err
 	}
 
+	// The nanoflow half of buildMicroflowFromStmt's validateMicroflowRules call:
+	// without it, exec wrote what check reported (mendixlabs/mxcli#1033).
+	if opts.AllowCreate {
+		if err := validateNanoflowRules(s); err != nil {
+			return nil, err
+		}
+	}
+
 	// Find the module, and the folder, WITHOUT creating either on a dry run:
 	// findOrCreateModule and resolveFolder both write, and `diff` must render a
 	// proposed flow against an unmodified project.

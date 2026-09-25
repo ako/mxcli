@@ -84,6 +84,8 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 		// Parameter annotations for the two flow flavours that do not go through
 		// ValidateMicroflow but share the parameter grammar.
 		if nfStmt, ok := stmt.(*ast.CreateNanoflowStmt); ok {
+			// MDL044 over the body (mendixlabs/mxcli#1033).
+			violations = append(violations, ValidateNanoflow(nfStmt)...)
 			violations = append(violations,
 				ValidateFlowParameterAnnotations("nanoflow '"+nfStmt.Name.String()+"'", nfStmt.Parameters)...)
 		}
@@ -227,6 +229,12 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 	// script creates the microflow itself, which is the usual shape, the answer
 	// is in the script and needs no project (CapTrackV2 FINDINGS §6).
 	violations = append(violations, ValidateAfterStartupReturnType(prog)...)
+
+	// Flag `CALL MICROFLOW … IN QUEUE …` on a microflow that returns a value —
+	// Mendix requires a background microflow to return nothing (CE7033). Same
+	// shape as the after-startup check: the call resolves, and the constraint is
+	// on the flow it names (mendixlabs/mxcli#1064).
+	violations = append(violations, ValidateQueuedCallReturnType(prog)...)
 
 	// Flag an export mapping value whose member is a nested path — an export has
 	// to produce the intermediate node, so Mendix rejects it with CE5015. The

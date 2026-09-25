@@ -104,3 +104,61 @@ func TestReadJavaActionByName_MicroflowParameterType(t *testing.T) {
 			got.Parameters[1].ParameterType)
 	}
 }
+
+// DESCRIBE JAVA ACTION printed `ContextObject: entity <>` for a parameter
+// declared `entity <pEntity> not null` (mendixlabs/mxcli#1034). The stored
+// parameter type holds only a BY_ID pointer to the TypeParameter; the reader
+// carried the ID across but never resolved it to the name, which is all the
+// describer prints. The JavaScript-action reader already did this resolution.
+func TestReadJavaActionByName_ResolvesTypeParameterNames(t *testing.T) {
+	proj := copyFixture(t)
+	b := New()
+	if err := b.Connect(proj); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = b.Disconnect() })
+
+	mod, err := b.GetModuleByName("MyFirstModule")
+	if err != nil || mod == nil {
+		t.Fatalf("GetModuleByName: %v", err)
+	}
+	tp := &javaactions.TypeParameterDef{Name: "pEntity"}
+	tp.ID = model.ID("0b6f0d0e-1034-4a00-8000-000000000001")
+	ja := &javaactions.JavaAction{
+		ContainerID:    mod.ID,
+		Name:           "ZzJaTypeParam",
+		TypeParameters: []*javaactions.TypeParameterDef{tp},
+		Parameters: []*javaactions.JavaActionParameter{
+			{Name: "ContextObject", IsRequired: true,
+				ParameterType: &javaactions.EntityTypeParameterType{TypeParameterID: tp.ID, TypeParameterName: "pEntity"}},
+			{Name: "Obj", IsRequired: true,
+				ParameterType: &javaactions.TypeParameter{TypeParameterID: tp.ID, TypeParameter: "pEntity"}},
+		},
+		ReturnType: &javaactions.TypeParameter{TypeParameterID: tp.ID, TypeParameter: "pEntity"},
+	}
+	if err := b.CreateJavaAction(ja); err != nil {
+		t.Fatalf("CreateJavaAction: %v", err)
+	}
+
+	got, err := b.ReadJavaActionByName("MyFirstModule.ZzJaTypeParam")
+	if err != nil {
+		t.Fatalf("ReadJavaActionByName: %v", err)
+	}
+	if len(got.Parameters) != 2 {
+		t.Fatalf("params = %d, want 2", len(got.Parameters))
+	}
+	etp, ok := got.Parameters[0].ParameterType.(*javaactions.EntityTypeParameterType)
+	if !ok {
+		t.Fatalf("param 0 type = %T, want *EntityTypeParameterType", got.Parameters[0].ParameterType)
+	}
+	if etp.TypeParameterName != "pEntity" {
+		t.Errorf("entity type parameter name = %q, want %q (describe prints `entity <%s>`)",
+			etp.TypeParameterName, "pEntity", etp.TypeParameterName)
+	}
+	if p, ok := got.Parameters[1].ParameterType.(*javaactions.TypeParameter); !ok || p.TypeParameter != "pEntity" {
+		t.Errorf("param 1 type = %#v, want TypeParameter{pEntity}", got.Parameters[1].ParameterType)
+	}
+	if r, ok := got.ReturnType.(*javaactions.TypeParameter); !ok || r.TypeParameter != "pEntity" {
+		t.Errorf("return type = %#v, want TypeParameter{pEntity}", got.ReturnType)
+	}
+}

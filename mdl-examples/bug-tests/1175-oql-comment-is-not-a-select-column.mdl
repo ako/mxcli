@@ -1,0 +1,29 @@
+-- Bug test for upstream issue #1175: a `--` comment inside a view entity's
+-- select list was read as a select column.
+--
+-- Reported on v0.23.0:
+--
+--   select column 1 has no as alias: '-- the customer's running total'
+--
+-- plus a second false MDL030 for the text after the comment's comma. Neither
+-- the apostrophe nor the comma is the cause — any comment in the select list
+-- was split into the column list — but together they make the reported text.
+-- The OQL checks now blank comments out before reading the query; the stored
+-- query keeps them.
+--
+-- Expected: `mxcli check` passes with no MDL030, and DESCRIBE shows the
+-- comments still in the query.
+
+create persistent entity MyFirstModule.Sale1175 ( Amount: Integer );
+
+create view entity MyFirstModule.SaleStats1175 (
+  Total: Integer,
+  SaleCount: Integer
+) as (
+  select
+    -- the customer's running total, summed here rather than on the page
+    sum(s.Amount) as Total,
+    /* the number of sales, from the table */
+    count(s.Amount) as SaleCount
+  from MyFirstModule.Sale1175 as s
+);

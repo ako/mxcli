@@ -85,7 +85,9 @@ association catalog only at startup; behavioural changes are hot-reloaded.
 - `--mxbuild-path` overrides both. It is honoured by the local loop (#916) *and*
   accepted by `run --local` (#1125) — between those two fixes the skill said the
   first and the command rejected the flag, so the advertised workaround did not
-  exist on the platform that needed it.
+  exist on the platform that needed it. `test --local` takes the same flag
+  (#1086), and `MXCLI_MXBUILD_PATH` sets the override for both from the
+  environment; the flag wins when both are set.
 
 If nothing runnable is found, the command says so up front instead of failing with
 `fork/exec …: exec format error`:

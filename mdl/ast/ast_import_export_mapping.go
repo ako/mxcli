@@ -36,6 +36,7 @@ func (s *CreateImportMappingStmt) isStatement() {}
 
 // DropImportMappingStmt represents: DROP IMPORT MAPPING Module.Name
 type DropImportMappingStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 
@@ -113,6 +114,7 @@ func (s *CreateExportMappingStmt) isStatement() {}
 
 // DropExportMappingStmt represents: DROP EXPORT MAPPING Module.Name
 type DropExportMappingStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 

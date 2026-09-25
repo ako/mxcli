@@ -314,6 +314,18 @@ alterPageAssignment
     | ACTION EQUALS actionExprV3                       // Action = MICROFLOW Module.MF | SHOW_PAGE Module.Page | SAVE_CHANGES CLOSE_PAGE
     | VISIBLE EQUALS xpathConstraint                   // Visible = [Name != ''] (conditional visibility)
     | EDITABLE EQUALS xpathConstraint                  // Editable = [Status = 'Open'] (conditional editability)
+    // A pluggable widget's NAMED action slot, addressed by the widget's own key:
+    // `set 'createFileAction' = microflow M.F on fileUploader1`. The ALTER-level
+    // twin of widgetPropertyV3's `key: actionExprV3` (#956); without it the value
+    // fell to propertyValueV3, which has no `microflow <name>` form, and the only
+    // way to retarget one slot was to REPLACE the whole widget
+    // (mendixlabs/mxcli#995). Placed before the scalar alternatives, as on CREATE,
+    // so a bare action keyword (`close_page`) is an action; unlike CREATE there is
+    // no datasource overlap to yield to, since DataSource is its own alternative.
+    // Whether the key IS an action slot is the stored widget's call, not the
+    // grammar's — the mutator refuses one that is not.
+    | STRING_LITERAL EQUALS actionExprV3                // 'createFileAction' = MICROFLOW Module.MF
+    | identifierOrKeyword EQUALS actionExprV3           // createFileAction = MICROFLOW Module.MF
     | identifierOrKeyword EQUALS propertyValueV3       // Caption = 'Save'
     | STRING_LITERAL EQUALS propertyValueV3             // 'showLabel' = false
     ;
@@ -456,44 +468,44 @@ createMenuStatement
     ;
 
 dropStatement
-    : DROP ENTITY qualifiedName
-    | DROP ASSOCIATION qualifiedName
-    | DROP ENUMERATION qualifiedName
-    | DROP CONSTANT qualifiedName
-    | DROP MICROFLOW qualifiedName
-    | DROP NANOFLOW qualifiedName
-    | DROP RULE qualifiedName
-    | DROP PAGE qualifiedName
-    | DROP LAYOUT qualifiedName
-    | DROP SNIPPET qualifiedName
-    | DROP MENU_KW qualifiedName
-    | DROP MODULE qualifiedName
-    | DROP QUEUE qualifiedName
-    | DROP SCHEDULED EVENT qualifiedName
-    | DROP REGULAR EXPRESSION qualifiedName
-    | DROP JAVA ACTION qualifiedName
-    | DROP JAVASCRIPT ACTION qualifiedName
+    : DROP ENTITY ifExists? qualifiedName
+    | DROP ASSOCIATION ifExists? qualifiedName
+    | DROP ENUMERATION ifExists? qualifiedName
+    | DROP CONSTANT ifExists? qualifiedName
+    | DROP MICROFLOW ifExists? qualifiedName
+    | DROP NANOFLOW ifExists? qualifiedName
+    | DROP RULE ifExists? qualifiedName
+    | DROP PAGE ifExists? qualifiedName
+    | DROP LAYOUT ifExists? qualifiedName
+    | DROP SNIPPET ifExists? qualifiedName
+    | DROP MENU_KW ifExists? qualifiedName
+    | DROP MODULE ifExists? qualifiedName
+    | DROP QUEUE ifExists? qualifiedName
+    | DROP SCHEDULED EVENT ifExists? qualifiedName
+    | DROP REGULAR EXPRESSION ifExists? qualifiedName
+    | DROP JAVA ACTION ifExists? qualifiedName
+    | DROP JAVASCRIPT ACTION ifExists? qualifiedName
     | DROP INDEX qualifiedName ON qualifiedName
-    | DROP ODATA CLIENT qualifiedName
-    | DROP ODATA SERVICE qualifiedName
-    | DROP BUSINESS EVENT SERVICE qualifiedName
-    | DROP WORKFLOW qualifiedName
-    | DROP IMAGE COLLECTION qualifiedName
+    | DROP ODATA CLIENT ifExists? qualifiedName
+    | DROP ODATA SERVICE ifExists? qualifiedName
+    | DROP BUSINESS EVENT SERVICE ifExists? qualifiedName
+    | DROP WORKFLOW ifExists? qualifiedName
+    | DROP IMAGE COLLECTION ifExists? qualifiedName
     | DROP ANNOTATION STRING_LITERAL IN identifierOrKeyword
     | DROP ANNOTATION AT_KW LPAREN NUMBER_LITERAL COMMA NUMBER_LITERAL RPAREN IN identifierOrKeyword
-    | DROP JSON STRUCTURE qualifiedName
-    | DROP MESSAGE DEFINITION COLLECTION qualifiedName
-    | DROP IMPORT MAPPING qualifiedName
-    | DROP EXPORT MAPPING qualifiedName
-    | DROP REST CLIENT qualifiedName
-    | DROP PUBLISHED REST SERVICE qualifiedName
-    | DROP DATA TRANSFORMER qualifiedName
-    | DROP MODEL qualifiedName                               // DROP MODEL Module.Name (agent-editor)
-    | DROP CONSUMED MCP SERVICE qualifiedName                // DROP CONSUMED MCP SERVICE Module.Name
-    | DROP KNOWLEDGE BASE qualifiedName                      // DROP KNOWLEDGE BASE Module.Name
-    | DROP AGENT qualifiedName                               // DROP AGENT Module.Name
-    | DROP CONFIGURATION STRING_LITERAL
-    | DROP FOLDER STRING_LITERAL IN (qualifiedName | IDENTIFIER)
+    | DROP JSON STRUCTURE ifExists? qualifiedName
+    | DROP MESSAGE DEFINITION COLLECTION ifExists? qualifiedName
+    | DROP IMPORT MAPPING ifExists? qualifiedName
+    | DROP EXPORT MAPPING ifExists? qualifiedName
+    | DROP REST CLIENT ifExists? qualifiedName
+    | DROP PUBLISHED REST SERVICE ifExists? qualifiedName
+    | DROP DATA TRANSFORMER ifExists? qualifiedName
+    | DROP MODEL ifExists? qualifiedName                               // DROP MODEL Module.Name (agent-editor)
+    | DROP CONSUMED MCP SERVICE ifExists? qualifiedName                // DROP CONSUMED MCP SERVICE Module.Name
+    | DROP KNOWLEDGE BASE ifExists? qualifiedName                      // DROP KNOWLEDGE BASE Module.Name
+    | DROP AGENT ifExists? qualifiedName                               // DROP AGENT Module.Name
+    | DROP CONFIGURATION ifExists? STRING_LITERAL
+    | DROP FOLDER ifExists? STRING_LITERAL IN (qualifiedName | IDENTIFIER)
     ;
 
 renameStatement

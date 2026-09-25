@@ -300,3 +300,70 @@ func TestActionFromGen_WorkflowActions(t *testing.T) {
 		t.Errorf("NotifyWorkflow WorkflowVariable lost: %+v", got)
 	}
 }
+
+// TestMicroflowActionToGen_JavaScriptActionEntityTypeParameter pins the BSON the
+// write path produces for a JavaScript-action entity-type parameter
+// (mendixlabs/mxcli#1137). The reported symptom was an `mxcli bson dump`
+// showing
+//
+//	"$Type": "Microflows$BasicCodeActionParameterValue",
+//	"Argument": "CustomModule.BufferDefinition"
+//
+// where Studio Pro stores $Type Microflows$EntityTypeCodeActionParameterValue
+// with the entity under the "Entity" key. The wrong shape leaves the Studio Pro
+// entity picker empty and fails mxbuild with CE0115 (measured on 11.6.6).
+// The builder chooses the value (mdl/executor); this asserts the chosen value
+// survives to BSON under the right $Type and key rather than being flattened on
+// the way out.
+func TestMicroflowActionToGen_JavaScriptActionEntityTypeParameter(t *testing.T) {
+	g := microflowActionToGen(&microflows.JavaScriptActionCallAction{
+		JavaScriptAction: "NanoflowCommons.RefreshEntity",
+		ParameterMappings: []*microflows.JavaScriptActionParameterMapping{
+			{
+				Parameter: "NanoflowCommons.RefreshEntity.EntityToRefresh",
+				Value:     &microflows.EntityTypeCodeActionParameterValue{Entity: "CustomModule.BufferDefinition"},
+			},
+		},
+	})
+	if g == nil {
+		t.Fatal("nil action")
+	}
+	encoded, err := (&codec.Encoder{}).Encode(g)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+
+	mappings, err := bson.Raw(encoded).LookupErr("ParameterMappings")
+	if err != nil {
+		t.Fatalf("no ParameterMappings in encoded action: %v", err)
+	}
+	vals, err := mappings.Array().Values()
+	if err != nil {
+		t.Fatalf("ParameterMappings array: %v", err)
+	}
+	// Element 0 is Mendix's typed-array marker (an int), not a mapping.
+	var docs []bson.Raw
+	for _, v := range vals {
+		if doc, ok := v.DocumentOK(); ok {
+			docs = append(docs, doc)
+		}
+	}
+	if len(docs) != 1 {
+		t.Fatalf("ParameterMappings documents = %d, want 1", len(docs))
+	}
+	value, err := docs[0].LookupErr("ParameterValue")
+	if err != nil {
+		t.Fatalf("mapping has no ParameterValue: %v", err)
+	}
+	valueDoc := value.Document()
+
+	if got := valueDoc.Lookup("$Type").StringValue(); got != "Microflows$EntityTypeCodeActionParameterValue" {
+		t.Fatalf("$Type = %q, want Microflows$EntityTypeCodeActionParameterValue", got)
+	}
+	if got := valueDoc.Lookup("Entity").StringValue(); got != "CustomModule.BufferDefinition" {
+		t.Errorf("Entity = %q, want CustomModule.BufferDefinition", got)
+	}
+	if _, err := valueDoc.LookupErr("Argument"); err == nil {
+		t.Error("value carries an Argument key; that is the BasicCodeActionParameterValue shape")
+	}
+}

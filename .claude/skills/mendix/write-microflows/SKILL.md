@@ -388,8 +388,8 @@ toString($value)           -- Convert to string
 >
 > **MDL044 also blocks `mxcli exec`**, not just `check`: a call to a name Mendix
 > has no built-in for is CE0117 at build time, so exec refuses to write the
-> microflow rather than leaving you to find out from mxbuild. Two names that
-> look plausible and are not real: `currentDeviceType()` and `trunc()` (use
+> microflow or nanoflow (log messages included). Not real: `currentDeviceType()`,
+> `[%CurrentDeviceType%]` (a CE0117 `check` misses) and `trunc()` (use
 > `round`/`floor`/`ceil`). If exec rejects a function you believe IS a Mendix
 > built-in, build it once and — if mxbuild accepts it — add it to `funcTable` in
 > `mdl/exprcheck/func_checker.go`; that table is the rule's only allow-list.
@@ -462,8 +462,9 @@ call java action Module.RefreshData(Url = $Url) in queue Module.RefreshQueue;
 ```
 
 **Queued calls** — the queue must already exist (`create queue Module.RefreshQueue
-(Parallelism: 2)`), and a queued **Java action must `returns void`** or the build
-fails with CE7038. Rewriting a microflow that has a queued call must restate the
+(Parallelism: 2)`), and the called flow must return nothing: a queued
+**microflow with a `returns` clause** fails the build with CE7033 (`mxcli check`:
+MDL088), a queued **Java action must `returns void`** or it fails with CE7038. Rewriting a microflow that has a queued call must restate the
 `in queue` clause; a rewrite that omits it is refused rather than silently
 dropping the binding. See `.claude/skills/mendix/scheduled-events-and-queues`.
 

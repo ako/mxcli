@@ -140,6 +140,7 @@ Examples:
 		skipAppStartup, _ := cmd.Flags().GetBool("skip-app-startup")
 		configuration, _ := cmd.Flags().GetString("configuration")
 		constantArgs, _ := cmd.Flags().GetStringArray("constant")
+		mxbuildPath, _ := cmd.Flags().GetString("mxbuild-path")
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		color, _ := cmd.Flags().GetBool("color")
 		timeoutStr, _ := cmd.Flags().GetString("timeout")
@@ -176,6 +177,7 @@ Examples:
 			Watch:             watch,
 			Attach:            attach,
 			SkipAppStartup:    skipAppStartup,
+			MxBuildPath:       mxbuildPath,
 			Timeout:           timeout,
 			JUnitOutput:       junitOutput,
 			RequireAssertions: requireAssertions,

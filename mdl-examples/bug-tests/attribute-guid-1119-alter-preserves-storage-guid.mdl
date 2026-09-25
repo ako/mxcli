@@ -1,0 +1,103 @@
+-- ============================================================================
+-- mendixlabs/mxcli#1119 — an ALTER must not re-mint an attribute's storage GUID
+-- ============================================================================
+--
+-- Each attribute of a persistent entity carries TWO 16-byte identities: the
+-- element `$ID`, and a separate `GUID` the runtime keys the database on
+-- (`mendixsystem$attribute.id`). Every ALTER used to rebuild the entity from the
+-- semantic model, which gave each attribute `GUID = $ID` and discarded the
+-- stored one — so the next deploy against a database that already held data
+-- dropped and recreated every column of that entity. Rows and associations
+-- survived; all attribute values were gone.
+--
+-- Nothing reported it. The model stays valid, `mxcli check`, `exec`, `mx check`
+-- and the build are all clean, and `DESCRIBE ENTITY` is byte-identical before
+-- and after, because the reader never surfaces the GUID.
+--
+-- WHAT THIS FILE IS FOR, AND WHAT IT CANNOT DO
+--
+-- MDL cannot read or assert a GUID, so this script cannot fail on the bug. It
+-- exercises every ALTER form that routes through Backend.UpdateEntity, so the
+-- fix can be checked against a REAL project — and, since the write path now
+-- refuses a GUID it would otherwise have moved (canon.StorageGUIDError), a
+-- regression shows up here as a REFUSED statement rather than as silence.
+--
+-- Run it TWICE against a project whose entity Studio Pro authored:
+--
+--   mxcli exec attribute-guid-1119-alter-preserves-storage-guid.mdl -p app.mpr
+--
+-- Expected: every statement succeeds the first time; the second run reports the
+-- entity unchanged. A "refusing to write unit ... would be written with a
+-- different GUID" is the guard catching a regression in the carry.
+--
+-- The assertions live where the GUID is visible — on the raw BSON, in
+-- mdl/backend/modelsdk/issue1119_attribute_guid_test.go (and the index arm in
+-- issue1119_index_guid_test.go), each with the carry stubbed as its control.
+-- ============================================================================
+
+CREATE MODULE BugAttrGuid1119;
+
+-- The subject: several attributes, so a rewrite that loses identities loses
+-- many. One attribute would make the bug look like an edge case; it was not —
+-- the reported project lost all 28 of an entity's attributes at once.
+CREATE OR MODIFY PERSISTENT ENTITY BugAttrGuid1119.Organization (
+  Name: String(200),
+  URLName: String(200),
+  Status: String(50),
+  Notes: String(500)
+);
+
+CREATE OR MODIFY PERSISTENT ENTITY BugAttrGuid1119.Person (
+  FullName: String(200)
+);
+
+-- A sibling association, and an index: both carry a GUID of their own. The
+-- association is the reporter's own negative result (it survived, because the
+-- entities-list rebuild passes it through as stored bytes); the index is the
+-- arm that would otherwise make every ALTER below get refused.
+CREATE OR MODIFY ASSOCIATION BugAttrGuid1119.Person_Organization
+  FROM BugAttrGuid1119.Person TO BugAttrGuid1119.Organization TYPE Reference;
+
+ALTER ENTITY BugAttrGuid1119.Organization ADD INDEX (Name ASC);
+
+-- ---------------------------------------------------------------------------
+-- The six forms the report tested, each of which destroyed every GUID.
+-- ---------------------------------------------------------------------------
+
+-- The one that makes the mechanism plain: it touches no attribute at all.
+ALTER ENTITY BugAttrGuid1119.Organization
+  SET DOCUMENTATION 'Storage GUIDs must survive a documentation edit.';
+
+ALTER ENTITY BugAttrGuid1119.Organization ADD ATTRIBUTE Region: String(100);
+
+ALTER ENTITY BugAttrGuid1119.Organization MODIFY ATTRIBUTE Notes: String(1000);
+
+-- A rename must carry the GUID FORWARD, not mint a fresh one: Studio Pro
+-- renames the column and keeps the data, so a fresh GUID here loses it just as
+-- surely as changing an untouched attribute's.
+ALTER ENTITY BugAttrGuid1119.Organization RENAME ATTRIBUTE URLName TO UrlSlug;
+
+ALTER ENTITY BugAttrGuid1119.Organization DROP ATTRIBUTE Region;
+
+-- CREATE OR MODIFY on an entity that already exists is the sixth form, and the
+-- one most likely to be run repeatedly from a checked-in script.
+CREATE OR MODIFY PERSISTENT ENTITY BugAttrGuid1119.Organization (
+  Name: String(200),
+  UrlSlug: String(200),
+  Status: String(50),
+  Notes: String(1000)
+);
+
+-- One more path that reaches the same rewrite and was not in the report:
+-- CREATE VALIDATION RULE also goes through UpdateEntity (cmd_validationrules.go),
+-- so it destroyed every GUID too. GRANT does NOT — it mutates the loaded gen
+-- tree in place, which is why the reporter found association and GRANT writes
+-- harmless and is the distinction worth remembering: the model -> gen rebuild is
+-- the exposed path, in-place gen mutation is not.
+CREATE OR MODIFY REGULAR EXPRESSION BugAttrGuid1119.SlugPattern (
+  Expression: '^[a-z0-9-]+$'
+);
+
+CREATE VALIDATION RULE FOR BugAttrGuid1119.Organization.UrlSlug
+  REGEX BugAttrGuid1119.SlugPattern
+  FEEDBACK 'Use lower-case letters, digits and hyphens only.';

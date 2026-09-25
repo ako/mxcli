@@ -704,6 +704,11 @@ type rawWidget struct {
 	// NavigationProfile is a Forms$NavigationTree's profile, which the document
 	// keeps one level down in MenuSource rather than on the tree.
 	NavigationProfile string
+	// Menu is the menu document a menu widget renders instead of a profile — a
+	// Forms$MenuDocumentSource in the same MenuSource slot (ako/mxcli#573).
+	Menu string
+	// MenuOrientation is a Forms$SimpleMenuBar's Orientation.
+	MenuOrientation string
 	// Specialization is the entity a List View template renders. Set only on the
 	// synthetic wrappers parseListViewContent emits for Forms$ListViewTemplate,
 	// which is the same shape as TabCaption above: a container with no name, whose

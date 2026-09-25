@@ -33,6 +33,7 @@ type scriptContext struct {
 	pages        map[string]bool // Pages created (Module.Page)
 	snippets     map[string]bool // Snippets created (Module.Snippet)
 	layouts      map[string]bool // Layouts created (Module.Layout)
+	menus        map[string]bool // Menu documents created (Module.Menu)
 	constants    map[string]bool // Constants created (Module.Constant)
 	workflows    map[string]bool // Workflows created (Module.Workflow)
 
@@ -85,6 +86,7 @@ func newScriptContext() *scriptContext {
 		workflows:    make(map[string]bool),
 		snippets:     make(map[string]bool),
 		layouts:      make(map[string]bool),
+		menus:        make(map[string]bool),
 		constants:    make(map[string]bool),
 
 		javaActions:       make(map[string][]string),
@@ -207,6 +209,10 @@ func (sc *scriptContext) collectSingle(stmt ast.Statement) {
 	case *ast.CreateLayoutStmt:
 		if s.Name.Module != "" {
 			sc.layouts[s.Name.String()] = true
+		}
+	case *ast.CreateMenuStmt:
+		if s.Name.Module != "" {
+			sc.menus[s.Name.String()] = true
 		}
 	case *ast.CreateWorkflowStmt:
 		if s.Name.Module != "" {
@@ -448,6 +454,12 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 		return err
 	}
 
+	// DROP … IF EXISTS names something that may legitimately be absent, module
+	// included; exec skips it, so check must not refuse it (#531).
+	if g, ok := stmt.(ast.IfExistsDrop); ok && g.DropIfExists() {
+		return nil
+	}
+
 	switch s := stmt.(type) {
 	// Statements that reference modules
 	case *ast.CreateEntityStmt:
@@ -627,6 +639,16 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 			return mdlerrors.NewValidationf("page '%s' has argument errors:\n  - %s",
 				s.Name.String(), strings.Join(argErrors, "\n  - "))
 		}
+	case *ast.CreateLayoutStmt:
+		// A layout's widgets name things too — a menu widget's menu document
+		// above all, since layouts are where menu widgets live. Before
+		// ako/mxcli#573 no layout was reference-checked at all, so
+		// `simplemenubar b (Menu: M.Typo)` passed --references and mxbuild
+		// answered CE1613 "The selected menu 'M.Typo' no longer exists."
+		if refErrors := validateWidgetReferences(ctx, s.Widgets, sc); len(refErrors) > 0 {
+			return mdlerrors.NewValidationf("layout '%s' has reference errors:\n  - %s",
+				s.Name.String(), strings.Join(refErrors, "\n  - "))
+		}
 	case *ast.CreateSnippetStmtV3:
 		if s.Name.Module != "" && !sc.modules[s.Name.Module] {
 			if _, err := findModule(ctx, s.Name.Module); err != nil {
@@ -696,6 +718,13 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 		if s.Name.Module != "" && !sc.modules[s.Name.Module] {
 			if _, err := findModule(ctx, s.Name.Module); err != nil {
 				return mdlerrors.NewNotFound("module", s.Name.Module)
+			}
+		}
+		// ADD/DROP ATTRIBUTE on a view entity is refused by exec; say so here
+		// too, or check passes a script that exec stops halfway (#1173).
+		if s.Operation == ast.AlterEntityAddAttribute || s.Operation == ast.AlterEntityDropAttribute {
+			if err := validateViewEntityAttributeSet(ctx, s, sc); err != nil {
+				return err
 			}
 		}
 		// Validate enumeration references in ADD ATTRIBUTE
@@ -845,6 +874,12 @@ func validateFlowBodyReferences(ctx *ExecContext, body []ast.MicroflowStatement,
 				errors = append(errors, fmt.Sprintf("microflow not found: %s (referenced by call microflow)", ref))
 			}
 		}
+	}
+
+	// A queued call's target must return nothing (CE7033) — resolving the name
+	// says nothing about that (mendixlabs/mxcli#1064).
+	if len(refs.queues) > 0 && len(refs.microflows) > 0 {
+		errors = append(errors, validateQueuedMicroflowTargets(body, buildMicroflowReturnTypes(ctx), sc)...)
 	}
 
 	if len(refs.nanoflows) > 0 {
@@ -1285,7 +1320,8 @@ var execEnforcedMicroflowRules = map[string]bool{
 	// exprcheck's funcTable is now a write barrier, so a name missing from it
 	// blocks valid MDL rather than merely warning about it: three genuine
 	// built-ins (isNew/isSynced/isSyncing) were found missing and added — each
-	// built at 0 errors — before this line was added.
+	// built at 0 errors — before this line was added. validateNanoflowRules
+	// applies the same entry to nanoflow bodies (mendixlabs/mxcli#1033).
 	"MDL044": true,
 	// #884: an unknown annotation is silently dropped, so exec must refuse it too —
 	// otherwise `check` catches the typo and the write that follows does not.
@@ -1366,4 +1402,28 @@ func allPageWidgets(s *ast.CreatePageStmtV3) []*ast.WidgetV3 {
 		out = append(out, ph.Widgets...)
 	}
 	return out
+}
+
+// validateViewEntityAttributeSet reports an ADD/DROP ATTRIBUTE whose target is a
+// view entity — one the script creates, or one already in the project. An entity
+// the script (re)creates as anything else is judged by that statement instead.
+func validateViewEntityAttributeSet(ctx *ExecContext, s *ast.AlterEntityStmt, sc *scriptContext) error {
+	qn := s.Name.String()
+	isView := sc.viewEntities[qn]
+	if !isView && !sc.entities[qn] && s.Name.Module != "" && ctx.Connected() {
+		if ent, err := findEntity(ctx, s.Name.Module, s.Name.Name); err == nil {
+			isView = isViewEntity(ent)
+		}
+	}
+	if !isView {
+		return nil
+	}
+	if s.Operation == ast.AlterEntityAddAttribute {
+		name := ""
+		if s.Attribute != nil {
+			name = s.Attribute.Name
+		}
+		return viewEntityAttributeSetRefusal(qn, "add", name)
+	}
+	return viewEntityAttributeSetRefusal(qn, "drop", s.AttributeName)
 }

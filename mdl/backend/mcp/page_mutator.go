@@ -245,6 +245,13 @@ func (m *mcpPageMutator) SetWidgetAction(widgetRef string, action pages.ClientAc
 		"(the pg LightPage does not expose widget actions) — widget %q", widgetRef)
 }
 
+// SetWidgetNamedAction is refused for the same reason SetWidgetAction is: the
+// pg LightPage exposes no widget actions to write into.
+func (m *mcpPageMutator) SetWidgetNamedAction(widgetRef, propertyKey string, action pages.ClientAction) error {
+	return fmt.Errorf("setting a widget action is not supported by the MCP backend "+
+		"(the pg LightPage does not expose widget actions) — widget %q, slot %q", widgetRef, propertyKey)
+}
+
 func (m *mcpPageMutator) SetWidgetDataSource(widgetRef string, ds pages.DataSource) error {
 	_, _, _, w, ok := findWidget(m.content, widgetRef)
 	if !ok {

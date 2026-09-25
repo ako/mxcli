@@ -33,7 +33,10 @@ import (
 // the common rebuild case — is unaffected.
 type Option func(*reconcileOpts)
 
-type reconcileOpts struct{ contentsOwnTranslations bool }
+type reconcileOpts struct {
+	contentsOwnTranslations bool
+	contentsOwnStorageGUIDs bool
+}
 
 // ContentsOwnTranslations tells Reconcile that the write already accounts for
 // every translation in the document, so it must not carry the stored ones.
@@ -48,6 +51,37 @@ type reconcileOpts struct{ contentsOwnTranslations bool }
 // one of them was silently put back.
 func ContentsOwnTranslations() Option {
 	return func(o *reconcileOpts) { o.contentsOwnTranslations = true }
+}
+
+// ContentsOwnStorageGUIDs tells the write path that this write is AUTHORITATIVE
+// about the storage GUIDs in the document, so the #1119 guard must not refuse it.
+//
+// Exactly one caller is: the marketplace module update transplants the stored
+// GUIDs onto a module's replacement documents (marketplace.ApplyIdentities),
+// which is the same thing Studio Pro's own update does and the reason an update
+// does not destroy that module's data. That write's whole purpose is to move
+// GUIDs onto elements that kept their $ID — the pattern the guard is built to
+// catch — so it has to be able to say so.
+//
+// It is a narrow exemption on purpose. Every other write either leaves a GUID
+// alone or has no business changing one, and "the guard was in the way" is not a
+// reason to pass this: a write that trips the guard without being a deliberate
+// identity transplant is the #1119 defect, and silencing it there would lose
+// production data.
+func ContentsOwnStorageGUIDs() Option {
+	return func(o *reconcileOpts) { o.contentsOwnStorageGUIDs = true }
+}
+
+// OwnsStorageGUIDs reports whether these options carry the storage-GUID
+// exemption. The guard itself runs at the writer's choke point, where both
+// documents are in hand, rather than inside Reconcile — which returns no error —
+// so the writer needs to read the option back out.
+func OwnsStorageGUIDs(opts ...Option) bool {
+	var o reconcileOpts
+	for _, fn := range opts {
+		fn(&o)
+	}
+	return o.contentsOwnStorageGUIDs
 }
 
 func Reconcile(contents, stored []byte, opts ...Option) (out []byte, unchanged bool) {

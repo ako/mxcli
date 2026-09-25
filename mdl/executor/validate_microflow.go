@@ -18,6 +18,7 @@ import (
 func ValidateMicroflow(stmt *ast.CreateMicroflowStmt) []linter.Violation {
 	v := &microflowValidator{
 		mfName:     stmt.Name.String(),
+		docType:    "microflow",
 		returnType: stmt.ReturnType,
 		varKinds:   map[string]exprcheck.TypeKind{},
 	}
@@ -70,7 +71,10 @@ func (v *microflowValidator) checkQualifiedEntityRef(site string, entity ast.Qua
 
 // microflowValidator holds state for validating a single microflow.
 type microflowValidator struct {
-	mfName        string
+	mfName string
+	// docType is the Location.DocumentType violations carry: "microflow", or
+	// "nanoflow" when ValidateNanoflow reuses the expression checks.
+	docType       string
 	returnType    *ast.MicroflowReturnType // nil = void
 	violations    []linter.Violation
 	loopDepth     int             // Track nesting depth inside loops
@@ -92,7 +96,7 @@ func (v *microflowValidator) addViolation(ruleID string, severity linter.Severit
 		Severity: severity,
 		Message:  message,
 		Location: linter.Location{
-			DocumentType: "microflow",
+			DocumentType: v.docType,
 			DocumentName: v.mfName,
 		},
 		Suggestion: suggestion,
@@ -205,6 +209,7 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 		v.checkUnknownAnnotations(s)
 		v.checkErrorHandlingContinueSupported(s)
 		v.checkErrorHandlingSupported(s)
+		v.checkStmtExprFunctions(s)
 		switch stmt := s.(type) {
 		case *ast.NotifyWorkflowStmt:
 			// MDL-WF16. A notify reaches one named element of the workflow, and the
@@ -231,12 +236,10 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 			}
 		case *ast.ReturnStmt:
 			v.checkReturn(stmt)
-			v.checkExprFunctions("return", stmt.Value)
 			v.checkQualifiedCallInExpression("return", stmt.Value)
 			v.checkDivisionSlash("return", stmt.Value)
 			v.checkDateTimeLiterals("return", stmt.Value)
 		case *ast.IfStmt:
-			v.checkExprFunctions("if condition", stmt.Condition)
 			v.checkDivisionSlash("if condition", stmt.Condition)
 			v.checkDateTimeLiterals("if condition", stmt.Condition)
 			v.walkBody(stmt.ThenBody)
@@ -327,7 +330,6 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 			}
 			// #893 item 1: a Create Variable activity requires a value (CE0038).
 			v.checkDeclareHasValue(stmt)
-			v.checkExprFunctions(fmt.Sprintf("declare '$%s'", stmt.Variable), stmt.InitialValue)
 			v.checkQualifiedCallInExpression(fmt.Sprintf("declare '$%s'", stmt.Variable), stmt.InitialValue)
 			v.checkDivisionSlash(fmt.Sprintf("declare '$%s'", stmt.Variable), stmt.InitialValue)
 			v.checkDateTimeLiterals(fmt.Sprintf("declare '$%s'", stmt.Variable), stmt.InitialValue)
@@ -339,7 +341,6 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 					v.checkNumericAssignment("$"+stmt.Target, k, stmt.Value)
 				}
 			}
-			v.checkExprFunctions(fmt.Sprintf("set '%s'", stmt.Target), stmt.Value)
 			v.checkQualifiedCallInExpression(fmt.Sprintf("set '%s'", stmt.Target), stmt.Value)
 			v.checkDivisionSlash(fmt.Sprintf("set '%s'", stmt.Target), stmt.Value)
 			v.checkDateTimeLiterals(fmt.Sprintf("set '%s'", stmt.Target), stmt.Value)
@@ -421,16 +422,11 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 			v.checkQualifiedEntityRef("create list of", stmt.EntityType)
 		case *ast.CreateObjectStmt:
 			v.checkQualifiedEntityRef("create", stmt.EntityType)
-			// Attribute values in a `create` are expressions too — an aggregate
-			// (sum/count/…) or an unknown function here fails the build with CE0117,
-			// but check previously only inspected return/if/declare/set (FINDINGS #17).
 			for _, ch := range stmt.Changes {
-				v.checkExprFunctions(fmt.Sprintf("create %s attribute '%s'", stmt.EntityType.String(), ch.Attribute), ch.Value)
 				v.checkQualifiedCallInExpression(fmt.Sprintf("create %s attribute '%s'", stmt.EntityType.String(), ch.Attribute), ch.Value)
 			}
 		case *ast.ChangeObjectStmt:
 			for _, ch := range stmt.Changes {
-				v.checkExprFunctions(fmt.Sprintf("change '%s' attribute '%s'", stmt.Variable, ch.Attribute), ch.Value)
 				v.checkQualifiedCallInExpression(fmt.Sprintf("change '%s' attribute '%s'", stmt.Variable, ch.Attribute), ch.Value)
 			}
 		}
@@ -480,6 +476,42 @@ func (v *microflowValidator) checkNumericAssignment(targetLabel string, targetKi
 // CE0117; the fix is to assign the aggregate to a variable first.
 var mendixAggregateFuncs = map[string]bool{
 	"count": true, "sum": true, "average": true, "minimum": true, "maximum": true,
+}
+
+// checkStmtExprFunctions runs MDL044 over every expression one statement
+// carries. It is the single list of expression sites, shared by walkBody and by
+// ValidateNanoflow — two lists were how nanoflows came to have none
+// (mendixlabs/mxcli#1033).
+func (v *microflowValidator) checkStmtExprFunctions(s ast.MicroflowStatement) {
+	switch stmt := s.(type) {
+	case *ast.ReturnStmt:
+		v.checkExprFunctions("return", stmt.Value)
+	case *ast.IfStmt:
+		v.checkExprFunctions("if condition", stmt.Condition)
+	case *ast.DeclareStmt:
+		v.checkExprFunctions(fmt.Sprintf("declare '$%s'", stmt.Variable), stmt.InitialValue)
+	case *ast.MfSetStmt:
+		v.checkExprFunctions(fmt.Sprintf("set '%s'", stmt.Target), stmt.Value)
+	case *ast.CreateObjectStmt:
+		// Attribute values in a `create` are expressions too — an aggregate
+		// (sum/count/…) or an unknown function here fails the build with CE0117,
+		// but check previously only inspected return/if/declare/set (FINDINGS #17).
+		for _, ch := range stmt.Changes {
+			v.checkExprFunctions(fmt.Sprintf("create %s attribute '%s'", stmt.EntityType.String(), ch.Attribute), ch.Value)
+		}
+	case *ast.ChangeObjectStmt:
+		for _, ch := range stmt.Changes {
+			v.checkExprFunctions(fmt.Sprintf("change '%s' attribute '%s'", stmt.Variable, ch.Attribute), ch.Value)
+		}
+	case *ast.LogStmt:
+		// The #1033 repro put the unknown call in a log message, which was never
+		// walked — in a microflow either.
+		v.checkExprFunctions("log node", stmt.Node)
+		v.checkExprFunctions("log message", stmt.Message)
+		for _, tp := range stmt.Template {
+			v.checkExprFunctions(fmt.Sprintf("log template {%d}", tp.Index), tp.Value)
+		}
+	}
 }
 
 // checkExprFunctions flags calls to names that are not Mendix expression

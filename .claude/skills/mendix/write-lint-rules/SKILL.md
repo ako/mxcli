@@ -156,7 +156,7 @@ def check():
 | `qualified_name` | string | `"Sales.Customer"` |
 | `module_name` | string | `"Sales"` |
 | `folder` | string | `"DomainModel"` — folder path within module |
-| `entity_type` | string | `"persistent"`, `"NonPersistent"`, `"view"` |
+| `entity_type` | string | exactly `"Persistent"`, `"NonPersistent"` or `"View"` — any other spelling matches nothing and the rule silently reports nothing |
 | `description` | string | Documentation text |
 | `generalization` | string | Parent entity qualified name |
 | `attribute_count` | int | Number of attributes |
@@ -475,7 +475,7 @@ SEVERITY = "warning"
 def check():
     violations = []
     for e in entities():
-        if e.entity_type == "persistent" and not e.is_external and e.access_rule_count == 0:
+        if e.entity_type == "Persistent" and not e.is_external and e.access_rule_count == 0:
             violations.append(violation(
                 message="persistent entity '{}' has no access rules".format(e.qualified_name),
                 location=location(module=e.module_name, document_type="entity", document_name=e.name),

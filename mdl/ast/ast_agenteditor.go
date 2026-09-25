@@ -35,6 +35,7 @@ func (s *CreateModelStmt) isStatement() {}
 
 // DropModelStmt represents: DROP MODEL Module.Name
 type DropModelStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 
@@ -72,6 +73,7 @@ func (s *CreateConsumedMCPServiceStmt) isStatement() {}
 
 // DropConsumedMCPServiceStmt represents: DROP CONSUMED MCP SERVICE Module.Name
 type DropConsumedMCPServiceStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 
@@ -112,6 +114,7 @@ func (s *CreateKnowledgeBaseStmt) isStatement() {}
 
 // DropKnowledgeBaseStmt represents: DROP KNOWLEDGE BASE Module.Name
 type DropKnowledgeBaseStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 
@@ -152,6 +155,7 @@ func (s *CreateAgentStmt) isStatement() {}
 
 // DropAgentStmt represents: DROP AGENT Module.Name
 type DropAgentStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 

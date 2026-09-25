@@ -1,0 +1,45 @@
+-- ============================================================================
+-- Bug 978 — DESCRIBE PAGE output rejected by mxcli's own check --references
+-- ============================================================================
+--
+-- Symptom (before fix), on a page with several galleries:
+--   - duplicate widget name 'template1' (used 4 times) — Mendix requires unique
+--     widget names per page (CE0495)
+--
+-- Root cause:
+--   DESCRIBE writes every gallery's content as `template template1 { … }` (and
+--   its filters as `filter filter1 { … }`). Those blocks are CHILD SLOTS of the
+--   gallery definition; the pluggable engine stores only their children in the
+--   slot property and discards the block's name. The duplicate-name check
+--   counted them anyway. (Rows and columns, the other names in the report, were
+--   fixed earlier via widgetKindsWithoutStoredNames.)
+--
+-- After fix:
+--   Child-slot blocks of the enclosing widget's definition are exempt, like
+--   object-list items. Widgets INSIDE a slot still count.
+--
+-- Verify (Mendix 11.12.2):
+--   mxcli check 978-gallery-slot-names-not-duplicates.mdl -p app.mpr --references
+--   mxcli exec  978-gallery-slot-names-not-duplicates.mdl -p app.mpr
+--   mxcli docker check -p app.mpr        -- 0 errors
+-- ============================================================================
+
+create persistent entity MyFirstModule.Bug978Item (Name: string(100));
+
+create page MyFirstModule.Bug978Galleries (
+  title: 'Galleries',
+  layout: Atlas_Core.Atlas_Default
+) {
+  gallery g1 (datasource: database MyFirstModule.Bug978Item) {
+    template template1 { dynamictext t1 (content: '{1}', contentparams: [{1} = Name]) }
+  }
+  gallery g2 (datasource: database MyFirstModule.Bug978Item) {
+    template template1 { dynamictext t2 (content: '{1}', contentparams: [{1} = Name]) }
+  }
+  gallery g3 (datasource: database MyFirstModule.Bug978Item) {
+    template template1 { dynamictext t3 (content: '{1}', contentparams: [{1} = Name]) }
+  }
+  gallery g4 (datasource: database MyFirstModule.Bug978Item) {
+    template template1 { dynamictext t4 (content: '{1}', contentparams: [{1} = Name]) }
+  }
+}

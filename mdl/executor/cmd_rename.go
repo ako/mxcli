@@ -10,6 +10,8 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/mdl/types"
+	"github.com/mendixlabs/mxcli/model"
+	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 )
 
 // execRename handles RENAME statements for all document types.
@@ -91,6 +93,7 @@ func execRenameEntity(ctx *ExecContext, s *ast.RenameStmt) error {
 	for _, ent := range dm.Entities {
 		if ent.Name == s.Name.Name {
 			ent.Name = s.NewName
+			repointEntitySelfRefs(ent, oldQualifiedName, newQualifiedName)
 			break
 		}
 	}
@@ -106,6 +109,47 @@ func execRenameEntity(ctx *ExecContext, s *ast.RenameStmt) error {
 		fmt.Fprintf(ctx.Output, "Updated %d reference(s) in %d document(s)\n", totalRefCount(hits), len(hits))
 	}
 	return nil
+}
+
+// repointEntitySelfRefs rewrites the qualified names the entity uses to refer to
+// its OWN members, which embed the entity name that has just changed.
+//
+// It is needed because of a clobber, not because the sweep missed them: the
+// project-wide RenameReferences pass above does rewrite these names in the raw
+// unit, and then UpdateDomainModel persists the semantic model read BEFORE it and
+// puts the stale ones back. Measured on a real 11.13 app, the report and the errors
+// line up exactly — "Updated 3 reference(s) in 1 document(s)" followed by three
+// CE1613s at "Access rule of entity" and "Validation rule of entity" for the entity
+// just renamed. Re-pointing here makes the persist agree with the sweep instead of
+// undoing it.
+//
+// Leaving them stale is worse than a dangling string: entityToGen's
+// syncMemberAccesses matches existing entries BY qualified name, so a stale
+// `Module.Old.Attr` never equals the rebuilt `Module.New.Attr` and it appends the
+// new entry while keeping the old — the entity ends up carrying every member twice,
+// half of the entries dangling. DESCRIBE renders members bare, so the duplication is
+// the only visible trace. This is the RENAME sibling of the MOVE ENTITY defect in
+// ako/mxcli#605, where the same names went stale on the module prefix instead.
+//
+// Only names qualified by the ENTITY are rewritten. An association member is named
+// `Module.Association` — it carries no entity name — so a blanket prefix swap would
+// corrupt a reference that is still correct.
+func repointEntitySelfRefs(ent *domainmodel.Entity, oldQualifiedName, newQualifiedName string) {
+	oldPrefix, newPrefix := oldQualifiedName+".", newQualifiedName+"."
+	repoint := func(name string) string {
+		if strings.HasPrefix(name, oldPrefix) {
+			return newPrefix + name[len(oldPrefix):]
+		}
+		return name
+	}
+	for _, ar := range ent.AccessRules {
+		for _, ma := range ar.MemberAccesses {
+			ma.AttributeName = repoint(ma.AttributeName)
+		}
+	}
+	for _, vr := range ent.ValidationRules {
+		vr.AttributeID = model.ID(repoint(string(vr.AttributeID)))
+	}
 }
 
 // execRenameModule renames a module and updates all BY_NAME references with the module prefix.
@@ -392,6 +436,7 @@ func execRenameAssociation(ctx *ExecContext, s *ast.RenameStmt) error {
 			break
 		}
 	}
+	repointAssociationMemberRefs(dm, oldQualifiedName, newQualifiedName)
 	if err := ctx.Backend.UpdateDomainModel(dm); err != nil {
 		return mdlerrors.NewBackend("update association name", err)
 	}
@@ -404,6 +449,39 @@ func execRenameAssociation(ctx *ExecContext, s *ast.RenameStmt) error {
 		fmt.Fprintf(ctx.Output, "Updated %d reference(s) in %d document(s)\n", totalRefCount(hits), len(hits))
 	}
 	return nil
+}
+
+// repointAssociationMemberRefs rewrites the entity access rules in this unit that
+// name the renamed association, which they do by qualified name.
+//
+// Same clobber as repointEntitySelfRefs, one document type over: RenameReferences
+// rewrites these in the raw unit and the UpdateDomainModel that follows puts the
+// stale name back. It was the last of the four CE1613s a RENAME ASSOCIATION followed
+// by a RENAME ENTITY left on a real 11.13 app, and the one that survives longest,
+// because the stale name is re-read by every later statement that loads the unit.
+//
+// The match is EXACT rather than a prefix: an association member is named
+// `Module.Association` with nothing after it, and a prefix match would also rewrite
+// a differently-named association that happens to start with the same text.
+//
+// Every entity is walked, not just the association's FROM side. Mendix stores a
+// MemberAccess for an association only on the FROM entity (adding one to the TO
+// entity is CE0066), so in a well-formed model this finds them all on one entity —
+// but a sweep that assumed the storage rule would silently skip anything a model
+// carries in spite of it.
+func repointAssociationMemberRefs(dm *domainmodel.DomainModel, oldQualifiedName, newQualifiedName string) {
+	if dm == nil {
+		return
+	}
+	for _, ent := range dm.Entities {
+		for _, ar := range ent.AccessRules {
+			for _, ma := range ar.MemberAccesses {
+				if ma.AssociationName == oldQualifiedName {
+					ma.AssociationName = newQualifiedName
+				}
+			}
+		}
+	}
 }
 
 // execRenameJavaAction renames a Java action and its .java source file.

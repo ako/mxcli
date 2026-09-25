@@ -63,3 +63,20 @@ func TestLocalAppOptions_UsesAScratchDatabase(t *testing.T) {
 		t.Error("EnsureDB is false; the scratch database would have to exist already")
 	}
 }
+
+// TestLocalAppOptions_CarriesTheMxBuildPath — `test --local --mxbuild-path` must
+// reach StartLocalApp, whose resolver honours it; a flag the boot never sees is
+// the "no mechanism to redirect mxcli" of issue #1086 with extra steps.
+func TestLocalAppOptions_CarriesTheMxBuildPath(t *testing.T) {
+	const override = `C:\Program Files\Mendix\11.11.0\modeler\mxbuild.exe`
+	opts := RunOptions{ProjectPath: "/tmp/app/App.mpr", MxBuildPath: override}
+
+	for name, got := range map[string]string{
+		"endpoint": localAppOptions(opts, "log", []string{endpointTokenEnv + "=tok"}, io.Discard).MxBuildPath,
+		"legacy":   localAppOptions(opts, "log", nil, io.Discard).MxBuildPath,
+	} {
+		if got != override {
+			t.Errorf("%s runner: MxBuildPath = %q, want %q", name, got, override)
+		}
+	}
+}

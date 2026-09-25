@@ -275,8 +275,8 @@ func TestValidateShowPageArguments_ListWidgetOwnRowAction(t *testing.T) {
 		})
 	}
 
-	// The bare-entity shorthand leaves a plain string rather than a parsed source,
-	// so the entity is unreadable — but the widget plainly binds data, and the
+	// A DataSource that is not a parsed source (the bare-entity shorthand was one
+	// until #576 made it parse as DATABASE) leaves the entity unreadable — but the widget plainly binds data, and the
 	// guard's own doctrine is that it refuses only what it can PROVE is discarded.
 	t.Run("bare-entity shorthand stands the guard down", func(t *testing.T) {
 		if got := hits(rowAction("datagrid", "Mod.Car", "$currentObject")); len(got) != 0 {

@@ -114,7 +114,30 @@ func javaActionFromGen(g *genJa.JavaAction, containerID model.ID) *javaactions.J
 		out.MicroflowActionInfo = m
 	}
 	out.ReturnType = codeActionReturnTypeFromGen(g.JavaReturnType())
+	resolveJavaActionTypeParameterNames(out)
 	return out
+}
+
+// resolveJavaActionTypeParameterNames fills the display names of type-parameter
+// references. The stored types hold only a BY_ID pointer to the TypeParameter,
+// and the name is all DESCRIBE prints — unresolved, `entity <pEntity>` came back
+// as `entity <>` and the description no longer round-tripped (#1034).
+func resolveJavaActionTypeParameterNames(ja *javaactions.JavaAction) {
+	for _, p := range ja.Parameters {
+		switch pt := p.ParameterType.(type) {
+		case *javaactions.EntityTypeParameterType:
+			if pt.TypeParameterName == "" {
+				pt.TypeParameterName = ja.FindTypeParameterName(pt.TypeParameterID)
+			}
+		case *javaactions.TypeParameter:
+			if pt.TypeParameter == "" {
+				pt.TypeParameter = ja.FindTypeParameterName(pt.TypeParameterID)
+			}
+		}
+	}
+	if tp, ok := ja.ReturnType.(*javaactions.TypeParameter); ok && tp.TypeParameter == "" {
+		tp.TypeParameter = ja.FindTypeParameterName(tp.TypeParameterID)
+	}
 }
 
 // codeActionParamTypeFromGen converts a gen parameter-type element to the semantic

@@ -145,6 +145,7 @@ func (s *CreateMicroflowStmt) isStatement() {}
 
 // DropMicroflowStmt represents: DROP MICROFLOW Module.Name
 type DropMicroflowStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 
@@ -206,6 +207,7 @@ func (s *CreateRuleStmt) isStatement() {}
 
 // DropRuleStmt represents: DROP RULE Module.Name
 type DropRuleStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 
@@ -213,6 +215,7 @@ func (s *DropRuleStmt) isStatement() {}
 
 // DropNanoflowStmt represents: DROP NANOFLOW Module.Name
 type DropNanoflowStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 

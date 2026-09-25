@@ -476,8 +476,11 @@ import from mapping Module.IMM_Pet($JsonContent);
 #### Range — how much of the result to bind
 
 Optional trailing clause, matching Studio Pro's **All / First / Custom** setting
-on the activity. Omit it and mxcli infers from the mapping's own root shape, as
-it always has.
+on the activity. Omitting it means **All**; whether the variable is an object or
+a list is inferred from the mapping's own root shape, as it always has.
+`describe` leaves `all` off an object result (writing it there reads as "returns
+a list") and prints it for a list result — the two spellings store the same
+activity.
 
 ```sql
 $Pets = import from mapping Module.IMM_Pets($Json) all;            -- All (the default)

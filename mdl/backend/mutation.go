@@ -84,6 +84,11 @@ type PageMutator interface {
 	// Refuses a widget that has no Action property.
 	SetWidgetAction(widgetRef string, action pages.ClientAction) error
 
+	// SetWidgetNamedAction writes an action into a pluggable widget's action
+	// slot addressed by the widget's own property key (e.g. the File Uploader's
+	// createFileAction). Refuses a key that is not an action-typed property.
+	SetWidgetNamedAction(widgetRef string, propertyKey string, action pages.ClientAction) error
+
 	// SetColumnProperty sets a property on a column within a grid widget.
 	SetColumnProperty(gridRef string, columnRef string, prop string, value any) error
 

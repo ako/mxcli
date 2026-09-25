@@ -339,17 +339,9 @@ func (fb *flowBuilder) addCallJavaActionAction(s *ast.CallJavaActionStmt) model.
 		if entityTypeParams[arg.Name] {
 			// Entity type parameter: value is the entity qualified name, not the variable reference.
 			// When the argument is a variable like $Email, resolve its entity type from varTypes.
-			valueExpr := fb.exprToString(arg.Value)
-			entityName := strings.Trim(valueExpr, "'")
-			if strings.HasPrefix(entityName, "$") {
-				varName := strings.TrimPrefix(entityName, "$")
-				if resolvedType, ok := fb.varTypes[varName]; ok {
-					entityName = resolvedType
-				}
-			}
 			value = &microflows.EntityTypeCodeActionParameterValue{
 				BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
-				Entity:      entityName,
+				Entity:      fb.entityTypeArgument(arg.Value),
 			}
 		} else if isEmptyJavaActionArgument(arg.Value) {
 			if microflowTypeParams[arg.Name] {
@@ -485,17 +477,61 @@ func (fb *flowBuilder) inferGenericJavaActionReturnType(jaDef *javaactions.JavaA
 func (fb *flowBuilder) addCallJavaScriptActionAction(s *ast.CallJavaScriptActionStmt) model.ID {
 	actionQN := s.ActionName.Module + "." + s.ActionName.Name
 
+	// Look up the JavaScript action definition to detect entity-type
+	// parameters — the `entity <>` slots Studio Pro renders as an entity
+	// picker (CodeActions$EntityTypeParameterType). Their value is the
+	// chosen entity's qualified name under
+	// Microflows$EntityTypeCodeActionParameterValue.Entity, NOT an
+	// expression under BasicCodeActionParameterValue.Argument. Writing the
+	// Basic shape leaves the picker empty in Studio Pro, and fails the build
+	// with CE0115 "the arguments ... do not match the expected parameters"
+	// (measured on mxbuild 11.6.6). What reports the nanoflow as correct is
+	// mxcli itself: `mxcli check` passes, exec says "Created nanoflow", and
+	// DESCRIBE renders the broken and the correct document as identical MDL
+	// (mendixlabs/mxcli#1137). The Java-action builder above has drawn this
+	// distinction since ako/mxcli#656; this path hardcoded Basic for every
+	// parameter.
+	//
+	// Note this is NOT the same as a parameter typed to a concrete entity
+	// (CodeActions$EntityType, e.g. NanoflowCommons.TakePicture's `Picture:
+	// System.Image`): that one takes an object-valued expression and keeps
+	// the Basic shape.
+	//
+	// Without a backend (mxcli check with no project) the signature cannot
+	// be resolved, so the prior Basic shape stands rather than guessing the
+	// parameter's kind from how the argument is spelled.
+	entityTypeParams := make(map[string]bool)
+	if fb.backend != nil {
+		jsaDef, err := fb.backend.ReadJavaScriptActionByName(actionQN)
+		if err != nil {
+			log.Printf("warning: could not look up JavaScript action %s: %v (entity type params will be empty)", actionQN, err)
+		} else if jsaDef != nil {
+			for _, p := range jsaDef.Parameters {
+				if _, ok := p.ParameterType.(*types.EntityTypeParameterType); ok {
+					entityTypeParams[p.Name] = true
+				}
+			}
+		}
+	}
+
 	// Build parameter mappings with Value structure
 	var mappings []*microflows.JavaScriptActionParameterMapping
 	for _, arg := range s.Arguments {
 		// Parameter qualified name format: Module.JavaScriptAction.ParameterName
 		paramQN := actionQN + "." + arg.Name
 
-		// JavaScript actions use BasicCodeActionParameterValue for all parameters
+		var value microflows.CodeActionParameterValue
 		valueExpr := fb.exprToString(arg.Value)
-		value := &microflows.BasicCodeActionParameterValue{
-			BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
-			Argument:    valueExpr,
+		if entityTypeParams[arg.Name] {
+			value = &microflows.EntityTypeCodeActionParameterValue{
+				BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+				Entity:      fb.entityTypeArgument(arg.Value),
+			}
+		} else {
+			value = &microflows.BasicCodeActionParameterValue{
+				BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+				Argument:    valueExpr,
+			}
 		}
 
 		mapping := &microflows.JavaScriptActionParameterMapping{
@@ -534,6 +570,25 @@ func (fb *flowBuilder) addCallJavaScriptActionAction(s *ast.CallJavaScriptAction
 	fb.finishCustomErrorHandler(activity.ID, activityX, s.ErrorHandling, s.OutputVariable)
 
 	return activity.ID
+}
+
+// entityTypeArgument returns the entity qualified name an entity-type
+// (`entity <>`) code-action argument names. The value is stored as a bare
+// name under EntityTypeCodeActionParameterValue.Entity, so it is NOT the
+// argument's expression text: the visitor keeps an argument's trailing
+// whitespace so expressions round-trip as written, and an argument on its own
+// line therefore arrives as "Mod.Entity\n". Stored verbatim that names an
+// entity that does not exist — CE0115 at build, with `mxcli check` clean
+// (mendixlabs/mxcli#1171). A variable argument such as $Order resolves to the
+// entity it holds.
+func (fb *flowBuilder) entityTypeArgument(expr ast.Expression) string {
+	entityName := strings.Trim(strings.TrimSpace(fb.exprToString(expr)), "'")
+	if varName, ok := strings.CutPrefix(entityName, "$"); ok {
+		if resolvedType, ok := fb.varTypes[varName]; ok {
+			entityName = resolvedType
+		}
+	}
+	return entityName
 }
 
 func isEmptyJavaActionArgument(expr ast.Expression) bool {

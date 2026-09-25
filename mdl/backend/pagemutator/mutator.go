@@ -221,6 +221,91 @@ func (m *Mutator) SetWidgetAction(widgetRef string, action pages.ClientAction) e
 	return nil
 }
 
+// SetWidgetNamedAction writes an action into a pluggable widget's action slot
+// addressed by the widget's own property key — the ALTER-level twin of CREATE
+// PAGE's `createFileAction: microflow M.F` (#956), so one mis-wired slot can be
+// retargeted without REPLACEing the widget and restating everything else
+// (mendixlabs/mxcli#995). It writes the same Value.Action field
+// widgetobj.Builder.SetAction does.
+//
+// The property TYPE decides, not the presence of the field: every stored
+// WidgetValue carries an Action (a NoAction by default) whatever its type, so
+// writing one into an Integer property would build clean and do nothing.
+func (m *Mutator) SetWidgetNamedAction(widgetRef, propertyKey string, action pages.ClientAction) error {
+	result := m.widgetFinder(m.rawData, widgetRef)
+	if result == nil {
+		return m.widgetNotFoundError(widgetRef)
+	}
+	obj := bsonnav.DGetDoc(result.widget, "Object")
+	if obj == nil {
+		return fmt.Errorf("widget %q (%s) is not a pluggable widget and has no named action slots — "+
+			"a built-in widget's click action is set with `set Action = … on %s`",
+			widgetRef, widgetTypeName(result.widget), widgetRef)
+	}
+
+	keys, kinds := pluggablePropertyTypes(result.widget)
+	var actionSlots []string
+	for id, key := range keys {
+		if kinds[id] == "Action" {
+			actionSlots = append(actionSlots, key)
+		}
+	}
+	sort.Strings(actionSlots)
+
+	for _, prop := range bsonnav.DGetArrayElements(bsonnav.DGet(obj, "Properties")) {
+		propDoc, ok := prop.(bson.D)
+		if !ok {
+			continue
+		}
+		id := bsonnav.ExtractBinaryIDFromDoc(bsonnav.DGet(propDoc, "TypePointer"))
+		if key := keys[id]; key == "" || !strings.EqualFold(key, propertyKey) {
+			continue
+		}
+		if kinds[id] != "Action" {
+			return fmt.Errorf("property %q of widget %q has type %s, not Action — "+
+				"its action slots are: %s", propertyKey, widgetRef, kinds[id], slotList(actionSlots))
+		}
+		valDoc := bsonnav.DGetDoc(propDoc, "Value")
+		if valDoc == nil {
+			return fmt.Errorf("property %q has no Value map", propertyKey)
+		}
+		serialized := m.deps.SerializeClientAction(action)
+		if serialized == nil {
+			return fmt.Errorf("unsupported action type %T", action)
+		}
+		bsonnav.DSet(valDoc, "Action", serialized)
+		return nil
+	}
+	return fmt.Errorf("widget %q has no action slot %q — its action slots are: %s",
+		widgetRef, propertyKey, slotList(actionSlots))
+}
+
+// pluggablePropertyTypes maps a pluggable widget's PropertyType IDs to their
+// keys and to their value types ("Action", "Integer", …).
+func pluggablePropertyTypes(widget bson.D) (keys, kinds map[string]string) {
+	keys = buildPropKeyMap(widget)
+	kinds = make(map[string]string, len(keys))
+	objType := bsonnav.DGetDoc(bsonnav.DGetDoc(widget, "Type"), "ObjectType")
+	for _, pt := range bsonnav.DGetArrayElements(bsonnav.DGet(objType, "PropertyTypes")) {
+		ptDoc, ok := pt.(bson.D)
+		if !ok {
+			continue
+		}
+		id := bsonnav.ExtractBinaryIDFromDoc(bsonnav.DGet(ptDoc, "$ID"))
+		if vt := bsonnav.DGetDoc(ptDoc, "ValueType"); vt != nil && id != "" {
+			kinds[id] = bsonnav.DGetString(vt, "Type")
+		}
+	}
+	return keys, kinds
+}
+
+func slotList(slots []string) string {
+	if len(slots) == 0 {
+		return "(none)"
+	}
+	return strings.Join(slots, ", ")
+}
+
 // widgetTypeName reports a widget's $Type for error messages, or "unknown type".
 func widgetTypeName(widget bson.D) string {
 	if t, ok := bsonnav.DGet(widget, "$Type").(string); ok && t != "" {

@@ -927,7 +927,7 @@ func (unsupportedBackend) MoveDocument(_ model.ID, _ model.ID) (err0 error) {
 	return
 }
 
-func (unsupportedBackend) MoveEntity(_ *domainmodel.Entity, _ model.ID, _ model.ID, _ string, _ string) (r0 []string, err1 error) {
+func (unsupportedBackend) MoveEntity(_ *domainmodel.Entity, _ model.ID, _ model.ID, _ string, _ string) (r0 []types.MovedAssociation, err1 error) {
 	err1 = errUnsupported("MoveEntity")
 	return
 }
@@ -1329,6 +1329,11 @@ func (unsupportedBackend) UpdateQueue(_ *types.Queue) (err0 error) {
 
 func (unsupportedBackend) UpdateRawUnit(_ string, _ []uint8) (err0 error) {
 	err0 = errUnsupported("UpdateRawUnit")
+	return
+}
+
+func (unsupportedBackend) UpdateRawUnitOwningStorageGUIDs(_ string, _ []uint8) (err0 error) {
+	err0 = errUnsupported("UpdateRawUnitOwningStorageGUIDs")
 	return
 }
 

@@ -153,3 +153,77 @@ func TestLoopBox_NestedLoopsEachContainTheirChildren(t *testing.T) {
 		logStmt("before"), inner, logStmt("after"),
 	}))
 }
+
+// buildWhileFlow is the same fixture for a WHILE loop, which has its own builder
+// (addWhileStatement) and therefore its own layout code.
+func buildWhileFlow(t *testing.T, body []ast.MicroflowStatement) []microflows.MicroflowObject {
+	t.Helper()
+	fb := &flowBuilder{
+		posX:         100,
+		posY:         200,
+		spacing:      HorizontalSpacing,
+		varTypes:     map[string]string{"N": "Integer"},
+		declaredVars: map[string]string{},
+		measurer:     &layoutMeasurer{varTypes: map[string]string{"N": "Integer"}},
+	}
+	fb.addWhileStatement(&ast.WhileStmt{
+		Condition: &ast.LiteralExpr{Kind: ast.LiteralBoolean, Value: true},
+		Body:      body,
+	})
+	return fb.objects
+}
+
+// A WHILE loop's first activity escaped its own box, on every while loop mxcli
+// wrote — reported from a real project as "MPR011 on every `while` loop … first
+// activity at (50,80) lies outside the loop box … even single-level loops"
+// (ako/mxcli#645).
+//
+// The cause is one missing term. addWhileStatement's comment says its "layout
+// matches addLoopStatement but without iterator icon space", and it dropped the
+// iterator space correctly — but took ActivityWidth/2 with it:
+//
+//	foreach: innerStartX = LoopPadding + iteratorSpace + ActivityWidth/2  = 210
+//	while:   innerStartX = LoopPadding                                    =  50
+//
+// A child's Position is its CENTRE ("RelativeMiddlePoint in Mendix"), so a
+// centre at x=50 with ActivityWidth=120 puts the left edge at -10. The half-width
+// is not iterator space; it is what converts a centre to a left edge. The very
+// next line proves the omission was accidental rather than a choice — it adds
+// ActivityHeight/2 for exactly this reason on the Y axis.
+//
+// This survived because the containment invariant WAS tested, on the foreach
+// builder only. An invariant is worth what its coverage is: two builders, one
+// tested, and the untested one shipped the violation to every project.
+func TestWhileLoopBox_ContainsDefaultLaidOutChildren(t *testing.T) {
+	for _, n := range []int{1, 2, 4, 7} {
+		body := make([]ast.MicroflowStatement, 0, n)
+		for i := 0; i < n; i++ {
+			body = append(body, logStmt("x"))
+		}
+		assertLoopContainsItsChildren(t, buildWhileFlow(t, body))
+	}
+}
+
+// The X axis specifically, so a regression cannot hide behind a box that grew
+// tall enough. A box that merely got wider on the right does not fix a child
+// hanging off the left edge.
+func TestWhileLoopFirstChildLeftEdgeIsInsideTheBox(t *testing.T) {
+	objects := buildWhileFlow(t, []ast.MicroflowStatement{logStmt("only")})
+
+	for _, o := range objects {
+		loop, ok := o.(*microflows.LoopedActivity)
+		if !ok {
+			continue
+		}
+		minX, _, _, _, n := loopChildBounds(loop)
+		if n == 0 {
+			t.Fatal("the while loop has no children — fixture is wrong")
+		}
+		if minX < 0 {
+			t.Errorf("the first activity's left edge is at x=%d, outside its own box: "+
+				"a centre at LoopPadding is half an activity too far left", minX)
+		}
+		return
+	}
+	t.Fatal("no LoopedActivity in the built flow — fixture is wrong")
+}

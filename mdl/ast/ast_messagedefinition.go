@@ -69,6 +69,7 @@ func (m *MessageMemberDef) IsAssociation() bool { return m.Association.Name != "
 // DropMessageDefinitionCollectionStmt represents:
 // DROP MESSAGE DEFINITION COLLECTION Module.Name
 type DropMessageDefinitionCollectionStmt struct {
+	DropGuard
 	Name QualifiedName
 }
 

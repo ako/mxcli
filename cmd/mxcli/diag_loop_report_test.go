@@ -233,3 +233,108 @@ func TestStatementErrorLineIsPrintedOnlyWhenNonZero(t *testing.T) {
 		t.Errorf("did not print the statement-error line at 1:\n%s", loud.String())
 	}
 }
+
+// pidStart / pidEnd carry the pid pairing that ako/mxcli#629 added.
+func pidStart(sec, pid int, parent string, mode string, args ...string) logRecord {
+	r := startAt(sec, mode, args...)
+	r.PID = pid
+	r.ParentPID = parent
+	return r
+}
+
+func pidEnd(sec, pid, cmds, errs int) logRecord {
+	r := endAt(sec, cmds, errs)
+	r.PID = pid
+	return r
+}
+
+// mxcli runs mxcli. `mxcli test` spawns `-c DESCRIBE SETTINGS`, `-c SHOW
+// MODULES` and an `exec` of the generated runner BEFORE the first test
+// executes, and `new`, `eval`, `tui` and the LSP do the same.
+//
+// The records below are the shape measured from a real `mxcli test` run, not an
+// invented one: one parent start, three child starts each naming the parent, and
+// the children's ends arriving inside the parent's lifetime.
+//
+// That broke the report twice over. Closing "the most recent open invocation"
+// handed the parent's close to a child, so every `test` run was reported as
+// never having closed — a test project saw 5 of 5 unclosed while every test
+// passed. And the children were counted as calls the agent made, putting 3
+// phantom entries per test run into the table the report exists to rank.
+func TestSpawnedRunsDoNotSwallowTheirParentsClose(t *testing.T) {
+	rep := analyzeLoop([]logRecord{
+		pidStart(0, 100, "", "subcommand", "test", "t.test.mdl", "-p", "x.mpr"),
+		pidStart(1, 101, "100", "batch", "-p", "x.mpr", "-c", "DESCRIBE SETTINGS"),
+		pidEnd(2, 101, 1, 0),
+		pidStart(3, 102, "100", "batch", "-p", "x.mpr", "-c", "SHOW MODULES"),
+		pidEnd(4, 102, 1, 0),
+		pidStart(5, 103, "100", "subcommand", "exec", "runner.mdl", "-p", "x.mpr"),
+		pidEnd(6, 103, 9, 0),
+		pidEnd(10, 100, 0, 0), // the parent closes LAST, long after its children
+	})
+
+	if rep.Invocations != 1 {
+		t.Errorf("Invocations = %d, want 1 — the three spawned runs are not calls "+
+			"anyone made", rep.Invocations)
+	}
+	if rep.Spawned != 3 {
+		t.Errorf("Spawned = %d, want 3", rep.Spawned)
+	}
+	if rep.Unclosed != 0 {
+		t.Errorf("Unclosed = %d, want 0 — the parent DID close; a child's end was "+
+			"being counted as its own", rep.Unclosed)
+	}
+	// 10s parent. The children's 1s each must NOT be added: their time is
+	// already inside the parent's, so counting both doubles it.
+	if rep.WallSeconds != 10 {
+		t.Errorf("WallSeconds = %v, want 10 (the parent alone; children are inside it)",
+			rep.WallSeconds)
+	}
+}
+
+// CONTROL 1: a log written before #621 has no pid on either record, and must
+// still pair positionally — otherwise the fix silently blanks older logs, which
+// are exactly the ones a before/after comparison needs.
+func TestLogsWithoutPidsStillPairPositionally(t *testing.T) {
+	rep := analyzeLoop([]logRecord{
+		startAt(0, "subcommand", "exec", "a.mdl", "-p", "x.mpr"),
+		endAt(2, 3, 0),
+		startAt(3, "subcommand", "check", "b.mdl", "-p", "x.mpr"),
+		// no end
+	})
+	if rep.Invocations != 2 || rep.Unclosed != 1 || rep.WallSeconds != 2 {
+		t.Errorf("old-format log: Invocations=%d Unclosed=%d Wall=%v, want 2, 1, 2",
+			rep.Invocations, rep.Unclosed, rep.WallSeconds)
+	}
+}
+
+// CONTROL 2: a top-level run that happens to carry a pid is NOT spawned. Without
+// this the fix could be "treat everything with a pid as a child", which would
+// hide the whole loop rather than three calls per test run.
+func TestPidAloneDoesNotMakeARunSpawned(t *testing.T) {
+	rep := analyzeLoop([]logRecord{
+		pidStart(0, 200, "", "subcommand", "exec", "a.mdl", "-p", "x.mpr"),
+		pidEnd(1, 200, 2, 0),
+	})
+	if rep.Spawned != 0 {
+		t.Errorf("Spawned = %d, want 0 — parent_pid is empty, so nothing spawned it",
+			rep.Spawned)
+	}
+	if rep.Invocations != 1 {
+		t.Errorf("Invocations = %d, want 1", rep.Invocations)
+	}
+}
+
+// CONTROL 3: a session_end whose start is before the window (log rotation, or a
+// --since cut) must be dropped, not applied to whichever invocation happens to
+// be open. That mis-attribution is the same class of bug as the one above.
+func TestEndWithoutItsStartIsDropped(t *testing.T) {
+	rep := analyzeLoop([]logRecord{
+		pidEnd(0, 999, 5, 0), // its start is in yesterday's file
+		pidStart(1, 300, "", "subcommand", "check", "a.mdl", "-p", "x.mpr"),
+	})
+	if rep.Unclosed != 1 {
+		t.Errorf("Unclosed = %d, want 1 — the orphan end must not close the check",
+			rep.Unclosed)
+	}
+}

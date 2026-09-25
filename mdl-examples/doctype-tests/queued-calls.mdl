@@ -12,13 +12,17 @@
 -- generated/metamodel does not) is NOT written: measured on 11.13, a call
 -- carrying only `Queue` is inert — mx check does not read it.
 --
--- Two traps, both verified on mxbuild 11.13.0:
+-- Three traps, verified on mxbuild 11.13.0 (the second on 11.12.0):
 --
 --   1. A queued CALL JAVA ACTION must return Nothing. Anything else is
 --      CE7038 "A Java action used for background execution must have a return
 --      type of 'Nothing'." mxcli's default return type for CREATE JAVA ACTION
 --      is Boolean, so `returns void` is required here, not optional.
---   2. The queue must exist. A missing one is CE1613 on the CALL ACTIVITY —
+--   2. A queued CALL MICROFLOW must return Nothing too: CE7033 "A microflow
+--      used for background execution must have a Microflow return type of
+--      'Nothing'." (measured on 11.12.0; `mxcli check` reports it as MDL088,
+--      mendixlabs/mxcli#1064). Ops.ACT_Work below has no `returns` for that.
+--   3. The queue must exist. A missing one is CE1613 on the CALL ACTIVITY —
 --      it names the activity, not the script — so `mxcli check --references`
 --      resolves the name first and reports it against the statement.
 --

@@ -271,13 +271,21 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 		return []rawWidget{widget}
 
 	case "Forms$NavigationTree", "Pages$NavigationTree",
-		"Forms$MenuBar", "Pages$MenuBar":
-		// The profile is a qualified name one level down, in a
-		// Forms$NavigationSource, not a property of the tree.
+		"Forms$MenuBar", "Pages$MenuBar",
+		"Forms$SimpleMenuBar", "Pages$SimpleMenuBar":
+		// What the widget renders is one level down, in MenuSource: a profile
+		// in a Forms$NavigationSource, or a menu document in a
+		// Forms$MenuDocumentSource — Atlas's phone bottom bar is the latter.
 		if src, ok := w["MenuSource"].(map[string]any); ok {
 			if p, ok := src["NavigationProfile"].(string); ok {
 				widget.NavigationProfile = p
 			}
+			if m, ok := src["Menu"].(string); ok {
+				widget.Menu = m
+			}
+		}
+		if o, ok := w["Orientation"].(string); ok {
+			widget.MenuOrientation = o
 		}
 		return []rawWidget{widget}
 

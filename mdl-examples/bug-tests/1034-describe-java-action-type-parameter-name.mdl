@@ -1,0 +1,29 @@
+-- ============================================================================
+-- Bug #1034: DESCRIBE JAVA ACTION drops the type-parameter name
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   A parameter declared `ContextObject: entity <pEntity> not null` was
+--   described as `ContextObject: entity <>`. The stored parameter type holds
+--   only a BY_ID pointer to the TypeParameter, and the modelsdk java-action
+--   reader never resolved that pointer to its name, so the description could
+--   not be fed back to recreate the action.
+--
+-- After fix:
+--   DESCRIBE prints `entity <pEntity> not null`, and a bare type-parameter
+--   reference (`Obj: pEntity`, `returns pEntity`) prints its name too.
+--   Replaying the description into a fresh project describes identically.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/1034-describe-java-action-type-parameter-name.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe java action BugTest1034.JA_WithTypeParam"
+--   Expected parameter line: ContextObject: entity <pEntity> not null
+-- ============================================================================
+
+create module BugTest1034;
+
+create java action BugTest1034.JA_WithTypeParam (
+  ContextObject: entity <pEntity> not null
+) returns boolean as $$
+  return true;
+$$;
