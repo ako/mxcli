@@ -82,8 +82,8 @@ func TestDescribe_UnresolvedFlowContext_KeepsQualifiedBindings(t *testing.T) {
 // Where the entity IS known the short form is unchanged.
 func TestDescribe_ResolvedContext_KeepsShortBindings(t *testing.T) {
 	got := describeWidget(t, unresolvedContextDataView(map[string]any{
-		"$Type":     "Forms$DataViewSource",
-		"EntityRef": map[string]any{"$Type": "DomainModels$DirectEntityRef", "Entity": "FeedbackModule.Feedback"},
+		"$Type":          "Forms$DataViewSource",
+		"EntityRef":      map[string]any{"$Type": "DomainModels$DirectEntityRef", "Entity": "FeedbackModule.Feedback"},
 		"SourceVariable": map[string]any{"$Type": "Forms$PageVariable", "PageParameter": "Feedback"},
 	}))
 	for _, want := range []string{"Attribute: Subject", "{1} = ImageB64", "Visible: _showEmail in (true)"} {
