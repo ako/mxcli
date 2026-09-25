@@ -388,13 +388,17 @@ type Permission struct {
 	MemberName      string // populated for MEMBER_READ/MEMBER_WRITE, empty for entity-level
 	XPathConstraint string // empty means unconstrained
 	IsConstrained   bool   // convenience: XPathConstraint != ""
+	// DefaultMemberAccessRights is the rule's "default rights for new members"
+	// setting: None, ReadOnly or ReadWrite. Empty when not applicable.
+	DefaultMemberAccessRights string
 }
 
 // PermissionsFor returns an iterator over all permissions for a given entity.
 func (ctx *LintContext) PermissionsFor(entityQualifiedName string) iter.Seq[Permission] {
 	return func(yield func(Permission) bool) {
 		rows, err := ctx.db.Query(`
-			SELECT ModuleRoleName, ElementName, MemberName, AccessType, XPathConstraint, ModuleName
+			SELECT ModuleRoleName, ElementName, MemberName, AccessType, XPathConstraint,
+			       COALESCE(DefaultMemberAccessRights, ''), ModuleName
 			FROM permissions
 			WHERE ElementType = 'ENTITY' AND ElementName = ?
 			ORDER BY ModuleRoleName, AccessType
@@ -408,7 +412,8 @@ func (ctx *LintContext) PermissionsFor(entityQualifiedName string) iter.Seq[Perm
 		for rows.Next() {
 			var p Permission
 			var memberName, xpathConstraint, moduleName sql.NullString
-			err := rows.Scan(&p.ModuleRoleName, &p.EntityName, &memberName, &p.AccessType, &xpathConstraint, &moduleName)
+			err := rows.Scan(&p.ModuleRoleName, &p.EntityName, &memberName, &p.AccessType, &xpathConstraint,
+				&p.DefaultMemberAccessRights, &moduleName)
 			if err != nil {
 				ctx.recordQueryError("PermissionsFor (row scan)", err)
 				continue
@@ -435,6 +440,9 @@ type AllPermission struct {
 	XPathConstraint string
 	IsConstrained   bool
 	ModuleName      string
+	// DefaultMemberAccessRights is the rule's "default rights for new members"
+	// setting: None, ReadOnly or ReadWrite. Empty for non-entity permissions.
+	DefaultMemberAccessRights string
 }
 
 // Permissions returns an iterator over all permissions in the catalog.
@@ -446,7 +454,8 @@ func (ctx *LintContext) Permissions() iter.Seq[AllPermission] {
 		rows, err := ctx.db.Query(`
 			SELECT ModuleRoleName, ElementType, ElementName,
 				COALESCE(MemberName, ''), AccessType,
-				COALESCE(XPathConstraint, ''), COALESCE(ModuleName, '')
+				COALESCE(XPathConstraint, ''), COALESCE(DefaultMemberAccessRights, ''),
+				COALESCE(ModuleName, '')
 			FROM permissions
 			ORDER BY ElementType, ElementName, ModuleRoleName, AccessType
 		`)
@@ -459,7 +468,8 @@ func (ctx *LintContext) Permissions() iter.Seq[AllPermission] {
 		for rows.Next() {
 			var p AllPermission
 			if err := rows.Scan(&p.ModuleRoleName, &p.ElementType, &p.ElementName,
-				&p.MemberName, &p.AccessType, &p.XPathConstraint, &p.ModuleName); err != nil {
+				&p.MemberName, &p.AccessType, &p.XPathConstraint,
+				&p.DefaultMemberAccessRights, &p.ModuleName); err != nil {
 				continue
 			}
 			p.IsConstrained = p.XPathConstraint != ""
@@ -1368,6 +1378,12 @@ type Activity struct {
 	// by the catalog builder and are empty for activities that call neither.
 	ServiceRef string
 	ActionRef  string
+	// UseRequestTimeout mirrors "Use a timeout" on a Call REST service
+	// activity; TimeoutExpression is the number of seconds, which Studio Pro
+	// stores as an expression string (e.g. "300"). Both are zero for other
+	// action types.
+	UseRequestTimeout bool
+	TimeoutExpression string
 }
 
 // ActivitiesFor returns an iterator over all activities for a given microflow.
@@ -1376,7 +1392,8 @@ func (ctx *LintContext) ActivitiesFor(microflowQualifiedName string) iter.Seq[Ac
 		rows, err := ctx.db.Query(`
 			SELECT Id, Name, Caption, ActivityType, ActionType,
 			       MicroflowId, MicroflowQualifiedName, ModuleName, EntityRef,
-			       ServiceRef, ActionRef
+			       ServiceRef, ActionRef,
+			       COALESCE(UseRequestTimeout, 0), COALESCE(TimeoutExpression, '')
 			FROM activities
 			WHERE MicroflowQualifiedName = ?
 			ORDER BY Sequence
@@ -1391,9 +1408,11 @@ func (ctx *LintContext) ActivitiesFor(microflowQualifiedName string) iter.Seq[Ac
 			var a Activity
 			var name, caption, actionType, entityRef sql.NullString
 			var serviceRef, actionRef sql.NullString
+			var useRequestTimeout int
 			err := rows.Scan(&a.ID, &name, &caption, &a.ActivityType, &actionType,
 				&a.MicroflowID, &a.MicroflowQualifiedName, &a.ModuleName, &entityRef,
-				&serviceRef, &actionRef)
+				&serviceRef, &actionRef,
+				&useRequestTimeout, &a.TimeoutExpression)
 			if err != nil {
 				ctx.recordQueryError("ActivitiesFor (row scan)", err)
 				continue
@@ -1404,6 +1423,7 @@ func (ctx *LintContext) ActivitiesFor(microflowQualifiedName string) iter.Seq[Ac
 			a.EntityRef = entityRef.String
 			a.ServiceRef = serviceRef.String
 			a.ActionRef = actionRef.String
+			a.UseRequestTimeout = useRequestTimeout != 0
 
 			if !yield(a) {
 				return

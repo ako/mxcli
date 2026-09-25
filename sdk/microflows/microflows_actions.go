@@ -846,7 +846,11 @@ type RestCallAction struct {
 	ErrorHandlingType ErrorHandlingType  `json:"errorHandlingType,omitempty"`
 	OutputVariable    string             `json:"outputVariable,omitempty"`
 	UseReturnVariable bool               `json:"useReturnVariable"`
-	TimeoutExpression string             `json:"timeoutExpression,omitempty"`
+	// UseRequestTimeOut is Studio Pro's "Use a timeout" toggle. Stored as
+	// UseRequestTimeOut; TimeoutExpression (stored TimeOutExpression) holds the
+	// number of seconds as an expression, e.g. "300".
+	UseRequestTimeOut bool   `json:"useRequestTimeOut,omitempty"`
+	TimeoutExpression string `json:"timeoutExpression,omitempty"`
 }
 
 func (RestCallAction) isMicroflowAction() {}

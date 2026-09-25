@@ -110,7 +110,7 @@ Everything mxcli can do, organized by use case.
 | Cross-references | `LIST CALLERS/CALLEES OF` | Who calls what |
 | Impact analysis | `LIST IMPACT OF Module.Entity` | What breaks if I change this |
 | Transitive callers | `LIST CALLERS OF ... TRANSITIVE` | Full call chain |
-| Linting | `mxcli lint -p app.mpr` | 14 built-in + 27 Starlark rules |
+| Linting | `mxcli lint -p app.mpr` | 19 built-in + 31 Starlark rules |
 | Best practices report | `mxcli report -p app.mpr` | Scored report with categories |
 | Missing translations | QUAL005 linter rule | Detects incomplete translations |
 | Catalog queries | `SELECT ... FROM CATALOG.tables` | SQL over project metadata |
