@@ -86,8 +86,8 @@ type pageBuilder struct {
 	// be qualified, and one written bare made `mx check` fail to LOAD the
 	// project (ArgumentNullException setting 'Attribute', Mendix 11.13.0).
 	// DESCRIBE writes those bindings qualified there, the check refuses a bare
-	// one (checkUnscopedBindings), and the page writer refuses any bare
-	// attribute reference as a last line (refuseBareAttributeRefs).
+	// one (unscopedBindings), and the writer refuses any bare attribute
+	// reference as a last line, ALTER included (canon.BareAttributeRefError).
 	tolerateDanglingRefs bool
 
 	// Local page/snippet variables (Variables: { $name: Type = 'default' }).
