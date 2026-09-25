@@ -61,8 +61,8 @@ func (b *Builder) buildPermissions() error {
 	}
 
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO permissions (ModuleRoleName, ElementType, ElementName, MemberName, AccessType, XPathConstraint, ModuleName, ProjectId, SnapshotId)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO permissions (ModuleRoleName, ElementType, ElementName, MemberName, AccessType, XPathConstraint, DefaultMemberAccessRights, ModuleName, ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
@@ -112,27 +112,33 @@ func (b *Builder) buildEntityPermissions(stmt *sql.Stmt, projectID, snapshotID s
 				// and MemberAccesses, not by AllowRead/AllowWrite flags.
 				hasRead, hasWrite := entityAccessFromMemberRights(rule)
 
+				// The rule's "default rights for new members" setting. Stored
+				// alongside every row this rule produces, the same way
+				// XPathConstraint is: it is a property of the rule, not of the
+				// individual access type.
+				defaultRights := string(rule.DefaultMemberAccessRights)
+
 				for _, roleName := range roleNames {
 					// Entity-level permissions
 					if rule.AllowCreate {
-						stmt.Exec(roleName, PermissionElementEntity, entityQN, nil, AccessTypeCreate, xpath, moduleName, projectID, snapshotID)
+						stmt.Exec(roleName, PermissionElementEntity, entityQN, nil, AccessTypeCreate, xpath, defaultRights, moduleName, projectID, snapshotID)
 						count++
 					}
 					if hasRead {
-						stmt.Exec(roleName, PermissionElementEntity, entityQN, nil, AccessTypeRead, xpath, moduleName, projectID, snapshotID)
+						stmt.Exec(roleName, PermissionElementEntity, entityQN, nil, AccessTypeRead, xpath, defaultRights, moduleName, projectID, snapshotID)
 						count++
 					}
 					if hasWrite {
-						stmt.Exec(roleName, PermissionElementEntity, entityQN, nil, AccessTypeWrite, xpath, moduleName, projectID, snapshotID)
+						stmt.Exec(roleName, PermissionElementEntity, entityQN, nil, AccessTypeWrite, xpath, defaultRights, moduleName, projectID, snapshotID)
 						count++
 					}
 					if rule.AllowDelete {
-						stmt.Exec(roleName, PermissionElementEntity, entityQN, nil, AccessTypeDelete, xpath, moduleName, projectID, snapshotID)
+						stmt.Exec(roleName, PermissionElementEntity, entityQN, nil, AccessTypeDelete, xpath, defaultRights, moduleName, projectID, snapshotID)
 						count++
 					}
 
 					// Member-level permissions
-					count += b.emitMemberPermissions(stmt, rule, ent, roleName, entityQN, xpath, moduleName, projectID, snapshotID)
+					count += b.emitMemberPermissions(stmt, rule, ent, roleName, entityQN, xpath, defaultRights, moduleName, projectID, snapshotID)
 				}
 			}
 		}
@@ -172,7 +178,7 @@ func entityAccessFromMemberRights(rule *domainmodel.AccessRule) (hasRead, hasWri
 // When MemberAccesses is non-empty, use explicit per-member rights.
 // When MemberAccesses is empty, expand DefaultMemberAccessRights to all attributes.
 func (b *Builder) emitMemberPermissions(stmt *sql.Stmt, rule *domainmodel.AccessRule, ent *domainmodel.Entity,
-	roleName, entityQN, xpath, moduleName, projectID, snapshotID string) int {
+	roleName, entityQN, xpath, defaultRights, moduleName, projectID, snapshotID string) int {
 	count := 0
 
 	if len(rule.MemberAccesses) > 0 {
@@ -187,11 +193,11 @@ func (b *Builder) emitMemberPermissions(stmt *sql.Stmt, rule *domainmodel.Access
 			}
 
 			if ma.AccessRights == domainmodel.MemberAccessRightsReadOnly || ma.AccessRights == domainmodel.MemberAccessRightsReadWrite {
-				stmt.Exec(roleName, PermissionElementEntity, entityQN, memberName, AccessTypeMemberRead, xpath, moduleName, projectID, snapshotID)
+				stmt.Exec(roleName, PermissionElementEntity, entityQN, memberName, AccessTypeMemberRead, xpath, defaultRights, moduleName, projectID, snapshotID)
 				count++
 			}
 			if ma.AccessRights == domainmodel.MemberAccessRightsReadWrite {
-				stmt.Exec(roleName, PermissionElementEntity, entityQN, memberName, AccessTypeMemberWrite, xpath, moduleName, projectID, snapshotID)
+				stmt.Exec(roleName, PermissionElementEntity, entityQN, memberName, AccessTypeMemberWrite, xpath, defaultRights, moduleName, projectID, snapshotID)
 				count++
 			}
 		}
@@ -199,11 +205,11 @@ func (b *Builder) emitMemberPermissions(stmt *sql.Stmt, rule *domainmodel.Access
 		// Expand default to all attributes
 		for _, attr := range ent.Attributes {
 			if rule.DefaultMemberAccessRights == domainmodel.MemberAccessRightsReadOnly || rule.DefaultMemberAccessRights == domainmodel.MemberAccessRightsReadWrite {
-				stmt.Exec(roleName, PermissionElementEntity, entityQN, attr.Name, AccessTypeMemberRead, xpath, moduleName, projectID, snapshotID)
+				stmt.Exec(roleName, PermissionElementEntity, entityQN, attr.Name, AccessTypeMemberRead, xpath, defaultRights, moduleName, projectID, snapshotID)
 				count++
 			}
 			if rule.DefaultMemberAccessRights == domainmodel.MemberAccessRightsReadWrite {
-				stmt.Exec(roleName, PermissionElementEntity, entityQN, attr.Name, AccessTypeMemberWrite, xpath, moduleName, projectID, snapshotID)
+				stmt.Exec(roleName, PermissionElementEntity, entityQN, attr.Name, AccessTypeMemberWrite, xpath, defaultRights, moduleName, projectID, snapshotID)
 				count++
 			}
 		}
@@ -233,7 +239,7 @@ func (b *Builder) buildMicroflowPermissions(stmt *sql.Stmt, projectID, snapshotI
 		for _, roleID := range mf.AllowedModuleRoles {
 			// AllowedModuleRoles are BY_NAME strings stored as model.ID
 			roleName := string(roleID)
-			stmt.Exec(roleName, PermissionElementMicroflow, mfQN, nil, AccessTypeExecute, nil, moduleName, projectID, snapshotID)
+			stmt.Exec(roleName, PermissionElementMicroflow, mfQN, nil, AccessTypeExecute, nil, nil, moduleName, projectID, snapshotID)
 			count++
 		}
 	}
@@ -262,7 +268,7 @@ func (b *Builder) buildPagePermissions(stmt *sql.Stmt, projectID, snapshotID str
 		for _, roleID := range pg.AllowedRoles {
 			// AllowedRoles are BY_NAME strings stored as model.ID
 			roleName := string(roleID)
-			stmt.Exec(roleName, PermissionElementPage, pgQN, nil, AccessTypeView, nil, moduleName, projectID, snapshotID)
+			stmt.Exec(roleName, PermissionElementPage, pgQN, nil, AccessTypeView, nil, nil, moduleName, projectID, snapshotID)
 			count++
 		}
 	}
@@ -289,7 +295,7 @@ func (b *Builder) buildODataServicePermissions(stmt *sql.Stmt, projectID, snapsh
 		svcQN := moduleName + "." + svc.Name
 
 		for _, roleName := range svc.AllowedModuleRoles {
-			stmt.Exec(roleName, PermissionElementODataService, svcQN, nil, AccessTypeAccess, nil, moduleName, projectID, snapshotID)
+			stmt.Exec(roleName, PermissionElementODataService, svcQN, nil, AccessTypeAccess, nil, nil, moduleName, projectID, snapshotID)
 			count++
 		}
 	}
