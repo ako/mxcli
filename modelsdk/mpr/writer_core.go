@@ -526,6 +526,9 @@ func (w *Writer) insertUnit(unitID, containerID, containmentName, unitType strin
 	if err := canon.DuplicateElementIDError(unitID, contents); err != nil {
 		return err
 	}
+	if err := canon.BareAttributeRefError(unitID, contents); err != nil {
+		return err
+	}
 
 	// Convert UUID strings to 16-byte blobs for database
 	unitIDBlob := uuidToBlob(unitID)
@@ -608,6 +611,12 @@ func (w *Writer) updateUnit(unitID string, contents []byte, opts ...canon.Option
 	// UpdateRawUnit and ALTER's targeted patches — which is where a duplicate
 	// is most likely to arrive unnoticed. (ako/mxcli-captrack #2)
 	if err := canon.DuplicateElementIDError(unitID, contents); err != nil {
+		return err
+	}
+	// Same reasoning, same place: a bare DomainModels$AttributeRef makes the
+	// project unloadable, and ALTER PAGE's patches reach here without passing
+	// the page encoder that also refuses one (canon/attributeref.go).
+	if err := canon.BareAttributeRefError(unitID, contents); err != nil {
 		return err
 	}
 
