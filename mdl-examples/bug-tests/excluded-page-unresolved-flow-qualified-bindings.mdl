@@ -1,0 +1,46 @@
+-- ============================================================================
+-- An excluded page over a flow the project lacks: bindings kept qualified
+-- ============================================================================
+--
+-- Symptom: describe → exec of FeedbackModule.ShareFeedback_Logo (Feedback
+-- v4.0.2, Mendix 11.13.0), an EXCLUDED example page whose data view is sourced
+-- by a nanoflow the module does not ship, was refused:
+--   nanoflow not found: FeedbackModule.DS_FeedbackForm (data source)
+-- and writing it anyway left a project `mx check` could not LOAD
+-- (ArgumentNullException setting 'Attribute'), because DESCRIBE printed the
+-- bindings inside that data view bare (`Attribute: Subject`, `{1} = ImageB64`)
+-- and with the flow missing there is no entity to qualify them against.
+--
+-- Fix: DESCRIBE keeps the stored Module.Entity.Attr inside a data container
+-- whose flow cannot be resolved (and `Visible: Mod.Entity.Attr in (…)` accepts
+-- it); the missing flow is then a warning on an excluded page. A bare binding
+-- there is still refused, naming the widget, and the page writer refuses any
+-- bare attribute reference outright.
+--
+-- Verify: exec on a project WITHOUT MyFirstModule.DS_MissingForm → warning
+-- only, "Created page"; `mxcli docker check` — 0 errors (the page stays
+-- excluded). Replace one qualified binding with a bare name → refused.
+-- ============================================================================
+
+create entity MyFirstModule.FeedbackDraft (
+  Subject: String(200),
+  ShowEmail: Boolean default false,
+  Email: String(200)
+);
+/
+
+@excluded
+create or modify page MyFirstModule.FeedbackDraft_Example
+( Title: 'Feedback (example)', Layout: Atlas_Core.Atlas_Default )
+{
+  dataview dv (DataSource: nanoflow MyFirstModule.DS_MissingForm) {
+    textbox txtSubject (Label: 'Subject', Attribute: MyFirstModule.FeedbackDraft.Subject)
+    dynamictext txtEcho (Content: 'About: {1}', ContentParams: [{1} = MyFirstModule.FeedbackDraft.Subject])
+    textbox txtEmail (
+      Label: 'Email',
+      Attribute: MyFirstModule.FeedbackDraft.Email,
+      Visible: MyFirstModule.FeedbackDraft.ShowEmail in (true)
+    )
+  }
+}
+/

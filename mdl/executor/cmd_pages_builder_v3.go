@@ -916,7 +916,11 @@ func (pb *pageBuilder) buildDataSourceV3(ds *ast.DataSourceV3) (pages.DataSource
 	case "microflow":
 		// Microflow source
 		mfID, err := pb.resolveMicroflow(ds.Reference)
-		if err != nil {
+		// An excluded page may name a flow the project lacks (see
+		// tolerateDanglingRefs). It is written by name with NO entity in scope,
+		// so the bindings inside must be qualified; checkUnscopedBindings
+		// refuses a bare one before anything is written.
+		if err != nil && !pb.danglingRefOK(err) {
 			return nil, "", mdlerrors.NewBackend("resolve microflow", err)
 		}
 
@@ -936,7 +940,7 @@ func (pb *pageBuilder) buildDataSourceV3(ds *ast.DataSourceV3) (pages.DataSource
 	case "nanoflow":
 		// Nanoflow source - resolve by listing all nanoflows
 		nfID, err := pb.resolveNanoflowByName(ds.Reference)
-		if err != nil {
+		if err != nil && !pb.danglingRefOK(err) { // kept by name: see the microflow case
 			return nil, "", mdlerrors.NewBackend("resolve nanoflow", err)
 		}
 

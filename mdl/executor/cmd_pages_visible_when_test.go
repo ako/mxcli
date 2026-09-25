@@ -150,3 +150,28 @@ func TestDescribe_VisibleWhen(t *testing.T) {
 		t.Errorf("describe output does not parse: %v\n%s", errs, got)
 	}
 }
+
+// Under a data container whose flow cannot be resolved there is no entity in
+// scope, and DESCRIBE emits the attribute qualified: `Visible:
+// Mod.Entity.Attr in (…)` must build from the name alone.
+func TestVisibleWhen_QualifiedWithoutContext(t *testing.T) {
+	cvs, err := buildVisibleWhen(t, visibleWhenPB(""), "M.Job.IsLocal", "true")
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if cvs == nil || cvs.Attribute != "M.Job.IsLocal" || len(cvs.Conditions) != 2 {
+		t.Fatalf("got %+v", cvs)
+	}
+	// An inherited attribute named on the specialization is stored against
+	// the DECLARING entity, as the bare form is.
+	cvs, err = buildVisibleWhen(t, visibleWhenPB(""), "M.SpecialJob.Status", "Running")
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if cvs.Attribute != "M.Job.Status" {
+		t.Errorf("Attribute = %q, want M.Job.Status", cvs.Attribute)
+	}
+	if _, err := buildVisibleWhen(t, visibleWhenPB(""), "M.Job.Nope", "true"); err == nil {
+		t.Error("an unknown qualified attribute must be refused")
+	}
+}

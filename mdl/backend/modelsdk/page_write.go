@@ -256,7 +256,14 @@ func encodePage(page *pages.Page, pv *types.ProjectVersion, carry func(*genPg.Pa
 	if carry != nil {
 		carry(g)
 	}
-	return docEncoder("Forms$Page", pv).Encode(g)
+	contents, err := docEncoder("Forms$Page", pv).Encode(g)
+	if err != nil {
+		return nil, err
+	}
+	if err := refuseBareAttributeRefs(contents); err != nil {
+		return nil, fmt.Errorf("page %q: %w", page.Name, err)
+	}
+	return contents, nil
 }
 
 // pageToGen builds the full gen Page: header, layout call, the widget tree (under

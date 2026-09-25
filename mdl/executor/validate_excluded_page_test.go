@@ -143,15 +143,27 @@ func TestBuildExcludedPage_DanglingFlowIsKeptByName(t *testing.T) {
 		})
 	}
 
-	// A data source is never tolerated, excluded or not.
+	// A dangling data-source flow on an excluded page is kept by name too, with
+	// no entity in scope: the bindings inside must then be qualified, which
+	// DESCRIBE now emits there and the check verifies (checkUnscopedBindings).
 	ds := &ast.DataSourceV3{Type: "nanoflow", Reference: "Feedback.DS_FeedbackForm"}
-	if _, _, err := newPB(true).buildDataSourceV3(ds); err == nil {
-		t.Error("a dangling data source must be refused even on an excluded page")
+	src, entity, err := newPB(true).buildDataSourceV3(ds)
+	if err != nil {
+		t.Fatalf("excluded page, dangling data-source flow: %v", err)
+	}
+	if nf, ok := src.(*pages.NanoflowSource); !ok || nf.Nanoflow != "Feedback.DS_FeedbackForm" || entity != "" {
+		t.Errorf("want the nanoflow source kept by name with no entity in scope; got %#v, %q", src, entity)
+	}
+	// CONTROL: a live page still refuses it.
+	if _, _, err := newPB(false).buildDataSourceV3(ds); err == nil {
+		t.Error("a live page must still refuse a dangling data source")
 	}
 }
 
-// A dangling data source on an excluded page still blocks, with the reason;
-// the action targets beside it are still only warnings.
+// A dangling data source on an excluded page blocks when a binding inside it is
+// BARE — no entity is in scope to qualify it, and a bare attribute reference
+// makes the project unloadable; the refusal names it. The action targets
+// beside it are still only warnings.
 func TestValidateExcludedPage_DanglingDataSourceBlocks(t *testing.T) {
 	ctx, _ := newMockCtx(t)
 	sc := newScriptContext()
@@ -162,12 +174,13 @@ func TestValidateExcludedPage_DanglingDataSourceBlocks(t *testing.T) {
 		Properties: map[string]any{
 			"DataSource": &ast.DataSourceV3{Type: "nanoflow", Reference: "Feedback.DS_FeedbackForm"},
 		},
-		Children: actionWidget("nanoflow", "Feedback.ACT_ClearForm"),
+		Children: append(actionWidget("nanoflow", "Feedback.ACT_ClearForm"),
+			&ast.WidgetV3{Name: "feedback_subject", Type: "textbox", Properties: map[string]any{"Attribute": "Subject"}}),
 	}}
 
 	err := validateWithContext(ctx, s, sc)
-	if err == nil || !strings.Contains(err.Error(), "nanoflow not found: Feedback.DS_FeedbackForm (data source)") ||
-		!strings.Contains(err.Error(), "is excluded, but a data source") {
+	if err == nil || !strings.Contains(err.Error(), "Feedback.DS_FeedbackForm") ||
+		!strings.Contains(err.Error(), "feedback_subject") || !strings.Contains(err.Error(), "Subject") {
 		t.Fatalf("want the data source refused with its reason; got %v", err)
 	}
 	if strings.Contains(err.Error(), "ACT_ClearForm") {
@@ -175,5 +188,39 @@ func TestValidateExcludedPage_DanglingDataSourceBlocks(t *testing.T) {
 	}
 	if len(sc.warnings) != 1 || !strings.Contains(sc.warnings[0], "nanoflow not found: Feedback.ACT_ClearForm") {
 		t.Errorf("the action target must still be a warning; got %q", sc.warnings)
+	}
+}
+
+// The same page with every binding inside the container QUALIFIED — the form
+// DESCRIBE emits under an unresolvable flow — is written: the missing flow is a
+// warning like any other dangling reference on an excluded page.
+func TestValidateExcludedPage_DanglingDataSource_QualifiedBindingsAreWarnings(t *testing.T) {
+	ctx, _ := newMockCtx(t)
+	sc := newScriptContext()
+	sc.modules["Feedback"] = true
+	s := excludedPageStmt(true)
+	s.Widgets = []*ast.WidgetV3{{
+		Name: "dv", Type: "dataview",
+		Properties: map[string]any{
+			"DataSource": &ast.DataSourceV3{Type: "nanoflow", Reference: "Feedback.DS_FeedbackForm"},
+		},
+		Children: []*ast.WidgetV3{
+			{Name: "feedback_subject", Type: "textbox", Properties: map[string]any{"Attribute": "Feedback.Feedback.Subject"}},
+			{Name: "textBox1", Type: "textbox", Properties: map[string]any{
+				"Attribute":   "Feedback.Feedback.SubmitterEmail",
+				"VisibleWhen": &ast.VisibleWhenV3{Attribute: "Feedback.Feedback._showEmail", Values: []string{"true"}},
+			}},
+			{Name: "text1", Type: "dynamictext", Properties: map[string]any{
+				"Content":       "Image: {1}",
+				"ContentParams": []ast.ParamAssignmentV3{{Index: 1, Value: "Feedback.Feedback.ImageB64"}},
+			}},
+		},
+	}}
+	if err := validateWithContext(ctx, s, sc); err != nil {
+		t.Fatalf("qualified bindings under a dangling flow must not block an excluded page; got:\n%v", err)
+	}
+	joined := strings.Join(sc.warnings, "\n")
+	if !strings.Contains(joined, "Feedback.DS_FeedbackForm") {
+		t.Errorf("the missing data-source flow must still be reported; got %q", sc.warnings)
 	}
 }

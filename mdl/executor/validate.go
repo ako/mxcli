@@ -898,7 +898,14 @@ func (sc *scriptContext) relaxExcludedWidgetRefs(kind, name string, widgets []*a
 		ref := e[strings.LastIndex(e, ": ")+2:]
 		switch {
 		case refs.dataSources[ref]:
-			blocking = append(blocking, e+" (data source)")
+			// The flow is kept by name, but it is what puts an entity in scope:
+			// only a container whose bindings are all qualified can be written.
+			if bare := unscopedBindings(widgets, ref); len(bare) > 0 {
+				blocking = append(blocking, e+" (data source) — and these bindings inside it are not qualified, "+
+					"so nothing can resolve them: "+strings.Join(bare, ", "))
+				continue
+			}
+			warnings = append(warnings, e+" (data source; the bindings inside it are qualified)")
 		case strings.HasPrefix(e, "entity not found"):
 			// The builder resolves an entity to write it (create_object and the
 			// like), so exec would refuse it anyway; say so here instead of
@@ -915,11 +922,94 @@ func (sc *scriptContext) relaxExcludedWidgetRefs(kind, name string, widgets []*a
 		return nil
 	}
 	return mdlerrors.NewValidationf("%s '%s' is excluded, but a data source or entity it names does not exist:\n  - %s\n"+
-		"  An excluded document may keep a dangling action target, but not a dangling data source: the\n"+
-		"  flow or entity decides what the widgets inside it bind to, and without it those bindings are\n"+
-		"  written unqualified — which leaves a project Mendix cannot load. Create the missing document,\n"+
-		"  or leave this %s as it is stored.",
-		kind, name, strings.Join(blocking, "\n  - "), kind)
+		"  An excluded document may keep a dangling flow, but the widgets inside a data container bind\n"+
+		"  against the entity its flow returns — with the flow missing, a bare binding cannot be\n"+
+		"  qualified, and one written bare leaves a project Mendix cannot load. Qualify those bindings\n"+
+		"  (Module.Entity.Attribute, as `describe` writes them there), or create the missing document.",
+		kind, name, strings.Join(blocking, "\n  - "))
+}
+
+// unscopedBindings names the attribute bindings that cannot be resolved inside
+// the data container(s) whose data source is the missing flow ref: bare
+// attributes, `$currentObject/…` paths and association hops, all of which
+// resolve against the entity that flow would have returned. Descent stops at a
+// nested container with a data source of its own, which scopes its children.
+//
+// Covered: `Attribute:`, `CaptionAttribute:`, `Visible: Attr in (…)` and
+// template parameters (`…Params: [{1} = Attr]`). Anything else is caught by
+// the page writer's refusal of a bare attribute reference.
+func unscopedBindings(widgets []*ast.WidgetV3, ref string) []string {
+	var out []string
+	var inScope func(ws []*ast.WidgetV3)
+	inScope = func(ws []*ast.WidgetV3) {
+		for _, w := range ws {
+			if w == nil {
+				continue
+			}
+			if _, own := w.Properties["DataSource"].(*ast.DataSourceV3); own {
+				continue // its own data source decides its children's scope
+			}
+			for _, b := range bareBindingsOf(w) {
+				out = append(out, fmt.Sprintf("%s `%s` (%s)", strings.ToLower(w.Type), w.Name, b))
+			}
+			inScope(w.Children)
+		}
+	}
+	var find func(ws []*ast.WidgetV3)
+	find = func(ws []*ast.WidgetV3) {
+		for _, w := range ws {
+			if w == nil {
+				continue
+			}
+			if ds, ok := w.Properties["DataSource"].(*ast.DataSourceV3); ok && ds.Reference == ref &&
+				(ds.Type == "microflow" || ds.Type == "nanoflow") {
+				for _, b := range bareBindingsOf(w) { // the container's own bindings, e.g. its visibility
+					out = append(out, fmt.Sprintf("%s `%s` (%s)", strings.ToLower(w.Type), w.Name, b))
+				}
+				inScope(w.Children)
+				continue
+			}
+			find(w.Children)
+		}
+	}
+	find(widgets)
+	return out
+}
+
+// bareBindingsOf lists a widget's attribute bindings that need an entity in
+// scope to resolve.
+func bareBindingsOf(w *ast.WidgetV3) []string {
+	var out []string
+	needsScope := func(v string) bool {
+		switch {
+		case v == "", strings.HasPrefix(v, "'"):
+			return false // unset, or a literal
+		case strings.HasPrefix(v, "$"):
+			return strings.HasPrefix(strings.ToLower(v), "$currentobject/")
+		}
+		return strings.Contains(v, "/") || strings.Count(v, ".") < 2
+	}
+	for _, key := range []string{"Attribute", "CaptionAttribute"} {
+		if v, ok := w.Properties[key].(string); ok && needsScope(v) {
+			out = append(out, key+": "+v)
+		}
+	}
+	if vw, ok := w.Properties["VisibleWhen"].(*ast.VisibleWhenV3); ok && needsScope(vw.Attribute) {
+		out = append(out, "Visible: "+vw.Attribute+" in (…)")
+	}
+	for key, v := range w.Properties {
+		params, ok := v.([]ast.ParamAssignmentV3)
+		if !ok {
+			continue
+		}
+		for _, p := range params {
+			if s, ok := p.Value.(string); ok && needsScope(s) {
+				out = append(out, fmt.Sprintf("%s {%d} = %s", key, p.Index, s))
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // carriedExclusion reports whether exec will write the page or snippet named

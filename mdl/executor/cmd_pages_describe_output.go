@@ -1868,7 +1868,7 @@ func extractClientTemplateParameters(ctx *ExecContext, w map[string]any, fieldNa
 					result = append(result, "$"+sourceVarName+"."+attrName)
 				} else {
 					// No SourceVariable - use short attribute name
-					result = append(result, shortAttributeName(attr))
+					result = append(result, describeAttr(ctx, attr))
 				}
 				continue
 			}
@@ -2085,5 +2085,11 @@ func visibleWhenProp(w rawWidget) string {
 		}
 		vals[i] = mdlIdent(v)
 	}
-	return fmt.Sprintf("Visible: %s in (%s)", mdlIdent(w.VisibleAttr), strings.Join(vals, ", "))
+	attr := mdlIdent(w.VisibleAttr)
+	if strings.Contains(w.VisibleAttr, ".") {
+		// Qualified (Module.Entity.Attr) where no entity is in scope — written
+		// as a qualified name, which takes keyword segments bare.
+		attr = w.VisibleAttr
+	}
+	return fmt.Sprintf("Visible: %s in (%s)", attr, strings.Join(vals, ", "))
 }

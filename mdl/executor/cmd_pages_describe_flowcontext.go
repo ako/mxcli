@@ -3,6 +3,8 @@
 package executor
 
 import (
+	"strings"
+
 	"github.com/mendixlabs/mxcli/sdk/microflows"
 )
 
@@ -28,6 +30,41 @@ func dataSourceEntityContext(ctx *ExecContext, ds *rawDataSource) string {
 		}
 	}
 	return ds.Reference
+}
+
+// flowContextUnresolved reports whether a data container's source is a flow
+// whose returned entity cannot be determined — the flow is not in the project
+// (Feedback v4.0.2's excluded ShareFeedback_Logo names a nanoflow the module
+// does not ship), or it returns no object.
+func flowContextUnresolved(ctx *ExecContext, ds *rawDataSource) bool {
+	if ds == nil || ds.Reference == "" || (ds.Type != "microflow" && ds.Type != "nanoflow") {
+		return false
+	}
+	return flowReturnEntity(ctx, ds.Type, ds.Reference) == ""
+}
+
+// withQualifiedAttrs runs parse with attribute bindings kept qualified when
+// ds leaves no entity in scope, restoring the previous setting afterwards.
+func withQualifiedAttrs[T any](ctx *ExecContext, ds *rawDataSource, parse func() T) T {
+	if ctx == nil || !flowContextUnresolved(ctx, ds) {
+		return parse()
+	}
+	prev := ctx.describeQualifyAttrs
+	ctx.describeQualifyAttrs = true
+	defer func() { ctx.describeQualifyAttrs = prev }()
+	return parse()
+}
+
+// describeAttr renders a stored attribute name for MDL: bare, as exec resolves
+// it against the data container's entity — or, where there is no entity to
+// resolve against (describeQualifyAttrs), the stored Module.Entity.Attr. A bare
+// name there cannot be qualified on the way back: written anyway, a bare image
+// parameter left a project `mx check` could not load.
+func describeAttr(ctx *ExecContext, qn string) string {
+	if ctx != nil && ctx.describeQualifyAttrs && strings.Count(qn, ".") >= 2 {
+		return qn
+	}
+	return shortAttributeName(qn)
 }
 
 // flowReturnEntity resolves the entity a microflow or nanoflow returns, by object

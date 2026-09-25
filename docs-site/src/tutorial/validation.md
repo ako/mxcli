@@ -50,9 +50,11 @@ This is the check you should run before executing a script. It's fast (reads the
 References inside an **excluded** document (`@excluded`, or a page or snippet
 that stays excluded because its stored namesake is) are reported as
 `Reference warnings` rather than errors, because Mendix does not validate
-excluded documents. A page's or snippet's missing *data source* still fails the
-check: the widgets inside it bind against that source's entity, and cannot be
-written without it.
+excluded documents. A missing *data-source flow* is a warning too, but only when
+every binding inside that container is qualified (`Module.Entity.Attribute`) —
+`describe page` writes them that way there. The widgets bind against the entity
+the flow returns, so with the flow missing a bare binding cannot be resolved and
+the check fails, naming the widget. A missing entity still fails the check.
 
 ### Name conflicts with the project
 

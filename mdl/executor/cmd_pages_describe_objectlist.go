@@ -212,7 +212,7 @@ func extractObjectListItem(ctx *ExecContext, itemObj map[string]any, nestedMap m
 		// Attribute binding (staticXAttribute, staticYAttribute, …).
 		if attrRef, ok := value["AttributeRef"].(map[string]any); ok && len(attrRef) > 0 {
 			if a := extractString(attrRef["Attribute"]); a != "" {
-				item.Props = append(item.Props, rawExplicitProp{Key: objectListMDLKey(key), Value: shortAttributeName(a), IsRef: true})
+				item.Props = append(item.Props, rawExplicitProp{Key: objectListMDLKey(key), Value: describeAttr(ctx, a), IsRef: true})
 			}
 			continue
 		}

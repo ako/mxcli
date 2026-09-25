@@ -33,7 +33,14 @@ func encodeSnippet(snippet *pages.Snippet, pv *types.ProjectVersion) ([]byte, er
 		return nil, err
 	}
 	g.SetID(element.ID(snippet.ID))
-	return docEncoder("Forms$Snippet", pv).Encode(g)
+	contents, err := docEncoder("Forms$Snippet", pv).Encode(g)
+	if err != nil {
+		return nil, err
+	}
+	if err := refuseBareAttributeRefs(contents); err != nil { // see page_bare_attributeref.go
+		return nil, fmt.Errorf("snippet %q: %w", snippet.Name, err)
+	}
+	return contents, nil
 }
 
 // CreateSnippet inserts a new Forms$Snippet document — a reusable widget tree with
