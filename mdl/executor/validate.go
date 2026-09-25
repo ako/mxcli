@@ -367,6 +367,11 @@ func validateProgramWithWarnings(ctx *ExecContext, prog *ast.Program) ([]error, 
 	// widget that is already stored, so its property can only be resolved
 	// against the document — which is why it passed check and failed exec.
 	errors = append(errors, validateAlterSetProperties(ctx, prog, sc)...)
+	// The entity an ALTER's INSERT / REPLACE binds against is in the stored
+	// document, not the statement. Where it has none (a missing flow source, or
+	// no data container at all) a bare binding is written bare and the project
+	// no longer loads — CREATE PAGE already refused this at check time.
+	errors = append(errors, validateAlterUnscopedBindings(ctx, prog, sc)...)
 	return errors, sc.warnings
 }
 
@@ -940,21 +945,6 @@ func (sc *scriptContext) relaxExcludedWidgetRefs(kind, name string, widgets []*a
 // the page writer's refusal of a bare attribute reference.
 func unscopedBindings(widgets []*ast.WidgetV3, ref string) []string {
 	var out []string
-	var inScope func(ws []*ast.WidgetV3)
-	inScope = func(ws []*ast.WidgetV3) {
-		for _, w := range ws {
-			if w == nil {
-				continue
-			}
-			if _, own := w.Properties["DataSource"].(*ast.DataSourceV3); own {
-				continue // its own data source decides its children's scope
-			}
-			for _, b := range bareBindingsOf(w) {
-				out = append(out, fmt.Sprintf("%s `%s` (%s)", strings.ToLower(w.Type), w.Name, b))
-			}
-			inScope(w.Children)
-		}
-	}
 	var find func(ws []*ast.WidgetV3)
 	find = func(ws []*ast.WidgetV3) {
 		for _, w := range ws {
@@ -966,13 +956,35 @@ func unscopedBindings(widgets []*ast.WidgetV3, ref string) []string {
 				for _, b := range bareBindingsOf(w) { // the container's own bindings, e.g. its visibility
 					out = append(out, fmt.Sprintf("%s `%s` (%s)", strings.ToLower(w.Type), w.Name, b))
 				}
-				inScope(w.Children)
+				out = append(out, bindingsWithoutScope(w.Children)...)
 				continue
 			}
 			find(w.Children)
 		}
 	}
 	find(widgets)
+	return out
+}
+
+// bindingsWithoutScope names the bare bindings of widgets placed where no
+// entity is in scope — the children of a container whose data source flow is
+// missing, or widgets an ALTER inserts outside any container that resolves to
+// an entity. Descent stops at a widget with a data source of its own, which
+// scopes its children.
+func bindingsWithoutScope(ws []*ast.WidgetV3) []string {
+	var out []string
+	for _, w := range ws {
+		if w == nil {
+			continue
+		}
+		if _, own := w.Properties["DataSource"].(*ast.DataSourceV3); own {
+			continue // its own data source decides its children's scope
+		}
+		for _, b := range bareBindingsOf(w) {
+			out = append(out, fmt.Sprintf("%s `%s` (%s)", strings.ToLower(w.Type), w.Name, b))
+		}
+		out = append(out, bindingsWithoutScope(w.Children)...)
+	}
 	return out
 }
 
