@@ -225,22 +225,53 @@ func formatWidgetProps(w io.Writer, prefix string, header string, props []string
 		fmt.Fprintf(w, "%s%s%s", prefix, header, suffix)
 		return
 	}
-	singleLine := fmt.Sprintf("%s%s (%s)%s", prefix, header, strings.Join(props, ", "), suffix)
-	if len(singleLine) <= 120 {
-		fmt.Fprint(w, singleLine)
+	// A `--` comment entry runs to the end of its line, so it must sit on a line
+	// of its own and never carry a separator: on the single-line form it
+	// swallowed the rest of the list and the `)`, and as the last entry it left
+	// the previous line's `,` dangling. Either way the output did not parse.
+	lastProp := -1
+	for i, p := range props {
+		if !isCommentProp(p) {
+			lastProp = i
+		}
+	}
+	if lastProp == len(props)-1 {
+		singleLine := fmt.Sprintf("%s%s (%s)%s", prefix, header, strings.Join(props, ", "), suffix)
+		if len(singleLine) <= 120 && !containsCommentProp(props) {
+			fmt.Fprint(w, singleLine)
+			return
+		}
+	}
+	if lastProp < 0 {
+		// Only comments: there is no property list to write.
+		for _, p := range props {
+			fmt.Fprintf(w, "%s%s\n", prefix, p)
+		}
+		fmt.Fprintf(w, "%s%s%s", prefix, header, suffix)
 		return
 	}
 	// Multi-line
 	indent := prefix + "  "
 	fmt.Fprintf(w, "%s%s (\n", prefix, header)
 	for i, p := range props {
-		if i < len(props)-1 {
+		if i < lastProp && !isCommentProp(p) {
 			fmt.Fprintf(w, "%s%s,\n", indent, p)
 		} else {
 			fmt.Fprintf(w, "%s%s\n", indent, p)
 		}
 	}
 	fmt.Fprintf(w, "%s)%s", prefix, suffix)
+}
+
+func isCommentProp(p string) bool { return strings.HasPrefix(p, "--") }
+
+func containsCommentProp(props []string) bool {
+	for _, p := range props {
+		if isCommentProp(p) {
+			return true
+		}
+	}
+	return false
 }
 
 // outputDataContainerContext writes a comment showing available variables inside a data container.
