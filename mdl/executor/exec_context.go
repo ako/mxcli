@@ -101,6 +101,13 @@ type ExecContext struct {
 	// empty EndEvent in a value-returning microflow, where bare `return;` is invalid.
 	DescribingMicroflowHasReturnValue bool
 
+	// describeID pins a describe to one stored document. A name is not a unique
+	// key — a module may hold an excluded twin (#914) — so the catalog's source
+	// build, which enumerates documents rather than names, sets it to describe
+	// each twin as itself instead of the live one twice (#1185). Empty means
+	// "by name", which is every interactive DESCRIBE.
+	describeID model.ID
+
 	// lastWriteStats is the storage write watermark as of the previous
 	// ReportMutation call (or of this context's construction, i.e. the start of
 	// the statement). Its only use is telling "Modified X" from "X was already

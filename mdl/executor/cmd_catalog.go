@@ -510,8 +510,8 @@ func buildCatalog(ctx *ExecContext, full, isSource, communities bool, resolution
 	if isSource {
 		builder.SetSourceMode(true)
 		preWarmCache(ctx)
-		builder.SetDescribeFunc(func(objectType string, qualifiedName string) (string, error) {
-			return captureDescribeParallel(ctx, objectType, qualifiedName)
+		builder.SetDescribeFunc(func(objectType string, qualifiedName string, id string) (string, error) {
+			return captureDescribeParallel(ctx, objectType, qualifiedName, model.ID(id))
 		})
 	}
 	// Supply built-in widget definitions (hand-crafted COMBOBOX, GALLERY,
@@ -896,7 +896,7 @@ func captureDescribe(ctx *ExecContext, objectType string, qualifiedName string) 
 // It creates a lightweight ExecContext clone per call with its own output buffer,
 // sharing the backend and pre-warmed cache. Call preWarmCache() before using
 // this from multiple goroutines.
-func captureDescribeParallel(ctx *ExecContext, objectType string, qualifiedName string) (string, error) {
+func captureDescribeParallel(ctx *ExecContext, objectType string, qualifiedName string, id model.ID) (string, error) {
 	parts := strings.SplitN(qualifiedName, ".", 2)
 	if len(parts) != 2 {
 		return "", mdlerrors.NewValidationf("invalid qualified name: %s", qualifiedName)
@@ -914,6 +914,9 @@ func captureDescribeParallel(ctx *ExecContext, objectType string, qualifiedName 
 		Backend: ctx.Backend,
 		Cache:   ctx.Cache,
 		MprPath: ctx.MprPath,
+		// Pins the describe to this document rather than to whichever
+		// document of this name the lookup prefers (#1185).
+		describeID: id,
 	}
 
 	describe := describeDispatch(objectType)

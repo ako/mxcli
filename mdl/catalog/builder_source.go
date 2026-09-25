@@ -51,6 +51,11 @@ type sourceItem struct {
 	objType    string
 	qn         string
 	moduleName string
+	// id is the stored document's ID. A name is not a unique key — a module
+	// may hold an excluded twin of a live document — so the describe is pinned
+	// to it, and it is written beside the text so two same-named rows stay
+	// distinguishable (#1185).
+	id string
 }
 
 // sourceResult holds the output of a parallel describe call.
@@ -89,7 +94,7 @@ func (b *Builder) buildSource() error {
 			moduleID := b.hierarchy.findModuleID(dm.ContainerID)
 			moduleName := b.hierarchy.getModuleName(moduleID)
 			for _, ent := range dm.Entities {
-				items = append(items, sourceItem{SourceEntity, moduleName + "." + ent.Name, moduleName})
+				items = append(items, sourceItem{SourceEntity, moduleName + "." + ent.Name, moduleName, string(ent.ID)})
 			}
 		}
 	}
@@ -100,7 +105,7 @@ func (b *Builder) buildSource() error {
 		for _, mf := range mfList {
 			moduleID := b.hierarchy.findModuleID(mf.ContainerID)
 			moduleName := b.hierarchy.getModuleName(moduleID)
-			items = append(items, sourceItem{SourceMicroflow, moduleName + "." + mf.Name, moduleName})
+			items = append(items, sourceItem{SourceMicroflow, moduleName + "." + mf.Name, moduleName, string(mf.ID)})
 		}
 	}
 
@@ -110,7 +115,7 @@ func (b *Builder) buildSource() error {
 		for _, nf := range nfList {
 			moduleID := b.hierarchy.findModuleID(nf.ContainerID)
 			moduleName := b.hierarchy.getModuleName(moduleID)
-			items = append(items, sourceItem{SourceNanoflow, moduleName + "." + nf.Name, moduleName})
+			items = append(items, sourceItem{SourceNanoflow, moduleName + "." + nf.Name, moduleName, string(nf.ID)})
 		}
 	}
 
@@ -121,7 +126,7 @@ func (b *Builder) buildSource() error {
 		for _, rule := range ruleList {
 			moduleID := b.hierarchy.findModuleID(rule.ContainerID)
 			moduleName := b.hierarchy.getModuleName(moduleID)
-			items = append(items, sourceItem{SourceRule, moduleName + "." + rule.Name, moduleName})
+			items = append(items, sourceItem{SourceRule, moduleName + "." + rule.Name, moduleName, string(rule.ID)})
 		}
 	}
 
@@ -131,7 +136,7 @@ func (b *Builder) buildSource() error {
 		for _, pg := range pageList {
 			moduleID := b.hierarchy.findModuleID(pg.ContainerID)
 			moduleName := b.hierarchy.getModuleName(moduleID)
-			items = append(items, sourceItem{SourcePage, moduleName + "." + pg.Name, moduleName})
+			items = append(items, sourceItem{SourcePage, moduleName + "." + pg.Name, moduleName, string(pg.ID)})
 		}
 	}
 
@@ -140,7 +145,7 @@ func (b *Builder) buildSource() error {
 	for _, sn := range snippetList {
 		moduleID := b.hierarchy.findModuleID(sn.ContainerID)
 		moduleName := b.hierarchy.getModuleName(moduleID)
-		items = append(items, sourceItem{SourceSnippet, moduleName + "." + sn.Name, moduleName})
+		items = append(items, sourceItem{SourceSnippet, moduleName + "." + sn.Name, moduleName, string(sn.ID)})
 	}
 
 	// Workflows
@@ -149,7 +154,7 @@ func (b *Builder) buildSource() error {
 		for _, wf := range wfList {
 			moduleID := b.hierarchy.findModuleID(wf.ContainerID)
 			moduleName := b.hierarchy.getModuleName(moduleID)
-			items = append(items, sourceItem{SourceWorkflow, moduleName + "." + wf.Name, moduleName})
+			items = append(items, sourceItem{SourceWorkflow, moduleName + "." + wf.Name, moduleName, string(wf.ID)})
 		}
 	}
 
@@ -159,7 +164,7 @@ func (b *Builder) buildSource() error {
 		for _, en := range enumList {
 			moduleID := b.hierarchy.findModuleID(en.ContainerID)
 			moduleName := b.hierarchy.getModuleName(moduleID)
-			items = append(items, sourceItem{SourceEnumeration, moduleName + "." + en.Name, moduleName})
+			items = append(items, sourceItem{SourceEnumeration, moduleName + "." + en.Name, moduleName, string(en.ID)})
 		}
 	}
 
@@ -172,7 +177,7 @@ func (b *Builder) buildSource() error {
 		for _, js := range jsonList {
 			moduleID := b.hierarchy.findModuleID(js.ContainerID)
 			moduleName := b.hierarchy.getModuleName(moduleID)
-			items = append(items, sourceItem{SourceJsonStructure, moduleName + "." + js.Name, moduleName})
+			items = append(items, sourceItem{SourceJsonStructure, moduleName + "." + js.Name, moduleName, string(js.ID)})
 		}
 	}
 
@@ -181,7 +186,7 @@ func (b *Builder) buildSource() error {
 		for _, im := range importList {
 			moduleID := b.hierarchy.findModuleID(im.ContainerID)
 			moduleName := b.hierarchy.getModuleName(moduleID)
-			items = append(items, sourceItem{SourceImportMapping, moduleName + "." + im.Name, moduleName})
+			items = append(items, sourceItem{SourceImportMapping, moduleName + "." + im.Name, moduleName, string(im.ID)})
 		}
 	}
 
@@ -190,7 +195,7 @@ func (b *Builder) buildSource() error {
 		for _, em := range exportList {
 			moduleID := b.hierarchy.findModuleID(em.ContainerID)
 			moduleName := b.hierarchy.getModuleName(moduleID)
-			items = append(items, sourceItem{SourceExportMapping, moduleName + "." + em.Name, moduleName})
+			items = append(items, sourceItem{SourceExportMapping, moduleName + "." + em.Name, moduleName, string(em.ID)})
 		}
 	}
 
@@ -227,8 +232,8 @@ func (b *Builder) buildSource() error {
 
 	// Phase 3: Insert results into FTS5 table (serial — SQLite constraint)
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO source (QualifiedName, ObjectType, SourceText, ModuleName)
-		VALUES (?, ?, ?, ?)
+		INSERT INTO source (QualifiedName, ObjectType, SourceText, ModuleName, ElementId)
+		VALUES (?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
@@ -240,7 +245,7 @@ func (b *Builder) buildSource() error {
 		if res.text == "" {
 			continue
 		}
-		stmt.Exec(res.item.qn, res.item.objType, res.text, res.item.moduleName)
+		stmt.Exec(res.item.qn, res.item.objType, res.text, res.item.moduleName, res.item.id)
 		count++
 	}
 
@@ -300,7 +305,7 @@ func runDescribes(items []sourceItem, describe DescribeFunc, workers int, onProg
 		wg.Go(func() {
 			for idx := range work {
 				item := items[idx]
-				text, err := describe(item.objType, item.qn)
+				text, err := describe(item.objType, item.qn, item.id)
 				switch {
 				case err != nil:
 					failed[idx] = &describeFailure{item, err.Error()}
