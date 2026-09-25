@@ -470,21 +470,27 @@ Property names resolve against the keys the installed widget declares, so both
 the schema key and mxcli's MDL alias work (`DynamicCellClass` and `ColumnClass`
 both reach `columnClass`). An unknown name lists what *is* settable on that grid.
 
-**Expression-valued properties take a Mendix expression, not a literal.**
-`DynamicCellClass` and `Visible` are expressions, so a literal CSS class has to be
-a quoted string *inside* the expression — doubled quotes in MDL:
+**`DynamicCellClass` (and a widget's `DynamicClasses`) take a Mendix expression,
+written as-is.** A quoted value is a Mendix string, so a literal CSS class is just
+the quoted class name, and a computed one is the expression itself:
 
 ```mdl
--- WRONG: the expression becomes a bare identifier, mxbuild reports CE0117
+-- a literal class: the string 'highlight'
 alter page Mod.P { SET DynamicCellClass = 'highlight' ON dg1.Label }
 
--- correct: the expression is the string literal 'highlight'
-alter page Mod.P { SET DynamicCellClass = '''highlight''' ON dg1.Label }
+-- a computed class
+alter page Mod.P { SET DynamicCellClass = if $currentObject/Price > 100 then 'highlight' else '' ON dg1.Label }
+
+-- WRONG: a bare name is an identifier, not a string — mxbuild reports CE0117
+alter page Mod.P { SET DynamicCellClass = highlight ON dg1.Label }
 ```
 
-This applies equally to `create page`; the two paths behave identically. A bare
-identifier is not a valid Mendix expression, and mxbuild reports CE0117 against
-the column.
+The old spelling — the expression's text in quotes, `'if … then ''a'' else '''''`
+— is refused as MDL-WIDGET33, because it would now store that text as a class
+name. This applies equally to `create page`; the two paths behave identically.
+
+A column's pluggable `Visible` expression is not converted yet: there a quoted
+value is still the expression's text, so a literal needs the doubled quotes.
 
 Properties holding a **structured** value — `attribute`, `filter`, `content`,
 actions — cannot be set by ALTER at all. It refuses them and points at

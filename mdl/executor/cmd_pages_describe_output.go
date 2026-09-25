@@ -181,7 +181,7 @@ func appendAppearanceProps(props []string, w rawWidget) []string {
 		props = append(props, fmt.Sprintf("Style: %s", mdlQuote(w.Style)))
 	}
 	if w.DynamicClasses != "" {
-		props = append(props, fmt.Sprintf("DynamicClasses: %s", mdlQuote(w.DynamicClasses)))
+		props = append(props, fmt.Sprintf("DynamicClasses: %s", w.DynamicClasses)) // an expression, printed as-is
 	}
 	if len(w.DesignProperties) > 0 {
 		props = append(props, formatDesignPropertiesMDL(w.DesignProperties))
@@ -1173,7 +1173,7 @@ func outputDataGrid2ColumnV3(ctx *ExecContext, prefix, colName string, col rawDa
 		props = append(props, fmt.Sprintf("Visible: %s", mdlQuote(col.Visible)))
 	}
 	if col.DynamicCellClass != "" {
-		props = append(props, fmt.Sprintf("DynamicCellClass: %s", mdlQuote(col.DynamicCellClass)))
+		props = append(props, fmt.Sprintf("DynamicCellClass: %s", col.DynamicCellClass)) // an expression, printed as-is
 	}
 	if col.Tooltip != "" {
 		props = append(props, fmt.Sprintf("Tooltip: %s", mdlQuote(col.Tooltip)))

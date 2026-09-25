@@ -1,0 +1,47 @@
+-- upstream mendixlabs/mxcli#1186: `mxcli check` passed a commit inside a loop
+-- that `lint` already knew as CONV011.
+--
+-- CONV011 reads the STORED model, so it can only speak after `exec` has written
+-- the microflow, and it had no document scope — asking about one microflow meant
+-- a project-wide lint (~13 s on the reporting project) plus a baseline diff to
+-- see what was new. At that price the gate gets batched to once per session:
+-- three CONV011 violations shipped under a clean mxbuild log, and six
+-- accumulated across three microflows before anyone looked.
+--
+-- MDL-PERF01 reads the MDL before it is applied, so the answer arrives in the
+-- call that would otherwise have written the defect. The two are complementary:
+-- this cannot see a microflow it is not being asked to write, and CONV011 cannot
+-- see one before it exists.
+--
+-- The companion is `mxcli lint -d Module.Document`, which scopes a lint to named
+-- documents for the after-the-write case.
+--
+-- Verify (no project needed — this is a check-time rule):
+--   mxcli check mdl-examples/bug-tests/1186-commit-in-loop.mdl
+-- expect: MDL-PERF01 warning on SUB_Commit_Per_Row, nothing on SUB_Commit_Once.
+
+create module CommitLoop;
+
+create entity CommitLoop.Row (
+  "Name": string,
+  Done: boolean
+);
+
+-- The reported shape: one database round trip per iteration.
+create microflow CommitLoop.SUB_Commit_Per_Row($Rows: list of CommitLoop.Row)
+BEGIN
+  LOOP $Row IN $Rows BEGIN
+    CHANGE $Row (Done = true);
+    COMMIT $Row;
+  END LOOP;
+END
+
+-- The fix the rule suggests, and the control that it clears the warning:
+-- change inside the loop, commit the list once after it.
+create microflow CommitLoop.SUB_Commit_Once($Rows: list of CommitLoop.Row)
+BEGIN
+  LOOP $Row IN $Rows BEGIN
+    CHANGE $Row (Done = true);
+  END LOOP;
+  COMMIT $Rows;
+END

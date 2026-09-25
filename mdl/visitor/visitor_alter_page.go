@@ -124,6 +124,20 @@ func (b *Builder) buildAlterPageSetLayout(ctx *parser.AlterPageSetContext) *ast.
 
 // buildAlterPageAssignment extracts property name and value from an assignment context.
 func (b *Builder) buildAlterPageAssignment(ctx *parser.AlterPageAssignmentContext) (string, interface{}) {
+	// An expression-typed property takes the expression as written, from
+	// whichever value alternative matched (visitor_widget_expression.go).
+	if id := ctx.IdentifierOrKeyword(); id != nil && ctx.STRING_LITERAL() == nil {
+		name := identifierOrKeywordText(id)
+		if isWidgetExpressionProp(name) {
+			if v := lastRuleChild(ctx); v != nil {
+				return name, widgetExpressionValue(v)
+			}
+		}
+		if expr := ctx.Expression(); expr != nil {
+			b.addError(widgetExpressionNotAllowed(name, expr))
+			return "", nil
+		}
+	}
 	// DataSource = dataSourceExprV3
 	if dsCtx := ctx.DataSourceExprV3(); dsCtx != nil {
 		return "DataSource", buildDataSourceV3(dsCtx)

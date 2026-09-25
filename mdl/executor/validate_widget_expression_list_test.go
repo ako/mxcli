@@ -46,19 +46,19 @@ func TestMDLWIDGET32_ExpressionPropertyWrittenAsList(t *testing.T) {
 			want: 1,
 		},
 		{
-			// The quoted expression is how the property is written today, and
+			// The expression written as-is is how the property is spelled, and
 			// is what reaches storage: the control.
-			name: "control: quoted expression",
+			name: "control: the expression",
 			src: `create page M.P (title: 'P', layout: Atlas_Core.Atlas_Default) {
-  container c1 (dynamicclasses: 'if $currentObject/Featured then ''is-featured'' else ''''') { }
+  container c1 (dynamicclasses: if $currentObject/Featured then 'is-featured' else '') { }
 }`,
 			want: 0,
 		},
 		{
-			name: "control: quoted column expression",
+			name: "control: the column expression",
 			src: `create page M.P (title: 'P', layout: Atlas_Core.Atlas_Default) {
   datagrid dg (datasource: database M.Thing) {
-    column c1 (attribute: Name, caption: 'N', DynamicCellClass: 'if $currentObject/Featured then ''hot'' else ''''')
+    column c1 (attribute: Name, caption: 'N', DynamicCellClass: if $currentObject/Featured then 'hot' else '')
   }
 }`,
 			want: 0,
@@ -82,9 +82,9 @@ func TestMDLWIDGET32_ExpressionPropertyWrittenAsList(t *testing.T) {
 			if tc.want == 0 {
 				return
 			}
-			// The message has to carry its own remedy: the quoted spelling that
+			// The message has to carry its own remedy: the unbracketed spelling that
 			// does reach storage.
-			for _, s := range []string{"discarded", "quoted"} {
+			for _, s := range []string{"discarded", "without brackets"} {
 				if !strings.Contains(got[0].Message+got[0].Suggestion, s) {
 					t.Errorf("message should mention %q: %s / %s", s, got[0].Message, got[0].Suggestion)
 				}
