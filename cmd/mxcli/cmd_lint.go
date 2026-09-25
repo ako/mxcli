@@ -88,6 +88,13 @@ Examples:
   mxcli lint -p app.mpr -r MPR001,SEC001
   mxcli lint -p app.mpr -m MyModule
   mxcli lint -p app.mpr -m MyModule -m AnotherModule
+  mxcli lint -p app.mpr -d Sales.ACT_Order
+  mxcli lint -p app.mpr -d Sales.ACT_Order -r CONV011
+
+--documents scopes a run to named documents, so a structural question about one
+microflow costs a fraction of a project-wide lint and needs no baseline diff to
+see what is new. It narrows the document iterators and implies the documents'
+modules, and findings that are not about those documents are not reported.
 `,
 	Run: func(cmd *cobra.Command, args []string) {
 		projectPath, _ := cmd.Flags().GetString("project")
@@ -97,6 +104,18 @@ Examples:
 		excludeModules, _ := cmd.Flags().GetStringSlice("exclude")
 		onlyRules, _ := cmd.Flags().GetStringSlice("rules")
 		moduleFilter, _ := cmd.Flags().GetStringSlice("modules")
+		documentFilter, _ := cmd.Flags().GetStringSlice("documents")
+		// Checked before connecting: a malformed filter is the caller's typo, and
+		// making them wait for a catalog build to hear about it is the slow half
+		// of the problem --documents exists to fix.
+		for _, d := range documentFilter {
+			if !strings.Contains(d, ".") {
+				fmt.Fprintf(os.Stderr, "Error: --documents takes QUALIFIED names; %q names no module.\n", d)
+				fmt.Fprintln(os.Stderr, "  Use Module.Document, e.g. Sales.ACT_Order. A bare name matches nothing,")
+				fmt.Fprintln(os.Stderr, "  and a scoped lint that matches nothing reports a clean document.")
+				os.Exit(1)
+			}
+		}
 
 		if projectPath == "" {
 			fmt.Fprintln(os.Stderr, "Error: --project (-p) is required")
@@ -150,6 +169,12 @@ Examples:
 		ctx.SetExcludedModules(excludeModules)
 		if len(moduleFilter) > 0 {
 			ctx.SetIncludedModules(moduleFilter)
+		}
+		// --documents narrows the document iterators AND implies their modules,
+		// so rules this package does not narrow still skip the other modules
+		// before their per-document read (ako/mxcli#681).
+		if len(documentFilter) > 0 {
+			ctx.SetIncludedDocuments(documentFilter)
 		}
 
 		// Safety net: if a rule needs data the catalog still lacks (e.g. a project
@@ -238,6 +263,15 @@ Examples:
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error running linter: %v\n", err)
 			os.Exit(1)
+		}
+
+		// A rule that reports without walking a document iterator (a project
+		// setting, a security policy) is unaffected by the SQL narrowing above,
+		// so a scoped run would still carry its findings. Drop anything that is
+		// not one of the named documents: `lint -d A.B` reporting something about
+		// C is the same class of lie as a gate that passes what it did not read.
+		if len(documentFilter) > 0 {
+			violations = keepDocumentViolations(violations, documentFilter)
 		}
 
 		// Output results

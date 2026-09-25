@@ -165,17 +165,17 @@ create page StyleTest.P002b_Dynamic_Classes
     dynamictext dcStatus (
       content: 'Status',
       class: 'badge',
-      dynamicclasses: 'if $currentObject/IsActive then ''badge-success'' else ''badge-muted'''
+      dynamicclasses: if $currentObject/IsActive then 'badge-success' else 'badge-muted'
     )
 
     -- runtime class on a container from a string attribute
     container dcCard (
       class: 'card',
-      dynamicclasses: 'if $currentObject/Department = ''Sales'' then ''card-sales'' else ''card-default'''
+      dynamicclasses: if $currentObject/Department = 'Sales' then 'card-sales' else 'card-default'
     ) {
       dynamictext dcName (
         content: 'Name',
-        dynamicclasses: 'if $currentObject/Name = '''' then ''is-empty'' else '''''
+        dynamicclasses: if $currentObject/Name = '' then 'is-empty' else ''
       )
     }
   }
@@ -506,7 +506,7 @@ update widgets
 -- ALTER PAGE ... SET DynamicClasses ON <name> is the surgical alternative to a
 -- bulk update — set (or change) a single widget's runtime class expression in place.
 alter page StyleTest.P002b_Dynamic_Classes {
-  set DynamicClasses = 'if $currentObject/Department = ''HR'' then ''card-hr'' else '''''  on dcCard;
+  set DynamicClasses = if $currentObject/Department = 'HR' then 'card-hr' else ''  on dcCard;
 }
 
 -- MARK: Roundtrip

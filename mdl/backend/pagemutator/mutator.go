@@ -3205,7 +3205,7 @@ func (m *Mutator) lookupParameter(name string) (entity string, isSnippetParam bo
 func errExpressionNotAString(propName string, _ any) error {
 	return fmt.Errorf(
 		"property %q takes a single value, but was given a bracketed list — "+
-			"write an expression as a quoted string, doubling the quotes inside it: "+
-			"set %s = 'if $currentObject/Featured then ''a'' else ''b'''",
+			"write the expression itself, without brackets: "+
+			"set %s = if $currentObject/Featured then 'a' else 'b'",
 		propName, propName)
 }
