@@ -107,6 +107,13 @@ func init() {
 		NullFields: []string{"ConditionalVisibilitySettings", "NativeAccessibilitySettings"},
 	})
 	codec.RegisterListMarker("Forms$Title", 2)
+	// Label (Studio Pro's Label widget): a null visibility slot — the one it has;
+	// no NativeAccessibilitySettings — and marker 2 as a widget. Measured on the
+	// three Forms$Label in a stock Administration + Feedback project (11.13.0).
+	codec.RegisterTypeDefaults("Forms$Label", codec.TypeDefaults{
+		NullFields: []string{"ConditionalVisibilitySettings"},
+	})
+	codec.RegisterListMarker("Forms$Label", 2)
 	// Conditional visibility/editability settings (issue #627). When a widget
 	// carries one, applyWidgetBase emits the node; these defaults fill the
 	// sub-fields Studio Pro writes: empty-string Attribute, null SourceVariable, and
@@ -413,6 +420,17 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 
 	case *pages.Title:
 		g := genPg.NewTitle()
+		applyWidgetBase(g, &x.BaseWidget)
+		g.SetCaption(captionToGen(x.Caption))
+		return g, nil
+
+	case *pages.Label:
+		// Studio Pro's Label widget. Stored with exactly Appearance, Caption,
+		// ConditionalVisibilitySettings, Name and TabIndex — measured on the
+		// three in a stock Administration v4.3.2 + Feedback v4.0.2 project at
+		// 11.13.0. gen's Label also declares top-level Class/Style and
+		// AccessibilitySettings; they are left unset, so not written.
+		g := genPg.NewLabel()
 		applyWidgetBase(g, &x.BaseWidget)
 		g.SetCaption(captionToGen(x.Caption))
 		return g, nil

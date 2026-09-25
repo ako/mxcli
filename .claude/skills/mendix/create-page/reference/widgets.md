@@ -66,6 +66,19 @@ dynamictext day  (content: '{1}', contentparams: [{1} = DueOn format (dateFormat
 > NullReferenceException when the widget is opened. Bind every placeholder, or use
 > a plain static `content: 'text'`.
 
+### LABEL Widget
+
+Studio Pro's Label widget (`Forms$Label`) — a fixed caption. Stock marketplace
+modules still carry it (Administration's `Account_Edit`, the Feedback module), so
+`describe page` emits it; for new text prefer `dynamictext`.
+
+```sql
+label label4 (content: 'Attachment', class: 'text-semibold')
+```
+
+Do not write `statictext`: it stores `Forms$Text`, a type Mendix 11 cannot load
+(MDL-WIDGET29).
+
 ### ACTIONBUTTON Widget
 
 Create a button with action binding:

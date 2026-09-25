@@ -1,0 +1,34 @@
+-- ============================================================================
+-- DESCRIBE emitted a Forms$Label as a nameless `statictext`
+-- ============================================================================
+--
+-- Symptom: describe → exec of Administration.Account_Edit (Administration
+-- v4.3.2) and FeedbackModule.ShareFeedback / ShareFeedback_Logo (Feedback
+-- v4.0.2), Mendix 11.13.0:
+--   statictext (Content: 'Mendix AppCloud users are provisioned by ...')
+--   Parse error: line 14:21 extraneous input '(' expecting the start of a statement
+--
+-- Cause: the stored widget is Studio Pro's Label (Forms$Label), and it IS
+-- named (`label4`). The emitter hard-coded `statictext (Content: …)`, dropping
+-- the name and the appearance. And even named, `statictext` writes Forms$Text,
+-- a type Mendix 11 cannot load (MDL-WIDGET29) — MDL had no way to write a
+-- Forms$Label at all.
+--
+-- Fix: a `label` widget that writes Forms$Label (Appearance, Caption, null
+-- ConditionalVisibilitySettings, Name, TabIndex — Studio Pro's key set), and
+-- DESCRIBE emits it with its name, class, style and design properties.
+--
+-- Verify: exec, then describe → exec again (expect "Unchanged page"), then
+-- `mxcli docker check` — 0 errors.
+-- ============================================================================
+
+create or replace page MyFirstModule.LabelWidget_Test
+( Title: 'Labels', Layout: Atlas_Core.Atlas_Default )
+{
+  label lblPlain (Content: 'Attachment')
+  label lblStyled (Content: 'Provisioned elsewhere', Class: 'alert alert-warning', Style: 'width:100%;')
+  label lblSpaced (Content: 'Spaced', Class: 'text-semibold', DesignProperties: ['Spacing': ['margin-bottom': 'None']])
+}
+/
+
+describe page MyFirstModule.LabelWidget_Test;
