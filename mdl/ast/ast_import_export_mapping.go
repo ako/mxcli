@@ -30,6 +30,7 @@ type CreateImportMappingStmt struct {
 	Parameter      QualifiedName
 	RootElement    *ImportMappingElementDef
 	CreateOrModify bool // true for CREATE OR MODIFY / CREATE OR REPLACE
+	Excluded       bool // @excluded — document excluded from project
 }
 
 func (s *CreateImportMappingStmt) isStatement() {}
@@ -108,6 +109,7 @@ type CreateExportMappingStmt struct {
 	NullValueOption string // "LeaveOutElement" or "SendAsNil" (default: "LeaveOutElement")
 	RootElement     *ExportMappingElementDef
 	CreateOrModify  bool // true for CREATE OR MODIFY / CREATE OR REPLACE
+	Excluded        bool // @excluded — document excluded from project
 }
 
 func (s *CreateExportMappingStmt) isStatement() {}

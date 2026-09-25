@@ -1,0 +1,43 @@
+-- #1199: DESCRIBE of a File Uploader page did not re-execute.
+--
+-- Reported (mxcli 0.24.0, Mendix 11.12.2, File Uploader 2.5.0): the output of
+-- `describe page` on a File Uploader in files mode, fed back to `exec`, fails:
+--
+--   widget `upFiles` (fileuploader) exposes 2 datasources, so a generic
+--   `datasource:` clause is ambiguous — name the one you mean:
+--   associatedFiles, associatedImages
+--
+-- DESCRIBE chose the generic clause by counting CONFIGURED datasources (one:
+-- `associatedImages` is unset in files mode); the builder refuses it by counting
+-- DECLARED ones (two). DESCRIBE now counts declared, authorable (non-linked)
+-- datasources too, so the widget below describes back as
+-- `associatedFiles: association Uploads.UploadedFile_UploadRequest`.
+--
+-- Round trip: exec this, then
+--   mxcli -p app.mpr -c 'describe page Uploads.UploadRequest_NewEdit' > rt.mdl
+--   mxcli exec rt.mdl -p app.mpr        -- must succeed, not refuse as ambiguous
+
+create module Uploads;
+create module role Uploads.User;
+
+create persistent entity Uploads.UploadRequest ( Title: string(100) );
+create persistent entity Uploads.UploadedFile extends System.FileDocument ();
+create association Uploads.UploadedFile_UploadRequest from Uploads.UploadedFile to Uploads.UploadRequest;
+
+create nanoflow Uploads.NF_CreateFile ( $Request: Uploads.UploadRequest ) begin end
+
+create or replace page Uploads.UploadRequest_NewEdit (Title: 'Upload', Layout: Atlas_Core.Atlas_Default,
+  Params: { $Request: Uploads.UploadRequest })
+{
+  DATAVIEW dv (DataSource: $Request) {
+    pluggablewidget 'com.mendix.widget.web.fileuploader.FileUploader' upFiles (
+      uploadMode: 'files',
+      associatedFiles: association Uploads.UploadedFile_UploadRequest,
+      createFileAction: nanoflow Uploads.NF_CreateFile($Request = $Request)
+    )
+  }
+}
+
+grant view on page Uploads.UploadRequest_NewEdit to Uploads.User;
+
+describe page Uploads.UploadRequest_NewEdit;
