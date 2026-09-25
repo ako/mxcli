@@ -26,10 +26,13 @@
 -- of their parent whose design properties mxcli does not write, and `check`
 -- now says so (MDL-WIDGET07) instead of staying silent.
 --
--- Verify: `mxcli check --references` — no MDL-WIDGET11 below (the custom
--- colours draw MDL-WIDGET12 until the ColorPicker fix lands); change
+-- Verify: `mxcli check --references` — no MDL-WIDGET11 below; change
 -- 'Callout style' to 'Callout' and it must warn MDL-WIDGET11. exec, then
--- `mxcli docker check` — 0 errors.
+-- `mxcli docker check` — 0 errors. The three custom colours still draw
+-- MDL-WIDGET12 "not rendered": they BUILD, which is what this file pins, but
+-- Atlas gives GroupBox "Style" and DivContainer "Background color" no CSS
+-- `property`, so the compiled page carries nothing for them
+-- (see colorpicker-custom-colour.mdl).
 -- ============================================================================
 
 create or replace page MyFirstModule.DesignPropKeywords_Test

@@ -238,6 +238,22 @@ func validateWidgetDesignProps(w *ast.WidgetV3, reg *ThemeRegistry, locationPref
 		// Value validation for enumerated types. Toggle values are on/off (handled
 		// by the writer); options/pickers must be one of the declared values.
 		if len(tp.Options) > 0 && !strings.EqualFold(p.Value, "on") && !strings.EqualFold(p.Value, "off") {
+			// A ColorPicker also takes a custom colour, which the builder writes as
+			// Forms$CustomDesignPropertyValue and mxbuild accepts — whether it
+			// reaches the page is the theme's call (colorPickerValueProblem).
+			if tp.Type == "ColorPicker" {
+				if msg, suggestion, ok := colorPickerValueProblem(tp, p.Value); !ok {
+					out = append(out, linter.Violation{
+						RuleID:   "MDL-WIDGET12",
+						Severity: linter.SeverityWarning,
+						Message: fmt.Sprintf("%s: widget %q (%s) design property %q has value %q, which %s",
+							locationPrefix, w.Name, w.Type, p.Key, p.Value, msg),
+						Location:   linter.Location{DocumentType: "page", DocumentName: locationPrefix},
+						Suggestion: suggestion,
+					})
+				}
+				continue
+			}
 			if !themeOptionAllowed(tp.Options, p.Value) {
 				out = append(out, linter.Violation{
 					RuleID:   "MDL-WIDGET12",
