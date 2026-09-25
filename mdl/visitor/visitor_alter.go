@@ -66,6 +66,11 @@ func (b *Builder) ExitAlterStatement(ctx *parser.AlterStatementContext) {
 	for _, propCtx := range ctx.AllOdataAlterAssignment() {
 		prop := propCtx.(*parser.OdataAlterAssignmentContext)
 		name := identifierOrKeywordText(prop.IdentifierOrKeyword())
+		if ctx.CLIENT() != nil && isODataClientExpressionProp(name) {
+			// Expression-typed: the expression as written (see visitor_odata_expression.go).
+			changes[name], _ = odataExpressionValue(prop.OdataPropertyValue(), prop.Expression())
+			continue
+		}
 		val := prop.OdataPropertyValue()
 		if val != nil {
 			changes[name] = odataValueText(val.(*parser.OdataPropertyValueContext))

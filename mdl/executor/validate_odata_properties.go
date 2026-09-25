@@ -12,6 +12,8 @@ package executor
 
 import (
 	"fmt"
+	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
@@ -71,6 +73,25 @@ func ValidateODataProperties(prog *ast.Program) []linter.Violation {
 		case *ast.CreateODataClientStmt:
 			out = append(out, unknownODataProps(
 				"odata client "+s.Name.String(), s.UnknownProperties, knownODataClientProps)...)
+			loc := "odata client " + s.Name.String()
+			out = append(out, legacyODataExpression(loc, "HttpUsername", s.HttpUsername)...)
+			out = append(out, legacyODataExpression(loc, "HttpPassword", s.HttpPassword)...)
+			out = append(out, legacyODataExpression(loc, "ClientCertificate", s.ClientCertificate)...)
+			for _, h := range s.Headers {
+				out = append(out, legacyODataExpression(loc, "header "+h.Key, h.Value)...)
+			}
+		case *ast.AlterODataClientStmt:
+			loc := "alter odata client " + s.Name.String()
+			names := make([]string, 0, len(s.Changes))
+			for name := range s.Changes {
+				names = append(names, name)
+			}
+			sort.Strings(names) // map order would make two runs report differently
+			for _, name := range names {
+				if str, ok := s.Changes[name].(string); ok && isODataClientExpressionName(name) {
+					out = append(out, legacyODataExpression(loc, name, str)...)
+				}
+			}
 		case *ast.CreateExternalEntityStmt:
 			out = append(out, unknownODataProps(
 				"external entity "+s.Name.String(), s.UnknownProperties, knownExternalEntityProps)...)
@@ -145,4 +166,56 @@ func withinOneEdit(a, b string) bool {
 		j++
 	}
 	return true
+}
+
+// quotedConstantRef matches the text of a string literal that is really a
+// constant reference: `@Module.Name`.
+var quotedConstantRef = regexp.MustCompile(`^@[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$`)
+
+func isODataClientExpressionName(name string) bool {
+	switch strings.ToLower(name) {
+	case "httpusername", "httppassword", "clientcertificate":
+		return true
+	}
+	return false
+}
+
+// legacyODataExpression (MDL-ODATA07) reports the two spellings whose meaning
+// changed when HttpUsername / HttpPassword / ClientCertificate / header values
+// became first-class expressions (PROPOSAL_first_class_expressions.md §6.4):
+//
+//	'''admin'''   was the string 'admin'; now a string that CONTAINS the quotes
+//	'@Mod.C'      was a constant reference; now the literal text @Mod.C
+//
+// Both still parse, and both would now store something else without a word —
+// a credential with stray quote characters, or a constant's name sent as the
+// password. So they are errors that name the new spelling. The false positive
+// is a real credential that begins and ends with a quote, or is shaped exactly
+// like a qualified name after an @; the message says how to write either.
+func legacyODataExpression(location, prop, expr string) []linter.Violation {
+	content, isLiteral := mendixStringLiteral(expr)
+	if !isLiteral {
+		return nil
+	}
+	var msg, fix string
+	switch {
+	case len(content) >= 2 && strings.HasPrefix(content, "'") && strings.HasSuffix(content, "'"):
+		msg = fmt.Sprintf("%s: %s is written %s — the doubled quotes are the old spelling of the string %s, "+
+			"and now store the quote characters as part of the value", location, prop, expr, content)
+		fix = fmt.Sprintf("Write %s: %s. A value that really does begin and end with a quote character "+
+			"is written as a concatenation, which this check does not flag: %s",
+			prop, content, "'''' + '"+strings.Trim(content, "'")+"' + ''''")
+	case quotedConstantRef.MatchString(content):
+		msg = fmt.Sprintf("%s: %s is written %s — a quoted @-name used to mean the constant %s, "+
+			"and now stores the literal text %s", location, prop, expr, content[1:], content)
+		fix = fmt.Sprintf("Write %s: %s (no quotes) to read the constant.", prop, content)
+	default:
+		return nil
+	}
+	return []linter.Violation{{
+		RuleID:     "MDL-ODATA07",
+		Severity:   linter.SeverityError,
+		Message:    msg,
+		Suggestion: fix,
+	}}
 }
