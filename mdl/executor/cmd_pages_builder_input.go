@@ -257,7 +257,12 @@ func (pb *pageBuilder) resolveAssociationPathIn(assocName, entityContext string)
 	if strings.Contains(assocName, ".") {
 		return assocName
 	}
-	// Extract module name from entity context (e.g., "PgTest.Order" → "PgTest")
+	if qn, ok := pb.declaredAssociationQN(assocName, entityContext); ok {
+		return qn
+	}
+	// Not in the model (or no model loaded): guess the context entity's module
+	// (e.g., "PgTest.Order" → "PgTest"), so a misspelling is reported by the
+	// name the author wrote.
 	if entityContext != "" {
 		parts := strings.SplitN(entityContext, ".", 2)
 		if len(parts) >= 1 {
@@ -265,6 +270,88 @@ func (pb *pageBuilder) resolveAssociationPathIn(assocName, entityContext string)
 		}
 	}
 	return assocName
+}
+
+// declaredAssociationQN finds the association a bare name means from
+// entityContext: the one with that name that has an end on the context entity
+// or one of its generalizations, qualified with the module that DECLARES it.
+//
+// An association's module is where it is declared, which is neither the
+// context entity's module nor the option list's. Qualifying with the first
+// broke inherited associations (ako/mxcli#662): Administration.Account extends
+// System.User, so `UserRoles` became `Administration.UserRoles` and mxbuild
+// failed CE1613 "The selected association … no longer exists". Qualifying with
+// the second was issuetracker #19. Each was right only where the two modules
+// happened to coincide.
+//
+// The chain is walked nearest-first, so a specialization's own association
+// wins over a same-named one on an ancestor. A name matching more than one
+// association at the same level is ambiguous; ok is false and the caller keeps
+// its fallback rather than picking one.
+func (pb *pageBuilder) declaredAssociationQN(assocName, entityContext string) (string, bool) {
+	if entityContext == "" {
+		return "", false
+	}
+	// Without a model (a unit test building widgets in isolation) there is
+	// nothing to look up; leave the name to the caller's fallback.
+	if pb.backend == nil && (pb.execCache == nil || pb.execCache.domainModels == nil) {
+		return "", false
+	}
+	dms, err := pb.getDomainModels()
+	if err != nil {
+		return "", false
+	}
+	h, err := pb.getHierarchy()
+	if err != nil {
+		return "", false
+	}
+	parents, err := pb.entityGeneralizations()
+	if err != nil {
+		return "", false
+	}
+
+	entityQN := make(map[model.ID]string)
+	for _, dm := range dms {
+		mod := h.GetModuleName(dm.ContainerID)
+		for _, e := range dm.Entities {
+			entityQN[e.ID] = mod + "." + e.Name
+		}
+	}
+	// Every association with this name, keyed by the entities at its ends.
+	type candidate struct{ qn, from, to string }
+	var candidates []candidate
+	for _, dm := range dms {
+		mod := h.GetModuleName(dm.ContainerID)
+		for _, a := range dm.Associations {
+			if a.Name == assocName {
+				candidates = append(candidates, candidate{mod + "." + a.Name, entityQN[a.ParentID], entityQN[a.ChildID]})
+			}
+		}
+		for _, ca := range dm.CrossAssociations {
+			if ca.Name == assocName {
+				candidates = append(candidates, candidate{mod + "." + ca.Name, entityQN[ca.ParentID], ca.ChildRef})
+			}
+		}
+	}
+
+	seen := map[string]bool{}
+	for cur := entityContext; cur != "" && !seen[cur]; cur = parents[cur] {
+		seen[cur] = true
+		found := ""
+		for _, c := range candidates {
+			if c.from != cur && c.to != cur {
+				continue
+			}
+			if found != "" && found != c.qn {
+				return "", false
+			}
+			found = c.qn
+		}
+		if found != "" {
+			return found, true
+		}
+	}
+	return "", false
 }
 
 // resolveSnippetRef resolves a snippet qualified name to its ID.

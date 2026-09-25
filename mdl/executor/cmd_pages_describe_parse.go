@@ -386,7 +386,7 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 		if widget.RenderMode == "combobox" {
 			widget.DataSource = extractComboBoxDataSource(ctx, w)
 			if widget.DataSource != nil {
-				widget.Content = extractCustomWidgetPropertyAssociation(ctx, w, "attributeAssociation")
+				widget.Content = associationRefForContext(extractCustomWidgetPropertyAssociationQN(ctx, w, "attributeAssociation"), inheritedCtx)
 				widget.CaptionAttribute = extractCustomWidgetPropertyAttributeRef(ctx, w, "optionsSourceAssociationCaptionAttribute")
 			}
 			// The on-change action, in BOTH modes — the def maps `onChangeEvent`
@@ -408,7 +408,7 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 		if widget.RenderMode == "dropdownfilter" &&
 			extractCustomWidgetPropertyString(ctx, w, "baseType") == "ref" {
 			widget.DataSource = extractCustomWidgetPropertyDataSource(ctx, w, "refOptions")
-			widget.Content = extractCustomWidgetPropertyAssociation(ctx, w, "refEntity")
+			widget.Content = associationRefForContext(extractCustomWidgetPropertyAssociationQN(ctx, w, "refEntity"), inheritedCtx)
 			widget.CaptionAttribute = extractCustomWidgetPropertyAttributeRef(ctx, w, "refCaption")
 		}
 		// For DataGrid2, also extract datasource, columns, CONTROLBAR widgets, paging, and selection

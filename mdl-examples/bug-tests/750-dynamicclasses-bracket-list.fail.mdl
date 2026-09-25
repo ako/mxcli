@@ -1,0 +1,23 @@
+-- Bug mendixlabs/mxcli#750 (slice 0 of PROPOSAL_first_class_expressions.md):
+-- an expression property written in brackets was silently dropped.
+--
+-- #750 proposes `dynamicclasses: [ … ]` as the first-class spelling. That text
+-- already parsed — as propertyValueV3's ARRAY alternative, into a []string — and
+-- both writers take only a string, so the value was discarded. Measured on a copy
+-- of ako/TestApp (Mendix 11.14.0) with the pre-fix binary:
+--
+--   exec -> "Created page S0.P"; describe -> `container c1` with no
+--   DynamicClasses at all, while a quoted expression on c2 survived.
+--   alter page … set DynamicClasses = [ … ] on c2 -> "Altered page S0.P",
+--   value unchanged.
+--
+-- A datagrid column's DynamicCellClass on ALTER was worse: the list was
+-- formatted with %v and `[if$x/Ythen'a'else'b']` written into its Expression.
+--
+-- Now `check` reports MDL-WIDGET32 (create) and the page mutator refuses the
+-- list (alter, reported by `check -p` through its dry run). This file must FAIL
+-- `mxcli check`.
+
+create page M.P (title: 'P', layout: Atlas_Core.Atlas_Default) {
+  container c1 (dynamicclasses: [ if $currentObject/Featured then 'is-featured' else 'plain' ]) { }
+}

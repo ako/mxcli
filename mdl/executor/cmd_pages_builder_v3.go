@@ -2108,7 +2108,9 @@ func (pb *pageBuilder) resolveAssociationAttributePath(attrRef string) (finalQN 
 
 	steps = make([]pages.AttributeRefStep, 0, len(segs)-1)
 	for _, seg := range segs[:len(segs)-1] {
-		assocQN := pb.resolveAssociationPath(seg)
+		// Against the entity THIS hop starts from — qualifying every hop with
+		// the path's start named a later hop into the wrong module. (#662)
+		assocQN := pb.resolveAssociationPathIn(seg, current)
 		dest, ok := pb.associationDestination(assocQN, current)
 		if !ok {
 			return "", nil, false

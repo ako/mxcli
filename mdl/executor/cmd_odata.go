@@ -137,16 +137,16 @@ func outputConsumedODataServiceMDL(ctx *ExecContext, svc *model.ConsumedODataSer
 
 	var props []string
 	if folderPath != "" {
-		props = append(props, fmt.Sprintf("  Folder: '%s'", folderPath))
+		props = append(props, fmt.Sprintf("  Folder: %s", mdlQuote(folderPath)))
 	}
 	if svc.Version != "" {
-		props = append(props, fmt.Sprintf("  Version: '%s'", svc.Version))
+		props = append(props, fmt.Sprintf("  Version: %s", mdlQuote(svc.Version)))
 	}
 	if svc.ODataVersion != "" {
 		props = append(props, fmt.Sprintf("  ODataVersion: %s", svc.ODataVersion))
 	}
 	if svc.MetadataUrl != "" {
-		props = append(props, fmt.Sprintf("  MetadataUrl: '%s'", svc.MetadataUrl))
+		props = append(props, fmt.Sprintf("  MetadataUrl: %s", mdlQuote(svc.MetadataUrl)))
 	}
 	if svc.TimeoutExpression != "" {
 		props = append(props, fmt.Sprintf("  Timeout: %s", svc.TimeoutExpression))
@@ -170,7 +170,7 @@ func outputConsumedODataServiceMDL(ctx *ExecContext, svc *model.ConsumedODataSer
 			}
 		}
 		if cfg.ClientCertificate != "" {
-			props = append(props, fmt.Sprintf("  ClientCertificate: '%s'", cfg.ClientCertificate))
+			props = append(props, fmt.Sprintf("  ClientCertificate: %s", formatExprValue(cfg.ClientCertificate)))
 		}
 	}
 
@@ -212,7 +212,7 @@ func outputConsumedODataServiceMDL(ctx *ExecContext, svc *model.ConsumedODataSer
 			if i == len(cfg.HeaderEntries)-1 {
 				comma = ""
 			}
-			fmt.Fprintf(ctx.Output, "  '%s': %s%s\n", h.Key, formatExprValue(h.Value), comma)
+			fmt.Fprintf(ctx.Output, "  %s: %s%s\n", mdlQuote(h.Key), formatExprValue(h.Value), comma)
 		}
 		fmt.Fprintln(ctx.Output, ");")
 	} else {
@@ -1013,16 +1013,16 @@ func createODataClient(ctx *ExecContext, stmt *ast.CreateODataClientStmt) error 
 						svc.ErrorHandlingMicroflow = extractMicroflowRef(stmt.ErrorHandlingMicroflow)
 					}
 					if stmt.ProxyHost != "" {
-						svc.ProxyHost = stmt.ProxyHost
+						svc.ProxyHost = extractConstantRef(stmt.ProxyHost)
 					}
 					if stmt.ProxyPort != "" {
-						svc.ProxyPort = stmt.ProxyPort
+						svc.ProxyPort = extractConstantRef(stmt.ProxyPort)
 					}
 					if stmt.ProxyUsername != "" {
-						svc.ProxyUsername = stmt.ProxyUsername
+						svc.ProxyUsername = extractConstantRef(stmt.ProxyUsername)
 					}
 					if stmt.ProxyPassword != "" {
-						svc.ProxyPassword = stmt.ProxyPassword
+						svc.ProxyPassword = extractConstantRef(stmt.ProxyPassword)
 					}
 					// Update HTTP configuration
 					if stmt.ServiceUrl != "" || stmt.UseAuthentication || stmt.HttpUsername != "" ||
@@ -1121,10 +1121,10 @@ func createODataClient(ctx *ExecContext, stmt *ast.CreateODataClientStmt) error 
 		ConfigurationMicroflow: extractMicroflowRef(stmt.ConfigurationMicroflow),
 		HeadersMicroflow:       extractMicroflowRef(stmt.HeadersMicroflow),
 		ErrorHandlingMicroflow: extractMicroflowRef(stmt.ErrorHandlingMicroflow),
-		ProxyHost:              stmt.ProxyHost,
-		ProxyPort:              stmt.ProxyPort,
-		ProxyUsername:          stmt.ProxyUsername,
-		ProxyPassword:          stmt.ProxyPassword,
+		ProxyHost:              extractConstantRef(stmt.ProxyHost),
+		ProxyPort:              extractConstantRef(stmt.ProxyPort),
+		ProxyUsername:          extractConstantRef(stmt.ProxyUsername),
+		ProxyPassword:          extractConstantRef(stmt.ProxyPassword),
 	}
 
 	// Build HTTP configuration if any HTTP-level properties are set
@@ -1330,13 +1330,13 @@ func alterODataClient(ctx *ExecContext, stmt *ast.AlterODataClientStmt) error {
 				case "errorhandlingmicroflow":
 					svc.ErrorHandlingMicroflow = extractMicroflowRef(strVal)
 				case "proxyhost":
-					svc.ProxyHost = strVal
+					svc.ProxyHost = extractConstantRef(strVal)
 				case "proxyport":
-					svc.ProxyPort = strVal
+					svc.ProxyPort = extractConstantRef(strVal)
 				case "proxyusername":
-					svc.ProxyUsername = strVal
+					svc.ProxyUsername = extractConstantRef(strVal)
 				case "proxypassword":
-					svc.ProxyPassword = strVal
+					svc.ProxyPassword = extractConstantRef(strVal)
 				default:
 					return mdlerrors.NewUnsupported(fmt.Sprintf("unknown OData client property: %s", key))
 				}
@@ -1783,15 +1783,28 @@ func validateODataClientExists(ctx *ExecContext, ref ast.QualifiedName) error {
 	return mdlerrors.NewNotFoundMsg("odata client", ref.String(), fmt.Sprintf("odata client not found: %s", ref))
 }
 
-// formatExprValue formats a Mendix expression value for MDL output.
-// If the value is already a quoted string literal (starts/ends with '), it's output as-is.
-// Otherwise, it's wrapped in single quotes for round-trip compatibility.
+// formatExprValue formats a stored Mendix expression value for MDL output.
+//
+// It always quotes, even a value that already starts and ends with a quote. The
+// stored text IS the expression, and the visitor unquotes the MDL string, so
+// Studio Pro's literal credential `'abc'` has to print with its own quotes
+// doubled inside a second pair. Passing an already-quoted value through
+// unchanged made a re-exec of DESCRIBE store `abc` — an identifier, not a
+// string (ako/TestApp Odata.Bug1073). mdlQuote is the inverse of the visitor's
+// unquoteString, backslashes included.
 func formatExprValue(val string) string {
-	if len(val) >= 2 && val[0] == '\'' && val[len(val)-1] == '\'' {
-		return val // Already a quoted Mendix expression string literal
-	}
-	// Wrap in quotes, escaping internal single quotes
-	return "'" + strings.ReplaceAll(val, "'", "''") + "'"
+	return mdlQuote(val)
+}
+
+// extractConstantRef strips a leading "@" from a constant reference. The proxy
+// properties are BY_NAME references to a constant, and Studio Pro stores the bare
+// qualified name (measured: ako/TestApp Odata.Bug1073, `ProxyHost:
+// "Odata.Bug1073_ProxyHost"`). `@Module.Const` is MDL's spelling of a constant
+// everywhere else, and it was written through verbatim — `"@Module.Const"` names
+// nothing, so the proxy resolved to no constant. Accepts the bare, `@` and
+// quoted-`@` spellings alike.
+func extractConstantRef(ref string) string {
+	return strings.TrimPrefix(ref, "@")
 }
 
 // extractMicroflowRef strips a leading "microflow " keyword (any case) from a
@@ -2110,10 +2123,38 @@ func resolveCredential(value string, isLiteral bool, consts map[string]string) (
 		v, found := consts[strings.ToLower(ref)]
 		return v, found && v != ""
 	}
+	// The value is a Mendix expression. A string literal — Studio Pro's own
+	// spelling of a literal credential, `'MxAdmin'` — sends its content; any
+	// other expression that starts with a quote (`'Key ' + @M.C`) cannot be
+	// evaluated here and is reported unresolved rather than sent as text.
+	if strings.HasPrefix(value, "'") {
+		s, ok := mendixStringLiteral(value)
+		return s, ok && s != ""
+	}
 	if isLiteral {
 		return value, true
 	}
 	return "", false
+}
+
+// mendixStringLiteral reports whether expr is exactly one Mendix string literal
+// (`'…'`, a quote inside doubled) and returns its content.
+func mendixStringLiteral(expr string) (string, bool) {
+	if len(expr) < 2 || expr[0] != '\'' || expr[len(expr)-1] != '\'' {
+		return "", false
+	}
+	inner := expr[1 : len(expr)-1]
+	var b strings.Builder
+	for i := 0; i < len(inner); i++ {
+		if inner[i] == '\'' {
+			if i+1 >= len(inner) || inner[i+1] != '\'' {
+				return "", false // a lone quote ends the literal early: not one literal
+			}
+			i++
+		}
+		b.WriteByte(inner[i])
+	}
+	return b.String(), true
 }
 
 // constantReference reports whether a property value names a constant, and which
