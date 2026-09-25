@@ -218,13 +218,17 @@ type OrderByItemV3 struct {
 
 // ActionV3 represents a V3 action expression.
 type ActionV3 struct {
-	Type         string      // "save", "cancel", "close", "delete", "create", "showPage", "microflow", "nanoflow", "openLink", "signOut", "completeTask"
-	Target       string      // Entity, page, or flow qualified name (for create/showPage/microflow/nanoflow)
-	Args         []FlowArgV3 // Arguments for showPage/microflow calls
-	ThenAction   *ActionV3   // For CREATE_OBJECT ... THEN ...
-	ClosePage    bool        // For SAVE_CHANGES CLOSE_PAGE
-	LinkURL      string      // For OPEN_LINK
-	OutcomeValue string      // For COMPLETE_TASK
+	Type       string      // "save", "cancel", "close", "delete", "create", "showPage", "microflow", "nanoflow", "openLink", "signOut", "completeTask"
+	Target     string      // Entity, page, or flow qualified name (for create/showPage/microflow/nanoflow)
+	Args       []FlowArgV3 // Arguments for showPage/microflow calls
+	ThenAction *ActionV3   // For CREATE_OBJECT ... THEN ...
+	ClosePage  bool        // For SAVE_CHANGES CLOSE_PAGE
+	LinkURL    string      // For OPEN_LINK 'https://…' (static address)
+	// For OPEN_LINK $currentObject/Attr: the address is read from an attribute
+	// at runtime (a dynamic Forms$StaticOrDynamicString).
+	LinkVariable  string
+	LinkAttribute string
+	OutcomeValue  string // For COMPLETE_TASK
 }
 
 // ColumnV3 represents a V3 datagrid column.

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mendixlabs/mxcli/model"
+	genDm "github.com/mendixlabs/mxcli/modelsdk/gen/domainmodels"
 	genPg "github.com/mendixlabs/mxcli/modelsdk/gen/pages"
 	"github.com/mendixlabs/mxcli/sdk/pages"
 )
@@ -141,5 +142,44 @@ func TestClientActionToGen_ExistingActionsUnchanged(t *testing.T) {
 		if _, err := clientActionToGen(a); err != nil {
 			t.Errorf("%T was refused: %v", a, err)
 		}
+	}
+}
+
+// A dynamic address — `open_link $currentObject/URL` — is the same five-key
+// action with the StaticOrDynamicString flipped: IsDynamic true, an empty
+// Value, and an AttributeRef naming the attribute. Pinned against
+// FeedbackModule.PopupSuccess (Feedback v4.0.2, Studio Pro-authored):
+//
+//	Address: Forms$StaticOrDynamicString
+//	  AttributeRef: DomainModels$AttributeRef
+//	    Attribute: "FeedbackModule.ResponseHelper.URL"
+//	    EntityRef: null
+//	  IsDynamic: true
+//	  Value: ""
+func TestClientActionToGen_OpenLinkDynamicAddress(t *testing.T) {
+	el, err := clientActionToGen(&pages.LinkClientAction{
+		BaseElement:      model.BaseElement{ID: "link-id"},
+		LinkType:         pages.LinkTypeWeb,
+		AddressAttribute: "FeedbackModule.ResponseHelper.URL",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	addr, ok := el.(*genPg.OpenLinkClientAction).Address().(*genPg.StaticOrDynamicString)
+	if !ok {
+		t.Fatalf("Address is not a StaticOrDynamicString")
+	}
+	if !addr.IsDynamic() {
+		t.Error("IsDynamic is false — the runtime would open the empty static Value")
+	}
+	if addr.Value() != "" {
+		t.Errorf("Value = %q, want empty", addr.Value())
+	}
+	ref, ok := addr.AttributeRef().(*genDm.AttributeRef)
+	if !ok {
+		t.Fatalf("AttributeRef is %T, want *domainmodels.AttributeRef", addr.AttributeRef())
+	}
+	if ref.AttributeQualifiedName() != "FeedbackModule.ResponseHelper.URL" {
+		t.Errorf("AttributeRef.Attribute = %q", ref.AttributeQualifiedName())
 	}
 }

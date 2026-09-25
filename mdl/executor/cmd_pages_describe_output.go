@@ -225,22 +225,53 @@ func formatWidgetProps(w io.Writer, prefix string, header string, props []string
 		fmt.Fprintf(w, "%s%s%s", prefix, header, suffix)
 		return
 	}
-	singleLine := fmt.Sprintf("%s%s (%s)%s", prefix, header, strings.Join(props, ", "), suffix)
-	if len(singleLine) <= 120 {
-		fmt.Fprint(w, singleLine)
+	// A `--` comment entry runs to the end of its line, so it must sit on a line
+	// of its own and never carry a separator: on the single-line form it
+	// swallowed the rest of the list and the `)`, and as the last entry it left
+	// the previous line's `,` dangling. Either way the output did not parse.
+	lastProp := -1
+	for i, p := range props {
+		if !isCommentProp(p) {
+			lastProp = i
+		}
+	}
+	if lastProp == len(props)-1 {
+		singleLine := fmt.Sprintf("%s%s (%s)%s", prefix, header, strings.Join(props, ", "), suffix)
+		if len(singleLine) <= 120 && !containsCommentProp(props) {
+			fmt.Fprint(w, singleLine)
+			return
+		}
+	}
+	if lastProp < 0 {
+		// Only comments: there is no property list to write.
+		for _, p := range props {
+			fmt.Fprintf(w, "%s%s\n", prefix, p)
+		}
+		fmt.Fprintf(w, "%s%s%s", prefix, header, suffix)
 		return
 	}
 	// Multi-line
 	indent := prefix + "  "
 	fmt.Fprintf(w, "%s%s (\n", prefix, header)
 	for i, p := range props {
-		if i < len(props)-1 {
+		if i < lastProp && !isCommentProp(p) {
 			fmt.Fprintf(w, "%s%s,\n", indent, p)
 		} else {
 			fmt.Fprintf(w, "%s%s\n", indent, p)
 		}
 	}
 	fmt.Fprintf(w, "%s)%s", prefix, suffix)
+}
+
+func isCommentProp(p string) bool { return strings.HasPrefix(p, "--") }
+
+func containsCommentProp(props []string) bool {
+	for _, p := range props {
+		if isCommentProp(p) {
+			return true
+		}
+	}
+	return false
 }
 
 // outputDataContainerContext writes a comment showing available variables inside a data container.
@@ -361,7 +392,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		header := fmt.Sprintf("container %s", mdlIdent(w.Name))
 		props := appendAppearanceProps(nil, w)
 		if w.Action != "" {
-			props = append(props, fmt.Sprintf("Action: %s", w.Action))
+			props = append(props, actionProp("Action", w.Action))
 		}
 		if len(w.Children) > 0 {
 			formatWidgetProps(ctx.Output, prefix, header, props, " {\n")
@@ -465,7 +496,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			props = append(props, fmt.Sprintf("CaptionParams: [%s]", strings.Join(formatParametersV3(w.Parameters), ", ")))
 		}
 		if w.Action != "" {
-			props = append(props, fmt.Sprintf("Action: %s", w.Action))
+			props = append(props, actionProp("Action", w.Action))
 		}
 		if w.ButtonStyle != "" && w.ButtonStyle != "Default" {
 			props = append(props, fmt.Sprintf("ButtonStyle: %s", w.ButtonStyle))
@@ -539,7 +570,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			props = append(props, fmt.Sprintf("Placeholder: %s", mdlQuote(w.Placeholder)))
 		}
 		if w.OnChange != "" {
-			props = append(props, fmt.Sprintf("OnChange: %s", w.OnChange))
+			props = append(props, actionProp("OnChange", w.OnChange))
 		}
 		props = appendInputValidationProps(props, w)
 		props = appendAppearanceProps(props, w)
@@ -555,7 +586,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			props = append(props, fmt.Sprintf("Attribute: %s", w.Content))
 		}
 		if w.OnChange != "" {
-			props = append(props, fmt.Sprintf("OnChange: %s", w.OnChange))
+			props = append(props, actionProp("OnChange", w.OnChange))
 		}
 		props = appendAppearanceProps(props, w)
 		formatWidgetProps(ctx.Output, prefix, header, props, "\n")
@@ -570,7 +601,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			props = append(props, fmt.Sprintf("Attribute: %s", w.Content))
 		}
 		if w.OnChange != "" {
-			props = append(props, fmt.Sprintf("OnChange: %s", w.OnChange))
+			props = append(props, actionProp("OnChange", w.OnChange))
 		}
 		props = appendAppearanceProps(props, w)
 		formatWidgetProps(ctx.Output, prefix, header, props, "\n")
@@ -585,7 +616,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			props = append(props, fmt.Sprintf("Attribute: %s", w.Content))
 		}
 		if w.OnChange != "" {
-			props = append(props, fmt.Sprintf("OnChange: %s", w.OnChange))
+			props = append(props, actionProp("OnChange", w.OnChange))
 		}
 		props = appendAppearanceProps(props, w)
 		formatWidgetProps(ctx.Output, prefix, header, props, "\n")
@@ -608,7 +639,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			props = append(props, "ShowLabel: No")
 		}
 		if w.OnChange != "" {
-			props = append(props, fmt.Sprintf("OnChange: %s", w.OnChange))
+			props = append(props, actionProp("OnChange", w.OnChange))
 		}
 		props = appendAppearanceProps(props, w)
 		formatWidgetProps(ctx.Output, prefix, header, props, "\n")
@@ -629,7 +660,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			}
 			// onClick action (ledger #67)
 			if w.OnClick != "" {
-				props = append(props, fmt.Sprintf("onClick: %s", w.OnClick))
+				props = append(props, actionProp("onClick", w.OnClick))
 			}
 			props = appendNamedActionProps(props, w)
 			// Add paging properties if non-default
@@ -747,12 +778,12 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			}
 			// onClick action (ledger #67 — reported on CustomChart)
 			if w.OnClick != "" {
-				props = append(props, fmt.Sprintf("onClick: %s", w.OnClick))
+				props = append(props, actionProp("onClick", w.OnClick))
 			}
 			// OnChange too — a Slider/RangeSlider/StarRating reaches describe
 			// through this branch, and its action slot is the only one it has.
 			if w.OnChange != "" {
-				props = append(props, fmt.Sprintf("OnChange: %s", w.OnChange))
+				props = append(props, actionProp("OnChange", w.OnChange))
 			}
 			props = appendNamedActionProps(props, w)
 			props = appendAppearanceProps(props, w)
@@ -830,7 +861,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			// Emitted for the same reason as the built-in inputs above: without
 			// it a describe→edit→exec cycle silently drops the action.
 			if w.OnChange != "" {
-				props = append(props, fmt.Sprintf("OnChange: %s", w.OnChange))
+				props = append(props, actionProp("OnChange", w.OnChange))
 			}
 			// Show filter attributes for filter widgets
 			if len(w.FilterAttributes) > 0 {
@@ -850,7 +881,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			itemHeader := fmt.Sprintf("item %s", mdlIdent(child.Name))
 			props := []string{}
 			if child.Action != "" {
-				props = append(props, fmt.Sprintf("Action: %s", child.Action))
+				props = append(props, actionProp("Action", child.Action))
 			}
 			if child.ButtonStyle != "" && child.ButtonStyle != "Default" {
 				props = append(props, fmt.Sprintf("ButtonStyle: %s", child.ButtonStyle))
@@ -913,7 +944,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			props = append(props, "Responsive: false")
 		}
 		if w.Action != "" {
-			props = append(props, fmt.Sprintf("Action: %s", w.Action))
+			props = append(props, actionProp("Action", w.Action))
 		}
 		props = appendAppearanceProps(props, w)
 		formatWidgetProps(ctx.Output, prefix, header, props, "\n")
@@ -954,7 +985,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			props = append(props, "OnClickType: enlarge")
 		}
 		if w.Action != "" {
-			props = append(props, fmt.Sprintf("Action: %s", w.Action))
+			props = append(props, actionProp("Action", w.Action))
 		}
 		props = appendAppearanceProps(props, w)
 		formatWidgetProps(ctx.Output, prefix, header, props, "\n")
@@ -998,7 +1029,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		// the action is dropped on the next describe -> exec, which is the
 		// half-shell trap: valid BSON, clean build, construct silently gone.
 		if w.Action != "" {
-			props = append(props, fmt.Sprintf("Action: %s", w.Action))
+			props = append(props, actionProp("Action", w.Action))
 		}
 		props = appendAppearanceProps(props, w)
 		if len(w.Children) > 0 {
@@ -1410,21 +1441,30 @@ func renderClientActionMDL(ctx *ExecContext, action map[string]any) string {
 	case "Forms$SignOutClientAction", "Pages$SignOutClientAction":
 		return "sign_out"
 	case "Forms$OpenLinkClientAction", "Pages$OpenLinkClientAction":
-		// The address is a nested Forms$StaticOrDynamicString. MDL can spell the
-		// static form only; a DYNAMIC address (6 of the 31 Studio Pro references
-		// use one) reads its value from an attribute at runtime, so rendering it
-		// as a literal would round-trip into a different link. Say so instead.
+		// The address is a nested Forms$StaticOrDynamicString: a literal, or —
+		// DYNAMIC, 6 of the 31 Studio Pro references — an attribute read at
+		// runtime, spelled `open_link $currentObject/Attr`. It used to render
+		// as an inline `--` note, which left `Action:` without a value and made
+		// the describe output unparseable.
 		addr := actionMapForKey(action, "Address")
 		if addr == nil {
 			return "open_link ''"
 		}
 		if isDynamic, _ := addr["IsDynamic"].(bool); isDynamic {
 			attr := ""
+			overAssociation := false
 			if ref := actionMapForKey(addr, "AttributeRef"); ref != nil {
 				attr, _ = ref["Attribute"].(string)
+				overAssociation = actionMapForKey(ref, "EntityRef") != nil
 			}
-			return "-- open_link with a dynamic address (" + attr + ") — MDL cannot author this; " +
-				"the button is left as-is"
+			if attr != "" && !overAssociation {
+				return "open_link $currentObject/" + shortAttributeName(attr)
+			}
+			// No MDL spelling: a note, which actionProp puts on its own line.
+			// CREATE OR REPLACE PAGE rebuilds the page, so say plainly that
+			// re-running drops the action rather than implying it survives.
+			return "-- NOT re-executable: open_link with a dynamic address over an association (" +
+				attr + ") — re-running this script would drop the button's action"
 		}
 		value, _ := addr["Value"].(string)
 		return "open_link '" + strings.ReplaceAll(value, "'", "''") + "'"
@@ -1974,7 +2014,19 @@ func describeImageWidgetProps(w rawWidget) []string {
 		props = append(props, "OnClickType: enlarge")
 	}
 	if w.Action != "" {
-		props = append(props, fmt.Sprintf("OnClick: %s", w.Action))
+		props = append(props, actionProp("OnClick", w.Action))
 	}
 	return props
+}
+
+// actionProp renders an action slot as `Key: <action>`, or — when the action
+// renderer returned a `--` note because MDL cannot spell the action — as the
+// bare note, which formatWidgetProps places on its own line. Written inline,
+// `Action: -- …` left the slot without a value and swallowed the separator
+// after it, so the describe output did not parse.
+func actionProp(key, rendered string) string {
+	if isCommentProp(rendered) {
+		return rendered
+	}
+	return key + ": " + rendered
 }

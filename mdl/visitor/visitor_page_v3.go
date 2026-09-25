@@ -1050,8 +1050,9 @@ func buildActionV3(ctx parser.IActionExprV3Context) *ast.ActionV3 {
 	actCtx := ctx.(*parser.ActionExprV3Context)
 	action := &ast.ActionV3{}
 
-	if v := actCtx.VARIABLE(); v != nil {
+	if v := actCtx.VARIABLE(); v != nil && actCtx.OPEN_LINK() == nil {
 		// $handler — a fragment action parameter; resolved at expansion.
+		// (OPEN_LINK $currentObject/Attr also carries a VARIABLE.)
 		action.Type = "param"
 		action.Target = strings.TrimPrefix(v.GetText(), "$")
 	} else if actCtx.NOTHING() != nil {
@@ -1111,6 +1112,13 @@ func buildActionV3(ctx parser.IActionExprV3Context) *ast.ActionV3 {
 		action.Type = "openLink"
 		if str := actCtx.STRING_LITERAL(); str != nil {
 			action.LinkURL = unquoteString(str.GetText())
+		}
+		// A dynamic address: `open_link $currentObject/URL`.
+		if v := actCtx.VARIABLE(); v != nil {
+			action.LinkVariable = v.GetText()
+			if pathCtx := actCtx.AttributePathV3(); pathCtx != nil {
+				action.LinkAttribute = buildAttributePathV3(pathCtx)
+			}
 		}
 	} else if actCtx.SIGN_OUT() != nil {
 		action.Type = "signOut"
