@@ -467,10 +467,17 @@ func xpathConstraintClause(constraint string) string {
 // A parameterless flow yields nil, which the renderer emits without parentheses
 // — the grammar makes the list optional, and adding empty parens would churn
 // every existing description.
+//
+// A nanoflow source is FLAT in Studio Pro's shape — ParameterMappings directly
+// on the source — so the source itself is read when it has no settings child;
+// the nested NanoflowSettings form is what mxcli wrote before CE2633 was fixed.
 func flowSourceArgs(ds map[string]any, settingsKey, flowName string) []rawDataSourceArg {
 	settings, ok := ds[settingsKey].(map[string]any)
 	if !ok || settings == nil {
-		return nil
+		if _, flat := ds["ParameterMappings"]; !flat {
+			return nil
+		}
+		settings = ds
 	}
 	var out []rawDataSourceArg
 	for _, item := range getBsonArrayElements(settings["ParameterMappings"]) {
