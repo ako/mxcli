@@ -831,6 +831,15 @@ func parseWidgetPropertyV3(ctx parser.IWidgetPropertyV3Context, widget *ast.Widg
 
 	// Visible: [expression] (conditional visibility) or Visible: false (static)
 	if propCtx.VISIBLE() != nil {
+		// `Visible: Attr in (v1, …)` — Studio Pro's "based on attribute value".
+		if propCtx.IN() != nil {
+			vw := &ast.VisibleWhenV3{Attribute: buildAttributePathV3(propCtx.AttributePathV3())}
+			for _, v := range propCtx.AllVisibleValueV3() {
+				vw.Values = append(vw.Values, unquoteIdentifier(v.GetText()))
+			}
+			widget.Properties["VisibleWhen"] = vw
+			return
+		}
 		if xc := propCtx.XpathConstraint(); xc != nil {
 			widget.Properties["VisibleIf"] = buildConditionalExpression(xc)
 		} else if valCtx := propCtx.PropertyValueV3(); valCtx != nil {

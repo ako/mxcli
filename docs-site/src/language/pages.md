@@ -101,6 +101,19 @@ TEXTBOX txtName (Label: 'Name', Attribute: Name, Visible: [IsActive])
 
 Static values also work: `Visible: false` hides the widget unconditionally.
 
+Studio Pro's **"based on attribute value"** form lists the values of a Boolean or
+enumeration attribute (of the enclosing data container's entity) that show the
+widget; `empty` is Studio Pro's "(empty)" choice:
+
+```sql
+CONTAINER cntRunning (Visible: Status in (Running, empty)) { ... }
+TEXTBOX txtPassword (Label: 'Password', Attribute: Password, Visible: IsLocalUser in (true))
+```
+
+mxcli writes one condition per value of the attribute, as Studio Pro does, so a
+value not listed hides the widget. `describe page` emits this form for widgets
+set up that way in Studio Pro.
+
 ### Conditional Editability
 
 Input widgets can be conditionally editable:

@@ -121,6 +121,9 @@ func appendConditionalProps(props []string, w rawWidget) []string {
 	if w.VisibleIf != "" {
 		props = append(props, fmt.Sprintf("Visible: [%s]", w.VisibleIf))
 	}
+	if prop := visibleWhenProp(w); prop != "" {
+		props = append(props, prop)
+	}
 	if w.EditableIf != "" {
 		props = append(props, fmt.Sprintf("Editable: [%s]", w.EditableIf))
 	}
@@ -185,6 +188,9 @@ func appendAppearanceProps(props []string, w rawWidget) []string {
 	}
 	if w.VisibleIf != "" {
 		props = append(props, fmt.Sprintf("Visible: [%s]", w.VisibleIf))
+	}
+	if prop := visibleWhenProp(w); prop != "" {
+		props = append(props, prop)
 	}
 	if w.EditableIf != "" {
 		props = append(props, fmt.Sprintf("Editable: [%s]", w.EditableIf))
@@ -2045,4 +2051,31 @@ func actionProp(key, rendered string) string {
 		return rendered
 	}
 	return key + ": " + rendered
+}
+
+// visibleWhenProp renders "Visible: based on attribute value" as
+// `Visible: Attr in (v1, …)`, naming the values that show the widget.
+//
+// A setting that shows the widget for NO value has no spelling in that form
+// (the list would be empty); Studio Pro allows it, so say what it is rather
+// than drop it — a dropped setting is an always-visible widget.
+func visibleWhenProp(w rawWidget) string {
+	if w.VisibleAttr == "" {
+		return ""
+	}
+	if len(w.VisibleValues) == 0 {
+		return "-- NOT re-executable: visible for no value of " + w.VisibleAttr +
+			" (never shown) — MDL cannot spell an empty value list, so re-running this script would make it always visible"
+	}
+	vals := make([]string, len(w.VisibleValues))
+	for i, v := range w.VisibleValues {
+		// `empty` (Studio Pro's "(empty)") and the boolean values are keywords
+		// the value list takes bare; quoting them would read as identifiers.
+		if v == "empty" || v == "true" || v == "false" {
+			vals[i] = v
+			continue
+		}
+		vals[i] = mdlIdent(v)
+	}
+	return fmt.Sprintf("Visible: %s in (%s)", mdlIdent(w.VisibleAttr), strings.Join(vals, ", "))
 }

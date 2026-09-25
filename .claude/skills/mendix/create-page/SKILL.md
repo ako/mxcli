@@ -288,6 +288,16 @@ dynamictext tTrim (content: 'x', visible: [trim($currentObject/Slug) != ''])
 textbox txtSlug (label: 'Slug', attribute: Slug, editable: [length(Slug) > 0])
 ```
 
+**Visible based on an attribute value** (Studio Pro's "Visible: based on attribute
+value") — list the Boolean/enumeration values that SHOW the widget; `empty` is
+"(empty)". Only an attribute of the enclosing data container's own entity:
+
+```sql
+container cntRunning (visible: Status in (Running, empty)) { ... }
+textbox txtPassword (label: 'Password', attribute: Password, visible: IsLocalUser in (true))
+```
+
+
 > **`visible:`/`editable:` is a Mendix *expression*, not XPath** — a different
 > function set from a datasource `where` clause, even though both use `[ ... ]`:
 >

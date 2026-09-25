@@ -513,6 +513,7 @@ widgetPropertyV3
     | WIDTH COLON NUMBER_LITERAL                        // Width: 200
     | HEIGHT COLON NUMBER_LITERAL                      // Height: 100
     | VISIBLE COLON xpathConstraint                    // Visible: [IsActive = true]
+    | VISIBLE COLON attributePathV3 IN LPAREN visibleValueV3 (COMMA visibleValueV3)* RPAREN  // Visible: Status in (Running, empty)
     | VISIBLE COLON propertyValueV3                   // Visible: false
     | EDITABLE COLON xpathConstraint                  // Editable: [Status != 'Closed']
     | EDITABLE COLON propertyValueV3                  // Editable: Never | Always
@@ -658,6 +659,12 @@ microflowArgV3
                                                       // named after a keyword — View/Source/Item/Page/
                                                       // Entity — works unquoted, matching callArgument)
     | VARIABLE EQUALS expression                     // $Param = $value (microflow-style, also accepted)
+    ;
+
+// A value in `Visible: Attr in (…)`: an enumeration value name, true/false,
+// or `empty` for Studio Pro's "(empty)".
+visibleValueV3
+    : IDENTIFIER | QUOTED_IDENTIFIER | keyword
     ;
 
 // V3 Attribute path: Name, Product/Category, "Order" (quoted to escape reserved words)

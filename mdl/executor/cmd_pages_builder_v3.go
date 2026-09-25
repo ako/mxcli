@@ -498,6 +498,9 @@ func (pb *pageBuilder) buildWidgetV3(w *ast.WidgetV3) (pages.Widget, error) {
 
 	// Apply conditional visibility/editability
 	applyConditionalSettings(widget, w)
+	if err := pb.applyVisibleWhen(widget, w); err != nil {
+		return nil, err
+	}
 
 	return widget, nil
 }
