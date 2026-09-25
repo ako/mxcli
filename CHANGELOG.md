@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`@caption` on a `while` loop was dropped without a word** (mendixlabs/mxcli#1187) — `check` passed, `exec` wrote the loop, and `describe` showed it without the caption, while the same caption on a `loop` was reported as **MDL042**. Both build a `Microflows$LoopedActivity`, which has no Caption property; only the for-each case was checked. MDL042 now covers a `while` too, pointing to `@annotation`, which round-trips through `describe`.
+
 ## [0.24.0] - 2026-09-24
 
 Headline: **An element's storage GUID is the database's identity, and mxcli now treats it as one.** A production report of 28 attributes emptied across 607 rows by a single edit (mendixlabs/mxcli#1119) traced to five write paths that re-minted GUIDs — one of them moving 282 in a single module. They are fixed, and a new guard at the write choke point refuses any write that moves one: a class of data loss that leaves the model valid, `mx check` clean and `DESCRIBE` byte-identical, and surfaces only when the package meets a database that already holds data. Alongside it, `MOVE ENTITY` and `RENAME` stop leaving a project unbuildable, and four more scripts that passed every gate and failed the build are refused.
