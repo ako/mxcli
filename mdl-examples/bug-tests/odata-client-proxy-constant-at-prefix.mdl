@@ -1,0 +1,52 @@
+-- Bug: an OData client's proxy constant written as `@Module.Const` was stored
+-- with the `@`.
+--
+-- Symptom: `ProxyHost: @Module.Const` (MDL's spelling of a constant everywhere
+-- else) stored the reference as "@Module.Const", which names no constant, so the
+-- proxy silently resolved to nothing.
+--
+-- ProxyHost / ProxyPort / ProxyUsername / ProxyPassword are BY_NAME references to
+-- a constant. Studio Pro stores the bare qualified name, with ProxyType Override
+-- (measured: ako/TestApp@37e0cc0, Odata.Bug1073 — `ProxyHost:
+-- "Odata.Bug1073_ProxyHost"`). The constant's type is the author's choice: the
+-- same client accepts an Integer port constant (ako/TestApp@11a8fca).
+--
+-- Fix: extractConstantRef strips the `@` on CREATE and ALTER, as
+-- extractMicroflowRef already strips `microflow ` (#573). The bare, `@` and
+-- quoted-`@` spellings below all store the same bare name.
+
+create constant OdProxy.ProxyHost
+type string
+default 'proxy.example.com';
+
+create constant OdProxy.ProxyPort
+type integer
+default 8080;
+
+create constant OdProxy.ProxyUsername
+type string
+default 'proxyuser';
+
+create constant OdProxy.ProxyPassword
+type string
+default 'proxypass';
+
+create constant OdProxy.ApiLocation
+type string
+default 'https://api.example.com/odata/v4/';
+/
+
+create odata client OdProxy.ProxiedApi (
+  ODataVersion: OData4,
+  MetadataUrl: 'https://api.example.com/odata/v4/$metadata',
+  ServiceUrl: '@OdProxy.ApiLocation',
+  ProxyType: Override,
+  ProxyHost: @OdProxy.ProxyHost,
+  ProxyPort: '@OdProxy.ProxyPort',
+  ProxyUsername: OdProxy.ProxyUsername,
+  ProxyPassword: @OdProxy.ProxyPassword
+);
+/
+
+alter odata client OdProxy.ProxiedApi set ProxyHost = @OdProxy.ProxyHost;
+/

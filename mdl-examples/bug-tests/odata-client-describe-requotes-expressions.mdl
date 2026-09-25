@@ -1,0 +1,44 @@
+-- Bug: DESCRIBE ODATA CLIENT lost a quote level on a literal credential.
+--
+-- Symptom: a client configured in Studio Pro with a literal user name stores the
+-- Mendix expression `'abc'` (quotes included) in
+-- HttpConfiguration.HttpAuthenticationUserName. DESCRIBE printed
+-- `HttpUsername: 'abc'`; executing that output stored `abc` — an identifier, not
+-- a string. Measured on a Studio Pro-authored client (ako/TestApp@37e0cc0,
+-- Odata.Bug1073), decoded before and after a describe -> exec round trip.
+--
+-- Cause: formatExprValue returned any value that already started and ended with
+-- a quote unchanged, as "already a quoted Mendix expression". But the visitor
+-- unquotes the MDL string, so the MDL text needs one more level of quoting than
+-- the stored expression. ClientCertificate, header keys, Version, MetadataUrl and
+-- Folder were printed as a raw '%s' and did not re-parse at all when they held a
+-- quote.
+--
+-- Fix: always mdlQuote — the inverse of the visitor's unquoteString.
+--
+-- This is the form DESCRIBE now prints for that client. Each value re-stores the
+-- expression Studio Pro stored: 'abc', @Module.Const, 'Key ' + @Module.Const.
+
+create constant OdQuote.ApiLocation
+type string
+default 'https://api.example.com/odata/v4/';
+
+create constant OdQuote.ApiKey
+type string
+default 'secret';
+/
+
+create odata client OdQuote.QuotedApi (
+  ODataVersion: OData4,
+  MetadataUrl: 'https://api.example.com/odata/v4/$metadata',
+  ServiceUrl: '@OdQuote.ApiLocation',
+  UseAuthentication: Yes,
+  HttpUsername: '''abc''',
+  HttpPassword: '@OdQuote.ApiKey',
+  ClientCertificate: '''my-cert'''
+)
+headers (
+  'X-Api-Key': '''Key '' + @OdQuote.ApiKey',
+  'X-O''Key': '''it''''s'''
+);
+/

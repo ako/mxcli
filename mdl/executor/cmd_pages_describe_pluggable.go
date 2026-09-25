@@ -908,6 +908,34 @@ func extractCustomWidgetPropertyAttributeRef(ctx *ExecContext, w map[string]any,
 // This is the symmetric counterpart of extractCustomWidgetPropertyAttributeRef,
 // handling the EntityRef storage format instead of AttributeRef.
 func extractCustomWidgetPropertyAssociation(ctx *ExecContext, w map[string]any, propertyKey string) string {
+	return shortAttributeName(extractCustomWidgetPropertyAssociationQN(ctx, w, propertyKey))
+}
+
+// associationRefForContext renders a stored association reference for MDL:
+// bare when it is declared in the context entity's module, qualified otherwise.
+//
+// exec qualifies a bare name by looking the association up from the context,
+// but the qualified form means the same thing without a lookup — so it is what
+// describe emits whenever the modules differ, or the context is unknown. A
+// bare `UserRoles` on a page over Administration.Account (extends System.User)
+// was written back as `Administration.UserRoles` → CE1613 (ako/mxcli#662).
+func associationRefForContext(assocQN, entityContext string) string {
+	if assocQN == "" {
+		return ""
+	}
+	dot := strings.Index(assocQN, ".")
+	if dot < 0 {
+		return assocQN
+	}
+	if ctxDot := strings.Index(entityContext, "."); ctxDot > 0 && entityContext[:ctxDot] == assocQN[:dot] {
+		return assocQN[dot+1:]
+	}
+	return assocQN
+}
+
+// extractCustomWidgetPropertyAssociationQN returns the association a
+// CustomWidget property binds, as stored: Module.Association.
+func extractCustomWidgetPropertyAssociationQN(ctx *ExecContext, w map[string]any, propertyKey string) string {
 	obj, ok := w["Object"].(map[string]any)
 	if !ok {
 		return ""
@@ -942,7 +970,7 @@ func extractCustomWidgetPropertyAssociation(ctx *ExecContext, w map[string]any, 
 				continue
 			}
 			if assoc := extractString(stepMap["Association"]); assoc != "" {
-				return shortAttributeName(assoc)
+				return assoc
 			}
 		}
 	}
