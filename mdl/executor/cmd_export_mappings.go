@@ -84,7 +84,9 @@ func describeExportMapping(ctx *ExecContext, name ast.QualifiedName) error {
 		return mdlerrors.NewNotConnected()
 	}
 
-	em, err := ctx.Backend.GetExportMappingByQualifiedName(name.Module, name.Name)
+	em, err := describedMapping(ctx, name,
+		ctx.Backend.GetExportMappingByQualifiedName, ctx.Backend.ListExportMappings,
+		func(m *model.ExportMapping) model.ID { return m.ID })
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			return mdlerrors.NewNotFound("export mapping", name.String())
@@ -94,6 +96,12 @@ func describeExportMapping(ctx *ExecContext, name ast.QualifiedName) error {
 
 	if em.Documentation != "" {
 		fmt.Fprintf(ctx.Output, "/**\n * %s\n */\n", strings.ReplaceAll(em.Documentation, "\n", "\n * "))
+	}
+	// The same prefix a microflow or page carries: without it an excluded
+	// mapping reads as live, and beside a live twin of the same name the two
+	// are indistinguishable (#1185).
+	if em.Excluded {
+		fmt.Fprintln(ctx.Output, "@excluded")
 	}
 
 	h, err := getHierarchy(ctx)
@@ -317,10 +325,13 @@ func execCreateExportMapping(ctx *ExecContext, s *ast.CreateExportMappingStmt) e
 		Name:            s.Name.Name,
 		ExportLevel:     "Hidden",
 		NullValueOption: nullValueOption,
+		// @excluded, which DESCRIBE prints for an excluded mapping (#1185).
+		Excluded: s.Excluded,
 	}
 	if existing != nil {
-		// Excluded is model state, not script state (#914).
-		em.Excluded = existing.Excluded
+		// Excluded is model state, not script state: an absent @excluded must
+		// not clear a stored exclusion (#914).
+		em.Excluded = s.Excluded || existing.Excluded
 		// MessageDefinition2 is version-introduced (11.10+) and CARRIED, never
 		// invented: a document written before then does not have the key, and
 		// adding one is the overlay-rule mistake — mxbuild tolerates it, Studio

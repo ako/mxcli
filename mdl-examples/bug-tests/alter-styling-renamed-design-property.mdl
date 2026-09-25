@@ -1,0 +1,44 @@
+-- ============================================================================
+-- ALTER STYLING with a design-property key the theme RENAMED
+-- ============================================================================
+--
+-- Symptom: `alter styling … set 'Spacing bottom' = 'Outer medium'` — an Atlas
+-- Core 4.1.3 old name, kept in design-properties.json `oldNames` — was reported
+--   MDL-WIDGET11 … which no widget type in this project's theme declares —
+--   mxbuild reports this as CE6083
+-- but mxbuild reports it as CE6087 "Design properties have been renamed in your
+-- theme and need to be updated" (measured, Mendix 11.13.0), and the fix is the
+-- current property, not a spelling near-miss.
+--
+-- Fix: ALTER STYLING looks the key up among the theme's old names (as the
+-- authoring paths do since #679) and names the current property. A compound
+-- replacement (a Spacing side, a multi-select option) cannot be written by ALTER
+-- STYLING, so the suggestion points at the inline DesignProperties form.
+--
+-- Verify: `mxcli check -p <Atlas Core 4.1.3 project> --references` shows the
+-- "renamed to "Spacing" … CE6087" warning on the first statement, none on the
+-- second, and `mxcli docker check` after exec is 0 errors (only the second
+-- statement is meant to be applied).
+-- ============================================================================
+
+create or replace page MyFirstModule.StylingRenamed_Test
+( Title: 'Styling', Layout: Atlas_Core.Atlas_Default )
+{
+  container cntBody {
+    dynamictext txt (Content: 'Hello')
+  }
+}
+/
+
+-- The old name: warned, with the current form to use instead.
+-- alter styling on page MyFirstModule.StylingRenamed_Test widget cntBody set 'Spacing bottom' = 'Outer medium';
+
+-- The current name, written the way the warning says: 0 errors.
+alter page MyFirstModule.StylingRenamed_Test {
+  replace cntBody with {
+    container cntBody (DesignProperties: ['Spacing': ['margin-bottom': 'M']]) {
+      dynamictext txtSpaced (Content: 'Hello')
+    }
+  }
+};
+/

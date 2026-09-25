@@ -2,6 +2,11 @@
 
 package executor
 
+import (
+	"github.com/mendixlabs/mxcli/mdl/ast"
+	"github.com/mendixlabs/mxcli/model"
+)
+
 // Excluded documents ("Exclude from project" in Studio Pro) make a document
 // name non-unique. Mendix allows two documents in one module to share a name as
 // long as at most one of them is active: mxbuild reports CE0122 "Duplicate
@@ -64,4 +69,40 @@ func pickLiveIndex[T any](items []T, matches func(T) bool, excluded func(T) bool
 		}
 	}
 	return first
+}
+
+// pickDescribed is pickLive for a DESCRIBE: when ctx pins a document by ID (the
+// catalog's source build, which walks documents rather than names) it returns
+// that document, so an excluded twin is described as itself — `@excluded` and
+// its own body — rather than as a second copy of the live one (#1185). Without
+// a pin, or when the pinned ID is not among the matches, it is pickLive.
+func pickDescribed[T any](ctx *ExecContext, items []T, idOf func(T) model.ID, matches func(T) bool, excluded func(T) bool) (T, bool) {
+	if ctx != nil && ctx.describeID != "" {
+		for _, it := range items {
+			if matches(it) && idOf(it) == ctx.describeID {
+				return it, true
+			}
+		}
+	}
+	return pickLive(items, matches, excluded)
+}
+
+// describedMapping resolves the mapping a DESCRIBE renders: the pinned document
+// when the catalog's source build set one (#1185), otherwise the backend's
+// by-name lookup, which prefers the live twin.
+func describedMapping[T any](ctx *ExecContext, name ast.QualifiedName,
+	byName func(module, name string) (T, error), list func() ([]T, error), idOf func(T) model.ID) (T, error) {
+	if ctx.describeID != "" {
+		all, err := list()
+		if err != nil {
+			var zero T
+			return zero, err
+		}
+		for _, m := range all {
+			if idOf(m) == ctx.describeID {
+				return m, nil
+			}
+		}
+	}
+	return byName(name.Module, name.Name)
 }
