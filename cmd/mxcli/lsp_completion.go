@@ -116,12 +116,26 @@ func (s *mdlServer) widgetRegistryCompletions() []protocol.CompletionItem {
 // appear until the server is restarted.
 func (s *mdlServer) ensureWidgetRegistry() {
 	s.widgetCompletionsOnce.Do(func() {
-		registry, err := executor.NewWidgetRegistry()
-		if err != nil {
-			return
+		// With a project, load exactly the registry `check` validates against:
+		// definitions generated from the installed .mpk first, since .mxcli/ is
+		// gitignored and a fresh clone has none. Loading .def.json alone offered
+		// only the nine embedded widgets, and the diagnostics built on this
+		// registry disagreed with check (ako/mxcli#663).
+		var registry *executor.WidgetRegistry
+		if s.mprPath != "" {
+			registry = executor.LoadWidgetRegistry(s.mprPath)
+		} else {
+			r, err := executor.NewWidgetRegistry()
+			if err != nil {
+				return
+			}
+			if err := r.LoadUserDefinitions(""); err != nil {
+				log.Printf("warning: loading user widget definitions for LSP: %v", err)
+			}
+			registry = r
 		}
-		if err := registry.LoadUserDefinitions(s.mprPath); err != nil {
-			log.Printf("warning: loading user widget definitions for LSP: %v", err)
+		if registry == nil {
+			return
 		}
 		s.widgetRegistry = registry
 		for _, def := range registry.All() {
