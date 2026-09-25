@@ -211,8 +211,10 @@ proposals compose rather than compete.
    tokens *without* the hidden-channel whitespace — `if $x then 'a' else ''`
    becomes `if$xthen'a'else''`. Literals survive (one token each); keywords and
    operators fuse. Every new slot must go through `buildExpression` →
-   `expressionToString`, never `GetText()`. Whether the microflow-argument path
-   is live-broken for `if`-expressions is untested.
+   `expressionToString`, never `GetText()`. *(Resolved 2026-09-25: it was live —
+   page microflow arguments, contentparams, send-rest-request parameters and a
+   dynamic database query stored the fused text. All four now use
+   `expressionSourceText`.)*
 
 2. **Does `expressionToString` round-trip Studio Pro's spelling?** A stored
    `if $currentObject/Featured then 'x' else ''` re-emitted through
