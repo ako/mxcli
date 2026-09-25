@@ -1,0 +1,28 @@
+-- An expression stored as TEXT lost its whitespace, fusing keyword operators.
+--
+-- Four places took an expression's text with ANTLR's GetText(), which joins the
+-- tokens without the whitespace between them. Literals, `+` and a lone
+-- $currentObject survived, so the common cases looked fine; a keyword operator
+-- fused with its neighbours and that text was written into the model. Measured
+-- on a copy of ako/TestApp, pre-fix:
+--
+--   action: microflow GT.ACT(Flag: true and false, …)   -> "trueandfalse"
+--   action: microflow GT.ACT(Mode: if true then 'a' else 'b')
+--                                                      -> "iftruethen'a'else'b'"
+--   send rest request … with ($OrderId = if $x then $id else 'none')
+--                                                      -> "if$xthen$idelse'none'"
+--
+-- `check -p --references` passed on all of it. Fix: expressionSourceText, the
+-- same whitespace-preserving, comment-stripping extraction the microflow
+-- expression sites already use. Also: contentparams values and a dynamic
+-- `execute database query`.
+
+create microflow BugExpr.ACT ($Flag: boolean, $Mode: string) begin
+end;
+/
+
+create page BugExpr.P (title: 'P', layout: Atlas_Core.Atlas_Default) {
+  actionbutton b (caption: 'Go', action: microflow BugExpr.ACT(Flag: true and false, Mode: if true then 'a' else 'b'))
+  dynamictext t (content: 'x {1}', contentparams: [{1} = if true then 'a' else 'b'])
+}
+/
