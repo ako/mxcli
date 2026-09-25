@@ -408,6 +408,14 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 			if widget.DataSource != nil {
 				widget.Content = associationRefForContext(extractCustomWidgetPropertyAssociationQN(ctx, w, "attributeAssociation"), inheritedCtx)
 				widget.CaptionAttribute = extractCustomWidgetPropertyAttributeRef(ctx, w, "optionsSourceAssociationCaptionAttribute")
+				// The caption can be an EXPRESSION instead (Studio Pro's "Caption
+				// type: Expression"). Reading only the attribute form dropped it,
+				// and exec wrote a combobox with no caption — CE0642 "Property
+				// 'Caption' is required" on Administration.Account_New (#664).
+				if extractCustomWidgetPropertyString(ctx, w, "optionsSourceAssociationCaptionType") == "expression" {
+					widget.CaptionExpression = extractCustomWidgetPropertyExpression(w, "optionsSourceAssociationCaptionExpression")
+					widget.CaptionAttribute = ""
+				}
 			}
 			// The on-change action, in BOTH modes — the def maps `onChangeEvent`
 			// in each, and modes are exclusive. Read outside the DataSource
