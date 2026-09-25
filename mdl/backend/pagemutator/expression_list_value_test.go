@@ -37,8 +37,8 @@ func TestSetWidgetProperty_DynamicClassesRefusesAList(t *testing.T) {
 	if err == nil {
 		t.Fatal("a bracketed list was accepted for DynamicClasses and reported as success")
 	}
-	if !strings.Contains(err.Error(), "quoted") {
-		t.Errorf("error = %q, want it to name the quoted spelling that works", err)
+	if !strings.Contains(err.Error(), "without brackets") {
+		t.Errorf("error = %q, want it to name the spelling that works", err)
 	}
 	app := bsonnav.DGetDoc(findBsonWidget(rawData, "ctn1").widget, "Appearance")
 	if got := bsonnav.DGetString(app, "DynamicClasses"); got != stored {
@@ -58,8 +58,8 @@ func TestSetColumnProperty_ExpressionRefusesAList(t *testing.T) {
 	if err == nil {
 		t.Fatal("a bracketed list was accepted for DynamicCellClass and reported as success")
 	}
-	if !strings.Contains(err.Error(), "quoted") {
-		t.Errorf("error = %q, want it to name the quoted spelling that works", err)
+	if !strings.Contains(err.Error(), "without brackets") {
+		t.Errorf("error = %q, want it to name the spelling that works", err)
 	}
 	if got := fieldOf(t, col, idClass, "Expression"); got != "'kept'" {
 		t.Errorf("Expression = %v after a refused set, want 'kept' unchanged", got)

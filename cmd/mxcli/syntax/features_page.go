@@ -317,7 +317,7 @@ CREATE PAGE Sales.Detail (Title: 'Detail', Layout: Atlas_Core.Atlas_Default) {
 			"Reach for ALTER STYLING rather than CREATE OR REPLACE PAGE whenever only\n" +
 			"the look changes: replacing the page rewrites every widget in it, so the\n" +
 			"diff is the whole document and anything MDL cannot yet spell is lost.",
-		Example: "CONTAINER ctn (\n  Class: 'my-card',\n  DynamicClasses: 'if $currentObject/Priority = ''High'' then ''card-danger'' else ''card-normal'''\n) {\n  DYNAMICTEXT txt (Content: 'Styled text')\n}\n\n" +
+		Example: "CONTAINER ctn (\n  Class: 'my-card',\n  DynamicClasses: if $currentObject/Priority = 'High' then 'card-danger' else 'card-normal'\n) {\n  DYNAMICTEXT txt (Content: 'Styled text')\n}\n\n" +
 			"-- Restyle one widget on a page that already exists\n" +
 			"alter styling on page Sales.OrderOverview widget btnSave\n" +
 			"  set Class = 'btn-primary', 'Spacing top' = 'Large';\n\n" +

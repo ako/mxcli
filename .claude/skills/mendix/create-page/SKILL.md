@@ -134,26 +134,29 @@ actionbutton btn (caption: 'Save', designproperties: ['Size': 'Large', 'Full wid
 ```
 
 **Dynamic Classes** — a Mendix expression evaluated at runtime that returns a
-class list (applied on top of the static `class`). Root attributes in
-`$currentObject` and escape single quotes by doubling them (`''`):
+class list (applied on top of the static `class`). Write the expression as-is —
+no outer quotes, no doubled ones — and root attributes in `$currentObject`. A
+quoted value is a Mendix string: `dynamicclasses: 'is-featured'` is the class
+`is-featured`.
 ```sql
 dynamictext ovChip (
   content: 'chip',
   class: 'ss-chip',
-  dynamicclasses: 'if $currentObject/VesselClass = Mod.BoatClass.Astute then ''ss-chip--astute'' else '''''
+  dynamicclasses: if $currentObject/VesselClass = Mod.BoatClass.Astute then 'ss-chip--astute' else ''
 )
 ```
 
-Write it quoted, not in brackets: `dynamicclasses: [ … ]` (and a column's
-`DynamicCellClass: [ … ]`) parses as a list, which no writer reads — `check`
-reports it as MDL-WIDGET32 rather than letting the value be dropped.
+Not in brackets: `dynamicclasses: [ … ]` (and a column's `DynamicCellClass: [ … ]`)
+parses as a list, which no writer reads — `check` reports it as MDL-WIDGET32. And
+not the old quoted spelling `'if … then ''a'' else '''''`, which would now store
+the expression's text as a class name — `check` reports it as MDL-WIDGET33.
 
 **All can be combined on a single widget:**
 ```sql
 container ctnHero (
   class: 'card',
   style: 'border-left: 4px solid #264AE5;',
-  dynamicclasses: 'if $currentObject/Featured then ''is-featured'' else ''''',
+  dynamicclasses: if $currentObject/Featured then 'is-featured' else '',
   designproperties: ['Spacing top': 'Large', 'Full width': on]
 ) {
   dynamictext txtTitle (content: 'Styled Container', rendermode: H3)

@@ -868,6 +868,20 @@ func parseWidgetPropertyV3(ctx parser.IWidgetPropertyV3Context, widget *ast.Widg
 
 	// Generic property: Identifier: value
 	if id := propCtx.IDENTIFIER(); id != nil {
+		// An expression-typed property takes the expression as written, from
+		// whichever value alternative matched (visitor_widget_expression.go).
+		if isWidgetExpressionProp(id.GetText()) {
+			if v := lastRuleChild(propCtx); v != nil {
+				widget.Properties[id.GetText()] = widgetExpressionValue(v)
+			}
+			return
+		}
+		if expr := propCtx.Expression(); expr != nil {
+			if b != nil {
+				b.addError(widgetExpressionNotAllowed(id.GetText(), expr))
+			}
+			return
+		}
 		// `<Name>Params: [{1} = Attr]` — the parameters of a text-template
 		// sub-property whose name belongs to the WIDGET rather than to MDL (a
 		// File Uploader custom button's ButtonCaptionParams). ContentParams and
@@ -901,6 +915,18 @@ func parseWidgetPropertyV3(ctx parser.IWidgetPropertyV3Context, widget *ast.Widg
 	// Generic property with keyword name: keyword: value (for pluggable widget property keys
 	// that happen to be MDL keywords, e.g., type, datasource, content)
 	if kw := propCtx.Keyword(); kw != nil {
+		if isWidgetExpressionProp(kw.GetText()) {
+			if v := lastRuleChild(propCtx); v != nil {
+				widget.Properties[kw.GetText()] = widgetExpressionValue(v)
+			}
+			return
+		}
+		if expr := propCtx.Expression(); expr != nil {
+			if b != nil {
+				b.addError(widgetExpressionNotAllowed(kw.GetText(), expr))
+			}
+			return
+		}
 		if plCtx := propCtx.ParamListV3(); plCtx != nil {
 			widget.Properties[kw.GetText()] = buildParamListV3(plCtx)
 			return

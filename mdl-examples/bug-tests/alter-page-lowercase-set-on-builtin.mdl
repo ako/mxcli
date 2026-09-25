@@ -55,7 +55,7 @@ create or replace page MyFirstModule.P_LowerSet
 -- Every one of these used to hard-error "widget has no pluggable Object".
 alter page MyFirstModule.P_LowerSet {
   set class = 'fl-topbar' on topBar;
-  set dynamicclasses = 'if $currentObject/Name != '''' then ''is-named'' else '''''  on topBar;
+  set dynamicclasses = if $currentObject/Name != '' then 'is-named' else ''  on topBar;
   set class = 'fl-badge' on rowBadge;
   set caption = 'Shortcuts' on btnKeys;
 }
