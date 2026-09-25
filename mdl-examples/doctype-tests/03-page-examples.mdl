@@ -2327,7 +2327,7 @@ create page PgTest.P033b_DataGrid_ColumnProperties
       attribute: Stock, caption: 'In Stock',
       Alignment: center,
       visible: '$showStockColumn',
-      DynamicCellClass: 'if($currentObject/Stock < 10) then ''text-danger'' else '''' '
+      DynamicCellClass: if($currentObject/Stock < 10) then 'text-danger' else '' 
     )
 
     -- Non-hidable column with auto-fit width

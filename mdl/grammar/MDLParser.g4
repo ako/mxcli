@@ -328,6 +328,7 @@ alterPageAssignment
     | identifierOrKeyword EQUALS actionExprV3           // createFileAction = MICROFLOW Module.MF
     | identifierOrKeyword EQUALS propertyValueV3       // Caption = 'Save'
     | STRING_LITERAL EQUALS propertyValueV3             // 'showLabel' = false
+    | identifierOrKeyword EQUALS expression             // DynamicClasses = if $x/F then 'a' else '' (see widgetPropertyV3)
     ;
 
 alterPageInsert

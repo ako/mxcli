@@ -232,6 +232,12 @@ proposals compose rather than compete.
    otherwise quote. Confirm this output variance is acceptable.
 
 4. **Pluggable expression properties are resolved by schema, not by name.**
+   **Decided 2026-09-25: (a)**, shipped in two steps. First the named
+   properties, `DynamicClasses` and a column's `DynamicCellClass`: written
+   as-is, a quoted value is a string (the Q5 rule), and the old quoted-text
+   spelling is refused as MDL-WIDGET33. Then the schema-driven extension to every
+   pluggable property whose kind is Expression.
+
    Slice 2 either (a) lets any generic property take a bare expression and
    rejects it at check time when the widget schema says the slot is not
    `expression`-typed, or (b) adds the bare form only for the named properties
@@ -375,6 +381,10 @@ quoted output with the bare form.
 | `mdl-examples/doctype-tests/24-workflow-examples.mdl` | bracket form beside the quoted form |
 
 **Slice 2 — expression family, widget slots.**
+
+*Named-property step done (2026-09-25):* `DynamicClasses` and `DynamicCellClass`
+take the expression as written through `create page`, `alter page … set` and
+`describe`. The table below is the schema-driven remainder.
 
 | File | Change |
 |---|---|

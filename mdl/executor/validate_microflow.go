@@ -157,6 +157,11 @@ func (v *microflowValidator) validate(body []ast.MicroflowStatement) {
 	// #895: the commit default changed to match Studio Pro. One informational
 	// note per microflow, not per statement — see validate_commit_events.go.
 	v.checkBareCommitEvents(body)
+
+	// upstream mendixlabs/mxcli#1186: `lint` has known commit-in-a-loop as
+	// CONV011 all along, but only after the write and only project-wide. See
+	// validate_commit_in_loop.go.
+	v.checkCommitInLoop(body)
 }
 
 // checkDuplicateLoopVariables flags a loop iterator name used by more than one

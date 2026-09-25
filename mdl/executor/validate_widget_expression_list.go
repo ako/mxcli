@@ -4,6 +4,7 @@ package executor
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -58,8 +59,8 @@ func validateExpressionPropertyLists(w *ast.WidgetV3, locationPrefix string) []l
 					"the value is discarded on write",
 				locationPrefix, w.Name, key),
 			Suggestion: fmt.Sprintf(
-				"write the expression as a quoted string, doubling the quotes inside it: "+
-					"%s: 'if $currentObject/Featured then ''is-featured'' else '''''", key),
+				"write the expression itself, without brackets: "+
+					"%s: if $currentObject/Featured then 'is-featured' else ''", key),
 		})
 	}
 	return out
@@ -72,4 +73,84 @@ func isListValuedExpressionProp(key string) bool {
 		}
 	}
 	return false
+}
+
+// legacyExpressionTextRe recognises the content of the OLD spelling of an
+// expression property: a quoted string holding the expression's text. A class
+// name or class list never contains a `$` (a variable) or a quote character, and
+// does not start with `if`; the old expression text nearly always does one of
+// the three.
+var legacyExpressionTextRe = regexp.MustCompile(`\$|'|^\s*if\b`)
+
+// validateLegacyExpressionText (MDL-WIDGET33) reports the old spelling of
+// DynamicClasses / DynamicCellClass:
+//
+//	dynamicclasses: 'if $currentObject/F then ''a'' else '''''    -- old
+//	dynamicclasses: if $currentObject/F then 'a' else ''            -- now
+//
+// The property holds a Mendix expression written as-is, so a quoted value is a
+// Mendix string (PROPOSAL_first_class_expressions.md slice 2, the same rule as
+// the OData client's credentials). The old spelling still parses and would now
+// store the expression's TEXT as a class-name string — valid, silent, and never
+// the class the author meant. An error, so exec refuses it too; the suggestion
+// is the expression with the quoting removed.
+func validateLegacyExpressionText(w *ast.WidgetV3, locationPrefix string) []linter.Violation {
+	if w == nil || len(w.Properties) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(w.Properties))
+	for k := range w.Properties {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var out []linter.Violation
+	for _, key := range keys {
+		if !isListValuedExpressionProp(key) {
+			continue
+		}
+		s, ok := w.Properties[key].(string)
+		if !ok {
+			continue
+		}
+		if v, bad := legacyExpressionTextViolation(fmt.Sprintf("%s: widget `%s`", locationPrefix, w.Name), key, s); bad {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+func legacyExpressionTextViolation(where, key, expr string) (linter.Violation, bool) {
+	content, isLiteral := mendixStringLiteral(expr)
+	if !isLiteral || !legacyExpressionTextRe.MatchString(content) {
+		return linter.Violation{}, false
+	}
+	return linter.Violation{
+		RuleID:   "MDL-WIDGET33",
+		Severity: linter.SeverityError,
+		Message: fmt.Sprintf(
+			"%s property `%s` is a quoted string holding an expression — %s now takes the expression itself, "+
+				"so this would store the text as a class name", where, key, key),
+		Suggestion: fmt.Sprintf("write the expression without the outer quotes and the doubled ones: %s: %s", key, content),
+	}, true
+}
+
+// validateAlterSetLegacyExpressionText is MDL-WIDGET33 for ALTER PAGE … SET.
+func validateAlterSetLegacyExpressionText(op *ast.SetPropertyOp, locationPrefix string) []linter.Violation {
+	keys := make([]string, 0, len(op.Properties))
+	for k := range op.Properties {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var out []linter.Violation
+	for _, key := range keys {
+		s, ok := op.Properties[key].(string)
+		if !ok || !isListValuedExpressionProp(key) {
+			continue
+		}
+		where := fmt.Sprintf("%s: set on `%s`", locationPrefix, op.Target.Widget)
+		if v, bad := legacyExpressionTextViolation(where, key, s); bad {
+			out = append(out, v)
+		}
+	}
+	return out
 }
