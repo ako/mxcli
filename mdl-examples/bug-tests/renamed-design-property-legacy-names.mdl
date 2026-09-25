@@ -1,0 +1,54 @@
+-- @version: 10.0+
+-- ============================================================================
+-- Design-property keys the theme has RENAMED, reported as "not defined".
+--
+-- Symptom: describe → check --references of FeedbackModule.ShareFeedback_Logo
+--   (Feedback v4.0.2, Mendix 11.13.0, Atlas Core 4.1.3) printed six MDL-WIDGET11
+--   "sets design property "Spacing bottom", which is not defined for this widget
+--   type", plus one for "Align content", and suggested a list of unrelated keys.
+--   mx check on the untouched project reports 0 errors, so the values looked
+--   valid.
+--
+-- Cause: they are not valid — they are Atlas's OLD names. Atlas Core's
+--   design-properties.json keeps them as `oldNames`: "Align content" on the
+--   DivContainer property "Align content (deprecated)", and "Spacing
+--   bottom::Outer medium" on the bottom side of the "M" margin of the Widget
+--   property "Spacing". mx check was silent only because the three pages that
+--   carry them are Excluded. Including the Studio Pro-authored
+--   PopupFailure_Logo makes mxbuild report CE6087 "Design properties have been
+--   renamed in your theme and need to be updated"; so does any live page
+--   written with these keys. The theme reader did not decode `oldNames`, so the
+--   rule could only say "not defined" and could not say what the key became.
+--
+-- Fix: the theme reader decodes `oldNames` (property, option and Spacing side
+--   level). MDL-WIDGET11 still fires for a renamed key — mxbuild refuses it on
+--   a live page — but names the current property, cites CE6087, and suggests
+--   the current spelling (`'Spacing': ['margin-bottom': 'M']`). A key that is
+--   neither current nor an old name keeps the "not defined" message.
+--
+-- Verify: `mxcli check` this with -p on an Atlas Core 4.x project: the excluded
+--   page gets MDL-WIDGET11 "renamed … to "Spacing"" / "… "Align content
+--   (deprecated)"" warnings with the replacement; the live page is clean.
+--   exec it, then `mxcli docker check`: 0 errors (the legacy page is excluded).
+-- ============================================================================
+
+create module BugRenamedDesignProp;
+
+@excluded
+create page BugRenamedDesignProp.LegacyNames (
+  title: 'Legacy Names',
+  layout: Atlas_Core.Atlas_Default
+) {
+  container container1 (designproperties: ['Align content': 'Right align as a row', 'Spacing bottom': 'Outer medium']) {
+    dynamictext text1 (content: 'Legacy', designproperties: ['Spacing top': 'Outer small', 'Font Weight': 'Light'])
+  }
+}
+
+create page BugRenamedDesignProp.CurrentNames (
+  title: 'Current Names',
+  layout: Atlas_Core.Atlas_Default
+) {
+  container container1 (designproperties: ['Align content (deprecated)': 'Right align as a row', 'Spacing': ['margin-bottom': 'M']]) {
+    dynamictext text1 (content: 'Current', designproperties: ['Spacing': ['margin-top': 'S'], 'Weight': 'Light'])
+  }
+}

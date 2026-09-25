@@ -133,6 +133,23 @@ func validateWidgetDesignProps(w *ast.WidgetV3, reg *ThemeRegistry, locationPref
 			continue
 		}
 		if tp == nil {
+			// An OLD name of a current property is not a typo: it is what a page
+			// authored against an earlier theme version stores. It is still
+			// flagged — mxbuild refuses it on a live page with CE6087 — but as a
+			// rename with its current spelling, which "not defined" plus a list
+			// of every key could not give.
+			if r := findRenamedThemeProp(props, p.Key, p.Value); r != nil {
+				out = append(out, linter.Violation{
+					RuleID:   "MDL-WIDGET11",
+					Severity: linter.SeverityWarning,
+					Message: fmt.Sprintf("%s: widget %q (%s) sets design property %q, which the theme has renamed to %q"+
+						" — mxbuild reports CE6087 \"Design properties have been renamed in your theme\" unless the page is excluded",
+						locationPrefix, w.Name, w.Type, p.Key, r.NewKey),
+					Location:   linter.Location{DocumentType: "page", DocumentName: locationPrefix},
+					Suggestion: renamedDesignPropSuggestion(r, p.Value),
+				})
+				continue
+			}
 			out = append(out, linter.Violation{
 				RuleID:   "MDL-WIDGET11",
 				Severity: linter.SeverityWarning,
