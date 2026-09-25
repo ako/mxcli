@@ -1264,6 +1264,9 @@ func validatePluggableWidgetProperties(w *ast.WidgetV3, registry *WidgetRegistry
 		// Recognized real property the .def.json doesn't map to a write path:
 		// don't reject it as unknown, but be honest that a non-default value
 		// won't persist through mxcli yet (issue #643).
+		if knownUnmapped[lower] && persistedByExplicitPass(def.WidgetID, lower) {
+			continue
+		}
 		if knownUnmapped[lower] {
 			out = append(out, linter.Violation{
 				RuleID:   "MDL-WIDGET06",

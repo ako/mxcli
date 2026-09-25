@@ -689,6 +689,10 @@ type rawWidget struct {
 	PhoneColumns   string // e.g. "2", "1"
 	// ComboBox association mode properties
 	CaptionAttribute string // Display attribute for association-mode ComboBox
+	// CaptionExpression is an association-mode ComboBox caption of type
+	// Expression; emitted under its storage keys, which the explicit-property
+	// pass writes back (#664).
+	CaptionExpression string
 	// GroupBox properties
 	Collapsible string // "No", "YesInitiallyExpanded", "YesInitiallyCollapsed"
 	HeaderMode  string // "Div", "H1"-"H6"
