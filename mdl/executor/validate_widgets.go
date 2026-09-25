@@ -168,6 +168,9 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		// every widget kind and needs no definition: the SHAPE is wrong whatever
 		// the widget declares.
 		out = append(out, validateObjectEntryProperties(w, registry, locationPrefix)...)
+		// An expression property written in brackets — the spelling #750
+		// proposes — parses as a list and was discarded on write.
+		out = append(out, validateExpressionPropertyLists(w, locationPrefix)...)
 		// #1062: an action slot holding something that is not an action, which
 		// used to check clean, exec clean, build clean and render dead. Runs for
 		// every widget kind and needs no definition, for the same reason as the
