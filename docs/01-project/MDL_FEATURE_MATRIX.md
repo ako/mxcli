@@ -166,10 +166,11 @@ live distinction is **MPR vs MCP**.
 | **Associations** | Y | Y | Y | N | Y | Y | 01 | Y | N | Y | Y | Y | Y | Y | Y | Y | N |
 | **Enumerations** | Y | Y | Y | Y | Y | Y | 01 | Y | Y | N | Y | Y | Y | N | Y | Y | Y |
 | **Microflows** | Y | Y | Y | Y | Y | N | 02 | Y | Y | Y | Y | Y | Y | Y | Y | Y | Y |
-| **Nanoflows** | Y | Y | Y | Y | Y | N | Y | Y | Y | Y | Y | Y | Y | Y | P | N | N |
+| **Nanoflows** | Y | Y | Y | Y | Y | N | 02b | Y | Y | Y | Y | Y | Y | Y | P | N | N |
+| **Rules** | Y | Y | Y | Y | Y | N | Y | Y | Y | Y | N | Y | Y | N | N | Y | N |
 | **Pages** | Y | Y | Y | N | Y | Y | 03 | Y | Y | Y | Y | Y | Y | Y | Y | Y | Y |
 | **Snippets** | Y | Y | Y | N | Y | Y | 03 | Y | Y | Y | Y | Y | Y | N | Y | Y | Y |
-| **Layouts** | Y | Y | N | N | N | N | N | N | Y | Y | Y | N | Y | N | Y | N | N |
+| **Layouts** | Y | Y | Y | Y | Y | Y | Y | Y | Y | Y | Y | Y | Y | N | Y | Y | N |
 | **Java Actions** | Y | Y | Y | N | Y | N | 07 | Y | Y | Y | Y | Y | Y | N | Y | Y | N |
 | **Constants** | Y | Y | Y | Y | Y | N | 09 | Y | N | P | Y | N | Y | N | P | N | N |
 | **OData Clients** | Y | Y | Y | Y | Y | Y | 10 | Y | Y | P | Y | Y | Y | N | Y | Y | N |
@@ -178,24 +179,25 @@ live distinction is **MPR vs MCP**.
 | **Modules** | Y | Y | Y | N | Y | N | all | Y | Y | Y | Y | Y | Y | N | Y | N | N |
 | **Navigation** | Y | Y | Y | - | - | Y | 11 | N | Y | Y | Y | Y | Y | N | N | Y | N |
 | **Business Events** | Y | Y | Y | N | Y | N | 13 | N | Y | N | Y | N | Y | N | Y | Y | N |
-| **Project Settings** | Y | Y | - | - | - | Y | N | N | Y | Y | Y | N | Y | N | N | Y | P |
-| **Task Queues** | Y | Y | Y | Y | Y | N | 21 | Y | Y | N | N | Y | Y | N | Y | Y | N |
-| **Scheduled Events** | Y | Y | Y | Y | Y | N | 21 | Y | Y | Y | N | Y | Y | N | Y | Y | N |
+| **Project Settings** | Y | Y | - | - | - | Y | 14 | N | Y | Y | Y | N | Y | N | N | Y | P |
+| **Task Queues** | Y | Y | Y | Y | Y | N | Y | Y | Y | N | N | Y | Y | N | Y | Y | N |
+| **Scheduled Events** | Y | Y | Y | Y | Y | N | Y | Y | Y | Y | N | Y | Y | N | Y | Y | N |
 | **Database Connections** | Y | Y | Y | Y | Y | N | 05 | Y | Y | N | N | Y | Y | N | Y | Y | N |
-| **Regular Expressions** | Y | Y | Y | Y | Y | N | N | Y | Y | Y | N | N | Y | N | Y | Y | N |
-| **Validation Rules** | - | Y | Y | - | - | Y | N | Y | N | Y | N | N | Y | N | N | Y | N |
-| **Menus** | - | Y | Y | Y | Y | N | N | Y | N | N | N | N | Y | N | N | Y | N |
-| **Image Collections** | Y | Y | Y | N | Y | N | N | Y | N | N | N | N | Y | N | Y | Y | N |
-| **JavaScript Actions** | Y | Y | Y | N | Y | N | N | Y | Y | Y | N | N | Y | N | Y | N | N |
-| **Published REST Services** | Y | Y | Y | Y | Y | N | N | N | Y | N | P | N | Y | N | N | Y | N |
+| **Regular Expressions** | Y | Y | Y | Y | Y | N | Y | Y | Y | Y | N | N | Y | N | Y | Y | N |
+| **Validation Rules** | - | Y | Y | - | - | Y | Y | Y | N | Y | N | N | Y | N | N | Y | N |
+| **Menus** | - | Y | Y | Y | Y | N | 26 | Y | N | N | N | N | Y | N | N | Y | N |
+| **Image Collections** | Y | Y | Y | N | Y | N | 19 | Y | N | N | N | N | Y | N | Y | Y | N |
+| **JavaScript Actions** | Y | Y | Y | N | Y | N | 07b | Y | Y | Y | N | N | Y | N | Y | N | N |
+| **Published REST Services** | Y | Y | Y | Y | Y | N | 22 | N | Y | N | P | N | Y | N | N | Y | N |
 | **REST Clients** | Y | Y | Y | Y | Y | Y | 06 | Y | Y | P | Y | Y | Y | N | Y | Y | N |
-| **Import Mappings** | Y | Y | Y | N | Y | N | 06 | Y | N | N | P | Y | N | N | N | Y | N |
-| **Export Mappings** | Y | Y | Y | N | Y | N | 06 | Y | N | N | P | Y | N | N | N | Y | N |
+| **Import Mappings** | Y | Y | Y | N | Y | N | 21 | Y | N | N | P | Y | N | N | N | Y | N |
+| **Export Mappings** | Y | Y | Y | N | Y | N | 21 | Y | N | N | P | Y | N | N | N | Y | N |
 | **JSON Structures** | Y | Y | Y | Y | Y | N | 20 | Y | N | N | P | N | N | N | N | N | N |
-| **Workflows** | Y | Y | Y | N | Y | Y | N | Y | Y | Y | N | Y | Y | N | N | Y | N |
-| **AI Agent documents** | Y | Y | Y | N | Y | N | N | Y | N | N | N | Y | Y | N | Y | Y | N |
-| **Pluggable widgets** | Y | Y | Y | - | Y | Y | 03 | Y | N | N | P | Y | Y | N | N | Y | N |
-| **Data Transformers** | Y | Y | Y | N | Y | N | N | Y | N | N | N | N | Y | N | Y | Y | N |
+| **Message Definitions** | Y | Y | Y | Y | Y | Y | 40 | Y | N | N | N | N | Y | N | N | Y | N |
+| **Workflows** | Y | Y | Y | N | Y | Y | 24 | Y | Y | Y | N | Y | Y | N | N | Y | N |
+| **AI Agent documents** | Y | Y | Y | N | Y | N | 27 | Y | N | N | N | Y | Y | N | Y | Y | N |
+| **Pluggable widgets** | Y | Y | Y | - | Y | Y | 30 | Y | N | N | P | Y | Y | N | N | Y | N |
+| **Data Transformers** | Y | Y | Y | N | Y | N | 23 | Y | N | N | N | N | Y | N | Y | Y | N |
 
 ## Security Features
 
@@ -214,7 +216,7 @@ live distinction is **MPR vs MCP**.
 
 | Feature | SHOW | DESCRIBE | CREATE | OR MODIFY | DROP | ALTER | Examples | Tests | Catalog | REFS | LSP | Skills | Help | Viz | REPL | Syntax | Starlark |
 |---------|------|----------|--------|-----------|------|-------|----------|-------|---------|------|-----|--------|------|-----|------|--------|----------|
-| **Folders** | N | N | P | N | N | N | N | P | N | N | P | Y | Y | - | N | N | N |
+| **Folders** | N | N | P | N | N | N | 18 | P | N | N | P | Y | Y | - | N | N | N |
 | **MOVE** | - | - | - | - | - | - | N | P | N | N | P | Y | Y | - | N | Y | N |
 
 ## External SQL & Data
@@ -236,7 +238,7 @@ live distinction is **MPR vs MCP**.
 | **Catalog Query** | `select ... from CATALOG.<table>` | Y | Y | SQL against project metadata |
 | **Cross-References** | `show callers/callees/references/impact/context of` | Y | Y | Requires `refresh catalog full` |
 | **Full-Text Search** | `search '<keyword>'` | Y | Y | Across all strings and source |
-| **Linting** | `mxcli lint -p app.mpr` | Y | Y | 14 built-in + 27 Starlark rules |
+| **Linting** | `mxcli lint -p app.mpr` | Y | Y | 19 built-in + 31 Starlark rules |
 | **Report** | `mxcli report -p app.mpr` | Y | Y | Scored best practices report |
 | **Widget Discovery** | `show widgets [in module] [where ...]` | Y | Y | Experimental |
 | **Widget Update** | `update widgets set ... where ...` | Y | Y | Bulk pluggable widget updates |
@@ -294,7 +296,6 @@ These types are not covered in `help.go` output:
 
 ### Missing Skills
 
-- **Layouts** — Read-only, no skill needed
 - **Constants** — No dedicated skill
 
 ### Missing Tests
@@ -303,7 +304,6 @@ These types are not covered in `help.go` output:
 
 ### Missing Examples
 
-- **Layouts** — Read-only, no example needed
 - **Folders / MOVE** — No dedicated example file
 
 ### Missing REPL Autocomplete
@@ -318,7 +318,6 @@ These types are not covered in `help.go` output:
 
 - **Constants** — No `mxcli syntax constant` topic
 - **Nanoflows** — No dedicated syntax topic (covered by microflow topic)
-- **Layouts** — Read-only, no syntax topic
 - **Modules** — No dedicated syntax topic
 
 ### Missing Starlark APIs
@@ -368,8 +367,6 @@ Document types that exist in Mendix and have **no** MDL surface at all.
 
 | Feature | Notes |
 |---------|-------|
-| **Microflow rules** (`Microflows$Rule`) | Reusable decision logic called from a microflow. Not to be confused with `CREATE VALIDATION RULE`, which is an attribute constraint and *is* supported |
-| **Message definitions** (`MessageDefinitions$MessageDefinitionCollection`) | Message definition documents |
 | **XML schemas** | Imported XSD documents |
 | **Web service publish / consume** | SOAP. `CALL WEB SERVICE` exists in microflows for a stored service; the service documents themselves are not authorable |
 | **Data importer** | Excel/CSV import documents |
