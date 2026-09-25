@@ -501,13 +501,13 @@ top of** `Class:`.
 ```sql
 container heatCell (
   Class: 'ss-heat-cell',
-  DynamicClasses: 'if $currentObject/M01 >= 100 then ''ss-heat--over''
-                   else if $currentObject/M01 >= 80 then ''ss-heat--warn''
-                   else ''ss-heat--ok'''
+  DynamicClasses: if $currentObject/M01 >= 100 then 'ss-heat--over'
+                   else if $currentObject/M01 >= 80 then 'ss-heat--warn'
+                   else 'ss-heat--ok'
 )
 ```
 
-(Note the doubled single-quotes for string literals inside an MDL expression.)
+(Written as-is: plain single quotes inside, no outer quotes around the expression.)
 
 ### Computed dimensions — the bucket-class idiom
 
@@ -526,7 +526,7 @@ bucket and generate one class per bucket**:
 ```
 
 3. Select the class from the bucket:
-   `DynamicClasses: '''ss-pb-'' + toString($currentObject/PctBucket)'`.
+   `DynamicClasses: 'ss-pb-' + toString($currentObject/PctBucket)`.
 
 Trade-off worth noting: this adds one bucket attribute per animated dimension to the
 domain model. Pick a bucket count that matches the visual precision you need (20 → 5%

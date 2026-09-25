@@ -1,0 +1,16 @@
+-- mendixlabs/mxcli#750, PROPOSAL_first_class_expressions.md slice 2 (named
+-- properties): DynamicClasses and a datagrid column's DynamicCellClass hold a
+-- Mendix expression written as-is.
+--
+--   dynamicclasses: if $currentObject/Featured then 'is-featured' else ''
+--   dynamicclasses: 'is-featured'          -- the string: the class is-featured
+--
+-- The old spelling — the expression's text in quotes, with its own quotes
+-- doubled — still parses, and would now store that text as a class name. check
+-- and exec refuse it as MDL-WIDGET33 and name the unquoted expression.
+--
+-- This file must FAIL `mxcli check`.
+
+create page Legacy.P (title: 'P', layout: Atlas_Core.Atlas_Default) {
+  container c1 (dynamicclasses: 'if $currentObject/Featured then ''is-featured'' else ''''') { }
+}
