@@ -108,6 +108,13 @@ func init() {
 		NullFields: []string{"ConditionalVisibilitySettings", "NativeAccessibilitySettings"},
 	})
 	codec.RegisterListMarker("Forms$Title", 2)
+	// Label (Studio Pro's Label widget): a null visibility slot — the one it has;
+	// no NativeAccessibilitySettings — and marker 2 as a widget. Measured on the
+	// three Forms$Label in a stock Administration + Feedback project (11.13.0).
+	codec.RegisterTypeDefaults("Forms$Label", codec.TypeDefaults{
+		NullFields: []string{"ConditionalVisibilitySettings"},
+	})
+	codec.RegisterListMarker("Forms$Label", 2)
 	// Conditional visibility/editability settings (issue #627). When a widget
 	// carries one, applyWidgetBase emits the node; these defaults fill the
 	// sub-fields Studio Pro writes: empty-string Attribute, null SourceVariable, and
@@ -418,6 +425,17 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 
 	case *pages.Title:
 		g := genPg.NewTitle()
+		applyWidgetBase(g, &x.BaseWidget)
+		g.SetCaption(captionToGen(x.Caption))
+		return g, nil
+
+	case *pages.Label:
+		// Studio Pro's Label widget. Stored with exactly Appearance, Caption,
+		// ConditionalVisibilitySettings, Name and TabIndex — measured on the
+		// three in a stock Administration v4.3.2 + Feedback v4.0.2 project at
+		// 11.13.0. gen's Label also declares top-level Class/Style and
+		// AccessibilitySettings; they are left unset, so not written.
+		g := genPg.NewLabel()
 		applyWidgetBase(g, &x.BaseWidget)
 		g.SetCaption(captionToGen(x.Caption))
 		return g, nil
@@ -1706,6 +1724,18 @@ func formSettingsToGen(pageName string) element.Element {
 // `Attribute`, that not one of the 31 documents carries; writing a key Mendix
 // does not store is what makes a document mxbuild accepts and Studio Pro cannot
 // open (CLAUDE.md, "Overlay Writes: Never Invent a Key").
+// dynamicAddressToGen builds a link address read from an attribute at runtime.
+// Pinned against FeedbackModule.PopupSuccess (Feedback v4.0.2): IsDynamic true,
+// Value "", and an AttributeRef with a null EntityRef naming the attribute.
+func dynamicAddressToGen(attrQN string) element.Element {
+	s := genPg.NewStaticOrDynamicString()
+	assignID(s)
+	s.SetIsDynamic(true)
+	s.SetValue("")
+	s.SetAttributeRef(attributeRefToGen(attrQN))
+	return s
+}
+
 func staticAddressToGen(address string) element.Element {
 	s := genPg.NewStaticOrDynamicString()
 	assignID(s)
@@ -1791,7 +1821,11 @@ func clientActionToGen(a pages.ClientAction) (element.Element, error) {
 			linkType = "Web"
 		}
 		g.SetLinkType(linkType)
-		g.SetAddress(staticAddressToGen(x.Address))
+		if x.AddressAttribute != "" {
+			g.SetAddress(dynamicAddressToGen(x.AddressAttribute))
+		} else {
+			g.SetAddress(staticAddressToGen(x.Address))
+		}
 		return g, nil
 	case *pages.SignOutClientAction:
 		// sign_out → Forms$SignOutClientAction. One property, and the reference

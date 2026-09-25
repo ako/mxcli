@@ -400,6 +400,8 @@ func (pb *pageBuilder) buildWidgetV3(w *ast.WidgetV3) (pages.Widget, error) {
 		widget, err = pb.buildDynamicTextV3(w)
 	case "title":
 		widget, err = pb.buildTitleV3(w)
+	case "label":
+		widget, err = pb.buildLabelV3(w)
 	case "button", "actionbutton", "linkbutton":
 		widget, err = pb.buildButtonV3(w)
 	case "tabcontainer":
@@ -1650,6 +1652,27 @@ func (pb *pageBuilder) buildClientActionV3(action *ast.ActionV3) (pages.ClientAc
 		return nfAction, nil
 
 	case "openLink":
+		addressAttr := ""
+		if action.LinkAttribute != "" {
+			// A dynamic address, read from the context object at runtime —
+			// the only variable Studio Pro's "Address: attribute" choice binds.
+			if !strings.EqualFold(action.LinkVariable, "$currentObject") {
+				return nil, mdlerrors.NewValidationf(
+					"open_link %s/%s: a dynamic link address is read from $currentObject — write `open_link $currentObject/%s` inside the data container that holds it",
+					action.LinkVariable, action.LinkAttribute, action.LinkAttribute)
+			}
+			if strings.Contains(action.LinkAttribute, "/") {
+				return nil, mdlerrors.NewValidationf(
+					"open_link $currentObject/%s: an address over an association path is not supported yet — bind an attribute of the data container's own entity",
+					action.LinkAttribute)
+			}
+			if pb.entityContext == "" {
+				return nil, mdlerrors.NewValidationf(
+					"open_link $currentObject/%s: a dynamic link address needs an object to read it from — place the button inside a data container",
+					action.LinkAttribute)
+			}
+			addressAttr = pb.resolveAttributePath(action.LinkAttribute)
+		}
 		return &pages.LinkClientAction{
 			BaseElement: model.BaseElement{
 				ID: model.ID(types.GenerateID()),
@@ -1659,8 +1682,9 @@ func (pb *pageBuilder) buildClientActionV3(action *ast.ActionV3) (pages.ClientAc
 				// only because neither engine could write the action at all.
 				TypeName: "Forms$OpenLinkClientAction",
 			},
-			LinkType: pages.LinkTypeWeb,
-			Address:  action.LinkURL,
+			LinkType:         pages.LinkTypeWeb,
+			Address:          action.LinkURL,
+			AddressAttribute: addressAttr,
 		}, nil
 
 	case "signOut":

@@ -392,6 +392,7 @@ widgetTypeV3
     | ACTIONBUTTON
     | LINKBUTTON
     | TITLE
+    | LABEL                                           // Forms$Label (Studio Pro's Label widget)
     | DYNAMICTEXT
     | STATICTEXT
     | SNIPPETCALL
@@ -643,6 +644,7 @@ actionExprV3
     | MICROFLOW qualifiedName microflowArgsV3?        // MICROFLOW Module.Flow
     | NANOFLOW qualifiedName microflowArgsV3?         // NANOFLOW Module.Flow
     | OPEN_LINK STRING_LITERAL                        // OPEN_LINK 'https://...'
+    | OPEN_LINK VARIABLE SLASH attributePathV3        // OPEN_LINK $currentObject/URL (address read from an attribute)
     | SIGN_OUT                                        // SIGN_OUT
     | COMPLETE_TASK STRING_LITERAL                    // COMPLETE_TASK 'OutcomeName'
     ;
