@@ -62,6 +62,9 @@ func TestBuildWidgetV3_OnChangeSurvivesBuilder(t *testing.T) {
 			h := mkHierarchy(mod)
 			withContainer(h, mod.ID, mod.ID)
 			pb := newPageBuilder(&mock.MockBackend{}, h, "Mod")
+			// Inside a data container: with no entity in scope the binding
+			// has nothing to resolve against and the widget is refused.
+			pb.entityContext = "Mod.Ent"
 
 			w, err := pb.buildWidgetV3(mkOnChangeWidget(mdlType, "w1"))
 			if err != nil {
