@@ -133,10 +133,23 @@ func resolveJavaActionTypeParameterNames(ja *javaactions.JavaAction) {
 			if pt.TypeParameter == "" {
 				pt.TypeParameter = ja.FindTypeParameterName(pt.TypeParameterID)
 			}
+		case *javaactions.ListType:
+			resolveListTypeParameterName(ja, pt)
 		}
 	}
-	if tp, ok := ja.ReturnType.(*javaactions.TypeParameter); ok && tp.TypeParameter == "" {
-		tp.TypeParameter = ja.FindTypeParameterName(tp.TypeParameterID)
+	switch rt := ja.ReturnType.(type) {
+	case *javaactions.TypeParameter:
+		if rt.TypeParameter == "" {
+			rt.TypeParameter = ja.FindTypeParameterName(rt.TypeParameterID)
+		}
+	case *javaactions.ListType:
+		resolveListTypeParameterName(ja, rt)
+	}
+}
+
+func resolveListTypeParameterName(ja *javaactions.JavaAction, l *javaactions.ListType) {
+	if l.TypeParameterID != "" && l.TypeParameter == "" {
+		l.TypeParameter = ja.FindTypeParameterName(l.TypeParameterID)
 	}
 }
 
@@ -182,7 +195,7 @@ func codeActionBasicFromGen(el element.Element) javaactions.CodeActionParameterT
 	case *genCa.ConcreteEntityType:
 		return &javaactions.EntityType{Entity: t.EntityQualifiedName()}
 	case *genCa.ListType:
-		return &javaactions.ListType{Entity: listElementEntity(t)}
+		return listTypeFromGen(t)
 	case *genCa.ParameterizedEntityType:
 		return &javaactions.TypeParameter{TypeParameterID: model.ID(t.TypeParameterRefID())}
 	case *genCa.BooleanType:
@@ -209,7 +222,7 @@ func codeActionReturnTypeFromGen(el element.Element) javaactions.CodeActionRetur
 	case *genCa.ConcreteEntityType:
 		return &javaactions.EntityType{Entity: t.EntityQualifiedName()}
 	case *genCa.ListType:
-		return &javaactions.ListType{Entity: listElementEntity(t)}
+		return listTypeFromGen(t)
 	case *genCa.ParameterizedEntityType:
 		return &javaactions.TypeParameter{TypeParameterID: model.ID(t.TypeParameterRefID())}
 	case *genCa.BooleanType:
@@ -225,13 +238,19 @@ func codeActionReturnTypeFromGen(el element.Element) javaactions.CodeActionRetur
 	}
 }
 
-// listElementEntity extracts the entity qualified name from a gen ListType's
-// element parameter (a ConcreteEntityType).
-func listElementEntity(l *genCa.ListType) string {
-	if ce, ok := l.Parameter().(*genCa.ConcreteEntityType); ok {
-		return ce.EntityQualifiedName()
+// listTypeFromGen converts a gen ListType. Its element is a ConcreteEntityType
+// or, for Studio Pro's "List of <type parameter>", a ParameterizedEntityType —
+// read as Entity "" before #1183, which described as a bare `List` and rewrote
+// as a list of an unnamed entity. The type-parameter name is resolved later by
+// resolveJavaActionTypeParameterNames.
+func listTypeFromGen(l *genCa.ListType) *javaactions.ListType {
+	switch el := l.Parameter().(type) {
+	case *genCa.ConcreteEntityType:
+		return &javaactions.ListType{Entity: el.EntityQualifiedName()}
+	case *genCa.ParameterizedEntityType:
+		return &javaactions.ListType{TypeParameterID: model.ID(el.TypeParameterRefID())}
 	}
-	return ""
+	return &javaactions.ListType{}
 }
 
 // readActionInfoBitmaps fills the four toolbox bitmaps from the sub-document's

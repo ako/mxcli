@@ -1,37 +1,53 @@
 -- ============================================================================
--- Bug #1183: catalog shows a type-parameter return type as a bare name
+-- Bug #1183: java action type parameters — catalog, DESCRIBE and list of T
 -- ============================================================================
 --
 -- Symptom (before fix):
 --   "when I create a Java action with a TypeParameter named String, which is
 --   allowed by Studio, and use that as return type, the catalog will show
 --   'String', similar to the primitive 'String'."
---   java_actions.ReturnType (and java_action_parameters.ParameterType) held the
---   type parameter's own name — 'TypeParameter', 'TypeParEntity', … — with
---   nothing marking it as a type parameter.
+--   Also:
+--   * `entity <String>` was a parse error ("expecting IDENTIFIER"), so such an
+--     action could not be authored or re-created from its DESCRIBE output, and
+--     DESCRIBE printed the bare `String` — which re-parses as the primitive.
+--   * `list of T` for a type parameter T was written as a list of the entity
+--     `.T` (mx check: CE1613 "The selected entity '.T' no longer exists."), and
+--     a Studio Pro "List of <type parameter>" read back as a bare `List`.
 --
 -- After fix:
---   A type-parameter reference is encoded `TypeParameter:<name>`, the entity-type
---   selector `EntityTypeParameter:<name>`; primitives are unchanged.
---
--- MDL cannot declare a type parameter named `String` (`entity <String>` is a
--- parse error), so this script uses Studio Pro's default name. The primitive-
--- named case is covered by TestJavaActionTypeParameterNamedAfterPrimitive.
+--   * Catalog: `TypeParameter:<name>`, `List of TypeParameter:<name>`,
+--     `EntityTypeParameter:<name>`; primitives unchanged.
+--   * MDL: `entity <String>` declares the type parameter; the quoted `"String"`
+--     refers to it, the unquoted `String` stays the primitive. DESCRIBE quotes
+--     a type-parameter name only where the bare name would re-parse as
+--     something else, so its output round-trips.
+--   * `list of T` stores a ParameterizedEntityType element; mx check is clean.
 --
 -- Usage:
 --   mxcli exec mdl-examples/bug-tests/1183-catalog-java-action-type-parameter-return.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe java action BugTest1183.JA_Generic"
 --   mxcli -p app.mpr -c "refresh catalog"
 --   mxcli -p app.mpr -c "select QualifiedName, ReturnType from CATALOG.JAVA_ACTIONS where ModuleName = 'BugTest1183'"
---   Expected: JA_ReturnsTypeParam -> TypeParameter:TypeParameter
---             JA_ReturnsString    -> String
+--   Expected: JA_Generic       -> List of TypeParameter:String
+--             JA_SingleGeneric -> TypeParameter:pEntity
+--             JA_ReturnsString -> String
 -- ============================================================================
 
 create module BugTest1183;
 
-create java action BugTest1183.JA_ReturnsTypeParam (
-  EntityType: entity <TypeParameter> not null,
-  Input: TypeParameter
-) returns TypeParameter as $$
+create java action BugTest1183.JA_Generic (
+  EntityType: entity <String> not null,
+  Input: "String",
+  Items: list of "String",
+  Text: String
+) returns list of "String" as $$
+  return Items;
+$$;
+
+create java action BugTest1183.JA_SingleGeneric (
+  EntityType: entity <pEntity> not null,
+  Input: pEntity
+) returns pEntity as $$
   return Input;
 $$;
 

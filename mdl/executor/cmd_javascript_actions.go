@@ -263,12 +263,8 @@ func formatJavaScriptActionType(t javaactions.CodeActionParameterType) string {
 	if t == nil {
 		return "Object"
 	}
-	// EntityTypeParameterType → ENTITY <name> syntax
-	if etp, ok := t.(*javaactions.EntityTypeParameterType); ok {
-		if etp.TypeParameterName != "" {
-			return "entity <" + etp.TypeParameterName + ">"
-		}
-		return "entity <>"
+	if s, ok := formatCodeActionTypeParameterRef(t); ok {
+		return s
 	}
 	return t.TypeString()
 }

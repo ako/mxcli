@@ -138,11 +138,20 @@ func jsActionFromRaw(raw map[string]any, id, containerID model.ID) *types.JavaSc
 			if pt.TypeParameterID != "" && pt.TypeParameter == "" {
 				pt.TypeParameter = jsa.FindTypeParameterName(pt.TypeParameterID)
 			}
+		case *types.ListType:
+			if pt.TypeParameterID != "" && pt.TypeParameter == "" {
+				pt.TypeParameter = jsa.FindTypeParameterName(pt.TypeParameterID)
+			}
 		}
 	}
-	if tp, ok := jsa.ReturnType.(*types.TypeParameter); ok {
-		if tp.TypeParameterID != "" && tp.TypeParameter == "" {
-			tp.TypeParameter = jsa.FindTypeParameterName(tp.TypeParameterID)
+	switch rt := jsa.ReturnType.(type) {
+	case *types.TypeParameter:
+		if rt.TypeParameterID != "" && rt.TypeParameter == "" {
+			rt.TypeParameter = jsa.FindTypeParameterName(rt.TypeParameterID)
+		}
+	case *types.ListType:
+		if rt.TypeParameterID != "" && rt.TypeParameter == "" {
+			rt.TypeParameter = jsa.FindTypeParameterName(rt.TypeParameterID)
 		}
 	}
 
@@ -180,7 +189,12 @@ func parseCodeActionReturnTypeRaw(raw map[string]any) types.CodeActionReturnType
 		if entity := jsExtractString(raw["Entity"]); entity != "" {
 			lt.Entity = entity
 		} else if param := jsToMap(raw["Parameter"]); param != nil {
-			lt.Entity = jsExtractString(param["Entity"])
+			// "List of <type parameter>" holds a ParameterizedEntityType (#1183).
+			if jsExtractString(param["$Type"]) == "CodeActions$ParameterizedEntityType" {
+				lt.TypeParameterID = model.ID(jsTypeParamPointer(param))
+			} else {
+				lt.Entity = jsExtractString(param["Entity"])
+			}
 		}
 		return lt
 	case "CodeActions$FileDocumentType":
@@ -250,7 +264,12 @@ func parseCodeActionParameterTypeRaw(raw map[string]any) types.CodeActionParamet
 		if entity := jsExtractString(raw["Entity"]); entity != "" {
 			lt.Entity = entity
 		} else if param := jsToMap(raw["Parameter"]); param != nil {
-			lt.Entity = jsExtractString(param["Entity"])
+			// "List of <type parameter>" holds a ParameterizedEntityType (#1183).
+			if jsExtractString(param["$Type"]) == "CodeActions$ParameterizedEntityType" {
+				lt.TypeParameterID = model.ID(jsTypeParamPointer(param))
+			} else {
+				lt.Entity = jsExtractString(param["Entity"])
+			}
 		}
 		return lt
 	case "CodeActions$StringTemplateParameterType":

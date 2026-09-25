@@ -87,6 +87,10 @@ return true;
 $$;
 ```
 
+A list of type-parameter instances is `list of pEntity` (Studio Pro's "List of <type parameter>").
+
+**A type parameter named after a primitive** (`String`, `Integer`, … — Studio Pro allows it): declare it with `entity <String>`, and refer to it **quoted** — `"String"`, `list of "String"`. Unquoted `String` is always the primitive. DESCRIBE quotes such names for you, so its output re-creates the action.
+
 Type parameter names can be mixed with regular parameter types:
 
 ```mdl
@@ -203,6 +207,7 @@ message saying so.
 | `enum Module.EnumName` | Enumeration type |
 | `enumeration(Module.EnumName)` | Enumeration type (alternative syntax) |
 | `pEntity` (type param ref) | Type parameter reference (entity instance) |
+| `list of pEntity` | List of type-parameter instances |
 
 ### Examples
 

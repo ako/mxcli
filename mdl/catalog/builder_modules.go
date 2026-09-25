@@ -362,8 +362,9 @@ func (b *Builder) buildEnumerations() error {
 // (mendixlabs/mxcli#1183). The prefix follows the `Kind:Name` shape
 // microflows_data.ReturnType already uses; no primitive contains a colon.
 //
-//	TypeParameter:T        — an object of the entity bound to T
-//	EntityTypeParameter:T  — the entity-type selector that binds T
+//	TypeParameter:T          — an object of the entity bound to T
+//	List of TypeParameter:T  — a list of them
+//	EntityTypeParameter:T    — the entity-type selector that binds T
 //
 // DESCRIBE keeps the bare name, which is its MDL syntax; this is the catalog's
 // encoding only.
@@ -373,6 +374,10 @@ func catalogCodeActionType(t interface{ TypeString() string }) string {
 		return "TypeParameter:" + tp.TypeParameter
 	case *javaactions.EntityTypeParameterType:
 		return "EntityTypeParameter:" + tp.TypeParameterName
+	case *javaactions.ListType:
+		if tp.TypeParameter != "" {
+			return "List of TypeParameter:" + tp.TypeParameter
+		}
 	}
 	return t.TypeString()
 }

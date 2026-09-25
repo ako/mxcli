@@ -38,6 +38,11 @@ func TestJavaActionTypeParameterNamedAfterPrimitive(t *testing.T) {
 				Name:          "Input",
 				ParameterType: &javaactions.TypeParameter{TypeParameterID: "tp-string", TypeParameter: "String"},
 			},
+			{
+				BaseElement:   model.BaseElement{ID: "p-list"},
+				Name:          "Items",
+				ParameterType: &javaactions.ListType{TypeParameterID: "tp-string", TypeParameter: "String"},
+			},
 		},
 	}
 	primitive := &javaactions.JavaAction{
@@ -100,6 +105,7 @@ func TestJavaActionTypeParameterNamedAfterPrimitive(t *testing.T) {
 		"Text":       "String",
 		"Input":      "TypeParameter:String",
 		"EntityType": "EntityTypeParameter:String",
+		"Items":      "List of TypeParameter:String",
 	}
 	for name, w := range want {
 		if params[name] != w {

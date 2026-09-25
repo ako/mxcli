@@ -109,7 +109,7 @@ dataType
     | CURRENCY_TYPE
     | FLOAT_TYPE
     | STRINGTEMPLATE_TYPE LPAREN templateContext RPAREN  // StringTemplate(Sql) etc.
-    | ENTITY LESS_THAN IDENTIFIER GREATER_THAN         // ENTITY <pEntity> type parameter declaration
+    | ENTITY LESS_THAN identifierOrKeyword GREATER_THAN  // ENTITY <pEntity>; a keyword name (String) is legal in Studio Pro, #1183
     | ENUM_TYPE qualifiedName
     | ENUMERATION LPAREN qualifiedName RPAREN  // Enumeration(Module.Enum) syntax
     | LIST_OF qualifiedName
