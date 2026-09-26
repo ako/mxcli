@@ -918,12 +918,16 @@ alter configuration 'Default' set constant Shop.ApiUrl = 'https://test.example.c
 
 These change the meaning of text that parses today, or they reject text that is accepted today. They must land before beta or never.
 
+**Changes of meaning and new rejections are tied to the language header, as Rust editions do** (§6, §10). A script that starts with `mdl 1;` gets the new meaning. A script without the header keeps the alpha meaning and gets a warning on every construct whose meaning differs. `fmt --upgrade` adds the header and rewrites those constructs. This applies to items 2–6 below. Existing scripts therefore never change meaning silently, and no user has to notice a one-week warning.
+
+Items 7–8 (removing forms that never worked or mis-store) and item 9 (describe output) do not depend on the header. Item 1 is an alias, so it does not either.
+
 1. **`create or modify` becomes the one idempotent create, with minimal-change semantics (R1).** `or replace` becomes an alias. Only the view-entity path gives the two names different behaviour, so aliasing is safe only once view entities also use the identity-carrying rewrite. The no-op guarantee changes behaviour for every document type that is rewritten today when nothing changed.
 2. **`retrieve … limit 1`.**
    - Today it binds an **object** (the Mendix "first" range), so to any SQL reader it means something different from what it does.
    - Import mappings already solved this with `first | limit n`, and their own grammar comment argues that a list of one and an object "cannot share syntax".
    - Adopt `retrieve $x from … where … first;` for an object, so that `limit 1` means a list of one.
-   - Sequence: in the release before beta, warn on a bare `limit 1` and have `describe` emit `first`. At beta, flip the meaning.
+   - Tied to the header. Under `mdl 1;`, `limit 1` is a list of one. Without the header, it keeps its old meaning (an object) and warns. `describe` always emits `first` or `limit n` together with the header, so its output is never ambiguous.
 3. **Make `set` mandatory, and turn list operations into statements that mirror Studio Pro's activities** (§4, Microflows), removing the `$x = find(...)` ambiguity.
 4. **Unknown property keys become errors.**
 5. **`;` becomes required**, and `/` is removed.
@@ -932,7 +936,7 @@ These change the meaning of text that parses today, or they reject text that is 
 8. **Remove `float`, `currency` and `date`** as attribute types. They are accepted and mis-stored today.
 9. **Omit synthetic widget names and derived layout** from describe. This changes describe output, which people have already committed to repos.
 
-Everything else in this document can land after an alias period.
+Everything else in this document can land after an alias period. Prior art for the whole proposal, and where it is new, is in §10.
 
 ## 6. Migration mechanism
 
@@ -940,9 +944,10 @@ The language has no version marker today. `version-aware-mdl.md` proposes `set v
 
 1. **Deprecated aliases keep parsing** and emit a warning with a stable code (`MDL-DEPR001`, …) that names the canonical form. `describe` never emits a deprecated form.
 2. **`mxcli fmt --upgrade`** rewrites every deprecated form to its canonical form. This is mechanical for every alias in §3–§4, and it is what makes consolidation cheap for users.
-3. **An optional language header**, `mdl 1;`, as the first statement.
+3. **An optional language header**, `mdl 1;`, as the first statement (decided, §7).
    - `describe` and `fmt` emit it.
-   - With no header, a script gets the latest language version.
+   - **With no header, a script gets the alpha meaning (`mdl 0`) plus warnings**, never the latest. This matches the precedents: Rust treats a crate with no edition as the oldest edition, and Go treats a module with no `go` line as the oldest version. The meaning of a script never depends on which mxcli release happens to run it.
+   - Under `mdl 1`, the §5 changes of meaning and new rejections apply. Under `mdl 0` they are warnings.
    - After beta, a change that is not backwards compatible bumps the number, and the visitor gates removed aliases on it: under `mdl 1` they warn, under `mdl 2` they are refused.
    - It is independent of the Mendix target version.
 4. **Skills, `mxcli syntax` and the quick reference** are regenerated from, or checked against, describe output. They should not be hand-maintained. The skill examples already disagree with the grammar in several places, such as `DELETE_BEHAVIOR PREVENT` and `rename … as`.
@@ -1201,14 +1206,14 @@ Phase 0  safety net + bugs ──┬──> Phase 1  decisions + deprecation mac
 
 ### Schedule (weekly releases, beta in about four weeks)
 
-Every break that has a warning period must ship its warning **at least one release before beta**. So all §5 warnings go out in week 2 at the latest, and the deprecation registry (1.2) has to land in week 1.
+Changes of meaning are tied to the `mdl 1;` header (§5), so no existing script breaks on a given date. The schedule pressure is about having `mdl 1` complete, documented and emitted by beta. The deprecation registry (1.2) and the header (1.5) still land in week 1, because everything in week 2 builds on them.
 
 | Release | Lands | Parallel track (Phase 4) |
 |---|---|---|
 | **Week 1** | ADR (1.1); deprecation registry (1.2); `mdl 1;` (1.5); round-trip harness and PedApp fixture (0.1, 0.2); first bug fixes (0.3–0.5); interim skill guidance (0.6) | generic `alter` skeleton (4.1); `mfmutator` target resolver (4.2a) |
-| **Week 2** | **All §5 warnings ship:** `or replace` alias, bare `limit 1`, missing `;` and `/`, the old list-operation function form, optional `set`. New forms parse alongside the old ones (2.1, 2.4, 2.5). `fmt --upgrade` (1.3). | graph splice and placement (4.2b, 4.2c) |
+| **Week 2** | **The `mdl 1` semantics ship.** New forms parse alongside the old ones (2.1, 2.4, 2.5). Scripts without the header warn on every construct whose meaning differs. `fmt --upgrade` adds the header and rewrites (1.3). | graph splice and placement (4.2b, 4.2c) |
 | **Week 3** | Canonical `describe` (2.6). Phase 3 canonical forms added to the grammar, with the old forms as aliases. Conformance gate (1.4). Dead grammar removed (2.3). | `insert`, `replace`, `drop`; diff-then-patch `create or modify` for microflows (4.2e, 4.2g) |
-| **Week 4: beta** | Breaks take effect: `limit 1` means a list; `;` required; unknown keys and `\` escapes are errors (2.2, 2.5) | 4.2 acceptance test on `VAL_Feedback` passes |
+| **Week 4: beta** | `mdl 1` is the documented language, and `describe`/`fmt` emit it. Headerless scripts keep working, with warnings (2.2, 2.5). | 4.2 acceptance test on `VAL_Feedback` passes |
 
 **Risk.** Four weeks is tight for 4.2, which is the largest item and the riskiest code (the graph splice). If its acceptance test is not green in week 4, choose explicitly between slipping beta by a week or two, and shipping beta with `alter microflow` marked experimental while the microflow no-op guarantee stays on the gate. Phase 3's aliases and Phase 5 continue after beta; only the canonical *forms* have to be in the grammar by then.
 
@@ -1241,10 +1246,10 @@ Each change breaks existing text, so each one lands with a registry entry, an `f
 | # | Item | Size | Warning period | Done when |
 |---|---|---|---|---|
 | 2.1 | **R1: `create or modify` is the keyword; `or replace` becomes an alias.** View entities get an identity-carrying rewrite instead of delete-and-recreate; `if not exists` works on every type. The no-op guarantee (an unchanged definition writes nothing) is enforced by the 0.1 harness for every type except microflows and nanoflows, which need 4.2. | M | `or replace` warns | GUID preserved on a view-entity replace (a test with a GUID != `$ID` control); re-running unchanged `describe` output writes no unit |
-| 2.2 | **Strictness:** unknown or mis-shaped property keys are errors (REST, agents and business events first, then everywhere); `;` required; `/` removed; `\` is no longer an escape. | M | `;` and `/` warn for one release; unknown keys and `\` break immediately | parse tests |
+| 2.2 | **Strictness:** unknown or mis-shaped property keys are errors (REST, agents and business events first, then everywhere); `;` required; `/` removed; `\` is no longer an escape. | M | tied to the header: errors under `mdl 1`, warnings without it | parse tests under both versions |
 | 2.3 | **Dead grammar removed:** `grant … on workflow`, `case … else`, `text`/`statictext`/`legacydatagrid`, `throw` (if not fixed in 0.3). | S | none (they never worked) | parse errors with a hint |
 | 2.4 | **Microflow assignment and list operations.** `set` becomes mandatory. List operations and aggregates become one statement per Studio Pro activity (`$A = filter $L by …`, `$B = filter $L where …`, `$n = count $A`; the full table is in §4), so nesting no longer parses. The `find`/`contains` ambiguity disappears; MDL-LISTOP02 becomes unreachable and is retired. The first PR checks the keywords against Studio Pro's dialog labels. | L | old function form warns (except `find`/`contains`, which can't) | `write-microflows` skill and examples migrated by `fmt --upgrade` |
-| 2.5 | **`retrieve … first` vs `limit 1`.** In release N, `describe` emits `first` and a bare `limit 1` warns. In release N+1, the beta, `limit 1` means a list. | M | one release | MDL-RETRIEVE01 retired |
+| 2.5 | **`retrieve … first` vs `limit 1`.** Under `mdl 1`, `limit 1` means a list and `first` an object. Without the header, the old meaning plus a warning. `describe` emits `first` together with the header. | M | tied to the header | MDL-RETRIEVE01 retired |
 | 2.6 | **Canonical `describe` (R12), one area per PR:** omit derived layout (extend the `@start` derived-vs-authored rule to `@position`/`@curve`/`@anchor`); omit defaults; no synthetic widget names (make the name optional in `widgetV3`, address grid columns explicitly); fold `join`/`merge` back into `case` and fall-through handlers; emit `elsif`. | L | none (output change) | the harness in 0.1 stays green; PutGet holds per area |
 
 **Beta gate:**
@@ -1316,3 +1321,29 @@ Order, by how many existing scripts each item touches:
 - **Grammar changes ripple into generated artefacts:** LSP completions (`lsp_completions_gen.go`), `keyword_coverage_test.go`, the VS Code extension and the embedded skills. Each grammar PR runs `make build`, which regenerates them, and `make sync-skills`.
 - **The graph splice (4.2b) is the riskiest code.** It must never rewrite an `$ID` without rewriting every reference to it (CLAUDE.md rule 1), and its tests must use a Studio Pro-authored flow, because an mxcli-created flow cannot show identity loss (GUID == `$ID`).
 - **Scope creep in Phase 3.** Hold each rule to its recipe; anything beyond renaming belongs in its own proposal.
+
+## 10. Prior art: what is proven and what is new
+
+Nearly every construct in this proposal has a well-proven precedent. The ADR's *alternatives considered* can cite this table.
+
+| Proposed construct | Precedent | How close |
+|---|---|---|
+| `create`/`alter`/`drop`/`list`/`describe` | SQL DDL | exact (ADR-0003) |
+| `create or modify` that changes only what differs | `kubectl apply`, Terraform plan/apply, declarative schema tools (Atlas, Skeema) | close. The principle is proven; the difficulty is in the implementation (see below). |
+| Declarative modify as diff-then-patch (§8.3) | React reconciliation, Kubernetes controllers, Terraform | close |
+| Content addressing (`after $Lines`) | React's `key` prop | close. React needs keys because matching by position produces wrong pairs; `canon/transplant.go` measured exactly that (§8.1). The output variable is the key. |
+| `@base` optimistic locking | HTTP `ETag`/`If-Match`, Kubernetes `resourceVersion` | exact in principle |
+| Three-way merge (after beta) | `kubectl apply` (it keeps the last applied configuration as an annotation for this), git | very close |
+| Dry run in CI as the drift check | `terraform plan -detailed-exitcode` | exact |
+| `()` properties, `{}` children (R2) | QML, SwiftUI, Flutter, HCL | close; QML is almost the page syntax |
+| `:` declares, `=` binds (R3/R4) | Kotlin and Swift (`name: Type` vs `= value`), Python keyword arguments | close |
+| Pattern-based bulk patches (§8.3) | Coccinelle (Linux kernel), OpenRewrite (Java), ast-grep, codemods | proven at large scale on code |
+| Deprecation aliases, `fmt --upgrade`, header-tied changes of meaning | `go fix` with the `go` line in go.mod; Rust editions with `cargo fix --edition` | exact |
+| One canonical form, emitted by the tool (R12) | `gofmt`, `terraform fmt`, Prettier | exact |
+| The two round-trip laws (§8.4) | *lenses*, i.e. bidirectional transformations (Foster, Pierce et al.; Boomerang); Terraform's "no changes after import" | exact in theory, well known in practice |
+
+**What is new or less proven, and therefore where the risk sits:**
+
+1. **Patching a flowchart, not a tree.** Pattern-based patching is proven on code syntax trees. Splicing into a diagram graph, with sequence flows, merges and layout, has no textual precedent we know of; BPMN modelers do it internally, behind a UI. This is plan item 4.2b, the riskiest code in the plan, and its acceptance test runs on a Studio Pro-authored flow.
+2. **Writing the version stamp back into the source.** Most tools keep this state separately: Terraform's state file, lockfiles, the Kubernetes server. A tool that rewrites your script is unusual, and some users will object. The mitigations: `@base` is optional; `exec` only updates stamps that are already there; projects driven entirely by MDL never use it.
+3. **Round-tripping a model that MDL cannot fully express.** The principle is proven, but Terraform's long history of "perpetual diff" provider bugs shows how hard the practice is. Lens theory says a view that does not capture everything needs a *complement*: the hidden part carried alongside. The proposed `preserved` placeholder (§8.4) is that complement. The 7 losses in 12 writes measured in §8.1 are this problem, so the round-trip harness (0.1) is a precondition, not an optional extra.
