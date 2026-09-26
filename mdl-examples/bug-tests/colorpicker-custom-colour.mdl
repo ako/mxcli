@@ -1,0 +1,46 @@
+-- ============================================================================
+-- MDL-WIDGET12 called every custom colour on a ColorPicker "not an allowed value"
+-- ============================================================================
+--
+-- Symptom: `check` warned MDL-WIDGET12 "has value \"#ff0000\", which is not an
+-- allowed value" on any ColorPicker value outside its swatches — while the
+-- builder writes that value as Forms$CustomDesignPropertyValue and mxbuild
+-- accepts it (0 errors, Mendix 11.13.0, Atlas Core 4.1.3).
+--
+-- What a custom colour actually does was read off the compiled page module
+-- (PAD web/dist/pages/<page>.js):
+--   * the ColorPicker names a CSS `property` (Atlas: "Border color" →
+--     border-color, layout grid "Background color" → --layoutgrid-column-bg)
+--     → the value is emitted verbatim: style:{borderColor:"#ff0000"}. A CSS
+--     colour works; 'banana' is emitted too and the browser discards it.
+--   * it names none (Label/GroupBox "Style", container "Background color",
+--     "Shade", DynamicText "Color") → nothing is emitted, whatever the value.
+-- mxbuild accepts any string on both ('banana', '#zzzzzz', ' ' — 0 errors).
+--
+-- Fix: on a ColorPicker, MDL-WIDGET12 now accepts a swatch, or a CSS colour
+-- where the theme gives custom colours a property; it names the swatch for a
+-- casing slip or a former swatch name, says "not rendered" where there is no
+-- property, and "not a CSS colour" otherwise. Dropdown / ToggleButtonGroup
+-- values are unchanged — off-list is still "not an allowed value" (the builder
+-- writes an Option there; mxbuild refuses it with CE6085).
+--
+-- Verify: `mxcli check --references` — cBorderHex, cBorderRgb, cBorderName and
+-- lblSwatch are clean; cBorderBanana warns "not a CSS colour", lblCustom "not
+-- rendered", lblCase names "Brand Primary". exec, then `mxcli docker check` —
+-- 0 errors.
+-- ============================================================================
+
+create or replace page MyFirstModule.ColorPickerCustom_Test
+( Title: 'ColorPicker custom colours', Layout: Atlas_Core.Atlas_Default )
+{
+  container cBorderHex (DesignProperties: ['Border color': '#ff0000']) { dynamictext t1 (Content: 'hex') }
+  container cBorderRgb (DesignProperties: ['Border color': 'rgb(0 128 0)']) { dynamictext t2 (Content: 'rgb') }
+  container cBorderName (DesignProperties: ['Border color': 'rebeccapurple']) { dynamictext t3 (Content: 'name') }
+  container cBorderBanana (DesignProperties: ['Border color': 'banana']) { dynamictext t4 (Content: 'banana') }
+  label lblSwatch (Content: 'swatch', DesignProperties: ['Style': 'Brand Primary'])
+  label lblCustom (Content: 'custom', DesignProperties: ['Style': '#ff0000'])
+  label lblCase (Content: 'case', DesignProperties: ['Style': 'brand primary'])
+}
+/
+
+describe page MyFirstModule.ColorPickerCustom_Test;

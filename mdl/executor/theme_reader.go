@@ -19,6 +19,13 @@ type ThemeProperty struct {
 	Description string        `json:"description"`
 	Class       string        `json:"class"`   // For Toggle type: the CSS class toggled
 	Options     []ThemeOption `json:"options"` // For Dropdown/ColorPicker/ToggleButtonGroup
+	// Property is the CSS property (or custom property) a ColorPicker writes a
+	// CUSTOM colour to — "border-color", "--layoutgrid-column-bg". Without one a
+	// custom colour has nowhere to go: mxbuild accepts it and the compiled page
+	// carries neither a class nor a style for it (measured on Atlas Core 4.1.3's
+	// Label "Style", Mendix 11.13.0). With one, the value is emitted verbatim as
+	// an inline style (`style:{borderColor:"#ff0000"}`).
+	Property string `json:"property"`
 	// MultiSelect marks a property whose value is a SET of the declared options
 	// rather than one of them — Atlas declares it on `Hide on` (Phone/Tablet/
 	// Desktop). It changes the STORED SHAPE, not just the arity: Mendix writes a
