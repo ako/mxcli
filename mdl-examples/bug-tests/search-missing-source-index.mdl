@@ -1,0 +1,31 @@
+-- ============================================================================
+-- search: say when the source index is missing
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   `search 'keyword'` (MDL and `mxcli search`) needs only a FULL catalog,
+--   which indexes string literals but not MDL source. On any project where
+--   `refresh catalog full source` had never been run, CATALOG.SOURCE was
+--   empty and the source half of every search came back empty with no word —
+--   an agent read "no source matches" as "no microflow mentions this". When
+--   strings DID match, there was no hint at all; when nothing matched, the tip
+--   printed regardless of whether the index existed.
+--
+-- After fix:
+--   A catalog whose recorded build mode is below "source" prints, on stderr:
+--     Warning: the source index (CATALOG.SOURCE) is not built (catalog mode: full) ...
+--     Build it with: refresh catalog full source   (CLI: mxcli -p ... -c "...")
+--   A source-mode catalog never warns, even with zero matches (keyed off the
+--   build mode, not the row count). `--format json` stdout stays pure JSON.
+--
+-- Run against any project (needs a connection; the catalog is built on demand):
+--   mxcli -p app.mpr -c "refresh catalog full"
+--   mxcli -p app.mpr -c "search 'retrieve'"            -- expect the warning on stderr
+--   mxcli -p app.mpr -c "refresh catalog full source"
+--   mxcli -p app.mpr -c "search 'retrieve'"            -- expect Source Matches, no warning
+--   mxcli search -p app.mpr "zzqq_no_match" --format json   -- stdout: []  stderr: nothing
+-- ============================================================================
+
+refresh catalog full;
+
+search 'retrieve';
