@@ -1,6 +1,6 @@
 # ADR-0010: MDL has one canonical form, governed by twelve syntax rules
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-09-26
 - **Related**: extends [ADR-0003](0003-mdl-is-sql-shaped.md); [PROPOSAL_mdl_beta_syntax_freeze.md](../11-proposals/PROPOSAL_mdl_beta_syntax_freeze.md) §3, §4, §7, §10; [ADR-0011](0011-mdl-language-versioning.md), [ADR-0012](0012-mdl-first-and-data-first-editing.md); PR ako/mxcli#702
 

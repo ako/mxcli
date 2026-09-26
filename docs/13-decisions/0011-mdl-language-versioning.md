@@ -1,6 +1,6 @@
 # ADR-0011: MDL evolves through deprecation aliases and a language header; meaning changes only across versions
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-09-26
 - **Related**: [ADR-0010](0010-mdl-canonical-syntax-rules.md); [PROPOSAL_mdl_beta_syntax_freeze.md](../11-proposals/PROPOSAL_mdl_beta_syntax_freeze.md) §5, §6, §9, §10; PR ako/mxcli#702
 

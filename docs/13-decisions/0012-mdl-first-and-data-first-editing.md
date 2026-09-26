@@ -1,6 +1,6 @@
 # ADR-0012: MDL-first and data-first editing share one syntax and one patch engine
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-09-26
 - **Related**: builds on [ADR-0008](0008-identity-and-idempotence.md); [ADR-0010](0010-mdl-canonical-syntax-rules.md) (R1, R2, R12); [PROPOSAL_mdl_beta_syntax_freeze.md](../11-proposals/PROPOSAL_mdl_beta_syntax_freeze.md) §8, §9, §10; PR ako/mxcli#702
 
@@ -63,6 +63,7 @@ ADR-0008 made storage skip unchanged units. It cannot help when the rebuilt docu
 - **The graph splice is new.** Patching a flowchart graph (sequence flows, merges, layout) has no textual precedent we know of. It is the riskiest code in the plan, and it must be tested on Studio Pro-authored flows, because mxcli-authored ones cannot show identity loss.
 - **Diff-then-patch needs a stable way to match elements.** Where an activity has no output variable or caption, matching falls back to its statement signature. That is the same weakness React has for list items without `key` props.
 - **`@base` means `exec` rewrites source files**, which is unusual (most tools keep this state separately), and some users will object. It is optional and only updates stamps already present.
+- **CI/CD pipelines may not support it.** Pipelines usually check out read-only and do not commit back. So a stamp that `exec` updates in CI is lost, and a stale stamp could make the next apply refuse. In pipelines, the dry-run check (decision 5, second bullet) is the drift guard, and `exec` must be able to skip rewriting stamps.
 - **A `preserved` placeholder in `describe` output is opaque to readers and to LLMs.** Each occurrence is a gap in what MDL can express, and must be tracked down.
 - The whole-document rebuild paths (`UpdateMicroflow` and others) have to be replaced, not patched.
 
@@ -70,6 +71,7 @@ ADR-0008 made storage skip unchanged units. It cannot help when the rebuilt docu
 
 - The guidance for agents is "choose the mode by who owns the document". It becomes skill text, and eventually an enforced check through `@base`.
 - Three-way merge and per-element locking are natural extensions, deferred until after beta.
+- **The `@base` mechanism (decision 5, first bullet) is explicitly provisional.** It was accepted with the reservation that users may dislike stamps in their scripts and that CI/CD pipelines may not support them. It is not on the beta gate. Before it is implemented, it is validated with users and in a pipeline. If it fails that test, a new ADR supersedes this decision with an alternative that keeps the lock outside the script. The candidates are a committed state file (Terraform) and the base stored alongside the model (Kubernetes' last-applied annotation). The rest of this ADR does not depend on the choice.
 
 ## Alternatives considered
 

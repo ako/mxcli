@@ -1,13 +1,13 @@
 ---
 title: MDL Language Critique and Beta Syntax Freeze
-status: draft
+status: accepted
 date: 2026-09-26
 decisions: [ADR-0010, ADR-0011, ADR-0012]
 ---
 
 # Proposal: MDL Language Critique and Beta Syntax Freeze
 
-**Status:** Draft
+**Status:** Accepted (ADR-0010, ADR-0011 and ADR-0012 accepted 2026-09-26)
 **Date:** 2026-09-26
 **Related:** [ADR-0003](../13-decisions/0003-mdl-is-sql-shaped.md); resulting decisions [ADR-0010](../13-decisions/0010-mdl-canonical-syntax-rules.md), [ADR-0011](../13-decisions/0011-mdl-language-versioning.md), [ADR-0012](../13-decisions/0012-mdl-first-and-data-first-editing.md); [design-mdl-syntax skill](../../.claude/skills/design-mdl-syntax.md), [PROPOSAL_workflow_microflow_syntax_alignment.md](PROPOSAL_workflow_microflow_syntax_alignment.md)
 
@@ -1070,7 +1070,7 @@ create or modify persistent entity Shop.Order (
 | `@base` matches | exists | modify, and `exec` updates `@base` |
 | `@base` differs | exists | refused: "changed since you read it"; use `alter`, re-`describe`, or `--force` |
 
-**`@base` is optional.** A statement without it behaves exactly as it does today.
+**`@base` is optional, and provisional** (ADR-0012). A statement without it behaves exactly as it does today. Users may dislike stamps in their scripts, and CI/CD pipelines, which usually check out read-only and do not commit back, may not support a tool that rewrites them. It is therefore validated with users and in a pipeline before it is built. If it fails, it is replaced by a lock kept outside the script: a committed state file, or the base stored alongside the model.
 
 **2. A dry run of all scripts must report no changes: for projects driven entirely by MDL.**
 
@@ -1304,7 +1304,7 @@ Order, by how many existing scripts each item touches:
 | | e. **Operations,** in order: `insert after`/`before` → `replace` → `drop` → `set` (expression, caption, `on error`) → `add`/`drop parameter`. | | | |
 | | f. **Both backends:** the modelsdk engine and `--mcp` (the Studio Pro MCP backend), or an explicit "not supported by this backend" error. | | | |
 | | g. **Declarative `create or modify` as diff-then-patch:** match the declared flow against the stored one (by statement signature and output variable, as in 4.2a), derive the minimal set of insert/replace/drop operations, and apply them with the splice from 4.2b. An unchanged definition yields an empty patch and no write. This replaces `UpdateMicroflow`'s whole-document rebuild. | | | |
-| 4.3 | **Drift detection as optimistic locking.** `describe` emits `@base '<fingerprint>'` (canonical BSON hash per unit, computed with `canon`). `create or modify` refuses when a present `@base` does not match, with `--force` to override. `exec` rewrites existing `@base` lines after applying. The check and the write are atomic on both backends (modelsdk and `--mcp`). A statement without `@base` behaves exactly as before. | M | grammar (annotation), `modelsdk/canon`, executor | a Studio Pro edit between `describe` and `modify` is refused; a control with no edit applies; `exec` updates the stamp |
+| 4.3 | **Drift detection as optimistic locking (provisional; not on the beta gate).** Before building, validate `@base` with users and in a CI/CD pipeline (ADR-0012). `exec --no-stamp` skips rewriting stamps, for pipelines. `describe` emits `@base '<fingerprint>'` (canonical BSON hash per unit, computed with `canon`). `create or modify` refuses when a present `@base` does not match, with `--force` to override. `exec` rewrites existing `@base` lines after applying. The check and the write are atomic on both backends (modelsdk and `--mcp`). A statement without `@base` behaves exactly as before. | M | grammar (annotation), `modelsdk/canon`, executor | a Studio Pro edit between `describe` and `modify` is refused; a control with no edit applies; `exec` updates the stamp |
 | 4.4 | **A real dry run** (also the drift check for projects driven entirely by MDL, §8.2): `exec --dry-run`, replacing today's `diff`. Execute on an in-memory copy, diff canonical BSON per unit, and render changed units as a `describe` diff. Covers `alter` and every document type. | M | executor, `canon` | the §8.1 false negative (association storage) and false positives disappear |
 | 4.5 | **Opaque passthrough or refusal** for content MDL cannot express, per document type as the 0.1 harness finds it: `preserved <kind> '<id>'` in `describe` output, carried by replace. | M | per doctype | no silent loss remains in the harness |
 | 4.6 | **Bulk patches:** `alter microflows|pages in M where contains (<pattern>) { … }`, building on 4.2a. `alter pages … where` and `update widgets` are folded into it as aliases. | M | grammar, executor | — |
