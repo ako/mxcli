@@ -350,8 +350,6 @@ Three things no `--help` tells you:
 
 ## Before Writing MDL
 
-New MDL syntax follows the canonical rules of ADR-0010 (checklist in `.claude/skills/design-mdl-syntax.md`); a change of meaning lands only behind a language version (ADR-0011).
-
 **Read the matching skill first.** They are in `.claude/skills/` (contributor) and
 `.claude/skills/mendix/<name>/SKILL.md` (synced to user projects). Each one's
 frontmatter `description` says when to reach for it — that IS the index, so list the
