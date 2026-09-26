@@ -2,13 +2,14 @@
 title: MDL Language Critique and Beta Syntax Freeze
 status: draft
 date: 2026-09-26
+decisions: [ADR-0010, ADR-0011, ADR-0012]
 ---
 
 # Proposal: MDL Language Critique and Beta Syntax Freeze
 
 **Status:** Draft
 **Date:** 2026-09-26
-**Related:** [ADR-0003](../13-decisions/0003-mdl-is-sql-shaped.md), [design-mdl-syntax skill](../../.claude/skills/design-mdl-syntax.md), [PROPOSAL_workflow_microflow_syntax_alignment.md](PROPOSAL_workflow_microflow_syntax_alignment.md)
+**Related:** [ADR-0003](../13-decisions/0003-mdl-is-sql-shaped.md); resulting decisions [ADR-0010](../13-decisions/0010-mdl-canonical-syntax-rules.md), [ADR-0011](../13-decisions/0011-mdl-language-versioning.md), [ADR-0012](../13-decisions/0012-mdl-first-and-data-first-editing.md); [design-mdl-syntax skill](../../.claude/skills/design-mdl-syntax.md), [PROPOSAL_workflow_microflow_syntax_alignment.md](PROPOSAL_workflow_microflow_syntax_alignment.md)
 
 ## Summary
 
