@@ -967,9 +967,11 @@ See the implementation plan in §9, which supersedes the short list that was her
 
 9. **Cadence: one release per week, beta in about four weeks** (around 2026-10-24). The schedule is in §9.
 
+10. **Drift detection is optimistic locking, and is optional** (§8.2). A `@base '<fingerprint>'` annotation on the statement is emitted by `describe`, checked by `create or modify`, and updated by `exec`. Projects driven entirely by MDL skip it and instead require a dry run of all scripts to report no changes. There is no sidecar state file.
+
 ### Still open
 
-1. **Where drift fingerprints are stored** (plan item 4.3): a local `.mxcli/state` file, or committed next to the scripts. This can wait until Phase 4.
+None. All decisions needed to start are recorded above.
 
 ## 8. Two ways of working: MDL-first and data-first
 
@@ -1036,11 +1038,54 @@ Neither mode is better than the other in general. Each is the efficient one for 
 - **Yes:** declarative replace is safe and cheapest.
 - **No** (someone edited it in Studio Pro, or it was never MDL): patch, or re-adopt it as MDL source first by running `describe`. Re-adopting is safe only for types whose round trip is proven.
 
-That question can be answered mechanically, the way Terraform detects drift:
-- Record a fingerprint of each document's canonical BSON when mxcli writes it.
-- `create or modify` compares the stored document against that fingerprint.
-- **Match:** the replace proceeds.
-- **Drift:** the replace is refused with "changed outside MDL since the last apply; use `alter`, or `describe` to re-adopt, or `--force`".
+That question can be answered mechanically, with **optimistic locking**: the same scheme as HTTP's `If-Match: <etag>`. There are two forms, one per kind of project.
+
+**1. `@base`: a per-statement version stamp, for mixed projects.**
+
+`describe` emits an annotation carrying the fingerprint (a hash of the canonical BSON) of the stored document it read:
+
+```mdl
+@base 'sha256:3f9a…'
+create or modify persistent entity Shop.Order (
+  Number: integer,
+  Note: string(200),
+);
+```
+
+- `create or modify` checks the annotation against the stored document and writes only if the two still match. Then `exec` rewrites the `@base` lines of the file it applied, so the next edit starts from the new version. It only updates annotations that are already there.
+- The describe → edit → modify loop an agent uses on an existing app is therefore locked end to end, with no state file. The version travels with the statement through git, copy-paste and review. That keeps statements self-contained (ADR-0003).
+- It is an **annotation, not a comment**. Formatters and LLMs strip or copy comments freely; an annotation has defined meaning and is validated. A statement copied to create another document carries a `@base` that does not match, and fails safely.
+- The diff noise is small. The fingerprint changes only when the document changes, which happens because its statement was edited, so both land in the same hunk. When two developers apply different versions of one statement, the result is a git conflict on that line: a real conflict, shown where conflicts are already resolved.
+
+| Statement | Stored document | Result |
+|---|---|---|
+| no `@base` | missing | create |
+| no `@base` | exists | modify to match (a no-op if nothing differs), exactly as without locking |
+| `@base` matches | exists | modify, and `exec` updates `@base` |
+| `@base` differs | exists | refused: "changed since you read it"; use `alter`, re-`describe`, or `--force` |
+
+**`@base` is optional.** A statement without it behaves exactly as it does today.
+
+**2. A dry run of all scripts must report no changes: for projects driven entirely by MDL.**
+
+Nothing but the scripts writes to such a project, so no per-statement lock is needed. Drift still happens in three ways:
+- someone opens the app in Studio Pro (for example, a Mendix version upgrade rewrites documents);
+- a marketplace module is updated;
+- a one-off `alter` runs against the model and is never added to the scripts. The next apply silently undoes it, which makes this the main risk.
+
+Because `create or modify` writes nothing when nothing differs (R1), **any change reported by `mxcli exec --dry-run scripts/` is drift by definition**. Run in CI, that one check protects the whole project with no annotations. The rule for such projects: change the scripts, not the model.
+
+| Project style | Protection |
+|---|---|
+| Entirely MDL-driven | no `@base`; CI requires a dry run of all scripts to report no changes |
+| Mixed (Studio Pro users, or agents patching existing documents) | `@base` on the statements `describe` produced |
+
+The two can be combined, for example scripts owning some modules and Studio Pro users owning others.
+
+**After beta.**
+- **Finer-grained locking.** A whole-document check refuses non-conflicting edits: someone else added `Discount` while you changed `Note`. A per-element check refuses only when an element this statement would change or drop was changed by someone else. `alter` is already this fine-grained: a patch needs only its target to exist and be unambiguous.
+- **Three-way merge.** A hash only detects a conflict. A merge also needs the base content, and git already has it: the previous version of the same statement. With base, theirs and yours, non-conflicting edits merge automatically, and real conflicts are reported per element.
+- **Check and write together.** With `--mcp` the project is open in Studio Pro, so the backend must compare and write in one step, or there is a window for a lost update.
 
 This makes the choice between modes visible and safe, instead of something the agent has to remember.
 
@@ -1120,7 +1165,7 @@ Silent loss is never acceptable.
    - New apps and modules: write declarative MDL.
    - Existing Studio Pro documents: change them with `alter`.
    - describe → replace only for documents whose stored state is still what MDL produced, and never on a Studio Pro-authored document of a type without a proven round trip.
-2. **Drift detection** on `create or modify`: a per-document fingerprint recorded at write time, refusing the replace on drift (§8.2). Until it exists, the guidance in step 1 is the only guard.
+2. **Drift detection** (§8.2): the optional `@base` annotation for mixed projects, and a no-changes dry run in CI for projects driven entirely by MDL. Until then, the guidance in step 1 is the only guard.
 3. **A CI round-trip test** on a Studio Pro fixture: describe → exec → canonical BSON compared per unit, covering every document type. It would have caught every loss in §8.1. Fix those losses, or turn them into refusals.
 4. **`alter microflow` / `alter nanoflow`** with content addressing and graph splicing (§8.3). This is the single largest gap for brownfield work.
 5. **A real dry run.** Execute on an in-memory copy and diff canonical BSON per unit. The machinery exists in `canon.Reconcile`. Until then, `diff` saying "no changes" is not evidence of no change.
@@ -1241,8 +1286,8 @@ Order, by how many existing scripts each item touches:
 | | e. **Operations,** in order: `insert after`/`before` → `replace` → `drop` → `set` (expression, caption, `on error`) → `add`/`drop parameter`. | | | |
 | | f. **Both backends:** the modelsdk engine and `--mcp` (the Studio Pro MCP backend), or an explicit "not supported by this backend" error. | | | |
 | | g. **Declarative `create or modify` as diff-then-patch:** match the declared flow against the stored one (by statement signature and output variable, as in 4.2a), derive the minimal set of insert/replace/drop operations, and apply them with the splice from 4.2b. An unchanged definition yields an empty patch and no write. This replaces `UpdateMicroflow`'s whole-document rebuild. | | | |
-| 4.3 | **Drift detection.** Every write path records a per-unit canonical-BSON fingerprint through `canon.Reconcile`. `create or modify` refuses on drift, with `--force` to override. Open question: where the fingerprints live (a sidecar `.mxcli/state` file vs committed with the scripts). | M | `modelsdk/canon`, executor | a Studio Pro edit between two applies is detected; a control with no edit is not |
-| 4.4 | **A real dry run:** `exec --dry-run`, replacing today's `diff`. Execute on an in-memory copy, diff canonical BSON per unit, and render changed units as a `describe` diff. Covers `alter` and every document type. | M | executor, `canon` | the §8.1 false negative (association storage) and false positives disappear |
+| 4.3 | **Drift detection as optimistic locking.** `describe` emits `@base '<fingerprint>'` (canonical BSON hash per unit, computed with `canon`). `create or modify` refuses when a present `@base` does not match, with `--force` to override. `exec` rewrites existing `@base` lines after applying. The check and the write are atomic on both backends (modelsdk and `--mcp`). A statement without `@base` behaves exactly as before. | M | grammar (annotation), `modelsdk/canon`, executor | a Studio Pro edit between `describe` and `modify` is refused; a control with no edit applies; `exec` updates the stamp |
+| 4.4 | **A real dry run** (also the drift check for projects driven entirely by MDL, §8.2): `exec --dry-run`, replacing today's `diff`. Execute on an in-memory copy, diff canonical BSON per unit, and render changed units as a `describe` diff. Covers `alter` and every document type. | M | executor, `canon` | the §8.1 false negative (association storage) and false positives disappear |
 | 4.5 | **Opaque passthrough or refusal** for content MDL cannot express, per document type as the 0.1 harness finds it: `preserved <kind> '<id>'` in `describe` output, carried by replace. | M | per doctype | no silent loss remains in the harness |
 | 4.6 | **Bulk patches:** `alter microflows|pages in M where contains (<pattern>) { … }`, building on 4.2a. `alter pages … where` and `update widgets` are folded into it as aliases. | M | grammar, executor | — |
 
