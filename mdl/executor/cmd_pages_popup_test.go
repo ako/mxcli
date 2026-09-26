@@ -56,6 +56,10 @@ func TestBuildPageV3_PopupDefaults(t *testing.T) {
 // ClientTemplateParameter.
 func TestBuildDynamicTextV3_AttributeBinds(t *testing.T) {
 	pb := newPopupPageBuilder()
+	// Inside a data container over M.Item. Without one there is no entity to
+	// qualify `Title` with, and the parameter used to be "bound" to the bare
+	// name — which the writer stores as a null AttributeRef (CE0402).
+	pb.entityContext = "M.Item"
 	w := &ast.WidgetV3{Type: "dynamictext", Name: "txt", Properties: map[string]any{"Attribute": "Title"}}
 	dt, err := pb.buildDynamicTextV3(w)
 	if err != nil {
@@ -73,6 +77,9 @@ func TestBuildDynamicTextV3_AttributeBinds(t *testing.T) {
 	p := dt.Content.Parameters[0]
 	if p.AttributeRef == "" && p.Expression == "" && p.SourceVariable == "" {
 		t.Error("parameter has no binding (AttributeRef/Expression/SourceVariable all empty)")
+	}
+	if p.AttributeRef != "M.Item.Title" {
+		t.Errorf("AttributeRef = %q, want M.Item.Title — anything shorter is written as null", p.AttributeRef)
 	}
 }
 

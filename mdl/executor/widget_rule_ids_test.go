@@ -38,6 +38,11 @@ var widgetRuleIDsRaisedFromSeveralFiles = map[string][]string{
 	// off-list option, or a single value where the property takes a set
 	// (ako/mxcli#511). Same two paths.
 	"MDL-WIDGET12": {"validate_alter_styling.go", "validate_design_properties.go"},
+	// One rule about a property the builder silently drops on write — a key no
+	// builder reads, or DesignProperties on a slot of the parent (a layoutgrid
+	// row, a row's column, a dataview footer) that never reaches
+	// applyWidgetAppearance.
+	"MDL-WIDGET07": {"validate_design_properties.go", "validate_widgets.go"},
 }
 
 // Matched as a QUOTED literal rather than after `RuleID:`, because an id is

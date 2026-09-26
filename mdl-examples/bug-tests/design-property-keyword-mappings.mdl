@@ -1,0 +1,63 @@
+-- ============================================================================
+-- Widget keywords whose design properties were neither checked nor typed
+-- ============================================================================
+--
+-- Symptom (Mendix 11.13.0, Atlas Core 4.1.3): this page checked clean and
+-- exec'd, and mxbuild then refused it:
+--   [CE6085] "Unknown option #ff0000 for design property Style." at Group box 'gbCustom'
+--   [CE6085] "Unknown option #00ff00 for design property Background color." at Container 'r1'
+--   [CE6085] "Unknown option #0000ff for design property Background color." at Container 'k1'
+-- and a typo in any design property of a groupbox, tabcontainer,
+-- navigationtree, menubar, simplemenubar, button, row or column went unreported.
+--
+-- Cause: the MDL keyword → theme key table had no entry for those keywords, so
+-- each resolved to itself ("groupbox"), which no design-properties.json
+-- defines. The validator skipped the widget; the builder saw only the "Widget"
+-- base group, so a ColorPicker's custom colour was written as an Option.
+-- `radiobuttons` and `snippetcall` named keys mxbuild does not apply
+-- ("RadioButtons", "SnippetCall"; the classes are RadioButtonGroup and
+-- SnippetCallWidget), and `header`/`footer` named groups for what the builder
+-- writes as a Forms$DivContainer.
+--
+-- Fix: a keyword now names the $Type it writes (mdlKeywordStorageType) and the
+-- key is read off that $Type — the table the stored-widget path already used —
+-- so the two cannot drift. A top-level `row`/`column` is a DivContainer; a row
+-- inside a layoutgrid, a column inside a row, and a dataview footer are parts
+-- of their parent whose design properties mxcli does not write, and `check`
+-- now says so (MDL-WIDGET07) instead of staying silent.
+--
+-- Verify: `mxcli check --references` — no MDL-WIDGET11 below (the custom
+-- colours draw MDL-WIDGET12 until the ColorPicker fix lands); change
+-- 'Callout style' to 'Callout' and it must warn MDL-WIDGET11. exec, then
+-- `mxcli docker check` — 0 errors.
+-- ============================================================================
+
+create or replace page MyFirstModule.DesignPropKeywords_Test
+( Title: 'Design property keyword mappings', Layout: Atlas_Core.Atlas_Default )
+{
+  container c1 {
+    groupbox gbCustom (Caption: 'Custom', DesignProperties: ['Style': '#ff0000', 'Callout style': on]) {
+      dynamictext t1 (Content: 'x')
+    }
+    groupbox gbSwatch (Caption: 'Swatch', DesignProperties: ['Style': 'Brand Primary']) {
+      dynamictext t2 (Content: 'y')
+    }
+    tabcontainer tc1 (DesignProperties: ['Style': 'Pills', 'Tab position': 'Center', 'Justify': on]) {
+      tabpage tp1 (Caption: 'One') {
+        dynamictext t3 (Content: 'z')
+      }
+    }
+    navigationtree nt1 (profile: 'Responsive', DesignProperties: ['Hide icons': on])
+    row r1 (DesignProperties: ['Background color': '#00ff00']) {
+      column rc1 {
+        dynamictext t4 (Content: 'r')
+      }
+    }
+    column k1 (DesignProperties: ['Background color': '#0000ff', 'Card style': on]) {
+      dynamictext t5 (Content: 'k')
+    }
+  }
+}
+/
+
+describe page MyFirstModule.DesignPropKeywords_Test;

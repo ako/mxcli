@@ -1,0 +1,76 @@
+-- ============================================================================
+-- ALTER PAGE INSERT/REPLACE where no entity is in scope: bindings qualified
+-- ============================================================================
+--
+-- Symptom: on FeedbackModule.ShareFeedback_Logo (Feedback v4.0.2, Mendix
+-- 11.13.0), whose data view is sourced by a nanoflow the module does not ship,
+--   alter page FeedbackModule.ShareFeedback_Logo { insert after textBox1 {
+--     image zzImg (ImageType: imageUrl, ImageUrl: '{1}', ImageUrlParams: [{1} = ImageB64]) } }
+-- passed `mxcli check --references`, and exec wrote the parameter as a BARE
+-- attribute reference: `mx check` could no longer LOAD the project
+-- (ArgumentNullException setting 'Attribute'). The same happens to a widget
+-- inserted outside every data container; a text box's `Attribute:` there is
+-- dropped instead (CE7005 "No value selection has been made").
+--
+-- Cause: ALTER takes its entity from the STORED document (the enclosing data
+-- source, or a flow source's return type). With none, the builder has nothing
+-- to qualify a bare name against. CREATE PAGE already refused this at check
+-- time; ALTER's check never opened the document.
+--
+-- Fix: `check --references` opens the stored page, resolves the insertion
+-- point's entity through the same function exec uses (alterEntityContext), and
+-- refuses bare bindings when there is none, naming widget and binding.
+--
+-- Verify: exec with -p → both ALTERs apply, `mxcli docker check` → 0 errors.
+-- Change the qualified binding in the first ALTER to `{1} = Subject`, or
+-- insert `textbox t (Attribute: Subject)` after ctTop (no data container) →
+-- `check --references` reports it. The bare name in the second ALTER (inside
+-- dvEntity, entity in scope) stays unflagged.
+-- ============================================================================
+
+create module BugTestAlterScope;
+/
+
+create persistent entity BugTestAlterScope.Draft (
+  Subject: String(200)
+);
+/
+
+@excluded
+create or modify page BugTestAlterScope.Draft_Example
+( Title: 'Draft (example)', Layout: Atlas_Core.Atlas_Default,
+  Params: { $Draft: BugTestAlterScope.Draft } )
+{
+  container ctTop {
+    dynamictext txtIntro (Content: 'Example')
+  }
+  layoutgrid lg {
+    row r {
+      column c (DesktopWidth: AutoFill) {
+        dataview dvFlow (DataSource: nanoflow BugTestAlterScope.DS_MissingForm) {
+          textbox txtSubject (Label: 'Subject', Attribute: BugTestAlterScope.Draft.Subject)
+        }
+        dataview dvEntity (DataSource: $Draft) {
+          textbox txtSubject2 (Label: 'Subject', Attribute: Subject)
+        }
+      }
+    }
+  }
+}
+/
+
+-- Inside the data view whose flow is missing: the binding must be qualified.
+alter page BugTestAlterScope.Draft_Example {
+  insert after txtSubject {
+    dynamictext txtEcho (Content: 'About: {1}', ContentParams: [{1} = BugTestAlterScope.Draft.Subject])
+  }
+};
+/
+
+-- Inside a data view whose entity is known: a bare name is fine.
+alter page BugTestAlterScope.Draft_Example {
+  insert after txtSubject2 {
+    dynamictext txtEcho2 (Content: 'About: {1}', ContentParams: [{1} = Subject])
+  }
+};
+/

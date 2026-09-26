@@ -34,11 +34,10 @@ func ruleSourceText(ctx antlr.ParserRuleContext) string {
 	if ctx == nil {
 		return ""
 	}
-	start, stop := ctx.GetStart(), ctx.GetStop()
-	if start == nil || stop == nil || stop.GetStop() < start.GetStart() {
-		return ctx.GetText()
+	if source := strings.TrimSpace(extractExpressionText(ctx)); source != "" {
+		return source
 	}
-	return start.GetInputStream().GetText(start.GetStart(), stop.GetStop())
+	return ctx.GetText()
 }
 
 // odataExpressionValue returns the expression an OData client expression

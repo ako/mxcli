@@ -44,8 +44,8 @@ import (
 // check that cannot see what it is judging.
 //
 // Deliberately NOT done: mapping the stored $Type to a registry key to make this
-// precise. That would be a third resolver for one concept — mdlKeywordToDesignPropsKey
-// maps MDL keyword → key, and an unused bsonTypeToDesignPropsKey maps $Type →
+// precise. That would be a third resolver for one concept — mdlKeywordStorageType
+// maps MDL keyword → $Type, and an unused bsonTypeToDesignPropsKey maps $Type →
 // key — and duplicate resolvers drifting apart is the failure this area keeps
 // producing (mendixlabs/mxcli#1069's buildPropKeyMap was two copies of one
 // derivation, and one copy was the bug). The precise variant needs a widget-type

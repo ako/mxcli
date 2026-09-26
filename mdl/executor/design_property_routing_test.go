@@ -149,36 +149,30 @@ func TestDesignPropertyAssignment(t *testing.T) {
 	}
 }
 
-// The two hand-written maps describe the same concept from opposite directions,
-// and the $Type one had NO CALLERS until this change — so it had never been held
-// to anything at all. Neither is a subset of the other, and every exclusive entry
-// has a measured reason, so this pins both sets rather than asserting a
-// consistency that does not hold.
+// The keyword path and the stored-$Type path resolve through ONE key table: a
+// keyword names the $Type it writes (mdlKeywordStorageType) and the key is read
+// off that $Type (bsonTypeToDesignPropsKey). The two used to be separate
+// hand-written keyword→key and $Type→key maps, and they disagreed — `groupbox`,
+// `tabcontainer`, the menu widgets, `row`/`column`/`button` missing on one side,
+// `radiobuttons`/`snippetcall`/`header`/`footer` naming keys no stored widget of
+// that type has.
 //
-// $Type-only — correct, and the reason the stored path resolves MORE than the
-// inline one:
+// What remains exclusive is one-directional and pinned: types MDL cannot build
+// but Studio Pro can store, reachable only from a stored $Type.
 //
-//   - "DataGrid" and "Gallery" are the NATIVE widgets. The MDL keywords no longer
-//     produce them: `datagrid` resolves through pluggableKeywordIDs to Data grid
-//     2's widget id, `gallery` to the pluggable Gallery. Atlas declares both
-//     native groups, and a Studio Pro-authored widget of either type is reachable
-//     only from its $Type.
-//
-// Keyword-only — inert today, and at least two of them wrong:
-//
-//   - `header` and `footer` map to "Header"/"Footer", but MDL builds BOTH as a
-//     Forms$DivContainer (cmd_pages_builder_v3_layout.go), so a stored one
-//     resolves to "DivContainer". Atlas declares no Header or Footer group, so
-//     the inline lookup misses and validateWidgetDesignProps returns early —
-//     silence reading as approval, the shape pluggableKeywordIDs already records
-//     for combobox/gallery/image. Not corrected here: it changes what existing
-//     pages validate against, which is its own change.
-//   - `snippetcall` maps to "SnippetCall" (stored Forms$SnippetCallWidget); Atlas
-//     declares no such group either.
+//   - "DataGrid" is the NATIVE data grid. MDL's `datagrid` resolves through
+//     pluggableKeywordIDs to Data grid 2's widget id; a Studio Pro-authored
+//     Forms$DataGrid is reachable only from its $Type.
+//   - "ReferenceSelector": there is no `referenceselector` builder (the keyword
+//     parses and exec refuses it as an unsupported widget type).
 func TestBsonTypeAndKeywordDesignPropsKeysAgree(t *testing.T) {
 	fromKeyword := map[string]bool{}
-	for _, v := range mdlKeywordToDesignPropsKey {
-		fromKeyword[v] = true
+	for kw := range mdlKeywordStorageType {
+		key := resolveDesignPropsKey(kw)
+		if _, ok := storageTypeThemeKeys[strings.TrimPrefix(mdlKeywordStorageType[kw], "Forms$")]; !ok {
+			t.Errorf("keyword %q writes %s, which has no theme key", kw, mdlKeywordStorageType[kw])
+		}
+		fromKeyword[key] = true
 	}
 	fromBsonType := map[string]bool{}
 	for _, v := range bsonTypeToDesignPropsKey {
@@ -188,35 +182,28 @@ func TestBsonTypeAndKeywordDesignPropsKeysAgree(t *testing.T) {
 		t.Fatal("a map is empty — a passing run would prove nothing")
 	}
 
-	exclusive := func(a, b map[string]bool) map[string]bool {
-		out := map[string]bool{}
-		for k := range a {
-			if !b[k] {
-				out[k] = true
-			}
-		}
-		return out
-	}
-	eq := func(got, want map[string]bool, label string) {
-		t.Helper()
-		for k := range got {
-			if !want[k] {
-				t.Errorf("%s gained %q — measure which theme group that widget resolves to "+
-					"on BOTH paths before adding it, and say so in this test's comment", label, k)
-			}
-		}
-		for k := range want {
-			if !got[k] {
-				t.Errorf("%s lost %q — if it is now reachable from both maps, confirm they "+
-					"agree on the group rather than just deleting the expectation", label, k)
-			}
+	for k := range fromKeyword {
+		if !fromBsonType[k] {
+			t.Errorf("keyword-only key %q — a keyword resolved to a key no stored $Type has", k)
 		}
 	}
-
-	eq(exclusive(fromBsonType, fromKeyword),
-		map[string]bool{"DataGrid": true, "Gallery": true}, "$Type-only keys")
-	eq(exclusive(fromKeyword, fromBsonType),
-		map[string]bool{"Header": true, "Footer": true, "SnippetCall": true}, "keyword-only keys")
+	storedOnly := map[string]bool{}
+	for k := range fromBsonType {
+		if !fromKeyword[k] {
+			storedOnly[k] = true
+		}
+	}
+	want := map[string]bool{"DataGrid": true, "ReferenceSelector": true}
+	for k := range storedOnly {
+		if !want[k] {
+			t.Errorf("$Type-only key %q gained — if MDL cannot build that widget, add it here with the reason", k)
+		}
+	}
+	for k := range want {
+		if !storedOnly[k] {
+			t.Errorf("$Type-only key %q lost — if a keyword now builds it, drop it from this list", k)
+		}
+	}
 }
 
 // The mutator accessor returns raw storage facts, not a resolved key — the
