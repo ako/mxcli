@@ -1,0 +1,32 @@
+-- DESCRIBE FRAGMENT FROM PAGE/SNIPPET always failed — found by an
+-- agent-orientation audit on a large app (Evora Factory Management).
+--
+-- REPORTED SYMPTOM
+--
+--   describe fragment from page Administration.Account_Edit widget textBox6
+--   → Error: not found in page Administration.Account_Edit
+--
+--   for every page, every snippet and every widget — including widgets that
+--   `describe page` prints. The message also omitted the widget's name.
+--
+-- CAUSE
+--
+--   The visitor stores ContainerType as "PAGE"/"SNIPPET"; the handler in
+--   mdl/executor/cmd_fragments.go switched on "page"/"snippet". Nothing
+--   matched, the widget list stayed empty, and the fall-through reported the
+--   widget as missing. Same casing split as ALTER STYLING (#631) and ALTER
+--   PAGE (#402) before it.
+--
+-- EXPECTED (run against a project that has these documents; the page is the
+-- stock Administration module, so most apps carry it)
+--
+--   1. prints: textbox textBox6 (Label: 'Full name', Attribute: FullName)
+--   2. Error: widget noSuchWidget not found in page Administration.Account_Edit
+--   3. Error: page not found: Administration.NoSuchPage
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/describe-fragment-from-container-case.mdl -p app.mpr
+
+describe fragment from page Administration.Account_Edit widget textBox6;
+describe fragment from page Administration.Account_Edit widget noSuchWidget;
+describe fragment from page Administration.NoSuchPage widget textBox6;

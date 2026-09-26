@@ -81,7 +81,13 @@ func describeFragmentFrom(ctx *ExecContext, s *ast.DescribeFragmentFromStmt) err
 
 	var rawWidgets []rawWidget
 
-	switch s.ContainerType {
+	// The visitor stores ContainerType uppercase ("PAGE"/"SNIPPET"), as it
+	// does for DESCRIBE/ALTER STYLING and ALTER PAGE. Normalise here, and make
+	// an unrecognised value an error: falling through the switch leaves no
+	// widgets, which then reads as "widget not found" — the disguise this
+	// casing mismatch wore here and in cmd_styling.go before it.
+	containerType := strings.ToLower(s.ContainerType)
+	switch containerType {
 	case "page":
 		allPages, err := ctx.Backend.ListPages()
 		if err != nil {
@@ -119,12 +125,15 @@ func describeFragmentFrom(ctx *ExecContext, s *ast.DescribeFragmentFromStmt) err
 			return mdlerrors.NewNotFound("snippet", s.ContainerName.String())
 		}
 		rawWidgets = getSnippetWidgetsFromRaw(ctx, foundSnippet.ID)
+
+	default:
+		return mdlerrors.NewUnsupported("describe fragment from: unsupported container type " + s.ContainerType)
 	}
 
 	// Find the widget by name
 	target := findRawWidgetByName(rawWidgets, s.WidgetName)
 	if target == nil {
-		return mdlerrors.NewNotFoundMsg("widget", s.WidgetName, fmt.Sprintf("not found in %s %s", strings.ToLower(s.ContainerType), s.ContainerName.String()))
+		return mdlerrors.NewNotFoundMsg("widget", s.WidgetName, fmt.Sprintf("widget %s not found in %s %s", s.WidgetName, containerType, s.ContainerName.String()))
 	}
 
 	// Output as MDL
