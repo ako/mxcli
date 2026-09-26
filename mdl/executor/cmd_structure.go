@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
+	"github.com/mendixlabs/mxcli/mdl/catalog"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
@@ -66,8 +67,8 @@ func execShowStructure(ctx *ExecContext, s *ast.ShowStmt) error {
 // and columns for each element type count.
 func structureDepth1JSON(ctx *ExecContext, modules []structureModule) error {
 	entityCounts := queryCountByModule(ctx, "entities")
-	mfCounts := queryCountByModule(ctx, "microflows where MicroflowType = 'microflow'")
-	nfCounts := queryCountByModule(ctx, "microflows where MicroflowType = 'nanoflow'")
+	mfCounts := queryCountByModule(ctx, flowTypeFilter(catalog.MicroflowTypeMicroflow))
+	nfCounts := queryCountByModule(ctx, flowTypeFilter(catalog.MicroflowTypeNanoflow))
 	pageCounts := queryCountByModule(ctx, "pages")
 	enumCounts := queryCountByModule(ctx, "enumerations")
 	snippetCounts := queryCountByModule(ctx, "snippets")
@@ -189,8 +190,8 @@ func asString(v any) string {
 func structureDepth1(ctx *ExecContext, modules []structureModule) error {
 	// Query counts per module from catalog
 	entityCounts := queryCountByModule(ctx, "entities")
-	mfCounts := queryCountByModule(ctx, "microflows where MicroflowType = 'microflow'")
-	nfCounts := queryCountByModule(ctx, "microflows where MicroflowType = 'nanoflow'")
+	mfCounts := queryCountByModule(ctx, flowTypeFilter(catalog.MicroflowTypeMicroflow))
+	nfCounts := queryCountByModule(ctx, flowTypeFilter(catalog.MicroflowTypeNanoflow))
 	pageCounts := queryCountByModule(ctx, "pages")
 	enumCounts := queryCountByModule(ctx, "enumerations")
 	snippetCounts := queryCountByModule(ctx, "snippets")
@@ -283,6 +284,13 @@ func queryCountByModule(ctx *ExecContext, tableAndWhere string) map[string]int {
 		counts[name] = toInt(row[1])
 	}
 	return counts
+}
+
+// flowTypeFilter selects one flow flavour from the microflows table, spelled
+// with the catalog builder's own constant: a hand-typed lower-case literal here
+// matched no row and hid every microflow and nanoflow count.
+func flowTypeFilter(flowType string) string {
+	return fmt.Sprintf("microflows where MicroflowType = '%s'", flowType)
 }
 
 // countByModuleFromBackend counts elements per module using the backend (for types without catalog tables).

@@ -1,0 +1,37 @@
+-- Bug test: `show structure depth 1` (CLI: `mxcli structure -d 1`) never
+-- listed microflow or nanoflow counts, on any project.
+--
+-- Found by an agent-orientation audit on a large app (Evora Factory
+-- Management): every module line read "N entities, M pages, ..." with no
+-- flows at all, although FactoryManagement alone has 127 microflows.
+--
+-- Cause: the structure summary filtered the catalog on
+-- MicroflowType = 'microflow' / 'nanoflow', while the catalog builder stores
+-- 'MICROFLOW' / 'NANOFLOW'. SQLite's `=` is case-sensitive, so both counts
+-- were empty and the summary omits zero counts - no error, just absence.
+--
+-- Expected after the fix, for module StructFlowCounts:
+--   2 microflows, 1 nanoflow
+-- (the rule-free module keeps the check simple; rules are a separate doctype
+--  and are never counted as microflows).
+
+create module StructFlowCounts;
+
+create microflow StructFlowCounts.ACT_One ()
+begin
+  log info 'one';
+end;
+/
+
+create microflow StructFlowCounts.ACT_Two ()
+begin
+  log info 'two';
+end;
+/
+
+create nanoflow StructFlowCounts.NF_One ()
+begin
+end;
+/
+
+show structure depth 1 in StructFlowCounts;
