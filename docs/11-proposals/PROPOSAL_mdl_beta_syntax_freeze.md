@@ -340,6 +340,22 @@ textbox txtNote (Attribute: Note, Visible: $currentObject/Status = 'Open')
 | ~~`show`~~ | **dropped** (decided, §7) | Every one of the 88 `show` forms maps to `list`, to `describe`, or to a session command:<br>• Plurals and relationship queries become `list`: `list callers of X`, `list callees of X`, `list references to X`, `list impact of X`, `list access on E`, `list widgets …`, `list design properties …`, `list catalog tables`.<br>• Single things become `describe`: `describe entity X`, `describe navigation`, `describe app security`, `describe security matrix`, `describe structure [in M]`, `describe context of X`.<br>• Session state (`version`, `catalog status`) becomes a REPL command (R7).<br>`show` stays as a deprecated alias for one release. |
 | `create` / `alter` / `drop` | as in SQL | `alter` children use `add`/`drop`. Replace `remove` (user role), `modify`/`add or modify` (settings), `define fragment`, `update security` and `update widgets`. Add the missing `drop`s: database connection, validation rule, external entity. |
 
+**`describe` does three jobs; keep them apart.** Every document type that has a `create` also has a `describe`. Validation rules, indexes and access rules come out as part of `describe entity`, and `describe Module.Name` detects the type itself. The only gaps, app security and the security matrix, are covered by the `show` mapping above. But the verb currently mixes three kinds of answer:
+
+| Kind | Examples today | Output | Rule |
+|---|---|---|---|
+| **Model element** | `describe entity`, `describe page`, `describe microflow`, … | runnable MDL | round-trips (R12, §8.4) |
+| **Part of a model element** | `describe fragment from page … widget`, `describe styling on page …`, `describe translations for nl_NL` | runnable MDL or a report | the same round-trip rules when the output is MDL |
+| **Definition or lookup** | `describe widget combobox`, `describe glyph 'star'`, `describe catalog.entities`, `describe contract entity …`, `describe contract operation from openapi '…'` | a report, not MDL | starts with a `-- <kind> definition (not executable)` header; `--json` gives a documented shape |
+
+How to tell `describe` and `syntax` apart: **does the answer depend on the project?**
+- `describe widget combobox` reads the widget package installed in *this* project. On PedApp that is Combo box 2.5.0 with 58 properties; another project with another version gets other properties. It therefore stays under `describe`, and does not move to `syntax`.
+- `syntax` is built into the binary, the same for every project, and answers "how do I write X in MDL?".
+- The two point at each other. For example, `syntax page widgets` tells the reader to run `describe widget type <name> -p app.mpr` for the properties a given project actually has.
+- `describe catalog.<table>` stays too: it is SQL's `DESCRIBE TABLE`.
+
+**Rename:** `describe widget <name>` becomes **`describe widget type <name>`**. As it stands, it collides with describing a widget *instance* on a page (`describe fragment … widget`, and the proposed `describe page X widget Y`, §8.1). "Which kind of widget?" and "which widget on this page?" must not share a phrase. The old form stays as a deprecated alias.
+
 Also:
 - `column` survives as a synonym for `attribute` in four `alter entity` actions. Remove it.
 - `rest call get …` breaks the `call <kind>` pattern. Use `call rest service …`, which is also Studio Pro's name for the activity, and fold `send rest request` into it where the semantics allow.
@@ -546,7 +562,7 @@ create consumed rest service Shop.Api3 (
 
 ### R12. `describe` emits the canonical form and nothing else
 
-`describe` output is what reviewers read in PRs, so it defines the language in practice.
+`describe` output is what reviewers read in PRs, so it defines the language in practice. This rule covers describing model elements. Definitions and lookups (R6) are reports, not MDL, and are marked as such.
 
 - Emit only canonical forms, which makes `describe` the reference implementation of these rules.
 - Omit defaults, because default noise inflates the output:
@@ -1193,7 +1209,7 @@ Order, by how many existing scripts each item touches:
 | 3.2 | R8: page actions as words (`show page`, `save changes`); one spelling per keyword; `error message`; lowercase canonical (fixes `fmt` upper-casing keys) | M |
 | 3.3 | R5: XPath in `[ ]`, bare expressions (grants, workflow targeting and decisions, `Visible`/`Editable`); one constant reference | M |
 | 3.4 | R2: brackets (REST client, agents, image collection, database connection, message definitions, navigation/menus, `on error begin … end error`, `while`) | L |
-| 3.5 | R6/R7: `list`/`describe`/`show` split; `drop` instead of `remove`; missing `drop`s; `call rest service` | M |
+| 3.5 | R6/R7: drop `show` in favour of `list`/`describe`; `describe widget type` rename, and a not-executable header plus `--json` for definition reports; cross-links between `syntax` and `describe`; `drop` instead of `remove`; missing `drop`s; `call rest service` | M |
 | 3.6 | R9/R10: metadata placement (doc comment, `folder` clause); Studio Pro document names (`consumed rest service`, …); property lists for role, constant, demo user and settings headers | M |
 | 3.7 | §4 area items: domain-model aliases and inline validation rules; widget types resolved through the registry and the property-key convention; unified mapping grammar; HTTP concepts; workflow `caption`/`->`/`alter workflow` vocabulary | L |
 
