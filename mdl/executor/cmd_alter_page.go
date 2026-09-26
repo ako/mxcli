@@ -349,19 +349,7 @@ func applyInsertWidgetMutator(ctx *ExecContext, mutator backend.PageMutator, op 
 	// target IS the container, so the children take the target's own context (e.g.
 	// a dataview's entity).
 	into := strings.EqualFold(op.Position, "INTO")
-	entityCtx := mutator.EnclosingEntity(op.Target.Widget)
-	if into {
-		entityCtx = mutator.EnclosingEntityForChildren(op.Target.Widget)
-	}
-	// A microflow/nanoflow datasource contributes no entity to the BSON walk (its
-	// entity is the flow's RETURN type), so resolve it via the model — otherwise a
-	// widget inserted into a flow-sourced list binds nothing (CE0402/CE1613). (#55)
-	if entityCtx == "" {
-		mfQN, nfQN := mutator.EnclosingDataSourceFlow(op.Target.Widget, into)
-		if e := resolveDataSourceFlowEntity(ctx, moduleName, moduleID, mfQN, nfQN); e != "" {
-			entityCtx = e
-		}
-	}
+	entityCtx, _ := alterEntityContext(ctx, mutator, op.Target.Widget, into, moduleName, moduleID)
 
 	// Build new widgets from AST
 	widgets, err := buildWidgetsFromAST(ctx, op.Widgets, moduleName, moduleID, entityCtx, mutator)
@@ -435,14 +423,7 @@ func applyReplaceWidgetMutator(ctx *ExecContext, mutator backend.PageMutator, op
 	}
 
 	// Find entity context from enclosing DataView/DataGrid/ListView for regular widget replace.
-	entityCtx := mutator.EnclosingEntity(op.Target.Widget)
-	// Resolve a microflow/nanoflow datasource's return entity (see the INSERT path).
-	if entityCtx == "" {
-		mfQN, nfQN := mutator.EnclosingDataSourceFlow(op.Target.Widget, false)
-		if e := resolveDataSourceFlowEntity(ctx, moduleName, moduleID, mfQN, nfQN); e != "" {
-			entityCtx = e
-		}
-	}
+	entityCtx, _ := alterEntityContext(ctx, mutator, op.Target.Widget, false, moduleName, moduleID)
 
 	// Build new widgets from AST, excluding the target widget/column from the
 	// duplicate-name scope so a same-name replacement is allowed.
@@ -577,6 +558,35 @@ func buildColumnSpecsFromAST(ctx *ExecContext, widgets []*ast.WidgetV3, moduleNa
 // ============================================================================
 // Widget building from AST (domain logic stays in executor)
 // ============================================================================
+
+// alterEntityContext is the entity an INSERT or REPLACE builds its widgets
+// against, plus the flow that was meant to supply it when a flow data source is
+// where the scope comes from. forChildren is INSERT INTO: the target IS the
+// container, so its own data source decides; otherwise (INSERT BEFORE/AFTER,
+// REPLACE) the target is a sibling and the nearest ENCLOSING source does.
+//
+// A microflow/nanoflow datasource contributes no entity to the BSON walk (its
+// entity is the flow's RETURN type), so it is resolved via the model — otherwise
+// a widget inserted into a flow-sourced list binds nothing (CE0402/CE1613, #55).
+//
+// Shared with the check-time pass (validate_alter_unscoped.go), so check and exec
+// cannot disagree about which entity is in scope.
+func alterEntityContext(ctx *ExecContext, mutator backend.PageMutator, widgetRef string, forChildren bool, moduleName string, moduleID model.ID) (entity, flow string) {
+	if forChildren {
+		entity = mutator.EnclosingEntityForChildren(widgetRef)
+	} else {
+		entity = mutator.EnclosingEntity(widgetRef)
+	}
+	if entity != "" {
+		return entity, ""
+	}
+	mfQN, nfQN := mutator.EnclosingDataSourceFlow(widgetRef, forChildren)
+	flow = mfQN
+	if flow == "" {
+		flow = nfQN
+	}
+	return resolveDataSourceFlowEntity(ctx, moduleName, moduleID, mfQN, nfQN), flow
+}
 
 // resolveDataSourceFlowEntity resolves the entity context contributed by a
 // microflow/nanoflow datasource — its RETURN entity — for ALTER PAGE widget
