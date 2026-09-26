@@ -29,7 +29,7 @@ The review also found **silent-loss bugs**: input that parses and is then droppe
 - Microflows, the most-edited type, have no `alter` at all.
 
 §8 argues that MDL needs two first-class modes that share one syntax:
-- **MDL-first:** declarative `create or replace` scripts as the source of truth. This is the efficient mode for new apps.
+- **MDL-first:** declarative `create or modify` scripts as the source of truth. This is the efficient mode for new apps.
 - **Data-first:** content-addressed `alter` patches that splice into the stored graph. This is the efficient mode for changes to existing Studio Pro documents.
 
 Drift detection chooses between them safely, and two round-trip laws make moving between them lossless.
@@ -81,7 +81,7 @@ Each rule is stated so it can be added to the `design-mdl-syntax` skill as a che
 
 **About the examples.**
 - Every **Before** block was run through `mxcli check` at `5dc51ceb` and parses today. The `describe` output in R12 is real output from a scratch project.
-- Every **After** block is *proposed* syntax and does not parse yet. Where §7 leaves a choice open, the After blocks use the recommended option: `or replace`, `Param = expr` for arguments, and `set ( Key: value )` for alter.
+- Every **After** block is *proposed* syntax and does not parse yet. They follow the decisions recorded in §7. Where §7 still leaves a choice open, they use the recommended option: `Param = expr` for arguments, and `set ( Key: value )` for alter.
 
 ### R1. One idempotent create, with one defined meaning
 
@@ -97,16 +97,14 @@ The semantics are also already declarative, not a merge:
 
 That settles renames. A declarative definition cannot tell a rename from a drop plus an add, so under it a rename destroys the column. **Renames are therefore only expressible as `alter entity … rename attribute A to B` or `rename entity … to …`**, which carry the identity across. The same holds for any document whose members have identity.
 
-Rule:
-- One keyword, with the semantics above written into the skill and the ADR: "full definition; name-keyed identity carry; omitted members dropped and reported; renames need `alter`/`rename`".
-- The keyword's name is an open decision (§7):
-  - `or replace` describes the full-definition behaviour honestly and matches SQL's `CREATE OR REPLACE VIEW`.
-  - `or modify` is what `describe` emits today, but it reads like a merge. That is exactly the misreading that makes an omitted attribute a surprise.
-- Whichever is chosen, the other becomes a deprecated alias.
+Rule (**decided**, §7):
+- **`create or modify` is the one keyword.** It reads like the author's intent: *make the stored document match this definition*. `create or replace` becomes a deprecated alias.
+- **Minimal change is part of the meaning.** `modify` changes only what differs, so re-running a statement whose definition already matches the stored document **writes nothing**, and Studio Pro shows no change. That covers byte-identical units, no `$ID` churn and no version-control noise. This is the GetPut law of §8.4, promoted from a goal to the defining property of the keyword. It is **not** true today: an unchanged microflow round trip rewrote the unit and moved 51 of 161 element `$ID`s (§8.1). The implementation consequence is in §8.3 and plan item 4.2.
+- The other semantics, written into the skill and the ADR: the statement is the full definition; members are matched by name and keep their identity; omitted members are dropped and reported (MDL087); renames need `alter`/`rename`.
 - Make view entities follow the same identity-carrying rewrite instead of delete and recreate, so the keyword means one thing on every type.
 - Keep `if not exists` as a separate, genuinely different operation (leave an existing element untouched). Extend it to every type, not just entities and associations.
 - Move `create module role` into `createStatement` (`MDLSecurity.g4:17`), so it gets the same prefix as every other type.
-- Every `describe` emits the chosen keyword. Today association, layout, user role, demo user, REST client, OData, agent and database connection emit a plain `create`, and navigation emits `create or replace`.
+- Every `describe` emits `create or modify`. Today association, layout, user role, demo user, REST client, OData, agent and database connection emit a plain `create`, and navigation emits `create or replace`.
 
 **Before** — two keywords for one operation, and a rename that looks harmless:
 
@@ -119,10 +117,10 @@ create or replace persistent entity Shop.Order (Number: integer, Note: string(20
 create or modify persistent entity Shop.Order (Number: integer, Remarks: string(200));
 ```
 
-**After** — one keyword that says what it does, and renames are a separate statement:
+**After** — one keyword that says what it does, a no-op when nothing differs, and renames as a separate statement:
 
 ```mdl
-create or replace persistent entity Shop.Order (
+create or modify persistent entity Shop.Order (
   Number: integer,
   Note: string(200),
 );
@@ -205,7 +203,7 @@ create image collection Shop.Icons {
   image Logo ( File: 'assets/logo.png' )
 };
 
-create or replace navigation Responsive (
+create or modify navigation Responsive (
   HomePage: Shop.Home,
 ) {
   menu item 'Home' ( OnClick: show page Shop.Home )
@@ -337,9 +335,9 @@ textbox txtNote (Attribute: Note, Visible: $currentObject/Status = 'Open')
 
 | Verb | Meaning | Changes |
 |---|---|---|
-| `list <plural>` | enumerate elements | Retire `show <plural>`, which today leads 72 of the syntax lines versus 15 for `list`. Add plurals for `list image collection` / `icon collection` / `message definition collection`. |
+| `list …` | enumerate elements, and relationship queries | Replace `show <plural>`, which today leads 72 of the syntax lines versus 15 for `list`. Add plurals for `list image collection` / `icon collection` / `message definition collection`. |
 | `describe <type> Name` | one element | Remove `show entity|association|page X` (`MDLCatalog.g4:62-64`). |
-| `show <state>` | non-element state (status, version, access, callers, impact) | Stop `showOrList` producing forms like `list version` and `list catalog status`. |
+| ~~`show`~~ | **dropped** (decided, §7) | Every one of the 88 `show` forms maps to `list`, to `describe`, or to a session command:<br>• Plurals and relationship queries become `list`: `list callers of X`, `list callees of X`, `list references to X`, `list impact of X`, `list access on E`, `list widgets …`, `list design properties …`, `list catalog tables`.<br>• Single things become `describe`: `describe entity X`, `describe navigation`, `describe app security`, `describe security matrix`, `describe structure [in M]`, `describe context of X`.<br>• Session state (`version`, `catalog status`) becomes a REPL command (R7).<br>`show` stays as a deprecated alias for one release. |
 | `create` / `alter` / `drop` | as in SQL | `alter` children use `add`/`drop`. Replace `remove` (user role), `modify`/`add or modify` (settings), `define fragment`, `update security` and `update widgets`. Add the missing `drop`s: database connection, validation rule, external entity. |
 
 Also:
@@ -596,15 +594,15 @@ end;
 **After** — defaults, derived layout and a caption that repeats the condition are all omitted. What is left is what the author wrote:
 
 ```mdl
-create or replace association Crit.Order_Customer
+create or modify association Crit.Order_Customer
   from Crit.Order to Crit.Customer;
 
-create or replace microflow Crit.CountOpen (
+create or modify microflow Crit.CountOpen (
   $Orders: List of Crit.Order
 )
 returns Integer
 begin
-  $Open = filter $Orders where Status = 'Open';
+  $Open = filter $Orders by Status = 'Open';
   $N = count $Open;
   if $N > 10 then
     log warning node 'Crit' 'Many open orders';
@@ -649,7 +647,7 @@ create validation rule for Shop.Customer.Email
 **After** — one spelling each, and every validation lives on its attribute:
 
 ```mdl
-create or replace persistent entity Shop.Customer extends Administration.Account (
+create or modify persistent entity Shop.Customer extends Administration.Account (
   Name: string(100) not null,
   Status: enum Shop.Status,
   Tier: enum Shop.Tier,
@@ -661,9 +659,35 @@ create or replace persistent entity Shop.Customer extends Administration.Account
 ### Microflows
 - **`$x = …` ambiguity (§2 #5).**
   - Make `set` mandatory for reassignment. `describe` already always emits it.
-  - Make list operations and aggregates **keyword statements over a variable**: `$A = filter $Orders where …;`, `$n = count $A;`, `$S = sort $L by Date desc;`, `$P = range $L offset $o limit $n;`.
+  - Make list operations and aggregates **statements that mirror Studio Pro's activities** (decided, §7; see *List operations mirror the diagram* below).
   - Nesting then no longer parses. The nesting trap in CLAUDE.md idiom 3 disappears at the grammar level instead of being caught by MDL-LISTOP02, and the `find`/`contains` collision with the string functions goes away.
   - This also fixes the `RANGE($L, offset, amount)` vs `limit … offset` order inversion.
+- **List operations mirror the diagram** (decided, §7). A developer who knows the microflow editor should recognise each statement as the activity they would drag in.
+
+  The rules:
+  - **One statement per activity.** Each statement corresponds to one *List operation* or *Aggregate list* activity.
+  - **The keyword is the operation's name.** These are the operations the Mendix metamodel defines for those activities (`Microflows$Filter`, `FilterByExpression`, `Find`, `FindByExpression`, `Sort`, `Head`, `Tail`, `ListRange`, `Union`, `Intersect`, `Subtract`, `Contains`, `ListEquals`, and aggregate functions `Sum`, `Average`, `Count`, `Minimum`, `Maximum`, `All`, `Any`, `Reduce`).
+  - **The inputs are the ones the activity's dialog asks for.** The operand is always a variable, because the dialog selects a variable. So nesting cannot be written, just as it cannot be drawn.
+  - **`by` picks a member** (the dialog's attribute or association selector). **`where` / `of` take an expression** (the "… by expression" variants).
+  - `describe` prints the same form. `@caption` appears only when the caption was customised.
+
+  | Studio Pro activity: operation | MDL statement |
+  |---|---|
+  | List operation: Filter | `$Open = filter $Orders by Status = Shop.Status.Open;` |
+  | List operation: Filter by expression | `$Big = filter $Orders where $currentObject/Total > 1000;` |
+  | List operation: Find | `$Order = find $Orders by Number = $Number;` |
+  | List operation: Find by expression | `$Late = find $Orders where $currentObject/DueDate < [%CurrentDateTime%];` |
+  | List operation: Sort | `$Sorted = sort $Orders by Date desc, Number asc;` |
+  | List operation: Head / Tail | `$First = head $Orders;` / `$Rest = tail $Orders;` |
+  | List operation: Range | `$Page = range $Orders offset 20 limit 10;` |
+  | List operation: Union / Intersect / Subtract | `$All = union $A with $B;` / `$Both = intersect $A with $B;` / `$Left = subtract $B from $A;` |
+  | List operation: Contains / Equals | `$Has = contains $Order in $Orders;` / `$Same = equals $A and $B;` |
+  | Aggregate list: Count | `$N = count $Orders;` |
+  | Aggregate list: Sum / Average / Minimum / Maximum | `$Total = sum $Orders by Amount;` or, by expression, `$Total = sum $Orders of $currentObject/Price * $currentObject/Quantity;` |
+  | Aggregate list: All / Any | `$AllPaid = all $Orders where $currentObject/Paid;` / `$AnyLate = any $Orders where …;` |
+  | Aggregate list: Reduce | `$Csv = reduce $Orders from '' as String using …;` |
+
+  Before the grammar is fixed, check the keywords and connecting words (`by`, `where`, `of`, `with`, `from`, `in`) against the labels Studio Pro's dialogs actually show for the Mendix versions mxcli supports. The operation set above comes from the metamodel. The label wording is not verified.
 - **`retrieve … limit 1`** — see §5.
 - **Aliases to retire:**
   - `$o/A = v` and `set $o/A = v` → `change $o (A = v)`;
@@ -695,9 +719,9 @@ end while;                               -- begin and end while both optional
 ```mdl
 declare $x integer = 0;
 set $x = find($S, 'abc');                -- assignment always says `set`; find() is the string function
-$y = find $Orders where Number = 42;     -- a list operation is a statement, never a function call
+$y = find $Orders by Number = 42;        -- a list operation is a statement, never a function call
 
-$Approved = filter $Orders where Status = Shop.Status.Approved;
+$Approved = filter $Orders by Status = Shop.Status.Approved;
 $Count = count $Approved;                -- count filter … cannot parse: the operand must be a variable
 $Total = sum $Approved by Amount;
 retrieve $First from Shop.Order where [Status = 'Open'] first;     -- an object
@@ -791,7 +815,7 @@ alter settings constant 'Shop.ApiUrl' value 'https://test.example.com' in config
 **After** — no arrows, no expressions in strings, `caption` says what it sets, and settings use property lists:
 
 ```mdl
-create or replace workflow Shop.OrderApproval
+create or modify workflow Shop.OrderApproval
   parameter $WorkflowContext: Shop.OrderContext
   display 'Order Approval'
 begin
@@ -809,7 +833,7 @@ begin
   ;
 end workflow;
 
-create or replace configuration 'Default' (
+create or modify configuration 'Default' (
   DatabaseType: postgresql,
   HttpPortNumber: 8080,
 );
@@ -878,13 +902,13 @@ alter configuration 'Default' set constant Shop.ApiUrl = 'https://test.example.c
 
 These change the meaning of text that parses today, or they reject text that is accepted today. They must land before beta or never.
 
-1. **Pick one name for the idempotent create (R1).** Only the view-entity path gives the two names different behaviour, so aliasing the loser is safe only once view entities also use the identity-carrying rewrite.
+1. **`create or modify` becomes the one idempotent create, with minimal-change semantics (R1).** `or replace` becomes an alias. Only the view-entity path gives the two names different behaviour, so aliasing is safe only once view entities also use the identity-carrying rewrite. The no-op guarantee changes behaviour for every document type that is rewritten today when nothing changed.
 2. **`retrieve … limit 1`.**
    - Today it binds an **object** (the Mendix "first" range), so to any SQL reader it means something different from what it does.
    - Import mappings already solved this with `first | limit n`, and their own grammar comment argues that a list of one and an object "cannot share syntax".
    - Adopt `retrieve $x from … where … first;` for an object, so that `limit 1` means a list of one.
    - Sequence: in the release before beta, warn on a bare `limit 1` and have `describe` emit `first`. At beta, flip the meaning.
-3. **Make `set` mandatory, and turn list operations into keyword statements**, removing the `$x = find(...)` ambiguity.
+3. **Make `set` mandatory, and turn list operations into statements that mirror Studio Pro's activities** (§4, Microflows), removing the `$x = find(...)` ambiguity.
 4. **Unknown property keys become errors.**
 5. **`;` becomes required**, and `/` is removed.
 6. **`\` is no longer an escape character** in string literals.
@@ -911,14 +935,23 @@ The language has no version marker today. `version-aware-mdl.md` proposes `set v
 
 See the implementation plan in §9, which supersedes the short list that was here.
 
-## 7. Open decisions for the maintainer
+## 7. Decisions
 
-1. **R1, the idempotent-create keyword.** `create or replace` (honest about full-definition semantics) or `create or modify` (what describe emits today)? Renames stay in `alter`/`rename` either way.
-2. **R3/R4, argument binding.** Should it be `Param = expr` (proposed: `=` binds runtime values, `:` sets model properties) or `Param: expr`? The reviews split on this. `=` aligns calls with `change`, `set` and the existing microflow describe output. `:` aligns with today's page describe output. Pick one; do not keep both.
-3. **Alter form.** Should it be `alter X set ( Key: value )` (proposed, the same list as create) or SQL `alter X set Key = value`? The latter is more SQL-like, but it makes the same key take two separators.
-4. **List operations as keyword statements.** This is the largest microflow change. The alternative is to keep the function form, forbid nesting in the grammar, and rename the `find`/`contains` list operations so they no longer collide with the string functions.
-5. **Retire `show` entirely?** Or keep it for non-element state, as proposed?
-6. **The `mdl 1;` header.** Adopt it now, or rely on aliases plus `fmt --upgrade` until the first post-beta break?
+### Decided (2026-09-26)
+
+1. **R1, the idempotent-create keyword: `create or modify`.** It reads like the intent of the command. `modify` changes only what differs: re-running an unchanged definition writes nothing, and Studio Pro shows no change. `create or replace` becomes a deprecated alias.
+2. **`show` is dropped in favour of `list`** (R6).
+3. **Microflow list operations must feel intuitive to developers who work with microflow diagrams in Studio Pro.** Each statement mirrors one activity: one **List operation** or **Aggregate list** activity per statement, named after the operation Studio Pro offers, and taking the inputs its dialog asks for. Because a diagram cannot nest one activity inside another, the statements cannot nest either (§4, Microflows).
+4. **PedApp may be committed** as the Studio Pro-authored round-trip fixture (plan item 0.2).
+
+### Still open
+
+1. **R3/R4, argument binding.** Should it be `Param = expr` (proposed: `=` binds runtime values, `:` sets model properties) or `Param: expr`? The reviews split on this. `=` aligns calls with `change`, `set` and the existing microflow describe output; `:` aligns with today's page describe output. Pick one; do not keep both.
+2. **Alter form.** Should it be `alter X set ( Key: value )` (proposed, the same list as create) or SQL `alter X set Key = value`? The latter is more SQL-like, but it makes the same key take two separators.
+3. **The `mdl 1;` header.** Adopt it now, or rely on aliases plus `fmt --upgrade` until the first post-beta break?
+4. **Release cadence up to beta.** The `limit 1` flip and the required `;` each need one release of warnings, so beta has to be at least two releases away.
+5. **Is brownfield agent editing a beta goal?** If it is, `alter microflow` (plan item 4.2) joins the beta gate. It is the largest single item in the plan.
+6. **Where drift fingerprints are stored** (plan item 4.3): a local `.mxcli/state` file, or committed next to the scripts. This can wait until Phase 4.
 
 ## 8. Two ways of working: MDL-first and data-first
 
@@ -966,7 +999,7 @@ Neither mode is better than the other in general. Each is the efficient one for 
 |---|---|---|
 | Source of truth | the `.mdl` scripts | the stored model (`.mpr`) |
 | Typical use | new apps, new modules, generated scaffolding, documents mxcli owns | existing Studio Pro apps, documents people also edit in Studio Pro, marketplace modules |
-| Main statement | `create or replace <type> X ( … ) { … }`, the whole definition (R1) | `alter <type> X { insert … / replace … / set … / drop … }` (§8.3) |
+| Main statement | `create or modify <type> X ( … ) { … }`, the whole definition (R1) | `alter <type> X { insert … / replace … / set … / drop … }` (§8.3) |
 | What the author must know | only the intended end state; no read needed | the current state, well enough to address the target |
 | Token cost of a change | proportional to the **document** | proportional to the **change** |
 | Reviewability | the script *is* the design; a PR diff shows the new definition | the patch *is* the intent; a PR diff shows exactly what was changed and where |
@@ -987,7 +1020,7 @@ Neither mode is better than the other in general. Each is the efficient one for 
 
 That question can be answered mechanically, the way Terraform detects drift:
 - Record a fingerprint of each document's canonical BSON when mxcli writes it.
-- `create or replace` compares the stored document against that fingerprint.
+- `create or modify` compares the stored document against that fingerprint.
 - **Match:** the replace proceeds.
 - **Drift:** the replace is refused with "changed outside MDL since the last apply; use `alter`, or `describe` to re-adopt, or `--force`".
 
@@ -1002,7 +1035,7 @@ This is another reason for R2's uniform node shape and R12's canonical describe.
 
 ### 8.3 The model is data: edits are tree patches
 
-MDL describes stored data, so it can be manipulated the way Lisp manipulates code: the text is a structure, and edits are structural operations on it. Four consequences follow.
+MDL describes stored data, so it can be manipulated the way Lisp manipulates code: the text is a structure, and edits are structural operations on it. Five consequences follow.
 
 1. **One generic `alter` for every document type.** Rule R2 gives every child the shape `<kind> [Name] ( props ) { children }`. That rule is what makes a single patch grammar possible, replacing about 15 bespoke `alter` forms:
 
@@ -1040,7 +1073,9 @@ MDL describes stored data, so it can be manipulated the way Lisp manipulates cod
    - Unstructured regions are addressed through the `join`/`merge` labels that `describe` already prints.
    - An inserted fragment is checked in the scope of its insertion point, for macro hygiene: a variable it declares must not collide with one declared further down.
 
-4. **Bulk patches are "macros":** a query plus a patch.
+4. **Declarative `create or modify` is a diff that produces a patch.** Given the decided R1 semantics (change only what differs), `create or modify` is implemented as: compare the declared definition with the stored document, derive the minimal patch, and apply it with the same splice engine `alter` uses. An empty patch means no write. The two modes of §8.2 therefore share one engine, and MDL-first scripts gain the same no-churn guarantee as data-first patches. This is the reconciliation model of Terraform's plan/apply.
+
+5. **Bulk patches are "macros":** a query plus a patch.
 
    ```mdl
    alter microflows in Shop where contains (commit $Order) {
@@ -1067,7 +1102,7 @@ Silent loss is never acceptable.
    - New apps and modules: write declarative MDL.
    - Existing Studio Pro documents: change them with `alter`.
    - describe → replace only for documents whose stored state is still what MDL produced, and never on a Studio Pro-authored document of a type without a proven round trip.
-2. **Drift detection** on `create or replace`: a per-document fingerprint recorded at write time, refusing the replace on drift (§8.2). Until it exists, the guidance in step 1 is the only guard.
+2. **Drift detection** on `create or modify`: a per-document fingerprint recorded at write time, refusing the replace on drift (§8.2). Until it exists, the guidance in step 1 is the only guard.
 3. **A CI round-trip test** on a Studio Pro fixture: describe → exec → canonical BSON compared per unit, covering every document type. It would have caught every loss in §8.1. Fix those losses, or turn them into refusals.
 4. **`alter microflow` / `alter nanoflow`** with content addressing and graph splicing (§8.3). This is the single largest gap for brownfield work.
 5. **A real dry run.** Execute on an in-memory copy and diff canonical BSON per unit. The machinery exists in `canon.Reconcile`. Until then, `diff` saying "no changes" is not evidence of no change.
@@ -1106,7 +1141,7 @@ Phase 0  safety net + bugs ──┬──> Phase 1  decisions + deprecation mac
 | # | Item | Size | Where | Done when |
 |---|---|---|---|---|
 | 0.1 | **Round-trip harness.** For every document in a Studio Pro-authored fixture: `describe` → `exec` → canonical BSON compared per unit. Known failures go in an allowlist that may only shrink. | M | integration test (`-tags integration`); compare with `canon` | runs in CI; the allowlist equals the §8.1 losses |
-| 0.2 | **Fixture.** A committed Studio Pro-authored project with microflows, nanoflows, pages, snippets, translations, table-stored associations and a workflow. PedApp covers most of these, but its licence must be checked; add a workflow and REST documents. Evora (`mx-test-projects/`) serves as a large, uncommitted read-side benchmark. | S | `testdata/` | fixture in the repo |
+| 0.2 | **Fixture.** Commit PedApp, a Studio Pro-authored project (cleared for use, §7), which has microflows, nanoflows, pages, snippets, translations and table-stored associations. Add a workflow and REST documents in Studio Pro. Evora (`mx-test-projects/`) serves as a large, uncommitted read-side benchmark. | S | `testdata/` | fixture in the repo |
 | 0.3 | **Silent drops from §2:** `throw`; `float`/`currency`/`date`; the parenthesised association form; enumeration-value doc comments and index names; describe output that doesn't re-parse (#8); the plaintext password (#9); `/tmp` image paths (#10). | M | visitor, executor describe | each has a failing test first; §2 closed |
 | 0.4 | **Round-trip losses from §8.1:** association storage, page translations, nanoflow annotations and export level, Java action export level, snippet `Type`, describe emitting a plain `create`. Tracked as separate tasks. | M | executor create paths | removed from the 0.1 allowlist |
 | 0.5 | **Read-side wrong answers from §8.1:** `describe fragment`, `structure` counts, silent empty `search`, strict `--json`. Tracked as a task. | S | executor | tests |
@@ -1116,7 +1151,7 @@ Phase 0  safety net + bugs ──┬──> Phase 1  decisions + deprecation mac
 
 | # | Item | Size | Where | Done when |
 |---|---|---|---|---|
-| 1.1 | **Decide §7** and record the rules. Write an ADR ("MDL canonical syntax: R1–R12, two modes") that extends ADR-0003, and turn R1–R12 into checklist items in `design-mdl-syntax.md`. Mark the v1/v2 syntax proposals **rejected**; fold the workflow alignment proposal into R4/R9. | S | `docs/13-decisions/`, skill | ADR accepted |
+| 1.1 | **Resolve the remaining open questions in §7** and record all decisions. Write an ADR ("MDL canonical syntax: R1–R12, two modes") that extends ADR-0003, and turn R1–R12 into checklist items in `design-mdl-syntax.md`. Mark the v1/v2 syntax proposals **rejected**; fold the workflow alignment proposal into R4/R9. | S | `docs/13-decisions/`, skill | ADR accepted |
 | 1.2 | **Deprecation registry.** Generalise the existing MDL065 pattern, where the AST records which spelling the source used (`ast_microflow.go:273`). Add a single table of `{code MDL-DEPRnnn, old form, canonical form, removed in}`. `check` and `exec` warn; a `--deprecations=error` flag fails instead. | M | `mdl/ast`, `mdl/linter`, new `deprecations.go` | a test fails if a grammar alternative marked as an alias has no registry entry |
 | 1.3 | **`mxcli fmt --upgrade`.** Each registry entry carries a rewrite, built on `mdl/formatter` / `cmd_fmt.go`. The output must parse with zero deprecation warnings and give an identical AST. | M | `mdl/formatter` | a property test over all of `mdl-examples/`: upgrade, then zero warnings, then AST equal |
 | 1.4 | **Canonical-form conformance gate.** Everything in `mxcli syntax`, the skills, `docs-site/` and `mdl-examples/` is parsed with `--deprecations=error`, starting with an allowlist. This stops the docs teaching old forms, a gap measured in §3. | S | `make lint` target | allowlist only shrinks |
@@ -1129,10 +1164,10 @@ Each change breaks existing text, so each one lands with a registry entry, an `f
 
 | # | Item | Size | Warning period | Done when |
 |---|---|---|---|---|
-| 2.1 | **R1: one idempotent-create keyword.** View entities get an identity-carrying rewrite instead of delete-and-recreate; `if not exists` works on every type. | M | alias the losing keyword (safe once view entities carry identity) | GUID preserved on a view-entity replace (a test with a GUID != `$ID` control) |
+| 2.1 | **R1: `create or modify` is the keyword; `or replace` becomes an alias.** View entities get an identity-carrying rewrite instead of delete-and-recreate; `if not exists` works on every type. The no-op guarantee (an unchanged definition writes nothing) is enforced by the 0.1 harness for every type except microflows and nanoflows, which need 4.2. | M | `or replace` warns | GUID preserved on a view-entity replace (a test with a GUID != `$ID` control); re-running unchanged `describe` output writes no unit |
 | 2.2 | **Strictness:** unknown or mis-shaped property keys are errors (REST, agents and business events first, then everywhere); `;` required; `/` removed; `\` is no longer an escape. | M | `;` and `/` warn for one release; unknown keys and `\` break immediately | parse tests |
 | 2.3 | **Dead grammar removed:** `grant … on workflow`, `case … else`, `text`/`statictext`/`legacydatagrid`, `throw` (if not fixed in 0.3). | S | none (they never worked) | parse errors with a hint |
-| 2.4 | **Microflow assignment and list operations.** `set` becomes mandatory. List operations and aggregates become keyword statements (`$A = filter $L where …`, `$n = count $A`), so nesting no longer parses. The `find`/`contains` ambiguity disappears; MDL-LISTOP02 becomes unreachable and is retired. | L | old function form warns (except `find`/`contains`, which can't) | `write-microflows` skill and examples migrated by `fmt --upgrade` |
+| 2.4 | **Microflow assignment and list operations.** `set` becomes mandatory. List operations and aggregates become one statement per Studio Pro activity (`$A = filter $L by …`, `$B = filter $L where …`, `$n = count $A`; the full table is in §4), so nesting no longer parses. The `find`/`contains` ambiguity disappears; MDL-LISTOP02 becomes unreachable and is retired. The first PR checks the keywords against Studio Pro's dialog labels. | L | old function form warns (except `find`/`contains`, which can't) | `write-microflows` skill and examples migrated by `fmt --upgrade` |
 | 2.5 | **`retrieve … first` vs `limit 1`.** In release N, `describe` emits `first` and a bare `limit 1` warns. In release N+1, the beta, `limit 1` means a list. | M | one release | MDL-RETRIEVE01 retired |
 | 2.6 | **Canonical `describe` (R12), one area per PR:** omit derived layout (extend the `@start` derived-vs-authored rule to `@position`/`@curve`/`@anchor`); omit defaults; no synthetic widget names (make the name optional in `widgetV3`, address grid columns explicitly); fold `join`/`merge` back into `case` and fall-through handlers; emit `elsif`. | L | none (output change) | the harness in 0.1 stays green; PutGet holds per area |
 
@@ -1167,14 +1202,15 @@ Order, by how many existing scripts each item touches:
 | # | Item | Size | Where | Done when |
 |---|---|---|---|---|
 | 4.1 | **Generic `alter <type> X { set / insert / replace / drop }`.** One grammar rule plus a per-doctype *target resolver* interface. `alter page`/`snippet`/`layout` (`pagemutator`) and `alter workflow` (`wfmutator`) are ported onto it first, with their old forms as aliases. | M | grammar, `mdl/backend` | existing alter tests pass through the new path |
-| 4.2 | **`alter microflow` / `alter nanoflow`**, built as an `mfmutator` alongside `pagemutator` and `wfmutator`: | L | `mdl/backend/modelsdk`, `mdl/microflowgraph` | see acceptance below |
+| 4.2 | **`alter microflow` / `alter nanoflow`**, built as an `mfmutator` alongside `pagemutator` and `wfmutator`. The same engine then implements `create or modify` for microflows (step g), which is what makes the R1 no-op guarantee hold for them: | L | `mdl/backend/modelsdk`, `mdl/microflowgraph` | see acceptance below |
 | | a. **Target resolver.** Address by output `$var`, by caption, or by statement pattern with `*` wildcards; `@n` disambiguates, and ambiguity is an error listing the matches. Add `describe … with handles` to show the addresses. | | | |
 | | b. **Graph splice** on the *stored* object collection. Rewire the incoming and outgoing sequence flows around the target; build only the fragment's objects; never call the whole-document `UpdateMicroflow` rebuild. The write goes through `canon.Reconcile` (CLAUDE.md rule 2). | | | |
 | | c. **Placement.** Put the new node on the flow's midpoint and shift downstream nodes; never overlap. | | | |
 | | d. **Hygiene.** Check the fragment in the scope of the insertion point; a variable collision is an error. | | | |
 | | e. **Operations,** in order: `insert after`/`before` → `replace` → `drop` → `set` (expression, caption, `on error`) → `add`/`drop parameter`. | | | |
 | | f. **Both backends:** the modelsdk engine and `--mcp` (the Studio Pro MCP backend), or an explicit "not supported by this backend" error. | | | |
-| 4.3 | **Drift detection.** Every write path records a per-unit canonical-BSON fingerprint through `canon.Reconcile`. `create or replace` refuses on drift, with `--force` to override. Open question: where the fingerprints live (a sidecar `.mxcli/state` file vs committed with the scripts). | M | `modelsdk/canon`, executor | a Studio Pro edit between two applies is detected; a control with no edit is not |
+| | g. **Declarative `create or modify` as diff-then-patch:** match the declared flow against the stored one (by statement signature and output variable, as in 4.2a), derive the minimal set of insert/replace/drop operations, and apply them with the splice from 4.2b. An unchanged definition yields an empty patch and no write. This replaces `UpdateMicroflow`'s whole-document rebuild. | | | |
+| 4.3 | **Drift detection.** Every write path records a per-unit canonical-BSON fingerprint through `canon.Reconcile`. `create or modify` refuses on drift, with `--force` to override. Open question: where the fingerprints live (a sidecar `.mxcli/state` file vs committed with the scripts). | M | `modelsdk/canon`, executor | a Studio Pro edit between two applies is detected; a control with no edit is not |
 | 4.4 | **A real dry run:** `exec --dry-run`, replacing today's `diff`. Execute on an in-memory copy, diff canonical BSON per unit, and render changed units as a `describe` diff. Covers `alter` and every document type. | M | executor, `canon` | the §8.1 false negative (association storage) and false positives disappear |
 | 4.5 | **Opaque passthrough or refusal** for content MDL cannot express, per document type as the 0.1 harness finds it: `preserved <kind> '<id>'` in `describe` output, carried by replace. | M | per doctype | no silent loss remains in the harness |
 | 4.6 | **Bulk patches:** `alter microflows|pages in M where contains (<pattern>) { … }`, building on 4.2a. `alter pages … where` and `update widgets` are folded into it as aliases. | M | grammar, executor | — |
@@ -1185,6 +1221,7 @@ Order, by how many existing scripts each item touches:
 - Control: an empty `alter` changes nothing.
 - `mx check` is unchanged from the baseline, and Studio Pro opens the project.
 - An MDL script of at most 5 lines replaces today's 107.
+- Re-running the unchanged `describe` output as `create or modify` writes nothing (GetPut), with an edited-flow control that does write.
 
 ### Phase 5: read side (§8.1; any time)
 
@@ -1202,5 +1239,4 @@ Order, by how many existing scripts each item touches:
 - **`describe` output changes (2.6, Phase 3) churn MDL that users have committed.** Mitigation: ship them together in as few releases as possible before beta, with `fmt --upgrade` and a changelog entry per change.
 - **Grammar changes ripple into generated artefacts:** LSP completions (`lsp_completions_gen.go`), `keyword_coverage_test.go`, the VS Code extension and the embedded skills. Each grammar PR runs `make build`, which regenerates them, and `make sync-skills`.
 - **The graph splice (4.2b) is the riskiest code.** It must never rewrite an `$ID` without rewriting every reference to it (CLAUDE.md rule 1), and its tests must use a Studio Pro-authored flow, because an mxcli-created flow cannot show identity loss (GUID == `$ID`).
-- **The harness fixture's licence.** If PedApp can't be committed, build a fixture in Studio Pro specifically for this purpose.
 - **Scope creep in Phase 3.** Hold each rule to its recipe; anything beyond renaming belongs in its own proposal.
