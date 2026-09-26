@@ -346,10 +346,12 @@ func buildDataType(ctx parser.IDataTypeContext) ast.DataType {
 	}
 
 	// Handle ENTITY <pEntity> — type parameter declaration for Java actions
-	if dtCtx.ENTITY() != nil && dtCtx.LESS_THAN() != nil && dtCtx.IDENTIFIER() != nil {
+	// The name may be a keyword or quoted: Studio Pro accepts any name for a
+	// type parameter, including a primitive's (`entity <String>`, #1183).
+	if dtCtx.ENTITY() != nil && dtCtx.LESS_THAN() != nil && dtCtx.IdentifierOrKeyword() != nil {
 		return ast.DataType{
 			Kind:          ast.TypeEntityTypeParam,
-			TypeParamName: dtCtx.IDENTIFIER().GetText(),
+			TypeParamName: identifierOrKeywordText(dtCtx.IdentifierOrKeyword()),
 		}
 	}
 

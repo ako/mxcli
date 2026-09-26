@@ -227,12 +227,8 @@ func formatJavaActionType(t javaactions.CodeActionParameterType) string {
 	if t == nil {
 		return "Object"
 	}
-	// EntityTypeParameterType → ENTITY <name> syntax
-	if etp, ok := t.(*javaactions.EntityTypeParameterType); ok {
-		if etp.TypeParameterName != "" {
-			return "entity <" + etp.TypeParameterName + ">"
-		}
-		return "entity <>"
+	if s, ok := formatCodeActionTypeParameterRef(t); ok {
+		return s
 	}
 	return t.TypeString()
 }
@@ -242,7 +238,30 @@ func formatJavaActionReturnType(t javaactions.CodeActionReturnType) string {
 	if t == nil {
 		return "Void"
 	}
+	if s, ok := formatCodeActionTypeParameterRef(t); ok {
+		return s
+	}
 	return t.TypeString()
+}
+
+// formatCodeActionTypeParameterRef renders the types that name a type parameter.
+// Studio Pro accepts any name for one, including a primitive's, so the name goes
+// through mdlIdent: `returns String` re-parses as the primitive, `returns
+// "String"` as the type parameter (#1183).
+func formatCodeActionTypeParameterRef(t any) (string, bool) {
+	switch v := t.(type) {
+	case *javaactions.EntityTypeParameterType:
+		return "entity <" + mdlIdent(v.TypeParameterName) + ">", true
+	case *javaactions.TypeParameter:
+		if v.TypeParameter != "" {
+			return mdlIdent(v.TypeParameter), true
+		}
+	case *javaactions.ListType:
+		if v.TypeParameter != "" {
+			return "List of " + mdlIdent(v.TypeParameter), true
+		}
+	}
+	return "", false
 }
 
 // execDropJavaAction handles DROP JAVA ACTION statements.
@@ -421,6 +440,8 @@ func execCreateJavaAction(ctx *ExecContext, s *ast.CreateJavaActionStmt) error {
 				TypeParameterID: typeParamNameToID[tpName],
 				TypeParameter:   tpName,
 			}
+		} else if l := listOfTypeParameter(param.Type, typeParamNameToID); l != nil {
+			jaParam.ParameterType = l
 		} else {
 			jaParam.ParameterType = astDataTypeToJavaActionParamType(param.Type)
 		}
@@ -435,6 +456,8 @@ func execCreateJavaAction(ctx *ExecContext, s *ast.CreateJavaActionStmt) error {
 			TypeParameterID: typeParamNameToID[tpName],
 			TypeParameter:   tpName,
 		}
+	} else if l := listOfTypeParameter(s.ReturnType, typeParamNameToID); l != nil {
+		ja.ReturnType = l
 	} else {
 		ja.ReturnType = astDataTypeToJavaActionReturnType(s.ReturnType)
 	}
@@ -738,4 +761,26 @@ func getTypeParamRefName(dt ast.DataType) string {
 		}
 	}
 	return ""
+}
+
+// listOfTypeParameter returns the list type for `list of T` when T is a type
+// parameter declared on the action, and nil otherwise. Without it the element
+// went through the entity path and became the entity `.T` — an empty module
+// (#1183). Only an unqualified name can be a type parameter.
+func listOfTypeParameter(dt ast.DataType, typeParamNameToID map[string]model.ID) *javaactions.ListType {
+	if dt.Kind != ast.TypeListOf || dt.EntityRef == nil || dt.EntityRef.Module != "" {
+		return nil
+	}
+	id, ok := typeParamNameToID[dt.EntityRef.Name]
+	if !ok {
+		return nil
+	}
+	return &javaactions.ListType{
+		BaseElement: model.BaseElement{
+			ID:       model.ID(types.GenerateID()),
+			TypeName: "CodeActions$ListType",
+		},
+		TypeParameter:   dt.EntityRef.Name,
+		TypeParameterID: id,
+	}
 }

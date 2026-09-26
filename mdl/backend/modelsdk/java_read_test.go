@@ -162,3 +162,56 @@ func TestReadJavaActionByName_ResolvesTypeParameterNames(t *testing.T) {
 		t.Errorf("return type = %#v, want TypeParameter{pEntity}", got.ReturnType)
 	}
 }
+
+// Studio Pro's "List of <type parameter>" is a ListType whose element is a
+// ParameterizedEntityType. The reader only knew a ConcreteEntityType element, so
+// this read back as ListType{Entity: ""}: DESCRIBE printed a bare `List`, the
+// catalog 'List', and any rewrite of the action serialized a list of an entity
+// with no name (mendixlabs/mxcli#1183).
+func TestReadJavaActionByName_ListOfTypeParameter(t *testing.T) {
+	proj := copyFixture(t)
+	b := New()
+	if err := b.Connect(proj); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = b.Disconnect() })
+
+	mod, err := b.GetModuleByName("MyFirstModule")
+	if err != nil || mod == nil {
+		t.Fatalf("GetModuleByName: %v", err)
+	}
+	tp := &javaactions.TypeParameterDef{Name: "String"}
+	tp.ID = model.ID("0b6f0d0e-1183-4a00-8000-000000000001")
+	ja := &javaactions.JavaAction{
+		ContainerID:    mod.ID,
+		Name:           "ZzJaListOfTypeParam",
+		TypeParameters: []*javaactions.TypeParameterDef{tp},
+		Parameters: []*javaactions.JavaActionParameter{
+			{Name: "EntityType", IsRequired: true,
+				ParameterType: &javaactions.EntityTypeParameterType{TypeParameterID: tp.ID, TypeParameterName: "String"}},
+			{Name: "Items", IsRequired: true,
+				ParameterType: &javaactions.ListType{TypeParameterID: tp.ID, TypeParameter: "String"}},
+		},
+		ReturnType: &javaactions.ListType{TypeParameterID: tp.ID, TypeParameter: "String"},
+	}
+	if err := b.CreateJavaAction(ja); err != nil {
+		t.Fatalf("CreateJavaAction: %v", err)
+	}
+
+	got, err := b.ReadJavaActionByName("MyFirstModule.ZzJaListOfTypeParam")
+	if err != nil {
+		t.Fatalf("ReadJavaActionByName: %v", err)
+	}
+	check := func(what string, typ any) {
+		l, ok := typ.(*javaactions.ListType)
+		if !ok {
+			t.Errorf("%s = %T, want *ListType", what, typ)
+			return
+		}
+		if l.Entity != "" || l.TypeParameterID != tp.ID || l.TypeParameter != "String" {
+			t.Errorf("%s = %+v, want a list of type parameter String (ID %s)", what, *l, tp.ID)
+		}
+	}
+	check("list parameter", got.Parameters[1].ParameterType)
+	check("return type", got.ReturnType)
+}

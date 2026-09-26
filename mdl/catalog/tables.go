@@ -341,7 +341,11 @@ func (c *Catalog) createTables() error {
 		)`,
 		viewWithFullSnapshot("enumeration_values"),
 
-		// java_actions
+		// java_actions. ReturnType (and java_action_parameters.ParameterType)
+		// encode a type-parameter reference as `TypeParameter:<name>` and the
+		// entity-type selector as `EntityTypeParameter:<name>` — a bare name
+		// cannot tell a type parameter called String from the primitive
+		// (mendixlabs/mxcli#1183). See catalogCodeActionType.
 		`CREATE TABLE IF NOT EXISTS java_actions_data (
 			Id TEXT PRIMARY KEY,
 			Name TEXT,

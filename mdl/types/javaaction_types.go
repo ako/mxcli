@@ -165,14 +165,25 @@ func (e EntityType) TypeString() string {
 }
 
 // ListType represents a list type.
+//
+// The element is either a concrete entity (Entity) or a type parameter
+// (TypeParameterID, a BY_ID reference to a TypeParameterDef, with TypeParameter
+// its resolved name) — Studio Pro's "List of <type parameter>". Reading the
+// latter as Entity "" made it describe as a bare `List` and rewrite as a list of
+// an entity with no name (mendixlabs/mxcli#1183).
 type ListType struct {
 	model.BaseElement
-	Entity string `json:"entity,omitempty"` // Qualified entity name for list items
+	Entity          string   `json:"entity,omitempty"`          // Qualified entity name for list items
+	TypeParameter   string   `json:"typeParameter,omitempty"`   // resolved type-parameter name, when the element is one
+	TypeParameterID model.ID `json:"typeParameterId,omitempty"` // BY_ID reference to TypeParameterDef
 }
 
 func (ListType) isCodeActionReturnType()    {}
 func (ListType) isCodeActionParameterType() {}
 func (l ListType) TypeString() string {
+	if l.TypeParameter != "" {
+		return "List of " + l.TypeParameter
+	}
 	if l.Entity != "" {
 		return "List of " + l.Entity
 	}
