@@ -965,10 +965,11 @@ See the implementation plan in §9, which supersedes the short list that was her
 7. **Brownfield agent editing is a beta goal.** `alter microflow`/`alter nanoflow` (plan item 4.2, at least insert, replace and drop) and the no-op `create or modify` for microflows join the beta gate.
 8. **The `mdl 1;` language header is added now** (plan item 1.5). It is an optional first statement that `describe` and `fmt` emit; after beta, removed aliases are gated by version.
 
+9. **Cadence: one release per week, beta in about four weeks** (around 2026-10-24). The schedule is in §9.
+
 ### Still open
 
-1. **Release cadence up to beta.** The `limit 1` flip and the required `;` each need one release of warnings, so beta has to be at least two releases away. The date of the beta decides how Phases 2 and 4.2 are scheduled.
-2. **Where drift fingerprints are stored** (plan item 4.3): a local `.mxcli/state` file, or committed next to the scripts. This can wait until Phase 4.
+1. **Where drift fingerprints are stored** (plan item 4.3): a local `.mxcli/state` file, or committed next to the scripts. This can wait until Phase 4.
 
 ## 8. Two ways of working: MDL-first and data-first
 
@@ -1152,6 +1153,19 @@ Phase 0  safety net + bugs ──┬──> Phase 1  decisions + deprecation mac
                              └──> Phase 5  read side (any time)
                                   Phase 1 ──> Phase 4  data-first editing (alter microflow, drift, dry run)
 ```
+
+### Schedule (weekly releases, beta in about four weeks)
+
+Every break that has a warning period must ship its warning **at least one release before beta**. So all §5 warnings go out in week 2 at the latest, and the deprecation registry (1.2) has to land in week 1.
+
+| Release | Lands | Parallel track (Phase 4) |
+|---|---|---|
+| **Week 1** | ADR (1.1); deprecation registry (1.2); `mdl 1;` (1.5); round-trip harness and PedApp fixture (0.1, 0.2); first bug fixes (0.3–0.5); interim skill guidance (0.6) | generic `alter` skeleton (4.1); `mfmutator` target resolver (4.2a) |
+| **Week 2** | **All §5 warnings ship:** `or replace` alias, bare `limit 1`, missing `;` and `/`, the old list-operation function form, optional `set`. New forms parse alongside the old ones (2.1, 2.4, 2.5). `fmt --upgrade` (1.3). | graph splice and placement (4.2b, 4.2c) |
+| **Week 3** | Canonical `describe` (2.6). Phase 3 canonical forms added to the grammar, with the old forms as aliases. Conformance gate (1.4). Dead grammar removed (2.3). | `insert`, `replace`, `drop`; diff-then-patch `create or modify` for microflows (4.2e, 4.2g) |
+| **Week 4: beta** | Breaks take effect: `limit 1` means a list; `;` required; unknown keys and `\` escapes are errors (2.2, 2.5) | 4.2 acceptance test on `VAL_Feedback` passes |
+
+**Risk.** Four weeks is tight for 4.2, which is the largest item and the riskiest code (the graph splice). If its acceptance test is not green in week 4, choose explicitly between slipping beta by a week or two, and shipping beta with `alter microflow` marked experimental while the microflow no-op guarantee stays on the gate. Phase 3's aliases and Phase 5 continue after beta; only the canonical *forms* have to be in the grammar by then.
 
 ### Phase 0: safety net and bugs (no syntax change)
 
