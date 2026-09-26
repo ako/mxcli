@@ -45,6 +45,11 @@ var ruleIDsSharedDeliberately = map[string]string{
 	"MDL-WIDGET12": "one rule, two sites: a design-property VALUE the theme does not allow — an " +
 		"off-list option, or a single value where the property takes a SET. Same two paths as " +
 		"MDL-WIDGET11, and the same argument against splitting (ako/mxcli#511)",
+	"MDL-WIDGET07": "one rule, two sites: a widget property the builder silently drops on " +
+		"write. validate_widgets.go covers a property key no builder reads; " +
+		"validate_design_properties.go covers DesignProperties on a slot of its parent (a " +
+		"layoutgrid row, a row's column, a dataview footer), which the builder assembles " +
+		"without applying appearance. Someone suppressing MDL-WIDGET07 means both",
 	"MDL059": "one rule, two sites: an annotation that parses and does nothing. " +
 		"validate_flow_parameters.go covers one written on a PARAMETER, " +
 		"validate_document_annotations.go one written before a CREATE. Someone " +
