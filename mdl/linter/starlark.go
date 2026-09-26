@@ -876,6 +876,11 @@ func microflowToStarlark(mf Microflow) starlark.Value {
 		"parameter_count": starlark.MakeInt(mf.ParameterCount),
 		"activity_count":  starlark.MakeInt(mf.ActivityCount),
 		"complexity":      starlark.MakeInt(mf.Complexity),
+		// microflows() yields all three flow flavours, so a rule naming the
+		// document in a message or a location must not hardcode "Microflow".
+		// Title case matches the document_type spelling Starlark rules use.
+		"document_noun":       starlark.String(mf.DocumentNoun()),
+		"document_noun_title": starlark.String(mf.DocumentNounTitle()),
 	})
 }
 

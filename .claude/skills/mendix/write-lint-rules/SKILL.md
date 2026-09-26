@@ -50,7 +50,7 @@ silently return empty results (issue #721).
 | Function | Returns | Description |
 |----------|---------|-------------|
 | `entities()` | list of entity | All non-system entities |
-| `microflows()` | list of microflow | All non-system microflows |
+| `microflows()` | list of microflow | All non-system microflows, nanoflows **and rules** — they share one catalog table. Name the document with `document_noun_title`, never a hardcoded `"Microflow"` |
 | `pages()` | list of page | All non-system pages |
 | `enumerations()` | list of enumeration | All non-system enumerations |
 | `constants()` | list of constant | All non-system constants |
@@ -183,6 +183,8 @@ def check():
 | `parameter_count` | int | Number of parameters |
 | `activity_count` | int | Number of activities |
 | `complexity` | int | McCabe cyclomatic complexity |
+| `document_noun` | string | `"microflow"`, `"nanoflow"` or `"rule"` — for mid-sentence use in a message |
+| `document_noun_title` | string | `"Microflow"`, `"Nanoflow"` or `"Rule"` — for `document_type=` and a message that opens with it |
 
 ### page
 | Property | Type | Example |

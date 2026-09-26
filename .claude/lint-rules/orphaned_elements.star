@@ -89,11 +89,11 @@ def check():
         if not has_callers:
             loc = location(
                 module=mf.module_name,
-                document_type="Microflow",
+                document_type=mf.document_noun_title,
                 document_name=mf.qualified_name
             )
             v = violation(
-                message="Microflow '{}' is not called from anywhere.".format(mf.name),
+                message="{} '{}' is not called from anywhere.".format(mf.document_noun_title, mf.name),
                 location=loc,
                 suggestion="Remove if unused, or rename with ACT_/SCH_ prefix if it's an entry point."
             )
