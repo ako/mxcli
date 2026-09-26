@@ -201,13 +201,15 @@ func TestResolveDesignPropsKey_PluggableKeywordsUseTheirWidgetID(t *testing.T) {
 // ever writes.
 func TestResolveDesignPropsKey_NativeKeywordsUnchanged(t *testing.T) {
 	for keyword, want := range map[string]string{
-		"container":         "DivContainer",
-		"actionbutton":      "Button",
-		"dataview":          "DataView",
-		"listview":          "ListView",
-		"layoutgrid":        "LayoutGrid",
-		"referenceselector": "ReferenceSelector",
-		"staticimage":       "StaticImageViewer",
+		"container":    "DivContainer",
+		"actionbutton": "Button",
+		"dataview":     "DataView",
+		"listview":     "ListView",
+		"layoutgrid":   "LayoutGrid",
+		"staticimage":  "StaticImageViewer",
+		// `referenceselector` is gone from this list: it parses, but no builder
+		// writes it (exec refuses it as an unsupported widget type), so it has no
+		// $Type to resolve through. A stored Forms$ReferenceSelector still maps.
 	} {
 		if got := resolveDesignPropsKey(keyword); got != want {
 			t.Errorf("resolveDesignPropsKey(%q) = %q, want %q", keyword, got, want)
@@ -229,7 +231,7 @@ func TestResolveDesignPropsKey_UnknownFallsThrough(t *testing.T) {
 // and the next person to edit it changes nothing.
 func TestDesignPropsKeyTablesDoNotOverlap(t *testing.T) {
 	for keyword := range pluggableKeywordIDs() {
-		if native, ok := mdlKeywordToDesignPropsKey[keyword]; ok {
+		if native, ok := mdlKeywordStorageType[keyword]; ok {
 			t.Errorf("%q is in both tables (native %q and a pluggable id). "+
 				"The native entry is dead — remove it.", keyword, native)
 		}

@@ -624,7 +624,7 @@ func buildExecuteDatabaseQueryStatement(ctx parser.IExecuteDatabaseQueryStatemen
 		} else if ds := execCtx.DOLLAR_STRING(); ds != nil {
 			stmt.DynamicQuery = unquoteDollarString(ds.GetText())
 		} else if expr := execCtx.Expression(); expr != nil {
-			stmt.DynamicQuery = expr.GetText()
+			stmt.DynamicQuery = expressionSourceText(expr)
 			stmt.DynamicQueryIsExpression = true
 		}
 	}
@@ -1661,7 +1661,7 @@ func buildSendRestRequestStatement(ctx parser.ISendRestRequestStatementContext) 
 				param.Name = strings.TrimPrefix(v.GetText(), "$")
 			}
 			if expr := pc.Expression(); expr != nil {
-				param.Expression = expr.GetText()
+				param.Expression = expressionSourceText(expr)
 			}
 			stmt.Parameters = append(stmt.Parameters, param)
 		}

@@ -134,22 +134,29 @@ actionbutton btn (caption: 'Save', designproperties: ['Size': 'Large', 'Full wid
 ```
 
 **Dynamic Classes** — a Mendix expression evaluated at runtime that returns a
-class list (applied on top of the static `class`). Root attributes in
-`$currentObject` and escape single quotes by doubling them (`''`):
+class list (applied on top of the static `class`). Write the expression as-is —
+no outer quotes, no doubled ones — and root attributes in `$currentObject`. A
+quoted value is a Mendix string: `dynamicclasses: 'is-featured'` is the class
+`is-featured`.
 ```sql
 dynamictext ovChip (
   content: 'chip',
   class: 'ss-chip',
-  dynamicclasses: 'if $currentObject/VesselClass = Mod.BoatClass.Astute then ''ss-chip--astute'' else '''''
+  dynamicclasses: if $currentObject/VesselClass = Mod.BoatClass.Astute then 'ss-chip--astute' else ''
 )
 ```
+
+Not in brackets: `dynamicclasses: [ … ]` (and a column's `DynamicCellClass: [ … ]`)
+parses as a list, which no writer reads — `check` reports it as MDL-WIDGET32. And
+not the old quoted spelling `'if … then ''a'' else '''''`, which would now store
+the expression's text as a class name — `check` reports it as MDL-WIDGET33.
 
 **All can be combined on a single widget:**
 ```sql
 container ctnHero (
   class: 'card',
   style: 'border-left: 4px solid #264AE5;',
-  dynamicclasses: 'if $currentObject/Featured then ''is-featured'' else ''''',
+  dynamicclasses: if $currentObject/Featured then 'is-featured' else '',
   designproperties: ['Spacing top': 'Large', 'Full width': on]
 ) {
   dynamictext txtTitle (content: 'Styled Container', rendermode: H3)
@@ -283,6 +290,16 @@ dynamictext ovChip (content: 'chip', visible: '$currentObject/Name != empty')
 dynamictext tTrim (content: 'x', visible: [trim($currentObject/Slug) != ''])
 textbox txtSlug (label: 'Slug', attribute: Slug, editable: [length(Slug) > 0])
 ```
+
+**Visible based on an attribute value** (Studio Pro's "Visible: based on attribute
+value") — list the Boolean/enumeration values that SHOW the widget; `empty` is
+"(empty)". Only an attribute of the enclosing data container's own entity:
+
+```sql
+container cntRunning (visible: Status in (Running, empty)) { ... }
+textbox txtPassword (label: 'Password', attribute: Password, visible: IsLocalUser in (true))
+```
+
 
 > **`visible:`/`editable:` is a Mendix *expression*, not XPath** — a different
 > function set from a datasource `where` clause, even though both use `[ ... ]`:

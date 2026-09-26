@@ -1,0 +1,35 @@
+-- Bug test for issue #652: an uppercase `AS` on an association-path join left
+-- its alias unresolved, switching off type checks for its columns.
+--
+-- Reported on Mendix 11.12.1: with `RoleName: String(200)` and
+--
+--   join s/MyFirstModule.Sale652_UserRole/System.UserRole AS r
+--
+-- `mxcli check v.mdl -p App.mpr --references` printed `Check passed!`, and
+-- mxbuild then rejected the view with CE6770 "View Entity is out of sync with
+-- the OQL Query." The same query with a lowercase `as` reported the MDL031
+-- length mismatch. DESCRIBE prints `AS` in upper case, so this is the ordinary
+-- shape of round-tripped OQL.
+--
+-- Cause: extractAliasMap recovered the path by trimming a literal lowercase
+-- "as" off a case-insensitive match. The final path segment is now its own
+-- regex group.
+--
+-- Expected: this file passes `check --references` (String(100) is correct).
+-- Changing RoleName to String(200) must report "inherits length 100 from
+-- source attribute System.UserRole.Name" whichever case `as` is written in.
+
+create persistent entity MyFirstModule.Sale652 ( Amount: Integer );
+
+create association MyFirstModule.Sale652_UserRole
+  from MyFirstModule.Sale652 to System.UserRole;
+
+create view entity MyFirstModule.RoleSales652 (
+  RoleName: String(100),
+  Total: Integer
+) as (
+  select r.Name as RoleName, sum(s.Amount) as Total
+  from MyFirstModule.Sale652 as s
+  join s/MyFirstModule.Sale652_UserRole/System.UserRole AS r
+  group by r.Name
+);

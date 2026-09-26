@@ -377,7 +377,7 @@ CREATE ODATA CLIENT MyModule.LocalService2 (
   ODataVersion: OData4,
   MetadataUrl: './metadata/service.xml',
   Timeout: 300,
-  ServiceUrl: '@MyModule.ServiceLocation'  -- Must be a constant reference
+  ServiceUrl: MyModule.ServiceLocation  -- Must be a constant reference
 );
 ```
 
@@ -1404,7 +1404,7 @@ Module.OrderResponse_CustomerInfo/Module.CustomerInfo as customer {
 
 **`AS $$ ... $$` is mandatory** — the body cannot be omitted. Omitting it causes `no viable alternative at input '...'`. Use `as $$ return false; $$;` as a stub.
 
-**Parameter Types:** `string`, `integer`, `long`, `decimal`, `boolean`, `datetime`, `Module.Entity`, `list of Module.Entity`, `enum Module.EnumName`, `enumeration(Module.EnumName)`, `stringtemplate(sql)`, `stringtemplate(Oql)`, `entity <pEntity>` (type parameter declaration), bare `pEntity` (type parameter reference).
+**Parameter Types:** `string`, `integer`, `long`, `decimal`, `boolean`, `datetime`, `Module.Entity`, `list of Module.Entity`, `enum Module.EnumName`, `enumeration(Module.EnumName)`, `stringtemplate(sql)`, `stringtemplate(Oql)`, `entity <pEntity>` (type parameter declaration), bare `pEntity` (type parameter reference), `list of pEntity` (list of type-parameter instances). A type parameter named after a primitive is referenced quoted (`"String"`); unquoted `String` is the primitive.
 
 **Type Parameters** allow generic entity handling. `entity <pEntity>` declares the type parameter inline and becomes the entity type selector; bare `pEntity` parameters receive entity instances:
 ```sql
@@ -1455,7 +1455,7 @@ MDL uses explicit property declarations for pages:
 | Association source ("data from context") | `datasource: $currentObject/Module.Assoc` | nested `dataview dvCust (datasource: $currentObject/Order_Customer)` shows the to-one referenced object; a list widget shows the to-many collection |
 | CSS class | `class: 'classes'` | `container c (class: 'card mx-spacing-top-large')` |
 | Inline style | `style: 'css'` | `container c (style: 'padding: 16px;')` |
-| Dynamic classes | `dynamicclasses: 'expr'` | `container c (dynamicclasses: 'if $currentObject/IsActive then ''is-active'' else ''''')` — runtime-computed classes; stacks on `class` |
+| Dynamic classes | `dynamicclasses: 'expr'` | `container c (dynamicclasses: if $currentObject/IsActive then 'is-active' else '')` — runtime-computed classes; stacks on `class` |
 | Design properties | `designproperties: [...]` | `container c (designproperties: ['Spacing top': 'Large', 'full width': on])` |
 | Width (pixels) | `width: integer` | `image img (width: 200)` |
 | Height (pixels) | `height: integer` | `image img (height: 150)` |
@@ -1521,7 +1521,7 @@ MDL uses explicit property declarations for pages:
 | `ColumnWidth` | `autofill`, `autoFit`, `manual` | `autofill` | `ColumnWidth: manual` |
 | `Size` | integer (px) | `1` | `Size: 200` |
 | `visible` | expression string | `true` | `visible: '$showColumn'` (page variable, not $currentObject) |
-| `DynamicCellClass` | expression string | (empty) | `DynamicCellClass: 'if(...) then ... else ...'` |
+| `DynamicCellClass` | expression string | (empty) | `DynamicCellClass: if(...) then ... else ...` |
 | `tooltip` | text string | (empty) | `tooltip: 'Price in USD'` |
 
 **Page Example:**

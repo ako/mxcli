@@ -27,10 +27,30 @@ func asActionMap(v any) map[string]any {
 
 // parseRawWidget parses a raw widget map into rawWidget structs.
 // extractConditionalSettings extracts ConditionalVisibility/Editability from raw BSON.
-func extractConditionalSettings(widget *rawWidget, w map[string]any) {
+func extractConditionalSettings(ctx *ExecContext, widget *rawWidget, w map[string]any) {
 	if cvs, ok := w["ConditionalVisibilitySettings"].(map[string]any); ok && cvs != nil {
 		if expr, ok := cvs["Expression"].(string); ok && expr != "" {
 			widget.VisibleIf = expr
+		}
+		// Attribute-based: one Enumerations$Condition per value. Without this the
+		// setting was never read, so describe → exec wrote the widget always
+		// visible (Administration.Account_Edit: 8 conditions → 0).
+		if attr, ok := cvs["Attribute"].(string); ok && attr != "" {
+			widget.VisibleAttr = describeAttr(ctx, attr)
+			for _, c := range getBsonArrayElements(cvs["Conditions"]) {
+				cm, ok := c.(map[string]any)
+				if !ok {
+					continue
+				}
+				if shown, _ := cm["EditableVisible"].(bool); !shown {
+					continue
+				}
+				v, _ := cm["AttributeValue"].(string)
+				if v == emptyConditionValue {
+					v = "empty"
+				}
+				widget.VisibleValues = append(widget.VisibleValues, v)
+			}
 		}
 	}
 	if ces, ok := w["ConditionalEditabilitySettings"].(map[string]any); ok && ces != nil {
@@ -97,7 +117,7 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 			}
 			widget.DesignProperties = extractDesignProperties(appearance)
 		}
-		extractConditionalSettings(&widget, w)
+		extractConditionalSettings(ctx, &widget, w)
 		// Regions are five named slots, not a list: Top, Right, Bottom, Left
 		// and CenterRegion (the last spelled differently from its siblings).
 		// Each occupied one becomes a synthetic intermediate widget, the same
@@ -162,7 +182,7 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 			}
 			widget.DesignProperties = extractDesignProperties(appearance)
 		}
-		extractConditionalSettings(&widget, w)
+		extractConditionalSettings(ctx, &widget, w)
 		for _, tp := range getBsonArrayElements(w["TabPages"]) {
 			tpMap, ok := tp.(map[string]any)
 			if !ok {
@@ -233,7 +253,7 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 				widget.HeaderMode = headerMode
 			}
 		}
-		extractConditionalSettings(&widget, w)
+		extractConditionalSettings(ctx, &widget, w)
 		children := getBsonArrayElements(w["Widgets"])
 		if children != nil {
 			for _, c := range children {
@@ -249,7 +269,7 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 		Type: typeName,
 		Name: name,
 	}
-	extractConditionalSettings(&widget, w)
+	extractConditionalSettings(ctx, &widget, w)
 
 	// Extract CSS class, style, and design properties from Appearance
 	if appearance, ok := w["Appearance"].(map[string]any); ok {
@@ -331,7 +351,9 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 		widget.LabelWidth = extractDataViewLabelWidth(w)
 		widget.ReadOnlyStyle = extractReadOnlyStyle(ctx, w)
 		widget.ShowFooter, _ = w["ShowFooter"].(bool)
-		widget.Children = parseDataViewChildren(ctx, w, widget.EntityContext)
+		widget.Children = withQualifiedAttrs(ctx, widget.DataSource, func() []rawWidget {
+			return parseDataViewChildren(ctx, w, widget.EntityContext)
+		})
 		return []rawWidget{widget}
 
 	case "Forms$TextBox", "Pages$TextBox":
@@ -386,8 +408,16 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 		if widget.RenderMode == "combobox" {
 			widget.DataSource = extractComboBoxDataSource(ctx, w)
 			if widget.DataSource != nil {
-				widget.Content = extractCustomWidgetPropertyAssociation(ctx, w, "attributeAssociation")
+				widget.Content = associationRefForContext(extractCustomWidgetPropertyAssociationQN(ctx, w, "attributeAssociation"), inheritedCtx)
 				widget.CaptionAttribute = extractCustomWidgetPropertyAttributeRef(ctx, w, "optionsSourceAssociationCaptionAttribute")
+				// The caption can be an EXPRESSION instead (Studio Pro's "Caption
+				// type: Expression"). Reading only the attribute form dropped it,
+				// and exec wrote a combobox with no caption — CE0642 "Property
+				// 'Caption' is required" on Administration.Account_New (#664).
+				if extractCustomWidgetPropertyString(ctx, w, "optionsSourceAssociationCaptionType") == "expression" {
+					widget.CaptionExpression = extractCustomWidgetPropertyExpression(w, "optionsSourceAssociationCaptionExpression")
+					widget.CaptionAttribute = ""
+				}
 			}
 			// The on-change action, in BOTH modes — the def maps `onChangeEvent`
 			// in each, and modes are exclusive. Read outside the DataSource
@@ -408,7 +438,7 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 		if widget.RenderMode == "dropdownfilter" &&
 			extractCustomWidgetPropertyString(ctx, w, "baseType") == "ref" {
 			widget.DataSource = extractCustomWidgetPropertyDataSource(ctx, w, "refOptions")
-			widget.Content = extractCustomWidgetPropertyAssociation(ctx, w, "refEntity")
+			widget.Content = associationRefForContext(extractCustomWidgetPropertyAssociationQN(ctx, w, "refEntity"), inheritedCtx)
 			widget.CaptionAttribute = extractCustomWidgetPropertyAttributeRef(ctx, w, "refCaption")
 		}
 		// For DataGrid2, also extract datasource, columns, CONTROLBAR widgets, paging, and selection
@@ -449,7 +479,9 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 			} else if inheritedCtx != "" {
 				widget.EntityContext = inheritedCtx
 			}
-			widget.Children = extractGalleryContent(ctx, w, widget.EntityContext)
+			widget.Children = withQualifiedAttrs(ctx, widget.DataSource, func() []rawWidget {
+				return extractGalleryContent(ctx, w, widget.EntityContext)
+			})
 			widget.FilterWidgets = extractGalleryFilters(ctx, w)
 		}
 		// For filter widgets, extract filter attributes and expression
@@ -530,6 +562,15 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 			widget.DataSource = named[0].DataSource
 			if widget.EntityContext == "" {
 				widget.EntityContext = dataSourceEntityContext(ctx, named[0].DataSource)
+			}
+			// One CONFIGURED is not one DECLARED. The builder refuses the
+			// generic clause on a widget whose definition maps several
+			// datasources, whatever is configured — a File Uploader in files
+			// mode still declares `associatedImages` — so the generic spelling
+			// made every such page's description unexecutable (#1199). Name the
+			// key whenever the schema declares more than one the author can set.
+			if named[0].Key != "" && declaresSeveralAuthorableDataSources(w) {
+				widget.NamedDataSources = named
 			}
 		}
 		return []rawWidget{widget}
@@ -676,7 +717,9 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 		if onClick := asActionMap(w["ClickAction"]); onClick != nil {
 			widget.Action = extractButtonAction(ctx, map[string]any{"Action": onClick})
 		}
-		widget.Children = parseListViewContent(ctx, w, widget.EntityContext)
+		widget.Children = withQualifiedAttrs(ctx, widget.DataSource, func() []rawWidget {
+			return parseListViewContent(ctx, w, widget.EntityContext)
+		})
 		return []rawWidget{widget}
 
 	default:
@@ -1007,7 +1050,12 @@ func extractAttributeRef(ctx *ExecContext, w map[string]any) string {
 	if _, ok := attrRef["Attribute"].(string); !ok {
 		return ""
 	}
-	return columnAttributeFromRef(attrRef)
+	path := columnAttributeFromRef(attrRef)
+	if !strings.Contains(path, "/") {
+		// A plain binding: qualified where no entity is in scope (describeAttr).
+		return describeAttr(ctx, extractString(attrRef["Attribute"]))
+	}
+	return path
 }
 
 // parseGalleryContent extracts the content widget from a Gallery.

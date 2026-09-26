@@ -30,6 +30,7 @@ type executorCache struct {
 	units        []*types.UnitInfo
 	folders      []*types.FolderInfo
 	domainModels []*domainmodel.DomainModel
+	enumerations []*model.Enumeration
 	hierarchy    *ContainerHierarchy
 	// pages, layouts, microflows are cached separately as they may change during execution
 

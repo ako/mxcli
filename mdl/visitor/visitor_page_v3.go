@@ -831,6 +831,15 @@ func parseWidgetPropertyV3(ctx parser.IWidgetPropertyV3Context, widget *ast.Widg
 
 	// Visible: [expression] (conditional visibility) or Visible: false (static)
 	if propCtx.VISIBLE() != nil {
+		// `Visible: Attr in (v1, …)` — Studio Pro's "based on attribute value".
+		if propCtx.IN() != nil {
+			vw := &ast.VisibleWhenV3{Attribute: getQualifiedNameText(propCtx.QualifiedName())}
+			for _, v := range propCtx.AllVisibleValueV3() {
+				vw.Values = append(vw.Values, unquoteIdentifier(v.GetText()))
+			}
+			widget.Properties["VisibleWhen"] = vw
+			return
+		}
 		if xc := propCtx.XpathConstraint(); xc != nil {
 			widget.Properties["VisibleIf"] = buildConditionalExpression(xc)
 		} else if valCtx := propCtx.PropertyValueV3(); valCtx != nil {
@@ -859,6 +868,20 @@ func parseWidgetPropertyV3(ctx parser.IWidgetPropertyV3Context, widget *ast.Widg
 
 	// Generic property: Identifier: value
 	if id := propCtx.IDENTIFIER(); id != nil {
+		// An expression-typed property takes the expression as written, from
+		// whichever value alternative matched (visitor_widget_expression.go).
+		if isWidgetExpressionProp(id.GetText()) {
+			if v := lastRuleChild(propCtx); v != nil {
+				widget.Properties[id.GetText()] = widgetExpressionValue(v)
+			}
+			return
+		}
+		if expr := propCtx.Expression(); expr != nil {
+			if b != nil {
+				b.addError(widgetExpressionNotAllowed(id.GetText(), expr))
+			}
+			return
+		}
 		// `<Name>Params: [{1} = Attr]` — the parameters of a text-template
 		// sub-property whose name belongs to the WIDGET rather than to MDL (a
 		// File Uploader custom button's ButtonCaptionParams). ContentParams and
@@ -892,6 +915,18 @@ func parseWidgetPropertyV3(ctx parser.IWidgetPropertyV3Context, widget *ast.Widg
 	// Generic property with keyword name: keyword: value (for pluggable widget property keys
 	// that happen to be MDL keywords, e.g., type, datasource, content)
 	if kw := propCtx.Keyword(); kw != nil {
+		if isWidgetExpressionProp(kw.GetText()) {
+			if v := lastRuleChild(propCtx); v != nil {
+				widget.Properties[kw.GetText()] = widgetExpressionValue(v)
+			}
+			return
+		}
+		if expr := propCtx.Expression(); expr != nil {
+			if b != nil {
+				b.addError(widgetExpressionNotAllowed(kw.GetText(), expr))
+			}
+			return
+		}
 		if plCtx := propCtx.ParamListV3(); plCtx != nil {
 			widget.Properties[kw.GetText()] = buildParamListV3(plCtx)
 			return
@@ -1050,8 +1085,9 @@ func buildActionV3(ctx parser.IActionExprV3Context) *ast.ActionV3 {
 	actCtx := ctx.(*parser.ActionExprV3Context)
 	action := &ast.ActionV3{}
 
-	if v := actCtx.VARIABLE(); v != nil {
+	if v := actCtx.VARIABLE(); v != nil && actCtx.OPEN_LINK() == nil {
 		// $handler — a fragment action parameter; resolved at expansion.
+		// (OPEN_LINK $currentObject/Attr also carries a VARIABLE.)
 		action.Type = "param"
 		action.Target = strings.TrimPrefix(v.GetText(), "$")
 	} else if actCtx.NOTHING() != nil {
@@ -1112,6 +1148,13 @@ func buildActionV3(ctx parser.IActionExprV3Context) *ast.ActionV3 {
 		if str := actCtx.STRING_LITERAL(); str != nil {
 			action.LinkURL = unquoteString(str.GetText())
 		}
+		// A dynamic address: `open_link $currentObject/URL`.
+		if v := actCtx.VARIABLE(); v != nil {
+			action.LinkVariable = v.GetText()
+			if pathCtx := actCtx.AttributePathV3(); pathCtx != nil {
+				action.LinkAttribute = buildAttributePathV3(pathCtx)
+			}
+		}
 	} else if actCtx.SIGN_OUT() != nil {
 		action.Type = "signOut"
 	} else if actCtx.COMPLETE_TASK() != nil {
@@ -1155,7 +1198,7 @@ func buildMicroflowArgV3(ctx parser.IMicroflowArgV3Context) ast.FlowArgV3 {
 		arg.Name = identifierOrKeywordText(iok)
 	}
 	if expr := argCtx.Expression(); expr != nil {
-		arg.Value = expr.GetText()
+		arg.Value = expressionSourceText(expr)
 	}
 
 	return arg
@@ -1269,7 +1312,7 @@ func buildParamAssignmentV3(ctx parser.IParamAssignmentV3Context) ast.ParamAssig
 		}
 	}
 	if expr := paCtx.Expression(); expr != nil {
-		param.Value = stripExpressionIdentifierQuotes(expr.GetText())
+		param.Value = stripExpressionIdentifierQuotes(expressionSourceText(expr))
 	}
 	if fmtCtx := paCtx.ParamFormatV3(); fmtCtx != nil {
 		param.Format = buildParamFormatV3(fmtCtx)

@@ -5,6 +5,7 @@ package executor
 import (
 	"context"
 	"strings"
+	"sync"
 )
 
 // buildPropertyTypeKeyMap builds a map from PropertyType $ID to PropertyKey for a CustomWidget.
@@ -634,7 +635,7 @@ func extractTextTemplateParameters(ctx *ExecContext, textTemplate map[string]any
 					result = append(result, "$"+sourceVarName+"."+attrName)
 				} else {
 					// No SourceVariable - use short attribute name
-					result = append(result, shortAttributeName(attr))
+					result = append(result, describeAttr(ctx, attr))
 				}
 				continue
 			}
@@ -893,7 +894,7 @@ func extractCustomWidgetPropertyAttributeRef(ctx *ExecContext, w map[string]any,
 		}
 		if attrRef, ok := value["AttributeRef"].(map[string]any); ok && attrRef != nil {
 			if attr, ok := attrRef["Attribute"].(string); ok && attr != "" {
-				return shortAttributeName(attr)
+				return describeAttr(ctx, attr)
 			}
 		}
 	}
@@ -908,6 +909,34 @@ func extractCustomWidgetPropertyAttributeRef(ctx *ExecContext, w map[string]any,
 // This is the symmetric counterpart of extractCustomWidgetPropertyAttributeRef,
 // handling the EntityRef storage format instead of AttributeRef.
 func extractCustomWidgetPropertyAssociation(ctx *ExecContext, w map[string]any, propertyKey string) string {
+	return shortAttributeName(extractCustomWidgetPropertyAssociationQN(ctx, w, propertyKey))
+}
+
+// associationRefForContext renders a stored association reference for MDL:
+// bare when it is declared in the context entity's module, qualified otherwise.
+//
+// exec qualifies a bare name by looking the association up from the context,
+// but the qualified form means the same thing without a lookup — so it is what
+// describe emits whenever the modules differ, or the context is unknown. A
+// bare `UserRoles` on a page over Administration.Account (extends System.User)
+// was written back as `Administration.UserRoles` → CE1613 (ako/mxcli#662).
+func associationRefForContext(assocQN, entityContext string) string {
+	if assocQN == "" {
+		return ""
+	}
+	dot := strings.Index(assocQN, ".")
+	if dot < 0 {
+		return assocQN
+	}
+	if ctxDot := strings.Index(entityContext, "."); ctxDot > 0 && entityContext[:ctxDot] == assocQN[:dot] {
+		return assocQN[dot+1:]
+	}
+	return assocQN
+}
+
+// extractCustomWidgetPropertyAssociationQN returns the association a
+// CustomWidget property binds, as stored: Module.Association.
+func extractCustomWidgetPropertyAssociationQN(ctx *ExecContext, w map[string]any, propertyKey string) string {
 	obj, ok := w["Object"].(map[string]any)
 	if !ok {
 		return ""
@@ -942,7 +971,7 @@ func extractCustomWidgetPropertyAssociation(ctx *ExecContext, w map[string]any, 
 				continue
 			}
 			if assoc := extractString(stepMap["Association"]); assoc != "" {
-				return shortAttributeName(assoc)
+				return assoc
 			}
 		}
 	}
@@ -978,6 +1007,27 @@ func extractCustomWidgetPropertyImage(ctx *ExecContext, w map[string]any, proper
 		}
 		if img, ok := value["Image"].(string); ok {
 			return img
+		}
+	}
+	return ""
+}
+
+// extractCustomWidgetPropertyExpression reads an expression-typed property's
+// stored Expression, or "" when it is unset.
+func extractCustomWidgetPropertyExpression(w map[string]any, propertyKey string) string {
+	obj, ok := w["Object"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	propTypeKeyMap := buildPropertyTypeKeyMap(w, false)
+	for _, prop := range getBsonArrayElements(obj["Properties"]) {
+		propMap, ok := prop.(map[string]any)
+		if !ok || propTypeKeyMap[extractBinaryID(propMap["TypePointer"])] != propertyKey {
+			continue
+		}
+		if value, ok := propMap["Value"].(map[string]any); ok {
+			expr, _ := value["Expression"].(string)
+			return expr
 		}
 	}
 	return ""
@@ -1070,7 +1120,7 @@ func extractCustomWidgetPropertyAttributes(ctx *ExecContext, w map[string]any, p
 				// Check for AttributeRef
 				if attrRef, ok := objValue["AttributeRef"].(map[string]any); ok && attrRef != nil {
 					if attr, ok := attrRef["Attribute"].(string); ok && attr != "" {
-						result = append(result, shortAttributeName(attr))
+						result = append(result, describeAttr(ctx, attr))
 					}
 				}
 			}
@@ -1139,7 +1189,7 @@ func extractExplicitProperties(ctx *ExecContext, w map[string]any) []rawExplicit
 			if attr := extractString(attrRef["Attribute"]); attr != "" {
 				result = append(result, rawExplicitProp{
 					Key:   propKey,
-					Value: shortAttributeName(attr),
+					Value: describeAttr(ctx, attr),
 					IsRef: true,
 				})
 				continue
@@ -1431,3 +1481,57 @@ func parseColumnSlotWidgets(ctx *ExecContext, value map[string]any, entityContex
 	}
 	return out
 }
+
+// declaresSeveralAuthorableDataSources reports whether a pluggable widget's
+// stored schema declares more than one datasource property MDL can set — the
+// same count the builder's refuseAmbiguousGenericDataSource makes, read from the
+// document instead of the definition.
+//
+// The two agree because a generated definition (the only kind a widget like the
+// File Uploader has) maps every top-level datasource the package declares. A
+// LINKED one is not counted: the platform fills it from the containing widget
+// and a definition may not map it. A widget with an EMBEDDED definition is not
+// counted either: those are hand-written, choose one datasource mapping per
+// mode, and so accept the generic clause — a database-mode ComboBox declares
+// two datasources and must keep describing as it always has.
+func declaresSeveralAuthorableDataSources(w map[string]any) bool {
+	widgetType, ok := w["Type"].(map[string]any)
+	if !ok {
+		return false
+	}
+	if id, _ := widgetType["WidgetId"].(string); embeddedDefinitionWidgetIDs()[id] {
+		return false
+	}
+	objType, ok := widgetType["ObjectType"].(map[string]any)
+	if !ok {
+		return false
+	}
+	n := 0
+	for _, pt := range getBsonArrayElements(objType["PropertyTypes"]) {
+		ptMap, ok := pt.(map[string]any)
+		if !ok {
+			continue
+		}
+		vt, ok := ptMap["ValueType"].(map[string]any)
+		if !ok || extractString(vt["Type"]) != "DataSource" {
+			continue
+		}
+		if linked, _ := vt["IsLinked"].(bool); linked {
+			continue
+		}
+		n++
+	}
+	return n > 1
+}
+
+var embeddedDefinitionWidgetIDs = sync.OnceValue(func() map[string]bool {
+	ids := map[string]bool{}
+	reg, err := NewWidgetRegistry()
+	if err != nil {
+		return ids
+	}
+	for _, def := range reg.All() {
+		ids[def.WidgetID] = true
+	}
+	return ids
+})

@@ -14,11 +14,13 @@
 #   .name            - Simple name (e.g., "ACT_ProcessOrder")
 #   .qualified_name  - Full name (e.g., "MyModule.ACT_ProcessOrder")
 #   .module_name     - Module name
-#   .microflow_type  - "Microflow" or "Nanoflow"
+#   .microflow_type  - "MICROFLOW", "NANOFLOW" or "RULE"
 #   .description     - Documentation
 #   .return_type     - Return type
 #   .parameter_count - Number of parameters
 #   .activity_count  - Number of activities
+#   .document_noun   - "microflow", "nanoflow" or "rule" (microflows() yields all three)
+#   .document_noun_title - the same, capitalised: use it for document_type=
 
 RULE_ID = "CUSTOM002"
 RULE_NAME = "Microflow Prefix Convention"
@@ -48,11 +50,12 @@ def check():
         if not has_valid_prefix:
             loc = location(
                 module=mf.module_name,
-                document_type="Microflow",
+                document_type=mf.document_noun_title,
                 document_name=mf.qualified_name
             )
             v = violation(
-                message="Microflow '{}' should start with a standard prefix ({})".format(
+                message="{} '{}' should start with a standard prefix ({})".format(
+                    mf.document_noun_title,
                     name,
                     ", ".join(VALID_PREFIXES)
                 ),

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"iter"
+	"sort"
 	"strings"
 	"sync"
 
@@ -36,8 +37,17 @@ type LintContext struct {
 	catalog  *catalog.Catalog
 	db       catalog.CatalogDB
 	excluded map[string]bool
-	included map[string]bool // when non-empty, only these modules are linted
-	reader   LintReader
+	included map[string]bool // the module allowlist; see includeActive
+	// includeActive distinguishes "no module allowlist" from "an allowlist that
+	// matched nothing". Without it an empty `included` map means the former, so
+	// `--modules A --documents B.C` — which names an empty set — would lint the
+	// WHOLE project instead of nothing. Caught by its own test.
+	includeActive bool
+	// documents is the --document allowlist, by QUALIFIED name. When non-empty
+	// the document iterators below return only these, so a rule that walks
+	// microflows stops paying for the ones nobody asked about (ako/mxcli#681).
+	documents map[string]bool
+	reader    LintReader
 
 	// fullMFCache memoizes every fully-parsed microflow for the lifetime of the
 	// lint run (see FullMicroflow). Populated lazily on first FullMicroflow call.
@@ -119,10 +129,76 @@ func (ctx *LintContext) SetExcludedModules(modules []string) {
 // SetIncludedModules sets an allowlist of modules to lint. When non-empty,
 // only modules in this list are linted (modules not in the list are skipped).
 func (ctx *LintContext) SetIncludedModules(modules []string) {
+	if len(modules) == 0 {
+		return
+	}
 	ctx.included = make(map[string]bool)
+	ctx.includeActive = true
 	for _, m := range modules {
 		ctx.included[m] = true
 	}
+}
+
+// SetIncludedDocuments sets an allowlist of documents to lint, by qualified
+// name ("Sales.ACT_Order"). It also narrows the module allowlist to the modules
+// those documents live in: every rule already guards its expensive per-document
+// read with IsExcluded(moduleName), so the module implication is what makes a
+// scoped lint faster in rules this package does not otherwise narrow.
+func (ctx *LintContext) SetIncludedDocuments(docs []string) {
+	ctx.documents = make(map[string]bool)
+	mods := map[string]bool{}
+	for _, d := range docs {
+		ctx.documents[d] = true
+		if i := strings.LastIndex(d, "."); i > 0 {
+			mods[d[:i]] = true
+		}
+	}
+	if len(mods) == 0 {
+		return
+	}
+	// Intersect rather than replace: --modules A --documents B.C names an empty
+	// set and must lint nothing, not all of B. Replacing would silently widen an
+	// explicit filter, which is the direction that turns a scoped run into a
+	// project-wide one without saying so.
+	if !ctx.includeActive {
+		ctx.included = mods
+		ctx.includeActive = true
+		return
+	}
+	for m := range ctx.included {
+		if !mods[m] {
+			delete(ctx.included, m)
+		}
+	}
+}
+
+// IsDocumentExcluded reports whether a document is outside the --document
+// allowlist. With no allowlist nothing is excluded, so an unscoped lint is
+// unaffected.
+//
+// qualifiedName is "Module.Document". A caller holding the two halves separately
+// should join them; a caller holding only a short name cannot use this.
+func (ctx *LintContext) IsDocumentExcluded(qualifiedName string) bool {
+	return len(ctx.documents) > 0 && !ctx.documents[qualifiedName]
+}
+
+// documentFilterSQL returns a SQL predicate narrowing an iterator to the
+// --document allowlist, or "1=1" when there is none.
+//
+// It is applied in the QUERY rather than in each rule because that is the one
+// place it covers every rule at once: CONV011 and MPR002 both walk Microflows()
+// and both call FullMicroflow() per row, which is the read that makes lint scale
+// with project size.
+func (ctx *LintContext) documentFilterSQL(column string) string {
+	if len(ctx.documents) == 0 {
+		return "1=1"
+	}
+	quoted := make([]string, 0, len(ctx.documents))
+	for d := range ctx.documents {
+		quoted = append(quoted, "'"+strings.ReplaceAll(d, "'", "''")+"'")
+	}
+	sort.Strings(quoted) // deterministic SQL, so a failure is reproducible
+	return column + " IN (" + strings.Join(quoted, ", ") + ")"
 }
 
 // IsExcluded returns true if the module should be skipped during linting.
@@ -132,7 +208,7 @@ func (ctx *LintContext) IsExcluded(moduleName string) bool {
 	if ctx.excluded[moduleName] {
 		return true
 	}
-	if len(ctx.included) > 0 && !ctx.included[moduleName] {
+	if ctx.includeActive && !ctx.included[moduleName] {
 		return true
 	}
 	return false
@@ -563,9 +639,9 @@ func (ctx *LintContext) Microflows() iter.Seq[Microflow] {
 			       mf.ParameterCount, mf.ActivityCount, mf.Complexity
 			FROM microflows mf
 			LEFT JOIN modules m ON mf.ModuleName = m.Name
-			WHERE %s
+			WHERE %s AND %s
 			ORDER BY mf.ModuleName, mf.Name
-		`, notPlatformModule("m")))
+		`, notPlatformModule("m"), ctx.documentFilterSQL("mf.QualifiedName")))
 		if err != nil {
 			ctx.recordQueryError("Microflows", err)
 			return
@@ -617,9 +693,9 @@ func (ctx *LintContext) Pages() iter.Seq[Page] {
 			       p.Title, p.URL, p.Description, p.WidgetCount
 			FROM pages p
 			LEFT JOIN modules m ON p.ModuleName = m.Name
-			WHERE %s
+			WHERE %s AND %s
 			ORDER BY p.ModuleName, p.Name
-		`, notPlatformModule("m")))
+		`, notPlatformModule("m"), ctx.documentFilterSQL("p.QualifiedName")))
 		if err != nil {
 			ctx.recordQueryError("Pages", err)
 			return
@@ -783,9 +859,9 @@ func (ctx *LintContext) Widgets() iter.Seq[Widget] {
 			       w.MicroflowRef, w.NanoflowRef
 			FROM widgets w
 			LEFT JOIN modules m ON w.ModuleName = m.Name
-			WHERE %s
+			WHERE %s AND %s
 			ORDER BY w.ModuleName, w.ContainerQualifiedName, w.Name
-		`, notPlatformModule("m")))
+		`, notPlatformModule("m"), ctx.documentFilterSQL("w.ContainerQualifiedName")))
 		if err != nil {
 			ctx.recordQueryError("Widgets", err)
 			return

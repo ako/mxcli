@@ -298,25 +298,22 @@ create odata client OdTest.FullConfigAPI (
   timeout: 300,
   ServiceUrl: @OdTest.FullConfigAPIServiceUrl,
   UseAuthentication: Yes,
-  -- HttpUsername/HttpPassword/ClientCertificate are Mendix expression fields:
-  -- the stored value must be a Mendix expression string, so a string literal
-  -- needs single quotes inside the MDL string (use doubled '' to escape).
-  HttpUsername: '''admin''',
-  HttpPassword: '''secret''',
-  ClientCertificate: '''my-cert''',
+  -- HttpUsername/HttpPassword/ClientCertificate hold a Mendix expression,
+  -- written as-is: 'admin' is the string, @Module.Const reads a constant,
+  -- and 'Basic ' + @Module.Const concatenates.
+  HttpUsername: 'admin',
+  HttpPassword: 'secret',
+  ClientCertificate: 'my-cert',
   ErrorHandlingMicroflow: microflow OdTest.HandleError
-  -- ProxyHost and ProxyPort are constant references but the BSON shape Mendix
-  -- expects isn't well-defined yet; passing them as `@OdTest.X` BSON-stores
-  -- `@OdTest.X` and Mendix can't resolve the literal name, passing them
-  -- unprefixed makes Mendix parse the value as an expression (CE0117). For
-  -- now, omit; configure proxy via project Constants if needed.
+  -- ProxyHost / ProxyPort / ProxyUsername / ProxyPassword are by-name
+  -- references to a constant, and need `ProxyType: Override` alongside them —
+  -- the shape Studio Pro stores for a custom proxy. `OdTest.X` and `@OdTest.X`
+  -- both store the bare name; see bug-tests/odata-client-proxy-constant-at-prefix.mdl.
 )
--- Header values are Mendix expression fields too; wrap literal values in
--- single quotes (escaped as doubled '') so the BSON stores a valid
--- string-literal expression rather than a bare identifier.
+-- Header values are Mendix expressions too, written the same way.
 headers (
-  'X-Api-Key': '''abc123''',
-  'Accept': '''application/json'''
+  'X-Api-Key': 'Key ' + @OdTest.FullConfigAPIServiceUrl,
+  'Accept': 'application/json'
 );
 /
 

@@ -566,3 +566,40 @@ func TestJavaAction_OrModify(t *testing.T) {
 		t.Error("Expected CreateOrModify=true")
 	}
 }
+
+// Studio Pro accepts any name for a type parameter, including a primitive's.
+// `entity <String>` was a parse error ("expecting IDENTIFIER"), so such an
+// action could be neither authored nor re-created from its DESCRIBE output
+// (mendixlabs/mxcli#1183). The bare reference to it is the quoted `"String"` —
+// unquoted `String` stays the primitive.
+func TestJavaAction_TypeParameterNamedAfterPrimitive(t *testing.T) {
+	for _, decl := range []string{`entity <String>`, `entity <"String">`} {
+		input := `create java action MyModule.Gen(
+  EntityType: ` + decl + ` not null,
+  Input: "String",
+  Text: String
+) returns list of "String" as $$
+return null;
+$$;`
+		prog, errs := Build(input)
+		if len(errs) > 0 {
+			t.Fatalf("%s: parse errors: %v", decl, errs)
+		}
+		stmt := prog.Statements[0].(*ast.CreateJavaActionStmt)
+		if len(stmt.TypeParameters) != 1 || stmt.TypeParameters[0] != "String" {
+			t.Errorf("%s: type parameters = %v, want [String]", decl, stmt.TypeParameters)
+		}
+		if got := stmt.Parameters[0].Type; got.Kind != ast.TypeEntityTypeParam || got.TypeParamName != "String" {
+			t.Errorf("%s: selector = %+v, want entity type param String", decl, got)
+		}
+		if got := stmt.Parameters[1].Type; got.Kind != ast.TypeEnumeration || got.EnumRef == nil || got.EnumRef.Name != "String" || got.EnumRef.Module != "" {
+			t.Errorf("%s: quoted reference = %+v, want bare name String", decl, got)
+		}
+		if got := stmt.Parameters[2].Type; got.Kind != ast.TypeString {
+			t.Errorf("%s: unquoted String = %+v, want the primitive", decl, got)
+		}
+		if got := stmt.ReturnType; got.Kind != ast.TypeListOf || got.EntityRef == nil || got.EntityRef.Name != "String" {
+			t.Errorf("%s: return = %+v, want list of String", decl, got)
+		}
+	}
+}

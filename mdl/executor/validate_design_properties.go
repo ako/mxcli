@@ -81,17 +81,92 @@ func ValidateDesignPropertiesForStatement(stmt ast.Statement, reg *ThemeRegistry
 }
 
 func validateDesignPropsTree(widgets []*ast.WidgetV3, reg *ThemeRegistry, locationPrefix string) []linter.Violation {
+	return validateDesignPropsSubtree(nil, widgets, reg, locationPrefix)
+}
+
+func validateDesignPropsSubtree(parent *ast.WidgetV3, widgets []*ast.WidgetV3, reg *ThemeRegistry, locationPrefix string) []linter.Violation {
 	var out []linter.Violation
 	for _, w := range widgets {
 		if w == nil {
 			continue
 		}
-		out = append(out, validateWidgetDesignProps(w, reg, locationPrefix)...)
+		switch designPropsSlotOf(parent, w) {
+		case slotDropped:
+			out = append(out, droppedSlotDesignProps(parent, w, locationPrefix)...)
+		case slotOfPluggable:
+			// Built by the pluggable engine from the parent's object lists; the
+			// keyword names no native widget here, so there is nothing to resolve.
+		default:
+			out = append(out, validateWidgetDesignProps(w, reg, locationPrefix)...)
+		}
 		if len(w.Children) > 0 {
-			out = append(out, validateDesignPropsTree(w.Children, reg, locationPrefix)...)
+			out = append(out, validateDesignPropsSubtree(w, w.Children, reg, locationPrefix)...)
 		}
 	}
 	return out
+}
+
+type designPropsSlot int
+
+const (
+	notASlot designPropsSlot = iota
+	// slotDropped: a structural part of its native parent that the builder
+	// assembles itself, never through buildWidgetV3, so applyWidgetAppearance
+	// never sees its design properties.
+	slotDropped
+	// slotOfPluggable: a keyword that is a native widget elsewhere, used as a
+	// child of a pluggable widget — one of its object-list entries or slots.
+	slotOfPluggable
+)
+
+// slotKeywords are the keywords that build a Forms$DivContainer on their own but
+// name a part of their parent when nested in one: a layout grid's row, a row's
+// column, a dataview's footer, a data grid's column or a gallery's template.
+var slotKeywords = map[string]bool{
+	"row": true, "column": true, "header": true, "footer": true,
+	"controlbar": true, "template": true, "filter": true,
+}
+
+// designPropsSlotOf reports whether child is a slot of parent rather than a
+// widget. mdlKeywordStorageType maps `row` / `column` / `footer` to the
+// Forms$DivContainer they build at the top level; that is only true where
+// buildWidgetV3 builds them.
+func designPropsSlotOf(parent, child *ast.WidgetV3) designPropsSlot {
+	if parent == nil || child == nil {
+		return notASlot
+	}
+	p, c := strings.ToLower(parent.Type), strings.ToLower(child.Type)
+	switch {
+	case p == "layoutgrid" && c == "row", // buildLayoutGridRowV3
+		p == "row" && c == "column",      // buildLayoutGridColumnV3
+		p == "dataview" && c == "footer": // children moved into FooterWidgets
+		return slotDropped
+	}
+	if !slotKeywords[c] {
+		return notASlot
+	}
+	if _, native := mdlKeywordStorageType[p]; !native {
+		return slotOfPluggable
+	}
+	return notASlot
+}
+
+// droppedSlotDesignProps reports design properties written on a slot the builder
+// drops them from. Silence here read as approval of a value that never reaches
+// the model — the "check passes, exec succeeds, the value is gone" shape.
+func droppedSlotDesignProps(parent, w *ast.WidgetV3, locationPrefix string) []linter.Violation {
+	if len(w.GetDesignProperties()) == 0 {
+		return nil
+	}
+	return []linter.Violation{{
+		RuleID:   "MDL-WIDGET07",
+		Severity: linter.SeverityWarning,
+		Message: fmt.Sprintf("%s: %s %q inside %s %q sets DesignProperties, but it is part of its parent, "+
+			"not a widget — mxcli does not write design properties there, so they are silently dropped",
+			locationPrefix, strings.ToLower(w.Type), w.Name, strings.ToLower(parent.Type), parent.Name),
+		Location:   linter.Location{DocumentType: "page", DocumentName: locationPrefix},
+		Suggestion: fmt.Sprintf("Put them on a container inside the %s instead.", strings.ToLower(w.Type)),
+	}}
 }
 
 func validateWidgetDesignProps(w *ast.WidgetV3, reg *ThemeRegistry, locationPrefix string) []linter.Violation {
@@ -133,6 +208,23 @@ func validateWidgetDesignProps(w *ast.WidgetV3, reg *ThemeRegistry, locationPref
 			continue
 		}
 		if tp == nil {
+			// An OLD name of a current property is not a typo: it is what a page
+			// authored against an earlier theme version stores. It is still
+			// flagged — mxbuild refuses it on a live page with CE6087 — but as a
+			// rename with its current spelling, which "not defined" plus a list
+			// of every key could not give.
+			if r := findRenamedThemeProp(props, p.Key, p.Value); r != nil {
+				out = append(out, linter.Violation{
+					RuleID:   "MDL-WIDGET11",
+					Severity: linter.SeverityWarning,
+					Message: fmt.Sprintf("%s: widget %q (%s) sets design property %q, which the theme has renamed to %q"+
+						" — mxbuild reports CE6087 \"Design properties have been renamed in your theme\" unless the page is excluded",
+						locationPrefix, w.Name, w.Type, p.Key, r.NewKey),
+					Location:   linter.Location{DocumentType: "page", DocumentName: locationPrefix},
+					Suggestion: renamedDesignPropSuggestion(r, p.Value),
+				})
+				continue
+			}
 			out = append(out, linter.Violation{
 				RuleID:   "MDL-WIDGET11",
 				Severity: linter.SeverityWarning,

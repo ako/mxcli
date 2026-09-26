@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
+	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/javaactions"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
 )
@@ -394,4 +395,48 @@ func TestAstDataTypeToJavaActionParamType_BareMicroflowAndNanoflow(t *testing.T)
 func isType[T any](v any) bool {
 	_, ok := v.(T)
 	return ok
+}
+
+// A type parameter may carry a primitive's name (#1183). DESCRIBE must quote it
+// wherever the bare name would re-parse as something else: `returns String` is
+// the primitive, `returns "String"` the type parameter.
+func TestFormatJavaActionTypes_TypeParameterNamedAfterPrimitive(t *testing.T) {
+	cases := []struct {
+		got, want string
+	}{
+		{formatJavaActionReturnType(&javaactions.TypeParameter{TypeParameter: "String"}), `"String"`},
+		{formatJavaActionType(&javaactions.TypeParameter{TypeParameter: "String"}), `"String"`},
+		{formatJavaActionType(&javaactions.EntityTypeParameterType{TypeParameterName: "String"}), `entity <"String">`},
+		{formatJavaActionReturnType(&javaactions.ListType{TypeParameter: "String"}), `List of "String"`},
+		{formatJavaActionType(&javaactions.ListType{TypeParameter: "String"}), `List of "String"`},
+		// Controls: an ordinary name stays bare, and the primitive is untouched.
+		{formatJavaActionReturnType(&javaactions.TypeParameter{TypeParameter: "pEntity"}), `pEntity`},
+		{formatJavaActionReturnType(&javaactions.ListType{TypeParameter: "pEntity"}), `List of pEntity`},
+		{formatJavaActionReturnType(&javaactions.StringType{}), `String`},
+		{formatJavaActionReturnType(&javaactions.ListType{Entity: "Mod.Ent"}), `List of Mod.Ent`},
+	}
+	for _, c := range cases {
+		if c.got != c.want {
+			t.Errorf("got %s, want %s", c.got, c.want)
+		}
+	}
+}
+
+// `returns list of pEntity` for a declared type parameter pEntity became a list
+// of the entity `.pEntity` — an empty module — instead of a list of the type
+// parameter (#1183).
+func TestListOfTypeParameter_BindsToTheTypeParameter(t *testing.T) {
+	ids := map[string]model.ID{"pEntity": "tp-1"}
+	dt := ast.DataType{Kind: ast.TypeListOf, EntityRef: &ast.QualifiedName{Name: "pEntity"}}
+	l := listOfTypeParameter(dt, ids)
+	if l == nil || l.TypeParameterID != "tp-1" || l.TypeParameter != "pEntity" || l.Entity != "" {
+		t.Fatalf("got %+v, want a list of type parameter pEntity", l)
+	}
+	// Controls: a qualified entity and an undeclared name are not type parameters.
+	if l := listOfTypeParameter(ast.DataType{Kind: ast.TypeListOf, EntityRef: &ast.QualifiedName{Module: "Mod", Name: "pEntity"}}, ids); l != nil {
+		t.Errorf("qualified entity bound as type parameter: %+v", l)
+	}
+	if l := listOfTypeParameter(ast.DataType{Kind: ast.TypeListOf, EntityRef: &ast.QualifiedName{Name: "Other"}}, ids); l != nil {
+		t.Errorf("undeclared name bound as type parameter: %+v", l)
+	}
 }

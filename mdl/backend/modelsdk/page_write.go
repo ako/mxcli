@@ -11,6 +11,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/backend/bsonnav"
 	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
+	"github.com/mendixlabs/mxcli/modelsdk/canon"
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
 	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genDT "github.com/mendixlabs/mxcli/modelsdk/gen/datatypes"
@@ -256,7 +257,16 @@ func encodePage(page *pages.Page, pv *types.ProjectVersion, carry func(*genPg.Pa
 	if carry != nil {
 		carry(g)
 	}
-	return docEncoder("Forms$Page", pv).Encode(g)
+	contents, err := docEncoder("Forms$Page", pv).Encode(g)
+	if err != nil {
+		return nil, err
+	}
+	// Also refused at the writer (canon/attributeref.go); checked here first so
+	// the refusal names the page rather than its unit id.
+	if err := canon.BareAttributeRefError(fmt.Sprintf("page %q", page.Name), contents); err != nil {
+		return nil, err
+	}
+	return contents, nil
 }
 
 // pageToGen builds the full gen Page: header, layout call, the widget tree (under

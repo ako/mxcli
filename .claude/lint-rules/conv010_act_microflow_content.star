@@ -92,31 +92,31 @@ def check():
                     continue
 
                 violations.append(violation(
-                    message="ACT_ microflow '{}' contains '{}' action. Delegate business logic to a SUB_ microflow.".format(
-                        mf.name, act.action_type
+                    message="ACT_ {} '{}' contains '{}' action. Delegate business logic to a SUB_ {}.".format(
+                        mf.document_noun, mf.name, act.action_type, mf.document_noun
                     ),
                     location=location(
                         module=mf.module_name,
-                        document_type="Microflow",
+                        document_type=mf.document_noun_title,
                         document_name=mf.qualified_name,
                     ),
-                    suggestion="Move the '{}' action to a SUB_ microflow and call it from '{}'".format(
-                        act.action_type, mf.name
+                    suggestion="Move the '{}' action to a SUB_ {} and call it from '{}'".format(
+                        act.action_type, mf.document_noun, mf.name
                     ),
                 ))
             elif act.activity_type not in ALLOWED_ACTIVITY_TYPES:
                 # Any other non-allowed activity type
                 violations.append(violation(
-                    message="ACT_ microflow '{}' contains '{}' activity. Delegate to a SUB_ microflow.".format(
-                        mf.name, act.activity_type
+                    message="ACT_ {} '{}' contains '{}' activity. Delegate to a SUB_ {}.".format(
+                        mf.document_noun, mf.name, act.activity_type, mf.document_noun
                     ),
                     location=location(
                         module=mf.module_name,
-                        document_type="Microflow",
+                        document_type=mf.document_noun_title,
                         document_name=mf.qualified_name,
                     ),
-                    suggestion="Move the '{}' to a SUB_ microflow called from '{}'".format(
-                        act.activity_type, mf.name
+                    suggestion="Move the '{}' to a SUB_ {} called from '{}'".format(
+                        act.activity_type, mf.document_noun, mf.name
                     ),
                 ))
 

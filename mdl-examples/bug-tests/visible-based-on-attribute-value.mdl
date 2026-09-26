@@ -1,0 +1,48 @@
+-- ============================================================================
+-- Conditional visibility "based on attribute value" was dropped on round trip
+-- ============================================================================
+--
+-- Symptom: describe → exec of Administration.Account_Edit (Administration
+-- v4.3.2, Mendix 11.13.0) took the page's 8 Enumerations$Condition entries to
+-- 0. Every widget set to "Visible: based on attribute value" in Studio Pro
+-- (e.g. show the password fields only when IsLocalUser is true) became ALWAYS
+-- visible — and check, exec and mx check all reported success.
+--
+-- Cause: MDL had no spelling for the form. describe read only the
+-- expression form, and the writer wrote only Expression.
+--
+-- Fix: `Visible: Attr in (v1, …)` lists the values that SHOW the widget
+-- (`empty` = Studio Pro's "(empty)"); mxcli writes one condition per value of
+-- the attribute, as Studio Pro stores it, with Studio Pro's list markers
+-- (Conditions [2], ModuleRoles [1]).
+--
+-- Verify: exec, then describe → exec (expect "Unchanged page"), then
+-- `mxcli docker check` — 0 errors.
+-- ============================================================================
+
+create enumeration MyFirstModule.JobStatus ( Queued 'Queued', Running 'Running', Done 'Done' );
+/
+
+create entity MyFirstModule.Job (
+  Title: String(200),
+  Status: Enumeration(MyFirstModule.JobStatus),
+  IsUrgent: Boolean default false
+);
+/
+
+create or replace page MyFirstModule.Job_View
+( Title: 'Job', Layout: Atlas_Core.Atlas_Default, Params: { $Job: MyFirstModule.Job } )
+{
+  dataview dv (datasource: $Job) {
+    textbox txtTitle (Label: 'Title', Attribute: Title, Visible: IsUrgent in (true))
+    container cntActive (Visible: Status in (Queued, Running, empty)) {
+      dynamictext txtActive (Content: 'In progress')
+    }
+    container cntDone (Visible: Status in (Done)) {
+      dynamictext txtDone (Content: 'Finished')
+    }
+  }
+}
+/
+
+describe page MyFirstModule.Job_View;

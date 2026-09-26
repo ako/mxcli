@@ -71,6 +71,11 @@ type scriptContext struct {
 	associations  map[string]string          // Association (unqualified) -> Module.Association
 	entityAttrs   map[string]map[string]bool // Module.Entity -> attribute names
 	ambiguousAssc map[string]bool            // names defined in more than one module
+
+	// warnings are findings that do not block: dangling references in an
+	// EXCLUDED document, which Mendix itself does not validate. Reported so
+	// that relaxing the check hides nothing.
+	warnings []string
 }
 
 // newScriptContext creates a new script context.
@@ -305,8 +310,15 @@ func (sc *scriptContext) has(name string) bool {
 // validateProgram validates all statements in a program, skipping references
 // to objects that are defined within the script itself.
 func validateProgram(ctx *ExecContext, prog *ast.Program) []error {
+	errs, _ := validateProgramWithWarnings(ctx, prog)
+	return errs
+}
+
+// validateProgramWithWarnings is validateProgram that also returns the findings
+// that do not block — the dangling references of excluded documents.
+func validateProgramWithWarnings(ctx *ExecContext, prog *ast.Program) ([]error, []string) {
 	if !ctx.Connected() {
-		return []error{mdlerrors.NewNotConnected()}
+		return []error{mdlerrors.NewNotConnected()}, nil
 	}
 
 	// Collect all objects defined in the script
@@ -355,7 +367,12 @@ func validateProgram(ctx *ExecContext, prog *ast.Program) []error {
 	// widget that is already stored, so its property can only be resolved
 	// against the document — which is why it passed check and failed exec.
 	errors = append(errors, validateAlterSetProperties(ctx, prog, sc)...)
-	return errors
+	// The entity an ALTER's INSERT / REPLACE binds against is in the stored
+	// document, not the statement. Where it has none (a missing flow source, or
+	// no data container at all) a bare binding is written bare and the project
+	// no longer loads — CREATE PAGE already refused this at check time.
+	errors = append(errors, validateAlterUnscopedBindings(ctx, prog, sc)...)
+	return errors, sc.warnings
 }
 
 // validateForwardPageRefs catches widget `show_page` actions whose target page
@@ -427,6 +444,13 @@ func pageDefinedAfter(prog *ast.Program, ref string, fromIdx int) bool {
 // to objects that are defined within the script itself.
 func (e *Executor) ValidateProgram(prog *ast.Program) []error {
 	return validateProgram(e.newExecContext(context.Background()), prog)
+}
+
+// ValidateProgramWithWarnings is ValidateProgram plus the findings that do not
+// block: unresolved references inside EXCLUDED documents, which Mendix does
+// not validate. Callers print them so that nothing the check relaxed is hidden.
+func (e *Executor) ValidateProgramWithWarnings(prog *ast.Program) ([]error, []string) {
+	return validateProgramWithWarnings(e.newExecContext(context.Background()), prog)
 }
 
 // CheckProjectConflicts walks prog in statement order and returns errors for
@@ -572,9 +596,13 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 				s.Name.String(), strings.Join(validationErrors, "\n  - "))
 		}
 		// Validate references inside microflow body (pages, microflows, java actions, entities)
-		if refErrors := validateMicroflowReferences(ctx, s, sc); len(refErrors) > 0 {
-			return mdlerrors.NewValidationf("microflow '%s' has reference errors:\n  - %s",
-				s.Name.String(), strings.Join(refErrors, "\n  - "))
+		if refErrors := validateFlowBodyReferences(ctx, s.Body, sc); len(refErrors) > 0 {
+			if s.Excluded {
+				sc.warnExcluded("microflow", s.Name.String(), refErrors)
+			} else {
+				return mdlerrors.NewValidationf("microflow '%s' has reference errors:\n  - %s",
+					s.Name.String(), strings.Join(refErrors, "\n  - "))
+			}
 		}
 	case *ast.CreateRuleStmt:
 		if s.Name.Module != "" && !sc.modules[s.Name.Module] {
@@ -591,8 +619,10 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 			return mdlerrors.NewValidationf("rule '%s' has validation errors:\n  - %s",
 				s.Name.String(), strings.Join(validationErrors, "\n  - "))
 		}
-		if !s.Excluded {
-			if refErrors := validateFlowBodyReferences(ctx, s.Body, sc); len(refErrors) > 0 {
+		if refErrors := validateFlowBodyReferences(ctx, s.Body, sc); len(refErrors) > 0 {
+			if s.Excluded {
+				sc.warnExcluded("rule", s.Name.String(), refErrors)
+			} else {
 				return mdlerrors.NewValidationf("rule '%s' has reference errors:\n  - %s",
 					s.Name.String(), strings.Join(refErrors, "\n  - "))
 			}
@@ -608,9 +638,11 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 			return mdlerrors.NewValidationf("nanoflow '%s' has validation errors:\n  - %s",
 				s.Name.String(), strings.Join(validationErrors, "\n  - "))
 		}
-		// Validate references inside nanoflow body (skip excluded nanoflows)
-		if !s.Excluded {
-			if refErrors := validateFlowBodyReferences(ctx, s.Body, sc); len(refErrors) > 0 {
+		// Validate references inside nanoflow body (an excluded nanoflow's are warnings)
+		if refErrors := validateFlowBodyReferences(ctx, s.Body, sc); len(refErrors) > 0 {
+			if s.Excluded {
+				sc.warnExcluded("nanoflow", s.Name.String(), refErrors)
+			} else {
 				return mdlerrors.NewValidationf("nanoflow '%s' has reference errors:\n  - %s",
 					s.Name.String(), strings.Join(refErrors, "\n  - "))
 			}
@@ -623,10 +655,21 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 		}
 		// Every widget-bearing field, not just the bare body — see pageWidgets.
 		pageWidgets := allPageWidgets(s)
-		// Validate widget references (DataSource, Action, Snippet)
+		// Validate widget references (DataSource, Action, Snippet). An EXCLUDED
+		// page may name documents that do not exist — Mendix does not validate
+		// excluded documents, and a marketplace module can ship one as an
+		// example (Feedback v4.0.2's ShareFeedback_Logo) — so for it they are
+		// warnings. "Excluded" is what exec will WRITE: the statement's
+		// @excluded, or the exclusion carried from the stored page (#914).
 		if refErrors := validateWidgetReferences(ctx, pageWidgets, sc); len(refErrors) > 0 {
-			return mdlerrors.NewValidationf("page '%s' has reference errors:\n  - %s",
-				s.Name.String(), strings.Join(refErrors, "\n  - "))
+			if s.Excluded || carriedExclusion(ctx, "page", s.Name, s.IsReplace || s.IsModify) {
+				if err := sc.relaxExcludedWidgetRefs("page", s.Name.String(), pageWidgets, refErrors); err != nil {
+					return err
+				}
+			} else {
+				return mdlerrors.NewValidationf("page '%s' has reference errors:\n  - %s",
+					s.Name.String(), strings.Join(refErrors, "\n  - "))
+			}
 		}
 		// Validate page context tree (parameter/selection/attribute bindings)
 		if ctxErrors := validatePageContextTree(ctx, s.Parameters, pageWidgets); len(ctxErrors) > 0 {
@@ -655,10 +698,18 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 				return mdlerrors.NewNotFound("module", s.Name.Module)
 			}
 		}
-		// Validate widget references (DataSource, Action, Snippet)
+		// Validate widget references (DataSource, Action, Snippet). A snippet
+		// has no @excluded of its own; one exec keeps excluded (the carry) is
+		// treated as an excluded page is.
 		if refErrors := validateWidgetReferences(ctx, s.Widgets, sc); len(refErrors) > 0 {
-			return mdlerrors.NewValidationf("snippet '%s' has reference errors:\n  - %s",
-				s.Name.String(), strings.Join(refErrors, "\n  - "))
+			if carriedExclusion(ctx, "snippet", s.Name, s.IsReplace || s.IsModify) {
+				if err := sc.relaxExcludedWidgetRefs("snippet", s.Name.String(), s.Widgets, refErrors); err != nil {
+					return err
+				}
+			} else {
+				return mdlerrors.NewValidationf("snippet '%s' has reference errors:\n  - %s",
+					s.Name.String(), strings.Join(refErrors, "\n  - "))
+			}
 		}
 		// A snippet takes the same data sources and actions a page does, and
 		// CE1571 does not care which document the widget lives in.
@@ -822,16 +873,205 @@ func (e *Executor) Validate(stmt ast.Statement) error {
 // Microflow Body Reference Validation
 // ----------------------------------------------------------------------------
 
-// validateMicroflowReferences validates that all qualified name references in a
-// microflow body (pages, microflows, java actions, entities) point to existing objects.
-func validateMicroflowReferences(ctx *ExecContext, s *ast.CreateMicroflowStmt, sc *scriptContext) []string {
-	if s.Excluded {
-		// Studio Pro allows excluded documents to keep stale references. Reference
-		// checks should not fail a roundtrip audit for microflows that are not part
-		// of the runnable app.
+// warnExcluded records the dangling references of an EXCLUDED document as
+// warnings. Mendix does not validate excluded documents (an untouched project
+// holding one passes `mx check` with 0 errors), so they must not block exec or
+// `check --references` — but they are reported, so relaxing hides nothing.
+func (sc *scriptContext) warnExcluded(kind, name string, refErrors []string) {
+	sc.warnings = append(sc.warnings, fmt.Sprintf(
+		"%s '%s' is excluded, so its unresolved references do not block (Mendix does not validate excluded documents):\n  - %s",
+		kind, name, strings.Join(refErrors, "\n  - ")))
+}
+
+// relaxExcludedWidgetRefs handles the unresolved widget references of an
+// EXCLUDED page or snippet: a dangling action target or snippet call becomes a
+// warning (the writer stores it by name, and Mendix does not validate the
+// document), while a dangling DATA SOURCE still blocks.
+//
+// The data source is the exception because it is not just a name: its flow's
+// return type, or its entity, is what the widgets inside the container bind
+// against. Without it the builder cannot qualify those bindings, and DESCRIBE
+// has already printed them bare. Measured on Mendix 11.13.0 with Feedback
+// v4.0.2's ShareFeedback_Logo: writing it anyway left an image URL parameter
+// bound to a bare `ImageB64`, and `mx check` could no longer LOAD the project
+// (ArgumentNullException setting 'Attribute') — excluded or not.
+func (sc *scriptContext) relaxExcludedWidgetRefs(kind, name string, widgets []*ast.WidgetV3, refErrors []string) error {
+	refs := &widgetRefCollector{}
+	refs.collectFromWidgets(widgets)
+	var blocking, warnings []string
+	for _, e := range refErrors {
+		ref := e[strings.LastIndex(e, ": ")+2:]
+		switch {
+		case refs.dataSources[ref]:
+			// The flow is kept by name, but it is what puts an entity in scope:
+			// only a container whose bindings are all qualified can be written.
+			if bare := unscopedBindings(widgets, ref); len(bare) > 0 {
+				blocking = append(blocking, e+" (data source) — and these bindings inside it are not qualified, "+
+					"so nothing can resolve them: "+strings.Join(bare, ", "))
+				continue
+			}
+			warnings = append(warnings, e+" (data source; the bindings inside it are qualified)")
+		case strings.HasPrefix(e, "entity not found"):
+			// The builder resolves an entity to write it (create_object and the
+			// like), so exec would refuse it anyway; say so here instead of
+			// letting check pass what exec then fails.
+			blocking = append(blocking, e)
+		default:
+			warnings = append(warnings, e)
+		}
+	}
+	if len(warnings) > 0 {
+		sc.warnExcluded(kind, name, warnings)
+	}
+	if len(blocking) == 0 {
 		return nil
 	}
-	return validateFlowBodyReferences(ctx, s.Body, sc)
+	return mdlerrors.NewValidationf("%s '%s' is excluded, but a data source or entity it names does not exist:\n  - %s\n"+
+		"  An excluded document may keep a dangling flow, but the widgets inside a data container bind\n"+
+		"  against the entity its flow returns — with the flow missing, a bare binding cannot be\n"+
+		"  qualified, and one written bare leaves a project Mendix cannot load. Qualify those bindings\n"+
+		"  (Module.Entity.Attribute, as `describe` writes them there), or create the missing document.",
+		kind, name, strings.Join(blocking, "\n  - "))
+}
+
+// unscopedBindings names the attribute bindings that cannot be resolved inside
+// the data container(s) whose data source is the missing flow ref: bare
+// attributes, `$currentObject/…` paths and association hops, all of which
+// resolve against the entity that flow would have returned. Descent stops at a
+// nested container with a data source of its own, which scopes its children.
+//
+// Covered: `Attribute:`, `CaptionAttribute:`, `Visible: Attr in (…)` and
+// template parameters (`…Params: [{1} = Attr]`). Anything else is caught by
+// the page writer's refusal of a bare attribute reference.
+func unscopedBindings(widgets []*ast.WidgetV3, ref string) []string {
+	var out []string
+	var find func(ws []*ast.WidgetV3)
+	find = func(ws []*ast.WidgetV3) {
+		for _, w := range ws {
+			if w == nil {
+				continue
+			}
+			if ds, ok := w.Properties["DataSource"].(*ast.DataSourceV3); ok && ds.Reference == ref &&
+				(ds.Type == "microflow" || ds.Type == "nanoflow") {
+				for _, b := range bareBindingsOf(w) { // the container's own bindings, e.g. its visibility
+					out = append(out, fmt.Sprintf("%s `%s` (%s)", strings.ToLower(w.Type), w.Name, b))
+				}
+				out = append(out, bindingsWithoutScope(w.Children)...)
+				continue
+			}
+			find(w.Children)
+		}
+	}
+	find(widgets)
+	return out
+}
+
+// bindingsWithoutScope names the bare bindings of widgets placed where no
+// entity is in scope — the children of a container whose data source flow is
+// missing, or widgets an ALTER inserts outside any container that resolves to
+// an entity. Descent stops at a widget with a data source of its own, which
+// scopes its children.
+func bindingsWithoutScope(ws []*ast.WidgetV3) []string {
+	var out []string
+	for _, w := range ws {
+		if w == nil {
+			continue
+		}
+		if _, own := w.Properties["DataSource"].(*ast.DataSourceV3); own {
+			continue // its own data source decides its children's scope
+		}
+		for _, b := range bareBindingsOf(w) {
+			out = append(out, fmt.Sprintf("%s `%s` (%s)", strings.ToLower(w.Type), w.Name, b))
+		}
+		out = append(out, bindingsWithoutScope(w.Children)...)
+	}
+	return out
+}
+
+// bareBindingsOf lists a widget's attribute bindings that need an entity in
+// scope to resolve.
+func bareBindingsOf(w *ast.WidgetV3) []string {
+	var out []string
+	needsScope := func(v string) bool {
+		switch {
+		case v == "", strings.HasPrefix(v, "'"):
+			return false // unset, or a literal
+		case strings.HasPrefix(v, "$"):
+			return strings.HasPrefix(strings.ToLower(v), "$currentobject/")
+		}
+		return strings.Contains(v, "/") || strings.Count(v, ".") < 2
+	}
+	for _, key := range []string{"Attribute", "CaptionAttribute"} {
+		if v, ok := w.Properties[key].(string); ok && needsScope(v) {
+			out = append(out, key+": "+v)
+		}
+	}
+	if vw, ok := w.Properties["VisibleWhen"].(*ast.VisibleWhenV3); ok && needsScope(vw.Attribute) {
+		out = append(out, "Visible: "+vw.Attribute+" in (…)")
+	}
+	for key, v := range w.Properties {
+		params, ok := v.([]ast.ParamAssignmentV3)
+		if !ok {
+			continue
+		}
+		for _, p := range params {
+			if s, ok := p.Value.(string); ok && needsScope(s) {
+				out = append(out, fmt.Sprintf("%s {%d} = %s", key, p.Index, s))
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// carriedExclusion reports whether exec will write the page or snippet named
+// qn as EXCLUDED without the statement saying so: a CREATE OR REPLACE/MODIFY
+// whose every stored namesake is excluded rewrites the first of them in place
+// and keeps it excluded (#914, execCreatePageV3 / execCreateSnippetV3). A live
+// namesake is the one rewritten, and it stays live.
+func carriedExclusion(ctx *ExecContext, kind string, qn ast.QualifiedName, rewrite bool) bool {
+	if !rewrite || !ctx.Connected() {
+		return false
+	}
+	h, err := getHierarchy(ctx)
+	if err != nil {
+		return false
+	}
+	type doc struct {
+		container model.ID
+		name      string
+		excluded  bool
+	}
+	var docs []doc
+	switch kind {
+	case "page":
+		pgs, err := ctx.Backend.ListPages()
+		if err != nil {
+			return false
+		}
+		for _, p := range pgs {
+			docs = append(docs, doc{p.ContainerID, p.Name, p.Excluded})
+		}
+	case "snippet":
+		snips, err := ctx.Backend.ListSnippets()
+		if err != nil {
+			return false
+		}
+		for _, sn := range snips {
+			docs = append(docs, doc{sn.ContainerID, sn.Name, sn.Excluded})
+		}
+	}
+	excluded := false
+	for _, d := range docs {
+		if d.name != qn.Name || h.GetModuleName(h.FindModuleID(d.container)) != qn.Module {
+			continue
+		}
+		if !d.excluded {
+			return false
+		}
+		excluded = true
+	}
+	return excluded
 }
 
 // validateFlowBodyReferences validates references in any flow body (microflow or nanoflow).

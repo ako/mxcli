@@ -105,17 +105,16 @@ func extractAliasMap(oql string) map[string]string {
 	// qualified name, so `m` resolved to nothing: no type inference for any of
 	// its columns, and `m.ID` unrecognisable as an association column. That join
 	// form is the ordinary way to reach a related entity in Mendix OQL.
+	//
+	// The final segment is captured as its own group. It used to be recovered
+	// by trimming the alias and a literal "as" off the match, which was
+	// case-sensitive while the pattern is not — so `... AS m`, the spelling
+	// DESCRIBE prints, left the alias unresolved (#652).
 	pathPattern := regexp.MustCompile(
-		`(?i)\b(?:from|join)\s+[A-Za-z_]\w*(?:/` + oqlIdent + `\.` + oqlIdent + `)+\s+(?:as\s+)?([A-Za-z_]\w*)`)
-	lastEntity := regexp.MustCompile(`(` + oqlIdent + `\.` + oqlIdent + `)\s*$`)
+		`(?i)\b(?:from|join)\s+[A-Za-z_]\w*(?:/` + oqlIdent + `\.` + oqlIdent + `)*/(` +
+			oqlIdent + `\.` + oqlIdent + `)\s+(?:as\s+)?([A-Za-z_]\w*)`)
 	for _, match := range pathPattern.FindAllStringSubmatch(oql, -1) {
-		alias := match[1]
-		// The path is everything between the keyword and the alias.
-		path := strings.TrimSuffix(strings.TrimSpace(match[0]), alias)
-		path = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(path), "as"))
-		if seg := lastEntity.FindStringSubmatch(path); seg != nil {
-			aliasMap[alias] = unquoteQualifiedOQLName(seg[1])
-		}
+		aliasMap[match[2]] = unquoteQualifiedOQLName(match[1])
 	}
 
 	return aliasMap

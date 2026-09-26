@@ -7,6 +7,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
+	"github.com/mendixlabs/mxcli/modelsdk/canon"
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
 	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genPg "github.com/mendixlabs/mxcli/modelsdk/gen/pages"
@@ -33,7 +34,14 @@ func encodeSnippet(snippet *pages.Snippet, pv *types.ProjectVersion) ([]byte, er
 		return nil, err
 	}
 	g.SetID(element.ID(snippet.ID))
-	return docEncoder("Forms$Snippet", pv).Encode(g)
+	contents, err := docEncoder("Forms$Snippet", pv).Encode(g)
+	if err != nil {
+		return nil, err
+	}
+	if err := canon.BareAttributeRefError(fmt.Sprintf("snippet %q", snippet.Name), contents); err != nil { // see encodePage
+		return nil, err
+	}
+	return contents, nil
 }
 
 // CreateSnippet inserts a new Forms$Snippet document — a reusable widget tree with

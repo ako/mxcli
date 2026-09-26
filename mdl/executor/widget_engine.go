@@ -1297,6 +1297,14 @@ func (e *PluggableWidgetEngine) resolveMapping(mapping PropertyMapping, w *ast.W
 			// for those three and the hidden-property guard cannot catch it.
 			// Not writing them in the first place does not depend on that data.
 			attr = w.GetAttribute()
+			// Bound against the enclosing object rather than a source of the
+			// widget's own: with none, the binding is written empty (a combo
+			// box's CE0642 "Property 'Attribute' is required").
+			if entity := e.entityContextFor(mapping.PropertyKey); entity == e.pageBuilder.entityContext {
+				if err := e.pageBuilder.checkInputBinding(w, entity); err != nil {
+					return nil, err
+				}
+			}
 		}
 		if attr != "" {
 			// Against THIS property's datasource entity, which is the shared

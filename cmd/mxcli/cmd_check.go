@@ -235,14 +235,35 @@ Examples:
 			}
 
 			// Validate the program (considers objects defined within the script)
-			validationErrors := exec.ValidateProgram(prog)
+			validationErrors, refWarnings := exec.ValidateProgramWithWarnings(prog)
 
 			// Check for project conflicts: plain CREATE where the document already exists
 			validationErrors = append(validationErrors, exec.CheckProjectConflicts(prog)...)
 
+			// Unresolved references in EXCLUDED documents: reported, never
+			// failing the run — Mendix does not validate excluded documents.
+			// In structured mode they join the error list (one document, not two)
+			// or are emitted on their own when there is nothing else.
+			var warnViolations []linter.Violation
+			for _, w := range refWarnings {
+				warnViolations = append(warnViolations, linter.Violation{
+					RuleID:   "MDL-REF",
+					Severity: linter.SeverityWarning,
+					Message:  w,
+				})
+			}
+			if len(refWarnings) > 0 && !isStructured {
+				fmt.Fprintf(os.Stderr, "Reference warnings:\n")
+				for _, w := range refWarnings {
+					fmt.Fprintf(os.Stderr, "  %s\n", w)
+				}
+			} else if len(warnViolations) > 0 && len(validationErrors) == 0 {
+				formatter.Format(warnViolations, os.Stderr)
+			}
+
 			if len(validationErrors) > 0 {
 				if isStructured {
-					var refViolations []linter.Violation
+					refViolations := warnViolations
 					for _, err := range validationErrors {
 						refViolations = append(refViolations, linter.Violation{
 							RuleID:   "MDL-REF",

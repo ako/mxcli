@@ -113,6 +113,10 @@ func execCreatePageV3(ctx *ExecContext, s *ast.CreatePageStmtV3) error {
 		// The root of a document that this pass walks in full: there is no
 		// enclosing data widget, so there is no context object. #1029.
 		argCtx: atDocumentRoot(),
+		// An excluded page may name documents that do not exist; Mendix does
+		// not validate it, and the check reports them as warnings. The page
+		// stays excluded whether the statement says so or the carry does.
+		tolerateDanglingRefs: s.Excluded || existingExcluded,
 	}
 
 	page, err := pb.buildPageV3(s)
@@ -252,6 +256,9 @@ func execCreateSnippetV3(ctx *ExecContext, s *ast.CreateSnippetStmtV3) error {
 		// The root of a document that this pass walks in full: there is no
 		// enclosing data widget, so there is no context object. #1029.
 		argCtx: atDocumentRoot(),
+		// A snippet has no @excluded of its own; it stays excluded through the
+		// carry, and an excluded one may name documents that do not exist.
+		tolerateDanglingRefs: existingExcluded,
 	}
 
 	snippet, err := pb.buildSnippetV3(s)

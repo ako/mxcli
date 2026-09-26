@@ -213,3 +213,33 @@ func TestCustomWidgetPropertyActionMap(t *testing.T) {
 		t.Error("NoAction should read as unset (nil)")
 	}
 }
+
+// ako/mxcli#662: DESCRIBE emitted an association bound through a
+// generalization as a bare name — `Attribute: UserRoles` on a page over
+// Administration.Account (extends System.User) — and exec qualified it with the
+// page entity's module, writing `Administration.UserRoles` → CE1613. An
+// association declared outside the context entity's module keeps its module.
+func TestParseRawWidget_ComboBoxAssociation_QualifiedOutsideContextModule(t *testing.T) {
+	ctx := (&Executor{}).newExecContext(context.Background())
+	tests := []struct {
+		name, assoc, entityCtx, want string
+	}{
+		{"inherited from another module (#662)", "System.UserRoles", "Administration.Account", "System.UserRoles"},
+		{"declared in the context's module stays bare", "MyFirstModule.Task_Category", "MyFirstModule.Task", "Task_Category"},
+		{"unknown context keeps the qualifier", "MyFirstModule.Task_Category", "", "MyFirstModule.Task_Category"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			w := buildComboBoxAssocWidget(tc.assoc, "System.UserRole.Name")
+			w["$Type"] = "CustomWidgets$CustomWidget"
+			w["Name"] = "comboBox1"
+			got := parseRawWidget(ctx, w, tc.entityCtx)
+			if len(got) != 1 {
+				t.Fatalf("parseRawWidget returned %d widgets, want 1", len(got))
+			}
+			if got[0].Content != tc.want {
+				t.Errorf("Content = %q, want %q", got[0].Content, tc.want)
+			}
+		})
+	}
+}

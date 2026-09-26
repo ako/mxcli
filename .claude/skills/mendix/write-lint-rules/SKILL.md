@@ -50,7 +50,7 @@ silently return empty results (issue #721).
 | Function | Returns | Description |
 |----------|---------|-------------|
 | `entities()` | list of entity | All non-system entities |
-| `microflows()` | list of microflow | All non-system microflows |
+| `microflows()` | list of microflow | All non-system microflows, nanoflows **and rules** — they share one catalog table. Name the document with `document_noun_title`, never a hardcoded `"Microflow"` |
 | `pages()` | list of page | All non-system pages |
 | `enumerations()` | list of enumeration | All non-system enumerations |
 | `constants()` | list of constant | All non-system constants |
@@ -164,6 +164,10 @@ def check():
 | `validation_rule_count` | int | Number of validation rules |
 | `has_event_handlers` | bool | True if entity has event handlers |
 | `is_external` | bool | True if entity is from an external service |
+| `has_created_date` | bool | True if the entity stores `createdDate` (an audit member, not counted in `attribute_count`) |
+| `has_changed_date` | bool | True if the entity stores `changedDate` |
+| `has_owner` | bool | True if the entity stores `owner` |
+| `has_changed_by` | bool | True if the entity stores `changedBy` |
 
 ### microflow
 | Property | Type | Example |
@@ -173,12 +177,14 @@ def check():
 | `qualified_name` | string | `"Sales.ACT_Customer_Create"` |
 | `module_name` | string | `"Sales"` |
 | `folder` | string | `"microflows/Customer"` — folder path within module |
-| `microflow_type` | string | `"microflow"` or `"nanoflow"` |
+| `microflow_type` | string | exactly `"MICROFLOW"`, `"NANOFLOW"` or `"RULE"` — upper-case, unlike `entity_type`. `microflows()` yields all three flavours, so a rule meant for microflows only must filter on `"MICROFLOW"` |
 | `description` | string | Documentation text |
 | `return_type` | string | Return type |
 | `parameter_count` | int | Number of parameters |
 | `activity_count` | int | Number of activities |
 | `complexity` | int | McCabe cyclomatic complexity |
+| `document_noun` | string | `"microflow"`, `"nanoflow"` or `"rule"` — for mid-sentence use in a message |
+| `document_noun_title` | string | `"Microflow"`, `"Nanoflow"` or `"Rule"` — for `document_type=` and a message that opens with it |
 
 ### page
 | Property | Type | Example |

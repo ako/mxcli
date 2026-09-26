@@ -1,0 +1,57 @@
+-- ============================================================================
+-- Bug: an EXCLUDED page with dangling references was refused by exec
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   Feedback v4.0.2 (Mendix 11.13.0) ships FeedbackModule.ShareFeedback_Logo
+--   as an excluded example page bound to five nanoflows the module does not
+--   contain. The untouched project passes `mx check` with 0 errors — Mendix
+--   does not validate excluded documents — but describe → exec was refused:
+--
+--     Reference error: statement 1: page 'FeedbackModule.ShareFeedback_Logo' has reference errors:
+--       - nanoflow not found: FeedbackModule.DS_FeedbackForm
+--       - nanoflow not found: FeedbackModule.ACT_TriggerScreenshotMode
+--       ...
+--
+--   and with --no-check the page builder refused the same names again.
+--
+-- Root cause:
+--   The page reference check (validate.go) and the page builder's flow / page
+--   / snippet resolution ignored exclusion. Excluded microflows, nanoflows and
+--   rules had been exempt since #312; pages and snippets never were.
+--
+-- After fix:
+--   For a page that exec will write EXCLUDED (the statement's @excluded, or
+--   the exclusion carried from a stored page whose namesakes are all
+--   excluded, #914) a dangling ACTION target or snippet call is a warning —
+--   "Reference warning: page '…' is excluded, so its unresolved references do
+--   not block" — and the builder keeps it by name. A dangling DATA SOURCE
+--   (or entity) still blocks, with the reason: its flow's return type is what
+--   the widgets inside bind against, and writing the container without it left
+--   an unqualified attribute binding that made mx unable to LOAD the project
+--   (ArgumentNullException setting 'Attribute'), measured on 11.13.0.
+--
+-- Verify:
+--   mxcli exec mdl-examples/bug-tests/excluded-page-dangling-references.mdl -p app.mpr
+--     -> three reference warnings, "Created page BugTestExclRefs.Dangling_Excluded"
+--   mxcli docker check -p app.mpr
+--     -> The app contains: 0 errors.   (the page stayed excluded)
+--   Control: delete the `@excluded` line and re-run — exec refuses with
+--   "has reference errors". The same page written live (targets created, then
+--   dropped) is 3x CE1613 "The selected nanoflow/microflow/page … no longer
+--   exists." in mx check.
+-- ============================================================================
+
+create module BugTestExclRefs;
+
+@excluded
+create page BugTestExclRefs.Dangling_Excluded (
+  Title: 'Dangling',
+  Layout: Atlas_Core.PopupLayout
+) {
+  container c1 {
+    actionbutton b1 (Caption: 'NF', Action: nanoflow BugTestExclRefs.No_Such_Nanoflow)
+    actionbutton b2 (Caption: 'MF', Action: microflow BugTestExclRefs.No_Such_Microflow)
+    actionbutton b3 (Caption: 'PG', Action: show_page BugTestExclRefs.No_Such_Page)
+  }
+}

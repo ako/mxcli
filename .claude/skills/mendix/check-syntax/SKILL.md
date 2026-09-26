@@ -58,6 +58,19 @@ icon or entity sailed through a command that had been handed the project. A run
 without a project now says what it did not check, so a pass is never read as
 more than it is.
 
+**An excluded document's dangling references are warnings, not errors.** Mendix
+does not validate excluded documents (Feedback v4.0.2 ships an excluded page bound
+to nanoflows it lacks, and the project checks at 0 errors), so `check` and `exec`
+print them as `Reference warning` lines for excluded microflows, nanoflows, rules,
+and pages/snippets exec will write excluded (`@excluded`, or a stored namesake that
+is). **A missing data-source flow is a warning only when the bindings inside it are
+qualified** (`Attribute: Module.Entity.Attr`, `{1} = Module.Entity.Attr`,
+`Visible: Module.Entity.Attr in (…)`) — the form `describe` writes there. The
+widgets inside bind against the entity that flow returns, so with the flow missing
+a bare binding cannot be resolved; it is refused, naming the widget, because on
+11.13.0 a bare attribute reference left a project `mx` could not load. A missing
+entity still blocks.
+
 ### It also reports a name the PROJECT already has
 
 A plain `create` of a document the project already carries is a `check` error,

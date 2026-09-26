@@ -217,14 +217,26 @@ type OrderByItemV3 struct {
 }
 
 // ActionV3 represents a V3 action expression.
+// VisibleWhenV3 is `Visible: Attr in (v1, v2, …)` — Studio Pro's "Visible:
+// based on attribute value". Values are the ones that SHOW the widget; `empty`
+// stands for Studio Pro's "(empty)". Stored in Properties["VisibleWhen"].
+type VisibleWhenV3 struct {
+	Attribute string
+	Values    []string
+}
+
 type ActionV3 struct {
-	Type         string      // "save", "cancel", "close", "delete", "create", "showPage", "microflow", "nanoflow", "openLink", "signOut", "completeTask"
-	Target       string      // Entity, page, or flow qualified name (for create/showPage/microflow/nanoflow)
-	Args         []FlowArgV3 // Arguments for showPage/microflow calls
-	ThenAction   *ActionV3   // For CREATE_OBJECT ... THEN ...
-	ClosePage    bool        // For SAVE_CHANGES CLOSE_PAGE
-	LinkURL      string      // For OPEN_LINK
-	OutcomeValue string      // For COMPLETE_TASK
+	Type       string      // "save", "cancel", "close", "delete", "create", "showPage", "microflow", "nanoflow", "openLink", "signOut", "completeTask"
+	Target     string      // Entity, page, or flow qualified name (for create/showPage/microflow/nanoflow)
+	Args       []FlowArgV3 // Arguments for showPage/microflow calls
+	ThenAction *ActionV3   // For CREATE_OBJECT ... THEN ...
+	ClosePage  bool        // For SAVE_CHANGES CLOSE_PAGE
+	LinkURL    string      // For OPEN_LINK 'https://…' (static address)
+	// For OPEN_LINK $currentObject/Attr: the address is read from an attribute
+	// at runtime (a dynamic Forms$StaticOrDynamicString).
+	LinkVariable  string
+	LinkAttribute string
+	OutcomeValue  string // For COMPLETE_TASK
 }
 
 // ColumnV3 represents a V3 datagrid column.

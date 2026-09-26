@@ -33,15 +33,15 @@ func describePage(ctx *ExecContext, name ast.QualifiedName) error {
 		return mdlerrors.NewBackend("list pages", err)
 	}
 
-	var foundPage *pages.Page
-	for _, p := range allPages {
-		modID := h.FindModuleID(p.ContainerID)
-		modName := h.GetModuleName(modID)
-		if p.Name == name.Name && (name.Module == "" || modName == name.Module) {
-			foundPage = p
-			break
-		}
-	}
+	// Describe the live page, not an excluded twin of the same name (#914) —
+	// or, under the catalog's source build, the pinned document (#1185).
+	foundPage, _ := pickDescribed(ctx, allPages,
+		func(p *pages.Page) model.ID { return p.ID },
+		func(p *pages.Page) bool {
+			return p.Name == name.Name && (name.Module == "" || h.GetModuleName(h.FindModuleID(p.ContainerID)) == name.Module)
+		},
+		func(p *pages.Page) bool { return p.Excluded },
+	)
 
 	if foundPage == nil {
 		return mdlerrors.NewNotFound("page", name.String())
@@ -689,6 +689,10 @@ type rawWidget struct {
 	PhoneColumns   string // e.g. "2", "1"
 	// ComboBox association mode properties
 	CaptionAttribute string // Display attribute for association-mode ComboBox
+	// CaptionExpression is an association-mode ComboBox caption of type
+	// Expression; emitted under its storage keys, which the explicit-property
+	// pass writes back (#664).
+	CaptionExpression string
 	// GroupBox properties
 	Collapsible string // "No", "YesInitiallyExpanded", "YesInitiallyCollapsed"
 	HeaderMode  string // "Div", "H1"-"H6"
@@ -715,8 +719,12 @@ type rawWidget struct {
 	// identity is a single field DESCRIBE has to put back.
 	Specialization string
 	// Conditional visibility/editability
-	VisibleIf  string // Expression from ConditionalVisibilitySettings
-	EditableIf string // Expression from ConditionalEditabilitySettings
+	VisibleIf string // Expression from ConditionalVisibilitySettings
+	// "Visible: based on attribute value": the attribute's short name and the
+	// values that SHOW the widget, as MDL spells them (`empty` for "(empty)").
+	VisibleAttr   string
+	VisibleValues []string
+	EditableIf    string // Expression from ConditionalEditabilitySettings
 	// Design properties from Appearance
 	DesignProperties []rawDesignProp
 	// Explicit widget properties (for generic PLUGGABLEWIDGET output)

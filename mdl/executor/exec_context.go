@@ -34,6 +34,12 @@ type ExecContext struct {
 	// Output is the writer for user-visible output (with line-limit guard).
 	Output io.Writer
 
+	// describeQualifyAttrs is set by DESCRIBE PAGE while it reads the widgets
+	// inside a data container whose flow cannot be resolved: no entity is in
+	// scope there, so an attribute binding keeps its stored Module.Entity.Attr
+	// name rather than the bare one exec could not qualify. See describeAttr.
+	describeQualifyAttrs bool
+
 	// Format controls output formatting (table, json, etc.).
 	Format OutputFormat
 
@@ -94,6 +100,13 @@ type ExecContext struct {
 	// It lets activity formatting distinguish a terminal void EndEvent from an
 	// empty EndEvent in a value-returning microflow, where bare `return;` is invalid.
 	DescribingMicroflowHasReturnValue bool
+
+	// describeID pins a describe to one stored document. A name is not a unique
+	// key — a module may hold an excluded twin (#914) — so the catalog's source
+	// build, which enumerates documents rather than names, sets it to describe
+	// each twin as itself instead of the live one twice (#1185). Empty means
+	// "by name", which is every interactive DESCRIBE.
+	describeID model.ID
 
 	// lastWriteStats is the storage write watermark as of the previous
 	// ReportMutation call (or of this context's construction, i.e. the start of

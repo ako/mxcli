@@ -346,10 +346,12 @@ func buildDataType(ctx parser.IDataTypeContext) ast.DataType {
 	}
 
 	// Handle ENTITY <pEntity> — type parameter declaration for Java actions
-	if dtCtx.ENTITY() != nil && dtCtx.LESS_THAN() != nil && dtCtx.IDENTIFIER() != nil {
+	// The name may be a keyword or quoted: Studio Pro accepts any name for a
+	// type parameter, including a primitive's (`entity <String>`, #1183).
+	if dtCtx.ENTITY() != nil && dtCtx.LESS_THAN() != nil && dtCtx.IdentifierOrKeyword() != nil {
 		return ast.DataType{
 			Kind:          ast.TypeEntityTypeParam,
-			TypeParamName: dtCtx.IDENTIFIER().GetText(),
+			TypeParamName: identifierOrKeywordText(dtCtx.IdentifierOrKeyword()),
 		}
 	}
 
@@ -754,4 +756,22 @@ func buildErrorMessage(ctx parser.IErrorMessageClauseContext) string {
 		return ""
 	}
 	return unquoteString(emc.STRING_LITERAL().GetText())
+}
+
+// expressionSourceText is an expression as the author wrote it — whitespace kept,
+// MDL comments removed — for the places that store an expression as TEXT rather
+// than building its AST. Never use ctx.GetText() for this: it joins the tokens
+// without the whitespace between them, so literals and `+` survive but a keyword
+// operator fuses with its neighbours (`$a and $b` -> `$aand$b`, `if $x then 'a'`
+// -> `if$xthen'a'`), and that fused text is what reaches the model.
+func expressionSourceText(expr parser.IExpressionContext) string {
+	if expr == nil {
+		return ""
+	}
+	if prc, ok := expr.(antlr.ParserRuleContext); ok {
+		if source := strings.TrimSpace(extractExpressionText(prc)); source != "" {
+			return source
+		}
+	}
+	return expr.GetText()
 }

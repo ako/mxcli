@@ -31,12 +31,44 @@ type ThemeProperty struct {
 	// mxbuild refuses with CE6084 "Expected design property Hide on to be of type
 	// Toggle button group, but found Option" (ako/mxcli#511).
 	MultiSelect bool `json:"multiSelect"`
+	// OldNames are the keys this property had in earlier theme versions. A
+	// page authored against one still stores the old key, and mxbuild reports
+	// CE6087 "Design properties have been renamed in your theme and need to be
+	// updated" on it unless the page is excluded (measured on 11.13.0 with Atlas
+	// Core 4.1.3, where "Align content" became "Align content (deprecated)").
+	OldNames []string `json:"oldNames"`
+	// Margin and Padding are the steps of a `"type": "Spacing"` property. Its
+	// old names live on each side of each step, spelled "<old key>::<old
+	// value>": Atlas's one Spacing property replaced the per-side dropdowns
+	// "Spacing top" … "Spacing left", so an old key maps to one side.
+	Margin  []ThemeSpacingStep `json:"margin"`
+	Padding []ThemeSpacingStep `json:"padding"`
 }
 
 // ThemeOption represents a single option within a dropdown/picker design property.
 type ThemeOption struct {
 	Name  string `json:"name"`
 	Class string `json:"class"`
+	// OldNames are earlier names of this option. On an ordinary property they
+	// are old VALUES ("Left align as row"); on a multi-select property they are
+	// the separate toggles the option replaced ("Hide on phone" became Hide on:
+	// Phone), i.e. old KEYS.
+	OldNames []string `json:"oldNames"`
+}
+
+// ThemeSpacingStep is one step ("None", "S", "M", …) of a Spacing property.
+type ThemeSpacingStep struct {
+	Name   string            `json:"name"`
+	Top    *ThemeSpacingSide `json:"top"`
+	Right  *ThemeSpacingSide `json:"right"`
+	Bottom *ThemeSpacingSide `json:"bottom"`
+	Left   *ThemeSpacingSide `json:"left"`
+}
+
+// ThemeSpacingSide is one side of a Spacing step.
+type ThemeSpacingSide struct {
+	Class    string   `json:"class"`
+	OldNames []string `json:"oldNames"`
 }
 
 // ThemeRegistry holds all design property definitions loaded from the project's themesource.
@@ -123,36 +155,67 @@ func (r *ThemeRegistry) GetPropertiesForWidget(widgetTypeKey string) []ThemeProp
 	return result
 }
 
-// mdlKeywordToDesignPropsKey maps MDL widget type keywords to the keys used in
-// design-properties.json — for the NATIVE widgets only.
+// mdlKeywordStorageType maps each MDL keyword that builds a NATIVE widget to the
+// $Type the builder writes for it. The theme key is then read off that $Type
+// (bsonTypeToDesignPropsKey), so an inline widget and a stored one resolve
+// through the same table and cannot disagree about which group applies.
 //
-// A pluggable widget is keyed in design-properties.json by its widget id, and
-// which widget a keyword produces is decided elsewhere (keywordDispatchTable and
-// the embedded widget definitions). Naming one here is how DATAGRID came to be
-// validated against the wrong widget: see pluggableKeywordIDs.
-var mdlKeywordToDesignPropsKey = map[string]string{
-	"container":         "DivContainer",
-	"customcontainer":   "DivContainer",
-	"actionbutton":      "Button",
-	"linkbutton":        "Button",
-	"textbox":           "TextBox",
-	"textarea":          "TextArea",
-	"datepicker":        "DatePicker",
-	"checkbox":          "CheckBox",
-	"radiobuttons":      "RadioButtons",
-	"dropdown":          "DropDown",
-	"referenceselector": "ReferenceSelector",
-	"dataview":          "DataView",
-	"listview":          "ListView",
-	"layoutgrid":        "LayoutGrid",
-	"dynamictext":       "DynamicText",
-	"statictext":        "Label",
-	"staticimage":       "StaticImageViewer",
-	"dynamicimage":      "DynamicImageViewer",
-	"navigationlist":    "NavigationList",
-	"snippetcall":       "SnippetCall",
-	"header":            "Header",
-	"footer":            "Footer",
+// It used to map keywords straight to keys — a second hand-written copy of the
+// same concept — and it drifted: `groupbox`, `tabcontainer`, `navigationtree`,
+// `menubar`, `simplemenubar`, `button`, `row` and `column` had no entry, so the
+// keyword fell through as-is, no design-properties.json defines "groupbox", the
+// validator skipped the widget, and the builder saw only the "Widget" base group
+// — a custom colour on a group box's ColorPicker "Style" was written as an
+// option and mxbuild refused it with CE6085. `radiobuttons` and `snippetcall`
+// named keys mxbuild does not apply ("RadioButtons", "SnippetCall" — CE6083 when
+// a theme declares them), and `header`/`footer` named groups for widgets the
+// builder writes as a Forms$DivContainer.
+//
+// A keyword is a widget only where buildWidgetV3 builds it. `row`, `column` and
+// `footer` are also SLOTS of a layoutgrid / row / dataview, where no widget of
+// this $Type exists — validateDesignPropsSubtree tells the two apart.
+//
+// TestKeywordStorageTypesMatchBuilder builds every entry and compares the $Type;
+// TestKeywordStorageTypesCoverBuilderDispatch holds it to buildWidgetV3's switch.
+var mdlKeywordStorageType = map[string]string{
+	"container":       "Forms$DivContainer",
+	"customcontainer": "Forms$DivContainer",
+	// Top-level `row` / `column` build a Forms$DivContainer holding a one-row
+	// layout grid; their design properties land on that container.
+	"row":        "Forms$DivContainer",
+	"column":     "Forms$DivContainer",
+	"header":     "Forms$DivContainer",
+	"footer":     "Forms$DivContainer",
+	"controlbar": "Forms$DivContainer",
+	"template":   "Forms$DivContainer",
+	"filter":     "Forms$DivContainer",
+
+	"actionbutton":    "Forms$ActionButton",
+	"linkbutton":      "Forms$ActionButton",
+	"button":          "Forms$ActionButton",
+	"textbox":         "Forms$TextBox",
+	"textarea":        "Forms$TextArea",
+	"datepicker":      "Forms$DatePicker",
+	"checkbox":        "Forms$CheckBox",
+	"radiobuttons":    "Forms$RadioButtonGroup",
+	"dropdown":        "Forms$DropDown",
+	"dataview":        "Forms$DataView",
+	"listview":        "Forms$ListView",
+	"layoutgrid":      "Forms$LayoutGrid",
+	"dynamictext":     "Forms$DynamicText",
+	"label":           "Forms$Label",
+	"title":           "Forms$Title",
+	"staticimage":     "Forms$StaticImageViewer",
+	"dynamicimage":    "Forms$ImageViewer",
+	"navigationlist":  "Forms$NavigationList",
+	"snippetcall":     "Forms$SnippetCallWidget",
+	"tabcontainer":    "Forms$TabControl",
+	"groupbox":        "Forms$GroupBox",
+	"scrollcontainer": "Forms$ScrollContainer",
+	"navigationtree":  "Forms$NavigationTree",
+	"menubar":         "Forms$MenuBar",
+	"simplemenubar":   "Forms$SimpleMenuBar",
+	"placeholder":     "Forms$Placeholder",
 }
 
 // pluggableKeywordIDs maps an MDL keyword to the pluggable widget id it writes,
@@ -200,61 +263,81 @@ var pluggableKeywordIDs = sync.OnceValue(func() map[string]string {
 // "CONTAINER") to the design-properties.json key (e.g., "DivContainer").
 //
 // A keyword that writes a PLUGGABLE widget resolves to that widget's id, which
-// is how design-properties.json keys them. Native keywords use the table above.
-// An unrecognised type falls through as-is — a pluggable id written directly is
-// already the right key.
+// is how design-properties.json keys them. A native keyword resolves through the
+// $Type it writes (mdlKeywordStorageType) to the key a stored widget of that
+// type has. An unrecognised type falls through as-is — a pluggable id written
+// directly is already the right key.
 func resolveDesignPropsKey(mdlKeyword string) string {
 	lower := strings.ToLower(mdlKeyword)
 	if id, ok := pluggableKeywordIDs()[lower]; ok {
 		return id
 	}
-	if key, ok := mdlKeywordToDesignPropsKey[lower]; ok {
-		return key
+	if storage, ok := mdlKeywordStorageType[lower]; ok {
+		if key, ok := bsonTypeToDesignPropsKey[storage]; ok {
+			return key
+		}
 	}
 	return mdlKeyword
 }
 
-// bsonTypeToDesignPropsKey maps BSON $Type values to design-properties.json keys.
-var bsonTypeToDesignPropsKey = map[string]string{
-	"Forms$DivContainer":       "DivContainer",
-	"Pages$DivContainer":       "DivContainer",
-	"Forms$ActionButton":       "Button",
-	"Pages$ActionButton":       "Button",
-	"Forms$TextBox":            "TextBox",
-	"Pages$TextBox":            "TextBox",
-	"Forms$TextArea":           "TextArea",
-	"Pages$TextArea":           "TextArea",
-	"Forms$DatePicker":         "DatePicker",
-	"Pages$DatePicker":         "DatePicker",
-	"Forms$CheckBox":           "CheckBox",
-	"Pages$CheckBox":           "CheckBox",
-	"Forms$RadioButtons":       "RadioButtons",
-	"Pages$RadioButtons":       "RadioButtons",
-	"Forms$ReferenceSelector":  "ReferenceSelector",
-	"Pages$ReferenceSelector":  "ReferenceSelector",
-	"Forms$DropDown":           "DropDown",
-	"Pages$DropDown":           "DropDown",
-	"Forms$DataGrid":           "DataGrid",
-	"Pages$DataGrid":           "DataGrid",
-	"Forms$DataView":           "DataView",
-	"Pages$DataView":           "DataView",
-	"Forms$ListView":           "ListView",
-	"Pages$ListView":           "ListView",
-	"Forms$LayoutGrid":         "LayoutGrid",
-	"Pages$LayoutGrid":         "LayoutGrid",
-	"Forms$DynamicText":        "DynamicText",
-	"Pages$DynamicText":        "DynamicText",
-	"Forms$Label":              "Label",
-	"Pages$Label":              "Label",
-	"Forms$StaticImageViewer":  "StaticImageViewer",
-	"Pages$StaticImageViewer":  "StaticImageViewer",
-	"Forms$DynamicImageViewer": "DynamicImageViewer",
-	"Pages$DynamicImageViewer": "DynamicImageViewer",
-	"Forms$Gallery":            "Gallery",
-	"Pages$Gallery":            "Gallery",
-	"Forms$NavigationList":     "NavigationList",
-	"Pages$NavigationList":     "NavigationList",
+// storageTypeThemeKeys maps a stored widget $Type, without its "Forms$" /
+// "Pages$" prefix, to the design-properties.json group Studio Pro applies to it.
+//
+// A theme key is a Mendix CLASS name — the qualified name, NOT the storage name.
+// Measured with probe groups added to a copy of PedApp's theme (Mendix 11.13.0):
+// mxbuild accepts a "TabContainer", "RadioButtonGroup" or "SnippetCallWidget"
+// design property on Forms$TabControl / Forms$RadioButtonGroup /
+// Forms$SnippetCallWidget, and refuses "TabControl", "RadioButtons" and
+// "SnippetCall" with CE6083 "not supported by your theme". Studio Pro also
+// applies the groups of ANCESTOR classes — "Widget" for every widget, and
+// "Button" (Atlas's key) as well as "ActionButton" for an action button. This
+// table names the one group per type that Atlas declares; GetPropertiesForWidget
+// adds "Widget".
+//
+// TestDesignPropsKeysAreMetamodelClassNames holds every entry to the generated
+// metamodel's class for its storage name, so a storage/qualified mix-up like the
+// ones above fails a test instead of a build.
+var storageTypeThemeKeys = map[string]string{
+	"DivContainer":       "DivContainer",
+	"ActionButton":       "Button",
+	"TextBox":            "TextBox",
+	"TextArea":           "TextArea",
+	"DatePicker":         "DatePicker",
+	"CheckBox":           "CheckBox",
+	"RadioButtonGroup":   "RadioButtonGroup",
+	"ReferenceSelector":  "ReferenceSelector",
+	"DropDown":           "DropDown",
+	"DataGrid":           "DataGrid",
+	"DataView":           "DataView",
+	"ListView":           "ListView",
+	"LayoutGrid":         "LayoutGrid",
+	"DynamicText":        "DynamicText",
+	"Label":              "Label",
+	"Title":              "Title",
+	"StaticImageViewer":  "StaticImageViewer",
+	"ImageViewer":        "DynamicImageViewer", // DynamicImageViewer's storage name
+	"DynamicImageViewer": "DynamicImageViewer",
+	"NavigationList":     "NavigationList",
+	"TabControl":         "TabContainer", // TabContainer's storage name
+	"GroupBox":           "GroupBox",
+	"ScrollContainer":    "ScrollContainer",
+	"NavigationTree":     "NavigationTree",
+	"MenuBar":            "MenuBar",
+	"SimpleMenuBar":      "SimpleMenuBar",
+	"Placeholder":        "Placeholder",
+	"SnippetCallWidget":  "SnippetCallWidget",
 }
+
+// bsonTypeToDesignPropsKey maps BSON $Type values to design-properties.json keys:
+// storageTypeThemeKeys under both prefixes.
+var bsonTypeToDesignPropsKey = func() map[string]string {
+	out := make(map[string]string, 2*len(storageTypeThemeKeys))
+	for storage, key := range storageTypeThemeKeys {
+		out["Forms$"+storage] = key
+		out["Pages$"+storage] = key
+	}
+	return out
+}()
 
 // widgetTypeDisplayName maps BSON $Type to a short display name for output.
 var widgetTypeDisplayName = map[string]string{

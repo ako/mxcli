@@ -1,0 +1,36 @@
+-- An input widget bound to an attribute where nothing supplies an object.
+--
+-- `textbox t (Attribute: FullName)` at the top of a page — outside any data
+-- view, list view, gallery or data grid — has no entity to qualify `FullName`
+-- with, and the writer stores an unqualified name as `AttributeRef: null`. Plain
+-- `mxcli check` said "Check passed!", `exec --no-check` (and ALTER PAGE … INSERT
+-- at page level, which `check --references` never saw) reported success, and
+-- mxbuild 11.13.0 then failed the page:
+--
+--   [CE0544] "This widget can only function inside a data context — like a data
+--            view, list view, or a page with parameters or variables."
+--   [CE7005] "No value selection has been made. Please select a value."
+--
+-- The same drop, per kind: textarea / datepicker / checkbox / radiobuttons /
+-- dropdown (CE0544 + CE7005), dynamictext `Attribute:` (CE0402 "No value
+-- specified."), combobox (CE0642 "Property 'Attribute' is required."). A
+-- QUALIFIED attribute there is stored and fails all the same (CE0544 / CE2421 /
+-- CE1365 / CE7247 "Move this widget into a data container", with CE7006), and
+-- `Attribute: $P/Name` never parsed as an attribute path, so it was dropped even
+-- inside a data view.
+--
+-- MDL-WIDGET34 now refuses each of these at check time, and the page builder
+-- refuses them with the widget named, so nothing is written. This script must
+-- FAIL check. The valid forms are in input-binding-without-context.mdl.
+create module ProbeInBind;
+
+create persistent entity ProbeInBind.Person (
+  FullName: String(100)
+);
+
+create page ProbeInBind.Edit (
+  title: 'Edit',
+  layout: Atlas_Core.Atlas_Default
+) {
+  textbox t (Attribute: FullName)
+};

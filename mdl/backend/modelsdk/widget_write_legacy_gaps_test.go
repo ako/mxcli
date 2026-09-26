@@ -363,24 +363,69 @@ func assertEmptyClientTemplate(t *testing.T, parent bsonv1.D, key string) {
 	}
 }
 
-// TestNanoflowSourceNestsSettings — gen binds the nanoflow name directly on the
-// source; Studio Pro nests it in a Forms$NanoflowSettings child. Writing gen's
-// shape would put the name in a key Studio Pro does not read there.
-func TestNanoflowSourceNestsSettings(t *testing.T) {
+// TestNanoflowSourceIsFlat_StudioProShape — a Forms$NanoflowSource binds its
+// nanoflow DIRECTLY: ForceFullObjects, Nanoflow, ParameterMappings, and nothing
+// else. Measured: all 5 Studio Pro-authored Forms$NanoflowSource documents in
+// the Feedback v4.0.2 module (Mendix 11.13.0) have exactly that key set, with an
+// empty ParameterMappings stored as marker 2. There is no Forms$NanoflowSettings
+// type — the nested shape this writer used to mint (by analogy with
+// Forms$MicroflowSource, which DOES nest a Forms$MicroflowSettings) leaves
+// mxbuild seeing no nanoflow at all: CE2633 "No nanoflow configured for the
+// data source of this data view".
+func TestNanoflowSourceIsFlat_StudioProShape(t *testing.T) {
 	el := nanoflowSourceToGen(&pages.NanoflowSource{Nanoflow: "MyModule.NF_GetItems"})
-	doc := encodeElement(t, el)
+	d := encodeToD(t, el)
 
-	if got := docGet(doc, "$Type"); got != "Forms$NanoflowSource" {
-		t.Fatalf("$Type = %v", got)
+	var got []string
+	for _, e := range d {
+		got = append(got, e.Key)
 	}
-	if docGet(doc, "Nanoflow") != nil {
-		t.Error("Nanoflow bound directly on the source; it belongs in NanoflowSettings")
+	sort.Strings(got)
+	want := []string{"$ID", "$Type", "ForceFullObjects", "Nanoflow", "ParameterMappings"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("keys = %v, want exactly %v (Studio Pro's shape)", got, want)
 	}
-	settings, ok := docGet(doc, "NanoflowSettings").(bsonv1.D)
+	if v := docGet(d, "$Type"); v != "Forms$NanoflowSource" {
+		t.Errorf("$Type = %v", v)
+	}
+	if v := docGet(d, "Nanoflow"); v != "MyModule.NF_GetItems" {
+		t.Errorf("Nanoflow = %v, want MyModule.NF_GetItems", v)
+	}
+	if v, ok := docGet(d, "ForceFullObjects").(bool); !ok || v {
+		t.Errorf("ForceFullObjects = %#v, want false", docGet(d, "ForceFullObjects"))
+	}
+	pm, ok := docGet(d, "ParameterMappings").(bsonv1.A)
+	if !ok || len(pm) != 1 || pm[0] != int32(2) {
+		t.Errorf("ParameterMappings = %#v, want [2] (Studio Pro's empty-list marker)", docGet(d, "ParameterMappings"))
+	}
+}
+
+// A parameterized source nanoflow keeps its arguments, as
+// Forms$NanoflowParameterMapping items directly under the source. The raw
+// nested builder never read d.ParameterMappings, so they were dropped.
+func TestNanoflowSource_KeepsParameterMappings(t *testing.T) {
+	el := nanoflowSourceToGen(&pages.NanoflowSource{
+		Nanoflow: "MyModule.NF_GetItems",
+		ParameterMappings: []*pages.MicroflowParameterMapping{
+			{ParameterName: "Limit", Expression: "10"},
+		},
+	})
+	d := encodeToD(t, el)
+	pm, ok := docGet(d, "ParameterMappings").(bsonv1.A)
+	if !ok || len(pm) != 2 {
+		t.Fatalf("ParameterMappings = %#v, want marker + 1 mapping", docGet(d, "ParameterMappings"))
+	}
+	m, ok := pm[1].(bsonv1.D)
 	if !ok {
-		t.Fatalf("NanoflowSettings = %T", docGet(doc, "NanoflowSettings"))
+		t.Fatalf("mapping = %T", pm[1])
 	}
-	if got := docGet(settings, "Nanoflow"); got != "MyModule.NF_GetItems" {
-		t.Errorf("NanoflowSettings.Nanoflow = %v", got)
+	if v := docGet(m, "$Type"); v != "Forms$NanoflowParameterMapping" {
+		t.Errorf("mapping $Type = %v", v)
+	}
+	if v := docGet(m, "Parameter"); v != "MyModule.NF_GetItems.Limit" {
+		t.Errorf("mapping Parameter = %v", v)
+	}
+	if v := docGet(m, "Expression"); v != "10" {
+		t.Errorf("mapping Expression = %v", v)
 	}
 }

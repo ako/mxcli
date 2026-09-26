@@ -25,7 +25,7 @@ create or replace page MyFirstModule.P_UnknownProp
 ( Title: 'Unknown prop', Layout: Atlas_Core.Atlas_Default )
 {
   -- all recognized → no warning
-  dynamictext ok ( Content: 'hi', Class: 'c', DynamicClasses: 'if true then ''a'' else ''''', RenderMode: H1 )
+  dynamictext ok ( Content: 'hi', Class: 'c', DynamicClasses: if true then 'a' else '', RenderMode: H1 )
   -- typo of a real property → MDL-WIDGET07 "did you mean `Content`?"
   dynamictext typo ( Content: 'hi', Contnet: 'oops' )
   -- genuinely unknown property → MDL-WIDGET07 (no suggestion)

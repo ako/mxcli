@@ -44,8 +44,8 @@ import (
 // check that cannot see what it is judging.
 //
 // Deliberately NOT done: mapping the stored $Type to a registry key to make this
-// precise. That would be a third resolver for one concept — mdlKeywordToDesignPropsKey
-// maps MDL keyword → key, and an unused bsonTypeToDesignPropsKey maps $Type →
+// precise. That would be a third resolver for one concept — mdlKeywordStorageType
+// maps MDL keyword → $Type, and an unused bsonTypeToDesignPropsKey maps $Type →
 // key — and duplicate resolvers drifting apart is the failure this area keeps
 // producing (mendixlabs/mxcli#1069's buildPropKeyMap was two copies of one
 // derivation, and one copy was the bug). The precise variant needs a widget-type
@@ -103,6 +103,21 @@ func validateAlterStylingDesignProps(prog *ast.Program, reg *ThemeRegistry) []li
 							a.Property, firstOptionName(multi, a.Value)),
 					})
 				}
+				continue
+			}
+			// Declared after all — under an OLD name the theme renamed. mxbuild
+			// answers that with CE6087, not CE6083, and the fix is the current
+			// name, not a spelling near-miss.
+			if r := renamedAnywhere(reg, a.Property, a.Value); r != nil {
+				out = append(out, linter.Violation{
+					RuleID:   "MDL-WIDGET11",
+					Severity: linter.SeverityWarning,
+					Message: fmt.Sprintf("%s: sets design property %q on %q, which the theme renamed to %q "+
+						"— mxbuild reports the old name as CE6087 (\"Design properties have been renamed "+
+						"in your theme\")", label, a.Property, s.WidgetName, r.NewKey),
+					Location:   linter.Location{DocumentType: "page", DocumentName: s.ContainerName.String()},
+					Suggestion: renamedStylingSuggestion(r, a.Value),
+				})
 				continue
 			}
 			out = append(out, linter.Violation{
@@ -195,4 +210,42 @@ func firstOptionName(p *ThemeProperty, authored string) string {
 		return p.Options[0].Name
 	}
 	return authored
+}
+
+// renamedAnywhere finds key among the old names of any widget type's design
+// properties. ALTER STYLING carries only a widget NAME, so — as for the
+// declared check above — it asks the whole theme rather than one type. Groups
+// are visited in a fixed order so the answer does not depend on map order.
+func renamedAnywhere(reg *ThemeRegistry, key, value string) *designPropRename {
+	groups := make([]string, 0, len(reg.WidgetProperties))
+	for g := range reg.WidgetProperties {
+		groups = append(groups, g)
+	}
+	sort.Strings(groups)
+	for _, g := range groups {
+		if r := findRenamedThemeProp(reg.WidgetProperties[g], key, value); r != nil {
+			return r
+		}
+	}
+	return nil
+}
+
+// renamedStylingSuggestion turns a rename into what to write INSTEAD in an
+// ALTER STYLING script. A flat replacement ('Key': 'Option' or 'Key': on) is
+// one assignment; a compound one — a Spacing side, or a multi-select option —
+// is a value ALTER STYLING cannot write (one flat value per assignment, the
+// MDL-WIDGET12 limit), so it points at the inline form.
+func renamedStylingSuggestion(r *designPropRename, value string) string {
+	if r.Replacement == "" {
+		return renamedDesignPropSuggestion(r, value)
+	}
+	if strings.Contains(r.Replacement, "[") {
+		return fmt.Sprintf("ALTER STYLING cannot write its current form, which is a compound: set "+
+			"`DesignProperties: [%s]` on the widget in CREATE PAGE, or in an ALTER PAGE REPLACE.", r.Replacement)
+	}
+	// 'Key': 'Value'  →  set 'Key' = 'Value'
+	if i := strings.Index(r.Replacement, "': "); i > 0 {
+		return fmt.Sprintf("Write it as `set %s' = %s`.", r.Replacement[:i], r.Replacement[i+3:])
+	}
+	return renamedDesignPropSuggestion(r, value)
 }

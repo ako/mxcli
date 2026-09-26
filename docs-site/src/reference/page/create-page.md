@@ -78,6 +78,7 @@ The widget tree inside `{ ... }` defines the page content. Widgets are nested hi
 | Widget | Description | Key Properties |
 |--------|-------------|----------------|
 | `DYNAMICTEXT` | Display-only text bound to an attribute | `Attribute` |
+| `LABEL` | Studio Pro's Label widget (`Forms$Label`): a fixed, translatable caption. `describe` emits it for existing labels; prefer `DYNAMICTEXT` for new text | `Content` |
 | `IMAGE` | Generic image | `Width`, `Height` |
 | `STATICIMAGE` | Fixed image from project resources | `Width`, `Height` |
 | `DYNAMICIMAGE` | Image from an entity attribute | `Width`, `Height` |
@@ -189,7 +190,7 @@ These properties are available on most widget types:
 |----------|-------------|---------|
 | `Class` | CSS class names | `Class: 'card mx-spacing-top-large'` |
 | `Style` | Inline CSS | `Style: 'padding: 16px;'` |
-| `DynamicClasses` | Runtime-computed CSS classes (expression; stacks on `Class`) | `DynamicClasses: 'if $currentObject/IsActive then ''is-active'' else '''''` |
+| `DynamicClasses` | Runtime-computed CSS classes (expression; stacks on `Class`) | `DynamicClasses: if $currentObject/IsActive then 'is-active' else ''` |
 | `Editable` | Edit control | `Editable: NEVER` or `Editable: ALWAYS` |
 | `Visible` | Visibility expression | `Visible: '$showField'` |
 | `DesignProperties` | Atlas design properties | `DesignProperties: ['Spacing top': 'Large']` |

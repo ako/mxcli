@@ -359,7 +359,7 @@ MDL uses explicit property declarations for pages:
 | Selection binding | `DataSource: SELECTION widget` | `DATAVIEW dv (DataSource: SELECTION galleryList)` |
 | CSS class | `Class: 'classes'` | `CONTAINER c (Class: 'card mx-spacing-top-large')` |
 | Inline style | `Style: 'css'` | `CONTAINER c (Style: 'padding: 16px;')` |
-| Dynamic classes | `DynamicClasses: 'expr'` | `CONTAINER c (DynamicClasses: 'if $currentObject/IsActive then ''is-active'' else ''''')` — runtime-computed; stacks on `Class` |
+| Dynamic classes | `DynamicClasses: 'expr'` | `CONTAINER c (DynamicClasses: if $currentObject/IsActive then 'is-active' else '')` — runtime-computed; stacks on `Class` |
 | Design properties | `DesignProperties: [...]` | `CONTAINER c (DesignProperties: ['Spacing top': 'Large', 'Full width': ON])` |
 | Width (pixels) | `Width: integer` | `IMAGE img (Width: 200)` |
 | Height (pixels) | `Height: integer` | `IMAGE img (Height: 150)` |
@@ -383,7 +383,7 @@ MDL uses explicit property declarations for pages:
 | `ColumnWidth` | `autoFill`, `autoFit`, `manual` | `autoFill` | `ColumnWidth: manual` |
 | `Size` | integer (px) | `1` | `Size: 200` |
 | `Visible` | expression string | `true` | `Visible: '$showColumn'` (page variable, not $currentObject) |
-| `DynamicCellClass` | expression string | (empty) | `DynamicCellClass: 'if(...) then ... else ...'` |
+| `DynamicCellClass` | expression string | (empty) | `DynamicCellClass: if(...) then ... else ...` |
 | `Tooltip` | text string | (empty) | `Tooltip: 'Price in USD'` |
 
 **Page Example:**

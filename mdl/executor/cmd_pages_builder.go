@@ -4,6 +4,7 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -21,6 +22,14 @@ import (
 // ============================================================================
 // Page Builder
 // ============================================================================
+
+// danglingRefOK reports whether a failed reference resolution may be kept by
+// name: only for an excluded document, and only when the name resolved to
+// nothing (a backend failure is never swallowed). See tolerateDanglingRefs.
+func (pb *pageBuilder) danglingRefOK(err error) bool {
+	var nf *mdlerrors.NotFoundError
+	return pb.tolerateDanglingRefs && errors.As(err, &nf)
+}
 
 // pageBuilder constructs pages from AST.
 type pageBuilder struct {
@@ -64,6 +73,22 @@ type pageBuilder struct {
 	// node it is looking at; the builder's action path is several calls deep and
 	// would otherwise say only "this widget".
 	currentWidget string
+
+	// tolerateDanglingRefs is set when the document being built is EXCLUDED
+	// (by @excluded, or carried from the stored document). Mendix does not
+	// validate an excluded document, and one may name flows, pages or snippets
+	// the project does not contain — Feedback v4.0.2 ships such an example
+	// page. The writer stores an ACTION's or snippet call's target BY NAME, so
+	// an unresolved one is kept as written instead of failing the build.
+	//
+	// A data-source FLOW is kept by name too, but it is what puts an entity in
+	// scope: without it a bare attribute binding inside the container cannot
+	// be qualified, and one written bare made `mx check` fail to LOAD the
+	// project (ArgumentNullException setting 'Attribute', Mendix 11.13.0).
+	// DESCRIBE writes those bindings qualified there, the check refuses a bare
+	// one (unscopedBindings), and the writer refuses any bare attribute
+	// reference as a last line, ALTER included (canon.BareAttributeRefError).
+	tolerateDanglingRefs bool
 
 	// Local page/snippet variables (Variables: { $name: Type = 'default' }).
 	// Used to distinguish a $localVar reference from a page parameter when

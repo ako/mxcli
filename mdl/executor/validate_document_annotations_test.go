@@ -21,6 +21,7 @@ import (
 var visitorFilesWithDocumentAnnotations = []string{
 	"../visitor/visitor_association.go",
 	"../visitor/visitor_entity.go",
+	"../visitor/visitor_import_export_mapping.go",
 	"../visitor/visitor_microflow.go",
 	"../visitor/visitor_page_v3.go",
 }

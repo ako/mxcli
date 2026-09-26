@@ -303,13 +303,7 @@ func codeActionInnerTypeToGen(t javaactions.CodeActionParameterType) element.Ele
 		e.SetEntityQualifiedName(v.Entity)
 		return e
 	case *javaactions.ListType:
-		l := genCa.NewListType()
-		assignID(l)
-		ce := genCa.NewConcreteEntityType()
-		assignID(ce)
-		ce.SetEntityQualifiedName(v.Entity)
-		l.SetParameter(ce)
-		return l
+		return codeActionListTypeToGen(v)
 	case *javaactions.TypeParameter:
 		p := genCa.NewParameterizedEntityType()
 		assignID(p)
@@ -336,13 +330,7 @@ func codeActionReturnTypeToGen(t javaactions.CodeActionReturnType) element.Eleme
 		e.SetEntityQualifiedName(v.Entity)
 		return e
 	case *javaactions.ListType:
-		l := genCa.NewListType()
-		assignID(l)
-		ce := genCa.NewConcreteEntityType()
-		assignID(ce)
-		ce.SetEntityQualifiedName(v.Entity)
-		l.SetParameter(ce)
-		return l
+		return codeActionListTypeToGen(v)
 	case *javaactions.TypeParameter:
 		p := genCa.NewParameterizedEntityType()
 		assignID(p)
@@ -351,6 +339,26 @@ func codeActionReturnTypeToGen(t javaactions.CodeActionReturnType) element.Eleme
 	default:
 		return newPrimitiveCAType(primitiveCAReturnTypeName(t))
 	}
+}
+
+// codeActionListTypeToGen converts a list type. The element is a
+// ParameterizedEntityType for a list of a type parameter — Studio Pro's "List of
+// <type parameter>" — and a ConcreteEntityType otherwise (#1183).
+func codeActionListTypeToGen(v *javaactions.ListType) element.Element {
+	l := genCa.NewListType()
+	assignID(l)
+	if v.TypeParameterID != "" {
+		p := genCa.NewParameterizedEntityType()
+		assignID(p)
+		p.SetTypeParameterID(element.ID(v.TypeParameterID))
+		l.SetParameter(p)
+		return l
+	}
+	ce := genCa.NewConcreteEntityType()
+	assignID(ce)
+	ce.SetEntityQualifiedName(v.Entity)
+	l.SetParameter(ce)
+	return l
 }
 
 // newPrimitiveCAType builds a bare CodeActions primitive type element by kind (the

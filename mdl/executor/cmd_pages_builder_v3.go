@@ -400,6 +400,8 @@ func (pb *pageBuilder) buildWidgetV3(w *ast.WidgetV3) (pages.Widget, error) {
 		widget, err = pb.buildDynamicTextV3(w)
 	case "title":
 		widget, err = pb.buildTitleV3(w)
+	case "label":
+		widget, err = pb.buildLabelV3(w)
 	case "button", "actionbutton", "linkbutton":
 		widget, err = pb.buildButtonV3(w)
 	case "tabcontainer":
@@ -496,6 +498,9 @@ func (pb *pageBuilder) buildWidgetV3(w *ast.WidgetV3) (pages.Widget, error) {
 
 	// Apply conditional visibility/editability
 	applyConditionalSettings(widget, w)
+	if err := pb.applyVisibleWhen(widget, w); err != nil {
+		return nil, err
+	}
 
 	return widget, nil
 }
@@ -911,7 +916,11 @@ func (pb *pageBuilder) buildDataSourceV3(ds *ast.DataSourceV3) (pages.DataSource
 	case "microflow":
 		// Microflow source
 		mfID, err := pb.resolveMicroflow(ds.Reference)
-		if err != nil {
+		// An excluded page may name a flow the project lacks (see
+		// tolerateDanglingRefs). It is written by name with NO entity in scope,
+		// so the bindings inside must be qualified; checkUnscopedBindings
+		// refuses a bare one before anything is written.
+		if err != nil && !pb.danglingRefOK(err) {
 			return nil, "", mdlerrors.NewBackend("resolve microflow", err)
 		}
 
@@ -931,7 +940,7 @@ func (pb *pageBuilder) buildDataSourceV3(ds *ast.DataSourceV3) (pages.DataSource
 	case "nanoflow":
 		// Nanoflow source - resolve by listing all nanoflows
 		nfID, err := pb.resolveNanoflowByName(ds.Reference)
-		if err != nil {
+		if err != nil && !pb.danglingRefOK(err) { // kept by name: see the microflow case
 			return nil, "", mdlerrors.NewBackend("resolve nanoflow", err)
 		}
 
@@ -1495,7 +1504,7 @@ func (pb *pageBuilder) buildClientActionV3(action *ast.ActionV3) (pages.ClientAc
 		// Handle THEN action (show page)
 		if action.ThenAction != nil && action.ThenAction.Type == "showPage" {
 			pageID, err := pb.resolvePageRef(action.ThenAction.Target)
-			if err != nil {
+			if err != nil && !pb.danglingRefOK(err) {
 				return nil, mdlerrors.NewBackend("resolve page", err)
 			}
 			createAct.PageID = pageID
@@ -1506,7 +1515,7 @@ func (pb *pageBuilder) buildClientActionV3(action *ast.ActionV3) (pages.ClientAc
 
 	case "showPage":
 		_, err := pb.resolvePageRef(action.Target)
-		if err != nil {
+		if err != nil && !pb.danglingRefOK(err) {
 			return nil, mdlerrors.NewBackend("resolve page", err)
 		}
 
@@ -1560,7 +1569,7 @@ func (pb *pageBuilder) buildClientActionV3(action *ast.ActionV3) (pages.ClientAc
 
 	case "microflow":
 		mfID, err := pb.resolveMicroflow(action.Target)
-		if err != nil {
+		if err != nil && !pb.danglingRefOK(err) {
 			return nil, mdlerrors.NewBackend("resolve microflow", err)
 		}
 
@@ -1604,7 +1613,7 @@ func (pb *pageBuilder) buildClientActionV3(action *ast.ActionV3) (pages.ClientAc
 
 	case "nanoflow":
 		nfID, err := pb.resolveNanoflowByName(action.Target)
-		if err != nil {
+		if err != nil && !pb.danglingRefOK(err) {
 			return nil, mdlerrors.NewBackend("resolve nanoflow", err)
 		}
 
@@ -1647,6 +1656,27 @@ func (pb *pageBuilder) buildClientActionV3(action *ast.ActionV3) (pages.ClientAc
 		return nfAction, nil
 
 	case "openLink":
+		addressAttr := ""
+		if action.LinkAttribute != "" {
+			// A dynamic address, read from the context object at runtime —
+			// the only variable Studio Pro's "Address: attribute" choice binds.
+			if !strings.EqualFold(action.LinkVariable, "$currentObject") {
+				return nil, mdlerrors.NewValidationf(
+					"open_link %s/%s: a dynamic link address is read from $currentObject — write `open_link $currentObject/%s` inside the data container that holds it",
+					action.LinkVariable, action.LinkAttribute, action.LinkAttribute)
+			}
+			if strings.Contains(action.LinkAttribute, "/") {
+				return nil, mdlerrors.NewValidationf(
+					"open_link $currentObject/%s: an address over an association path is not supported yet — bind an attribute of the data container's own entity",
+					action.LinkAttribute)
+			}
+			if pb.entityContext == "" {
+				return nil, mdlerrors.NewValidationf(
+					"open_link $currentObject/%s: a dynamic link address needs an object to read it from — place the button inside a data container",
+					action.LinkAttribute)
+			}
+			addressAttr = pb.resolveAttributePath(action.LinkAttribute)
+		}
 		return &pages.LinkClientAction{
 			BaseElement: model.BaseElement{
 				ID: model.ID(types.GenerateID()),
@@ -1656,8 +1686,9 @@ func (pb *pageBuilder) buildClientActionV3(action *ast.ActionV3) (pages.ClientAc
 				// only because neither engine could write the action at all.
 				TypeName: "Forms$OpenLinkClientAction",
 			},
-			LinkType: pages.LinkTypeWeb,
-			Address:  action.LinkURL,
+			LinkType:         pages.LinkTypeWeb,
+			Address:          action.LinkURL,
+			AddressAttribute: addressAttr,
 		}, nil
 
 	case "signOut":
@@ -2086,7 +2117,9 @@ func (pb *pageBuilder) resolveAssociationAttributePath(attrRef string) (finalQN 
 
 	steps = make([]pages.AttributeRefStep, 0, len(segs)-1)
 	for _, seg := range segs[:len(segs)-1] {
-		assocQN := pb.resolveAssociationPath(seg)
+		// Against the entity THIS hop starts from — qualifying every hop with
+		// the path's start named a later hop into the wrong module. (#662)
+		assocQN := pb.resolveAssociationPathIn(seg, current)
 		dest, ok := pb.associationDestination(assocQN, current)
 		if !ok {
 			return "", nil, false

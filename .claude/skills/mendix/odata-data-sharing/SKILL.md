@@ -65,7 +65,7 @@ CREATE OR MODIFY ODATA CLIENT F1Now.NowApi (
   ODataVersion: OData4,
   MetadataUrl: './contracts/live-now-metadata.xml',
   Timeout: 300,
-  ServiceUrl: '@F1Now.ApiLocation'
+  ServiceUrl: F1Now.ApiLocation
 );
 ```
 
@@ -104,7 +104,7 @@ CREATE CONSTANT ProductClient.ProductDataApiLocation
 CREATE ODATA CLIENT ProductClient.ProductDataApiClient (
   ODataVersion: OData4,
   MetadataUrl: 'https://api.example.com/$metadata',
-  ServiceUrl: '@ProductClient.ProductDataApiLocation'  -- ✅ Constant reference
+  ServiceUrl: ProductClient.ProductDataApiLocation  -- ✅ Constant reference
 );
 ```
 
@@ -270,7 +270,7 @@ Before consuming:
   - HTTP(S) URL: `https://api.example.com/$metadata`
   - Local file (absolute): `file:///path/to/metadata.xml`
   - Local file (relative): `./metadata/service.xml` (resolved against `.mpr` directory)
-- [ ] OData client uses `ServiceUrl: '@Module.Constant'` for runtime endpoint
+- [ ] OData client uses `ServiceUrl: Module.Constant` for runtime endpoint
 - [ ] External entities match the published exposed names and types
 - [ ] Module role created and granted on external entities (READ, optionally CREATE/WRITE/DELETE)
 
