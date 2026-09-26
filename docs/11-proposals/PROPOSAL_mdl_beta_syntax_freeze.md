@@ -946,7 +946,7 @@ The language has no version marker today. `version-aware-mdl.md` proposes `set v
 1. **Deprecated aliases keep parsing** and emit a warning with a stable code (`MDL-DEPR001`, …) that names the canonical form. `describe` never emits a deprecated form.
 2. **`mxcli fmt --upgrade`** rewrites every deprecated form to its canonical form. This is mechanical for every alias in §3–§4, and it is what makes consolidation cheap for users.
 3. **An optional language header**, `mdl 1;`, as the first statement (decided, §7).
-   - `describe` and `fmt` emit it.
+   - `describe` and `fmt` emit it **from beta on**. Before beta, `mdl 1` is a preview that warns "may still change"; at beta it is frozen, and later changes of meaning need `mdl 2`.
    - **With no header, a script gets the alpha meaning (`mdl 0`) plus warnings**, never the latest. This matches the precedents: Rust treats a crate with no edition as the oldest edition, and Go treats a module with no `go` line as the oldest version. The meaning of a script never depends on which mxcli release happens to run it.
    - Under `mdl 1`, the §5 changes of meaning and new rejections apply. Under `mdl 0` they are warnings.
    - After beta, a change that is not backwards compatible bumps the number, and the visitor gates removed aliases on it: under `mdl 1` they warn, under `mdl 2` they are refused.
@@ -969,9 +969,9 @@ See the implementation plan in §9, which supersedes the short list that was her
 5. **R3/R4, argument binding: `Param = expr`.** `=` binds a runtime value, `:` sets a model property. There is no `$` on the parameter name. One form for every call site: microflow calls, `show page`, button and menu actions, workflows and REST.
 6. **Alter form: `set ( Key: value, … )`.** It is the same property list as `create`, so a fragment from `describe` can be pasted straight into an `alter`.
 7. **Brownfield agent editing is a beta goal.** `alter microflow`/`alter nanoflow` (plan item 4.2, at least insert, replace and drop) and the no-op `create or modify` for microflows join the beta gate.
-8. **The `mdl 1;` language header is added now** (plan item 1.5). It is an optional first statement that `describe` and `fmt` emit; after beta, removed aliases are gated by version.
+8. **The `mdl 1;` language header is added now** (plan item 1.5). It is an optional first statement. It is a preview until beta, then frozen; `describe` and `fmt` emit it from beta on. After beta, removed aliases are gated by version.
 
-9. **Cadence: one release per week, beta in about four weeks** (around 2026-10-24). The schedule is in §9.
+9. **Cadence: one release per week; beta in about four weeks** (around 2026-10-24). Because changes of meaning are tied to the header, no change needs a warning release. Beta is a single release, cut when `mdl 1` is complete. The schedule is in §9.
 
 10. **Drift detection is optimistic locking, and is optional** (§8.2). A `@base '<fingerprint>'` annotation on the statement is emitted by `describe`, checked by `create or modify`, and updated by `exec`. Projects driven entirely by MDL skip it and instead require a dry run of all scripts to report no changes. There is no sidecar state file.
 
@@ -1205,18 +1205,30 @@ Phase 0  safety net + bugs ──┬──> Phase 1  decisions + deprecation mac
                                   Phase 1 ──> Phase 4  data-first editing (alter microflow, drift, dry run)
 ```
 
-### Schedule (weekly releases, beta in about four weeks)
+### Schedule (weekly releases; beta when `mdl 1` is complete)
 
-Changes of meaning are tied to the `mdl 1;` header (§5), so no existing script breaks on a given date. The schedule pressure is about having `mdl 1` complete, documented and emitted by beta. The deprecation registry (1.2) and the header (1.5) still land in week 1, because everything in week 2 builds on them.
+**No change needs a warning release.**
+- Changes of meaning apply only under `mdl 1;` (§5), so a script without the header keeps its meaning on every release.
+- Changes of spelling keep the old form as an alias.
+- The old output of `describe` has no header, so it keeps running with the old meaning.
 
-| Release | Lands | Parallel track (Phase 4) |
+Beta can therefore be a single release, cut whenever `mdl 1` is complete and verified. The order below is **build order**: the registry (1.2) and the header (1.5) come first because everything else is built on them. Weekly releases ship progress safely along the way.
+
+**`mdl 1` is a preview until beta, then frozen.** Parts of `mdl 1` ship in weekly releases before beta, so its meaning could still shift between those releases. To stop anyone depending on an unfinished `mdl 1`:
+- Before beta, `mdl 1;` parses but warns "preview: may still change".
+- `describe` and `fmt` do **not** emit the header before beta; `fmt --upgrade` adds it only on request.
+- At beta, `mdl 1` is frozen, and `describe` and `fmt` start emitting it. From then on, any change of meaning needs `mdl 2`.
+
+| Order | Lands | Parallel track (Phase 4) |
 |---|---|---|
-| **Week 1** | ADR (1.1); deprecation registry (1.2); `mdl 1;` (1.5); round-trip harness and PedApp fixture (0.1, 0.2); first bug fixes (0.3–0.5); interim skill guidance (0.6) | generic `alter` skeleton (4.1); `mfmutator` target resolver (4.2a) |
-| **Week 2** | **The `mdl 1` semantics ship.** New forms parse alongside the old ones (2.1, 2.4, 2.5). Scripts without the header warn on every construct whose meaning differs. `fmt --upgrade` adds the header and rewrites (1.3). | graph splice and placement (4.2b, 4.2c) |
-| **Week 3** | Canonical `describe` (2.6). Phase 3 canonical forms added to the grammar, with the old forms as aliases. Conformance gate (1.4). Dead grammar removed (2.3). | `insert`, `replace`, `drop`; diff-then-patch `create or modify` for microflows (4.2e, 4.2g) |
-| **Week 4: beta** | `mdl 1` is the documented language, and `describe`/`fmt` emit it. Headerless scripts keep working, with warnings (2.2, 2.5). | 4.2 acceptance test on `VAL_Feedback` passes |
+| **1** | ADR (1.1); deprecation registry (1.2); `mdl 1;` header as a preview (1.5); round-trip harness and PedApp fixture (0.1, 0.2); first bug fixes (0.3–0.5); interim skill guidance (0.6) | generic `alter` skeleton (4.1); `mfmutator` target resolver (4.2a) |
+| **2** | `mdl 1` semantics behind the preview header (2.1, 2.2, 2.4, 2.5); `fmt --upgrade` (1.3) | graph splice and placement (4.2b, 4.2c) |
+| **3** | Canonical `describe` (2.6); Phase 3 canonical forms added to the grammar, with the old forms as aliases; conformance gate (1.4); dead grammar removed (2.3) | `insert`, `replace`, `drop`; diff-then-patch `create or modify` for microflows (4.2e, 4.2g) |
+| **Beta** | `mdl 1` is frozen, documented, and emitted by `describe`/`fmt`. Scripts without the header keep working, with warnings. | 4.2 acceptance test on `VAL_Feedback` passes |
 
-**Risk.** Four weeks is tight for 4.2, which is the largest item and the riskiest code (the graph splice). If its acceptance test is not green in week 4, choose explicitly between slipping beta by a week or two, and shipping beta with `alter microflow` marked experimental while the microflow no-op guarantee stays on the gate. Phase 3's aliases and Phase 5 continue after beta; only the canonical *forms* have to be in the grammar by then.
+At a weekly cadence this is still roughly four weeks, but no date is imposed by compatibility.
+
+**Risk.** Item 4.2 is the largest and the riskiest code (the graph splice). If its acceptance test is not green when everything else is, slip beta. Slipping now costs nobody compatibility, so it is the cheap option; the alternative is shipping `alter microflow` as experimental. Phase 3's aliases and Phase 5 continue after beta; only the canonical *forms* have to be in the grammar and in `mdl 1` by then.
 
 ### Phase 0: safety net and bugs (no syntax change)
 
@@ -1242,9 +1254,9 @@ Changes of meaning are tied to the `mdl 1;` header (§5), so no existing script 
 
 ### Phase 2: the beta gate (§5, cannot be aliased)
 
-Each change breaks existing text, so each one lands with a registry entry, an `fmt --upgrade` rewrite where one is possible, and release notes. Where a warning period is possible, it lasts one release before the break.
+Each change lands with a registry entry, an `fmt --upgrade` rewrite where one is possible, and release notes. Changes of meaning and new rejections are tied to the `mdl 1` header, so none of them needs a warning release.
 
-| # | Item | Size | Warning period | Done when |
+| # | Item | Size | Compatibility | Done when |
 |---|---|---|---|---|
 | 2.1 | **R1: `create or modify` is the keyword; `or replace` becomes an alias.** View entities get an identity-carrying rewrite instead of delete-and-recreate; `if not exists` works on every type. The no-op guarantee (an unchanged definition writes nothing) is enforced by the 0.1 harness for every type except microflows and nanoflows, which need 4.2. | M | `or replace` warns | GUID preserved on a view-entity replace (a test with a GUID != `$ID` control); re-running unchanged `describe` output writes no unit |
 | 2.2 | **Strictness:** unknown or mis-shaped property keys are errors (REST, agents and business events first, then everywhere); `;` required; `/` removed; `\` is no longer an escape. | M | tied to the header: errors under `mdl 1`, warnings without it | parse tests under both versions |

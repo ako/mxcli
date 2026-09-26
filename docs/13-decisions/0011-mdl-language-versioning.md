@@ -30,7 +30,7 @@ MDL has no version marker. The proposed `set version '10.18'` (`version-aware-md
    - `mdl 1;` gets beta semantics.
    - A script with no header is treated as `mdl 0` (the alpha meaning) and warns on every construct whose meaning differs.
    - `fmt --upgrade` adds the header and rewrites those constructs.
-   - `describe` and `fmt` always emit the header.
+   - **A version is a preview until it is frozen.** Before beta, `mdl 1;` parses but warns "preview: may still change", and `describe`/`fmt` do not emit it. At beta, `mdl 1` is frozen and `describe`/`fmt` always emit it. After that, any change of meaning needs a new version.
    - Aliases can be removed only at a version boundary: under the version that deprecates them they warn; under the next one they are refused.
 3. **The header is independent of the Mendix target version.**
 
@@ -39,7 +39,7 @@ MDL has no version marker. The proposed `set version '10.18'` (`version-aware-md
 **Positive**
 
 - A script's meaning never depends on which mxcli release runs it. No committed script changes behaviour silently.
-- Beta is not a flag day. Existing scripts keep running with warnings, and each user migrates when they choose, in one command.
+- Beta is not a flag day, and it needs no warning releases. Because no script changes meaning without opting in, beta is a single release, cut when `mdl 1` is complete. Existing scripts keep running with warnings, and each user migrates when they choose, in one command.
 - The same mechanism carries every future change, so after beta, "can we change this?" becomes "which version does it belong to?".
 - Documentation, skills and examples can be held to the canonical form automatically, with deprecation warnings treated as errors in CI.
 
@@ -53,6 +53,7 @@ MDL has no version marker. The proposed `set version '10.18'` (`version-aware-md
 **Neutral**
 
 - `mdl 0` is only ever implicit. Nobody writes it.
+- Freezing, not the release number, is what makes a version a contract. A preview version may change between weekly releases, and says so.
 - Removing a deprecated form requires both a new language version and the passage of time, never only time.
 
 ## Alternatives considered
