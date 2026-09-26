@@ -10,6 +10,21 @@ import (
 	"github.com/mendixlabs/mxcli/sdk/microflows"
 )
 
+// Values of microflows.MicroflowType — which of the three flow flavours sharing
+// microflows_data a row is. Upper-case, like every other catalog type
+// vocabulary (refs.SourceType, objects.ObjectType).
+//
+// Named because readers outside this package filter on them: `show structure`
+// compared against 'microflow' / 'nanoflow' for as long as the column has held
+// upper case, matched nothing, and so never showed a flow count. SQLite's `=`
+// is case-sensitive; a literal that disagrees with the writer fails silently
+// as an empty result, never as an error. Filter on these, not on a literal.
+const (
+	MicroflowTypeMicroflow = "MICROFLOW"
+	MicroflowTypeNanoflow  = "NANOFLOW"
+	MicroflowTypeRule      = "RULE"
+)
+
 func (b *Builder) buildMicroflows() error {
 	// Get all microflows (cached — avoids re-parsing in later phases)
 	mfs, err := b.cachedMicroflows()
@@ -132,7 +147,7 @@ func (b *Builder) buildMicroflows() error {
 			qualifiedName,
 			moduleName,
 			b.hierarchy.buildFolderPath(mf.ContainerID), // real folder path (Bug 12b class)
-			"MICROFLOW",
+			MicroflowTypeMicroflow,
 			mf.Documentation,
 			returnType,
 			len(mf.Parameters),
@@ -235,7 +250,7 @@ func (b *Builder) buildMicroflows() error {
 			qualifiedName,
 			moduleName,
 			b.hierarchy.buildFolderPath(nf.ContainerID), // real folder path (Bug 12b class)
-			"NANOFLOW",
+			MicroflowTypeNanoflow,
 			nf.Documentation,
 			returnType,
 			len(nf.Parameters),
@@ -335,7 +350,7 @@ func (b *Builder) buildMicroflows() error {
 			qualifiedName,
 			moduleName,
 			b.hierarchy.buildFolderPath(rule.ContainerID),
-			"RULE",
+			MicroflowTypeRule,
 			rule.Documentation,
 			returnType,
 			len(rule.Parameters),

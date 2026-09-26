@@ -615,9 +615,9 @@ type Microflow struct {
 // with an imprecise noun than not at all.
 func (m Microflow) DocumentNoun() string {
 	switch m.MicroflowType {
-	case "NANOFLOW":
+	case catalog.MicroflowTypeNanoflow:
 		return "nanoflow"
-	case "RULE":
+	case catalog.MicroflowTypeRule:
 		return "rule"
 	default:
 		return "microflow"
