@@ -212,6 +212,9 @@ var searchCmd = &cobra.Command{
 
 Searches across string literals (captions, labels, messages) and MDL source
 definitions. Requires at least a FULL catalog build (done automatically).
+MDL source is searched only once the source index exists — build it with
+  mxcli -p app.mpr -c "refresh catalog full source"
+Until then a warning on stderr says only string literals were searched.
 
 Output Formats:
   table   - Human-readable table (default)

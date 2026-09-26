@@ -1052,10 +1052,41 @@ func execSearch(ctx *ExecContext, stmt *ast.SearchStmt) error {
 
 	if !found {
 		fmt.Fprintln(ctx.Output, "No matches found.")
-		fmt.Fprintln(ctx.Output, "Tip: Use refresh catalog source to enable source-level search.")
 	}
+	warnIfSourceIndexMissing(ctx)
 
 	return nil
+}
+
+// warnIfSourceIndexMissing says, on the diagnostics channel, that a search did
+// not look at MDL source because CATALOG.SOURCE was never built. `search` needs
+// only a full catalog, which has the strings index but not the source one, so
+// without this the source half of every answer came back empty in silence —
+// indistinguishable from "no microflow, page or expression mentions this".
+//
+// Keyed off the build mode the catalog records, never the row count: a
+// source-mode catalog with no matching (or no) rows is a real answer, and
+// counting rows would make "built, nothing matched" warn too.
+func warnIfSourceIndexMissing(ctx *ExecContext) {
+	mode := ""
+	if ctx.Catalog != nil {
+		if info, err := ctx.Catalog.GetCacheInfo(); err == nil {
+			mode = info.BuildMode
+		}
+	}
+	if catalogModeRank(mode) >= catalogModeRank("source") {
+		return
+	}
+	if mode == "" {
+		mode = "unknown"
+	}
+	w := ctx.diagnostics()
+	fmt.Fprintf(w, "Warning: the source index (CATALOG.SOURCE) is not built (catalog mode: %s), so only string literals were searched — MDL source (microflow/nanoflow bodies, expressions, page and entity definitions) was not.\n", mode)
+	if ctx.MprPath != "" {
+		fmt.Fprintf(w, "Build it with: refresh catalog full source   (CLI: mxcli -p %q -c \"refresh catalog full source\")\n", ctx.MprPath)
+	} else {
+		fmt.Fprintln(w, "Build it with: refresh catalog full source")
+	}
 }
 
 // escapeFTSQuery escapes special characters in FTS5 queries.
@@ -1078,6 +1109,10 @@ func escapeFTSQuery(q string) string {
 func search(ctx *ExecContext, query, format string) error {
 	if !ctx.Connected() {
 		return mdlerrors.NewNotConnected()
+	}
+
+	if format != "names" && format != "json" { // "table" (default)
+		return execSearch(ctx, &ast.SearchStmt{Query: query})
 	}
 
 	// Ensure catalog is built (at least full mode for strings table)
@@ -1137,10 +1172,10 @@ func search(ctx *ExecContext, query, format string) error {
 	if len(allResults) == 0 {
 		if format != "json" {
 			fmt.Fprintln(ctx.Output, "No matches found.")
-			fmt.Fprintln(ctx.Output, "Tip: Use refresh catalog source to enable source-level search.")
 		} else {
 			fmt.Fprintln(ctx.Output, "[]")
 		}
+		warnIfSourceIndexMissing(ctx)
 		return nil
 	}
 
@@ -1160,10 +1195,9 @@ func search(ctx *ExecContext, query, format string) error {
 			return err
 		}
 		fmt.Fprintln(ctx.Output, string(jsonBytes))
-	default: // "table"
-		return execSearch(ctx, &ast.SearchStmt{Query: query})
 	}
 
+	warnIfSourceIndexMissing(ctx)
 	return nil
 }
 
