@@ -1198,7 +1198,7 @@ func buildMicroflowArgV3(ctx parser.IMicroflowArgV3Context) ast.FlowArgV3 {
 		arg.Name = identifierOrKeywordText(iok)
 	}
 	if expr := argCtx.Expression(); expr != nil {
-		arg.Value = expr.GetText()
+		arg.Value = expressionSourceText(expr)
 	}
 
 	return arg
@@ -1312,7 +1312,7 @@ func buildParamAssignmentV3(ctx parser.IParamAssignmentV3Context) ast.ParamAssig
 		}
 	}
 	if expr := paCtx.Expression(); expr != nil {
-		param.Value = stripExpressionIdentifierQuotes(expr.GetText())
+		param.Value = stripExpressionIdentifierQuotes(expressionSourceText(expr))
 	}
 	if fmtCtx := paCtx.ParamFormatV3(); fmtCtx != nil {
 		param.Format = buildParamFormatV3(fmtCtx)

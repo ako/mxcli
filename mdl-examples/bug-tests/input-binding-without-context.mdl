@@ -1,0 +1,49 @@
+-- What the MDL-WIDGET34 refusal must NOT touch: every binding below has an
+-- object to bind to. Executed on a copy of a Mendix 11.13.0 project, the pages
+-- build at 0 errors. This script must PASS check.
+--
+-- The refused forms are in input-binding-without-context.fail.mdl.
+create module ProbeInBindOk;
+
+create enumeration ProbeInBindOk.Color ( Red 'Red', Blue 'Blue' );
+
+create persistent entity ProbeInBindOk.Person (
+  FullName: String(100),
+  Fav: Enumeration(ProbeInBindOk.Color)
+);
+
+create page ProbeInBindOk.Edit (
+  params: { $P: ProbeInBindOk.Person },
+  title: 'Edit',
+  layout: Atlas_Core.Atlas_Default
+) {
+  layoutgrid lg {
+    row r1 {
+      column c1 (desktopwidth: autofill) {
+        -- The data view supplies the object; bare and qualified both bind.
+        dataview dv (DataSource: $P) {
+          textbox tName (Attribute: FullName)
+          textbox tQualified (Attribute: ProbeInBindOk.Person.FullName)
+          combobox cbFav (Attribute: Fav)
+          dynamictext dtName (Attribute: FullName)
+        }
+      }
+    }
+  }
+  -- A list widget's rows are the object.
+  listview lv (DataSource: database ProbeInBindOk.Person) {
+    dynamictext lvName (Attribute: FullName)
+  }
+  datagrid dg (DataSource: database ProbeInBindOk.Person) {
+    column cName (Attribute: FullName, Caption: 'Name')
+  }
+};
+
+-- A snippet binds through a data view over its parameter, exactly as a page does.
+create snippet ProbeInBindOk.PersonFields (
+  params: { $P: ProbeInBindOk.Person }
+) {
+  dataview sdv (DataSource: $P) {
+    textbox sName (Attribute: FullName)
+  }
+};
