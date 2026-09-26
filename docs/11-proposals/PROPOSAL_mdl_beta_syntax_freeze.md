@@ -81,7 +81,7 @@ Each rule is stated so it can be added to the `design-mdl-syntax` skill as a che
 
 **About the examples.**
 - Every **Before** block was run through `mxcli check` at `5dc51ceb` and parses today. The `describe` output in R12 is real output from a scratch project.
-- Every **After** block is *proposed* syntax and does not parse yet. They follow the decisions recorded in §7. Where §7 still leaves a choice open, they use the recommended option: `Param = expr` for arguments, and `set ( Key: value )` for alter.
+- Every **After** block is *proposed* syntax and does not parse yet. They follow the decisions recorded in §7.
 
 ### R1. One idempotent create, with one defined meaning
 
@@ -960,14 +960,15 @@ See the implementation plan in §9, which supersedes the short list that was her
 3. **Microflow list operations must feel intuitive to developers who work with microflow diagrams in Studio Pro.** Each statement mirrors one activity: one **List operation** or **Aggregate list** activity per statement, named after the operation Studio Pro offers, and taking the inputs its dialog asks for. Because a diagram cannot nest one activity inside another, the statements cannot nest either (§4, Microflows).
 4. **PedApp may be committed** as the Studio Pro-authored round-trip fixture (plan item 0.2).
 
+5. **R3/R4, argument binding: `Param = expr`.** `=` binds a runtime value, `:` sets a model property. There is no `$` on the parameter name. One form for every call site: microflow calls, `show page`, button and menu actions, workflows and REST.
+6. **Alter form: `set ( Key: value, … )`.** It is the same property list as `create`, so a fragment from `describe` can be pasted straight into an `alter`.
+7. **Brownfield agent editing is a beta goal.** `alter microflow`/`alter nanoflow` (plan item 4.2, at least insert, replace and drop) and the no-op `create or modify` for microflows join the beta gate.
+8. **The `mdl 1;` language header is added now** (plan item 1.5). It is an optional first statement that `describe` and `fmt` emit; after beta, removed aliases are gated by version.
+
 ### Still open
 
-1. **R3/R4, argument binding.** Should it be `Param = expr` (proposed: `=` binds runtime values, `:` sets model properties) or `Param: expr`? The reviews split on this. `=` aligns calls with `change`, `set` and the existing microflow describe output; `:` aligns with today's page describe output. Pick one; do not keep both.
-2. **Alter form.** Should it be `alter X set ( Key: value )` (proposed, the same list as create) or SQL `alter X set Key = value`? The latter is more SQL-like, but it makes the same key take two separators.
-3. **The `mdl 1;` header.** Adopt it now, or rely on aliases plus `fmt --upgrade` until the first post-beta break?
-4. **Release cadence up to beta.** The `limit 1` flip and the required `;` each need one release of warnings, so beta has to be at least two releases away.
-5. **Is brownfield agent editing a beta goal?** If it is, `alter microflow` (plan item 4.2) joins the beta gate. It is the largest single item in the plan.
-6. **Where drift fingerprints are stored** (plan item 4.3): a local `.mxcli/state` file, or committed next to the scripts. This can wait until Phase 4.
+1. **Release cadence up to beta.** The `limit 1` flip and the required `;` each need one release of warnings, so beta has to be at least two releases away. The date of the beta decides how Phases 2 and 4.2 are scheduled.
+2. **Where drift fingerprints are stored** (plan item 4.3): a local `.mxcli/state` file, or committed next to the scripts. This can wait until Phase 4.
 
 ## 8. Two ways of working: MDL-first and data-first
 
@@ -1136,7 +1137,7 @@ The plan has six phases:
 - Phases 0 and 1 are foundations: a safety net, and the machinery that makes syntax changes cheap.
 - Phase 2 is the **beta gate**: the changes that cannot be bridged by an alias.
 - Phases 3–5 can continue past beta, because every change in them keeps the old form parsing.
-- Phase 4 (data-first editing) depends only on phases 0 and 1, so it can run in parallel with phases 2 and 3.
+- Phase 4 (data-first editing) depends only on phases 0 and 1, so it can run in parallel with phases 2 and 3. Items 4.1 and 4.2 are on the beta gate, because brownfield editing is a beta goal (§7). Start them early: they are the longest items in the plan.
 
 Every item follows the repo's working rules (CLAUDE.md):
 - One concern per PR.
@@ -1171,7 +1172,7 @@ Phase 0  safety net + bugs ──┬──> Phase 1  decisions + deprecation mac
 | 1.2 | **Deprecation registry.** Generalise the existing MDL065 pattern, where the AST records which spelling the source used (`ast_microflow.go:273`). Add a single table of `{code MDL-DEPRnnn, old form, canonical form, removed in}`. `check` and `exec` warn; a `--deprecations=error` flag fails instead. | M | `mdl/ast`, `mdl/linter`, new `deprecations.go` | a test fails if a grammar alternative marked as an alias has no registry entry |
 | 1.3 | **`mxcli fmt --upgrade`.** Each registry entry carries a rewrite, built on `mdl/formatter` / `cmd_fmt.go`. The output must parse with zero deprecation warnings and give an identical AST. | M | `mdl/formatter` | a property test over all of `mdl-examples/`: upgrade, then zero warnings, then AST equal |
 | 1.4 | **Canonical-form conformance gate.** Everything in `mxcli syntax`, the skills, `docs-site/` and `mdl-examples/` is parsed with `--deprecations=error`, starting with an allowlist. This stops the docs teaching old forms, a gap measured in §3. | S | `make lint` target | allowlist only shrinks |
-| 1.5 | **Language header `mdl 1;`** (if decided). It is parsed and emitted by `describe`/`fmt`, and gates alias removal after beta. | S | grammar, visitor | round-trips |
+| 1.5 | **Language header `mdl 1;`** (decided, §7). It is parsed and emitted by `describe`/`fmt`, and gates alias removal after beta. | S | grammar, visitor | round-trips |
 | 1.6 | **Grammar hygiene** that makes later phases cheaper: one shared trailing-comma list rule; ban bare `IDENTIFIER` in parser rules with a test modelled on `keyword_coverage_test.go`; move session commands out of `utilityStatement` into the REPL (R7). | M | `mdl/grammar` | tests; `make grammar` clean |
 
 ### Phase 2: the beta gate (§5, cannot be aliased)
@@ -1190,7 +1191,7 @@ Each change breaks existing text, so each one lands with a registry entry, an `f
 **Beta gate:**
 - Phases 0, 1 and 2 are complete.
 - Phase 3's canonical forms are *decided and in the grammar*. Aliases may remain.
-- Phase 4.2 has at least insert, replace and drop, if brownfield agent use is a beta goal.
+- Phase 4.2 has at least insert, replace and drop, and `create or modify` on a microflow is a no-op when nothing differs (decided, §7: brownfield agent editing is a beta goal). Phase 4.1 (the generic `alter`) comes before it.
 
 ### Phase 3: consistency through aliases (R2–R10, §4)
 
