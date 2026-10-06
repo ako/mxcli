@@ -133,21 +133,20 @@ Direct HTTP call with URL, headers, auth, body, and response handling specified 
 
 ```mdl
 -- Simple GET returning string
-$response = call rest service get 'https://api.example.com/data'
-    header Accept = 'application/json'
-    timeout 30
-    returns string;
+$response = call rest service get 'https://api.example.com/data' (
+    Headers: ('Accept': 'application/json'),
+    Timeout: 30,
+) returns string;
 
 -- POST with JSON body
-$response = call rest service post 'https://api.example.com/items'
-    header 'Content-Type' = 'application/json'
-    header Accept = 'application/json'
-    body '{{"name": "{1}", "value": {2}}' with (
+$response = call rest service post 'https://api.example.com/items' (
+    Headers: ('Content-Type': 'application/json', 'Accept': 'application/json'),
+    Body: template '{{"name": "{1}", "value": {2}}' with (
         {1} = $ItemName,
         {2} = toString($ItemValue)
-    )
-    timeout 30
-    returns string
+    ),
+    Timeout: 30,
+) returns string
     on error continue;
 
 -- POST a BINARY body (upload a file document's contents)
@@ -155,25 +154,25 @@ $response = call rest service post 'https://api.example.com/items'
 -- itself, and the content type goes on a header. A consumed REST CLIENT
 -- document has no binary body — `Body: file from $Doc` there is refused as
 -- MDL-REST02 — so binary uploads belong here.
-$response = call rest service post 'https://api.example.com/upload'
-    header 'ContentType' = 'application/pdf'
-    body binary $Doc/Contents
-    timeout 300
-    returns response;
+$response = call rest service post 'https://api.example.com/upload' (
+    Headers: ('ContentType': 'application/pdf'),
+    Body: binary $Doc/Contents,
+    Timeout: 300,
+) returns response;
 
 -- GET with URL template parameters
 $response = call rest service get 'https://api.example.com/users/{1}' with (
     {1} = toString($UserId)
-)
-    header Accept = 'application/json'
-    returns string;
+) (
+    Headers: ('Accept': 'application/json'),
+) returns string;
 
 -- With basic authentication
-$response = call rest service get 'https://api.example.com/secure'
-    header Accept = 'application/json'
-    auth basic $username password $password
-    timeout 30
-    returns string;
+$response = call rest service get 'https://api.example.com/secure' (
+    Headers: ('Accept': 'application/json'),
+    Authentication: basic (Username: $username, Password: $password),
+    Timeout: 30,
+) returns string;
 
 -- DELETE (no response)
 call rest service delete 'https://api.example.com/items/{1}' with (
@@ -201,10 +200,10 @@ create persistent entity MyModule.MyFile extends System.FileDocument ();
 
 create microflow MyModule.ACT_Download ($Location: String)
 begin
-  $file = call rest service get '{1}' with ({1} = $Location)
-    header 'Accept' = 'application/octet-stream'
-    timeout 300
-    returns MyModule.MyFile;
+  $file = call rest service get '{1}' with ({1} = $Location) (
+    Headers: ('Accept': 'application/octet-stream'),
+    Timeout: 300,
+  ) returns MyModule.MyFile;
 end;
 ```
 

@@ -212,14 +212,23 @@ func init() {
 			"returns response", "returns string", "returns mapping",
 			"file document", "filedocument", "download", "httpresponse",
 			"body binary", "binary", "upload", "post binary",
+			"headers", "authentication", "basic auth", "timeout", "request body", "template",
 		},
-		Syntax: "[$Var =] CALL REST SERVICE GET|POST|PUT|PATCH|DELETE '<url>' [WITH ({1} = expr, ...)]\n" +
-			"  [HEADER 'Name' = expr]\n" +
-			"  [AUTH BASIC $user PASSWORD $pass]\n" +
-			"  [BODY '<template>' [WITH ({1} = expr)] | BODY <expr> | BODY BINARY <expr>\n" +
-			"   | BODY MAPPING Module.EMM FROM $var]\n" +
-			"  [TIMEOUT expr]\n" +
-			"  RETURNS <one of>;\n\n" +
+		Syntax: "[$Var =] CALL REST SERVICE GET|POST|PUT|PATCH|DELETE '<url>' [WITH ({1} = expr, ...)] [(\n" +
+			"  Headers: ('Name': expr, ...),\n" +
+			"  Authentication: BASIC (Username: expr, Password: expr),\n" +
+			"  Body: TEMPLATE '<template>' [WITH ({1} = expr)]\n" +
+			"      | MAPPING Module.EMM FROM $var\n" +
+			"      | BINARY <expr>\n" +
+			"      | <expr>,\n" +
+			"  Timeout: <seconds>,\n" +
+			")] RETURNS <one of> [ON ERROR ...];\n\n" +
+			"-- The method, URL, RETURNS and ON ERROR are words; the settings of the\n" +
+			"-- activity's dialog are one property list after the URL (ADR-0013),\n" +
+			"-- keyed as the consumed REST service names them. Every key is optional.\n" +
+			"-- The clauses `header 'N' = v`, `auth basic $u password $p`, `body ...`\n" +
+			"-- and `timeout n` are the deprecated spelling (MDL-DEPR720); `mxcli fmt\n" +
+			"-- --upgrade` rewrites them, and the two forms cannot be mixed.\n\n" +
 			"RETURNS String                          -- the response body as a string\n" +
 			"RETURNS response                        -- the whole System.HttpResponse object\n" +
 			"RETURNS Module.MyFile                   -- store the body in a file document\n" +
@@ -235,10 +244,21 @@ func init() {
 			"create persistent entity MyModule.MyFile extends System.FileDocument ();\n\n" +
 			"create microflow MyModule.ACT_Download ($Location: String)\n" +
 			"begin\n" +
-			"  $file = call rest service get '{1}' with ({1} = $Location)\n" +
-			"    header 'Accept' = 'application/octet-stream'\n" +
-			"    timeout 300\n" +
-			"    returns MyModule.MyFile;\n" +
+			"  $file = call rest service get '{1}' with ({1} = $Location) (\n" +
+			"    Headers: ('Accept': 'application/octet-stream'),\n" +
+			"    Timeout: 300,\n" +
+			"  ) returns MyModule.MyFile;\n" +
+			"end;\n\n" +
+			"create microflow MyModule.ACT_Post ($Name: String, $User: String, $Password: String) returns String\n" +
+			"begin\n" +
+			"  $Response = call rest service post 'https://api.example.com/customers' (\n" +
+			"    Headers: ('Content-Type': 'application/json'),\n" +
+			"    Authentication: basic (Username: $User, Password: $Password),\n" +
+			"    Body: template '{{\"name\": \"{1}\"}' with ({1} = $Name),\n" +
+			"    Timeout: 30,\n" +
+			"  ) returns String\n" +
+			"    on error rollback;\n" +
+			"  return $Response;\n" +
 			"end;",
 		SeeAlso: []string{"rest", "rest.consumed", "microflow"},
 	})
@@ -307,7 +327,7 @@ func init() {
 			"body", "response", "mapping", "authentication",
 			"json structure", "import mapping", "export mapping",
 		},
-		Syntax:  "CREATE [OR MODIFY] CONSUMED REST SERVICE Module.Name (\n  BaseUrl: 'https://...',\n  Authentication: NONE | BASIC (...)\n)\n{\n  OPERATION Name (\n    Method: GET|POST|PUT|DELETE|PATCH,\n    Path: '/path/{param}',\n    Parameters: ($param: Type),\n    Query: ($param: Type),\n    Headers: ('Key': 'Value'),\n    Timeout: 30,\n    Body: JSON FROM $var | MAPPING Entity { jsonField = Attribute, ... },\n    Response: JSON AS $var | MAPPING Entity { Attribute = jsonField, ... }\n  )\n};\n\n-- An operation is a child of the service, so its properties are in ( ).\n-- `OPERATION Name { ... }` is the deprecated spelling (MDL-DEPR070).\n\n-- MAPPING takes a target ENTITY plus a body listing the JSON fields; Mendix\n-- stores it inline on the operation. An existing import/export mapping\n-- document cannot be referenced here (rejected as MDL-REST01).\n-- There is no FILE request body: Mendix's consumed operation stores one of\n-- Rest$JsonBody, Rest$StringBody or Rest$ImplicitMappingBody, so a file\n-- document has nowhere to go. `Body: FILE FROM $Doc` is rejected as\n-- MDL-REST02 rather than sent as the literal text \"$Doc\" (it used to be,\n-- returning 200 with a 4-byte payload). Binary POST lives on the\n-- microflow activity: `call rest service post '<url>' body binary $Doc/Contents`.\n-- `Response: FILE AS $Doc` is unaffected — downloads work.",
+		Syntax:  "CREATE [OR MODIFY] CONSUMED REST SERVICE Module.Name (\n  BaseUrl: 'https://...',\n  Authentication: NONE | BASIC (...)\n)\n{\n  OPERATION Name (\n    Method: GET|POST|PUT|DELETE|PATCH,\n    Path: '/path/{param}',\n    Parameters: ($param: Type),\n    Query: ($param: Type),\n    Headers: ('Key': 'Value'),\n    Timeout: 30,\n    Body: JSON FROM $var | MAPPING Entity { jsonField = Attribute, ... },\n    Response: JSON AS $var | MAPPING Entity { Attribute = jsonField, ... }\n  )\n};\n\n-- An operation is a child of the service, so its properties are in ( ).\n-- `OPERATION Name { ... }` is the deprecated spelling (MDL-DEPR070).\n\n-- MAPPING takes a target ENTITY plus a body listing the JSON fields; Mendix\n-- stores it inline on the operation. An existing import/export mapping\n-- document cannot be referenced here (rejected as MDL-REST01).\n-- There is no FILE request body: Mendix's consumed operation stores one of\n-- Rest$JsonBody, Rest$StringBody or Rest$ImplicitMappingBody, so a file\n-- document has nowhere to go. `Body: FILE FROM $Doc` is rejected as\n-- MDL-REST02 rather than sent as the literal text \"$Doc\" (it used to be,\n-- returning 200 with a 4-byte payload). Binary POST lives on the\n-- microflow activity: `call rest service post '<url>' (Body: binary $Doc/Contents)`.\n-- `Response: FILE AS $Doc` is unaffected — downloads work.",
 		Example: "CREATE CONSUMED REST SERVICE Module.PetStore (\n  BaseUrl: 'https://petstore.example.com/api',\n  Authentication: NONE\n)\n{\n  OPERATION GetPet (\n    Method: GET,\n    Path: '/pets/{id}',\n    Parameters: ($id: String),\n    Query: ($verbose: String),\n    Response: MAPPING Module.Pet {\n      Name = name,\n      Status = status\n    }\n  )\n};",
 		SeeAlso: []string{"rest", "rest.published"},
 	})

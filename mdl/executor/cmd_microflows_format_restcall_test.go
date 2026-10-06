@@ -60,7 +60,7 @@ func TestFormatRestCallAction_POST_CustomBody(t *testing.T) {
 	}
 	got := e.formatRestCallAction(action)
 	assertContains(t, got, "call rest service post")
-	assertContains(t, got, "body '{\"name\": \"test\"}'")
+	assertContains(t, got, "(\n    Body: template '{\"name\": \"test\"}',\n  ) returns nothing")
 	assertContains(t, got, "returns nothing")
 }
 
@@ -77,7 +77,7 @@ func TestFormatRestCallAction_WithHeaders(t *testing.T) {
 		ResultHandling: &microflows.ResultHandlingString{VariableName: "Resp"},
 	}
 	got := e.formatRestCallAction(action)
-	assertContains(t, got, "header 'Authorization' = 'Bearer ' + $Token")
+	assertContains(t, got, "Headers: ('Authorization': 'Bearer ' + $Token),")
 }
 
 func TestFormatRestCallAction_WithAuth(t *testing.T) {
@@ -93,7 +93,7 @@ func TestFormatRestCallAction_WithAuth(t *testing.T) {
 		ResultHandling: &microflows.ResultHandlingString{},
 	}
 	got := e.formatRestCallAction(action)
-	assertContains(t, got, "auth basic 'admin' password 'secret'")
+	assertContains(t, got, "Authentication: basic (Username: 'admin', Password: 'secret'),")
 }
 
 func TestFormatRestCallAction_WithTimeout(t *testing.T) {
@@ -107,7 +107,7 @@ func TestFormatRestCallAction_WithTimeout(t *testing.T) {
 		ResultHandling:    &microflows.ResultHandlingString{},
 	}
 	got := e.formatRestCallAction(action)
-	assertContains(t, got, "timeout 30")
+	assertContains(t, got, "Timeout: 30,")
 }
 
 // `returns mapping ... as Module.Entity` (no LIST_OF) describes a single

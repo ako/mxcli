@@ -1446,71 +1446,75 @@ func formatRestCallAction(ctx *ExecContext, a *microflows.RestCallAction) string
 		sb.WriteString(")")
 	}
 
-	// Headers
+	// The dialog's settings: one property list after the URL (ADR-0013),
+	// keyed as the consumed REST service names the same concepts.
+	var settings []string
+
 	if a.HttpConfiguration != nil && len(a.HttpConfiguration.CustomHeaders) > 0 {
+		hdrs := make([]string, 0, len(a.HttpConfiguration.CustomHeaders))
 		for _, h := range a.HttpConfiguration.CustomHeaders {
-			sb.WriteString("\n    header ")
-			sb.WriteString(mdlQuote(ctx, h.Name))
-			sb.WriteString(" = ")
-			sb.WriteString(describeExpr(ctx, h.Value))
+			hdrs = append(hdrs, mdlQuote(ctx, h.Name)+": "+describeExpr(ctx, h.Value))
 		}
+		settings = append(settings, "Headers: ("+strings.Join(hdrs, ", ")+")")
 	}
 
-	// Authentication
 	if a.HttpConfiguration != nil && a.HttpConfiguration.UseAuthentication {
-		sb.WriteString("\n    auth basic ")
-		sb.WriteString(a.HttpConfiguration.Username)
-		sb.WriteString(" password ")
-		sb.WriteString(a.HttpConfiguration.Password)
+		settings = append(settings, "Authentication: basic (Username: "+a.HttpConfiguration.Username+
+			", Password: "+a.HttpConfiguration.Password+")")
 	}
 
-	// Body
 	if a.RequestHandling != nil {
 		switch rh := a.RequestHandling.(type) {
 		case *microflows.CustomRequestHandling:
 			if rh.Template != "" {
-				sb.WriteString("\n    body ")
-				sb.WriteString(mdlQuote(ctx, rh.Template))
-				// Add template parameters if present
+				body := "Body: template " + mdlQuote(ctx, rh.Template)
 				if len(rh.TemplateParams) > 0 {
-					sb.WriteString(" with (")
+					params := make([]string, 0, len(rh.TemplateParams))
 					for i, param := range rh.TemplateParams {
-						if i > 0 {
-							sb.WriteString(", ")
-						}
-						sb.WriteString(fmt.Sprintf("{%d} = %s", i+1, describeExpr(ctx, param)))
+						params = append(params, fmt.Sprintf("{%d} = %s", i+1, describeExpr(ctx, param)))
 					}
-					sb.WriteString(")")
+					body += " with (" + strings.Join(params, ", ") + ")"
 				}
+				settings = append(settings, body)
 			}
 		case *microflows.BinaryRequestHandling:
 			// The expression is stored as source text (`$Doc/Contents`), so it is
 			// emitted verbatim — quoting it would make the round trip send the
 			// path as a string literal.
 			if rh.Expression != "" {
-				sb.WriteString("\n    body binary ")
-				sb.WriteString(rh.Expression)
+				settings = append(settings, "Body: binary "+rh.Expression)
 			}
 		case *microflows.MappingRequestHandling:
 			if rh.MappingID != "" {
-				sb.WriteString("\n    body mapping ")
-				sb.WriteString(string(rh.MappingID))
+				body := "Body: mapping " + string(rh.MappingID)
 				if rh.ParameterVariable != "" {
-					sb.WriteString(" from $")
-					sb.WriteString(rh.ParameterVariable)
+					body += " from $" + rh.ParameterVariable
 				}
+				settings = append(settings, body)
 			}
 		}
 	}
 
-	// Timeout
 	if a.TimeoutExpression != "" {
-		sb.WriteString("\n    timeout ")
-		sb.WriteString(a.TimeoutExpression)
+		settings = append(settings, "Timeout: "+a.TimeoutExpression)
+	}
+
+	if len(settings) > 0 {
+		sb.WriteString(" (")
+		for _, setting := range settings {
+			sb.WriteString("\n    ")
+			sb.WriteString(setting)
+			sb.WriteString(",")
+		}
+		sb.WriteString("\n  )")
 	}
 
 	// Returns
-	sb.WriteString("\n    returns ")
+	if len(settings) > 0 {
+		sb.WriteString(" returns ")
+	} else {
+		sb.WriteString("\n    returns ")
+	}
 	if a.ResultHandling != nil {
 		switch rh := a.ResultHandling.(type) {
 		case *microflows.ResultHandlingString:

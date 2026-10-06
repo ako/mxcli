@@ -20,7 +20,7 @@ Ask the user:
 1. **What** do you want to add? (one sentence)
 2. **Why** — what problem does this solve, or what user story does it enable?
 3. **Which Mendix version** introduced this capability? (affects version-gating)
-4. **Does this add MDL syntax?** (CREATE/ALTER/DROP/SHOW/DESCRIBE statements)
+4. **Does this add MDL syntax?** (create/alter/drop/list/describe statements, or a microflow/nanoflow activity)
 5. **Does this touch BSON serialization?** (reading or writing Mendix documents)
 
 If the user isn't sure about version or BSON, help them find out:
@@ -83,7 +83,11 @@ or start fresh.
 If the feature adds MDL statements, read `.claude/skills/design-mdl-syntax.md`
 first, then design syntax that follows these principles:
 
-- Uses standard verbs: `CREATE`, `ALTER`, `DROP`, `SHOW`, `DESCRIBE`
+- Uses standard verbs: `create`, `alter`, `drop`, `list`, `describe` (a microflow/nanoflow
+  activity uses its Studio Pro verb instead)
+- A microflow/nanoflow activity follows ADR-0013: words for the verb, `$x =`, the
+  main operand, `returns` and `on error`; the dialog's settings in ONE
+  `( Key: value, … )` list after the operand, keyed as the matching document property
 - Reads as English — a business analyst understands it
 - Uses `Module.Element` qualified names everywhere
 - Property format: `( Key: value, ... )` with colon separators

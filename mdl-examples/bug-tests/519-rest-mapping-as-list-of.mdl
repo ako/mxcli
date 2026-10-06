@@ -65,9 +65,9 @@ create microflow BugTest519.MF_GetSinglePet (
 )
 returns BugTest519.PetResponse
 begin
-  $Pet = call rest service get $Url
-    timeout 30
-    returns mapping BugTest519.IMM_Pet as BugTest519.PetResponse
+  $Pet = call rest service get $Url (
+    Timeout: 30,
+  ) returns mapping BugTest519.IMM_Pet as BugTest519.PetResponse
     on error rollback;
   return $Pet;
 end;
@@ -79,9 +79,9 @@ create microflow BugTest519.MF_GetPetList (
 )
 returns List of BugTest519.PetResponse
 begin
-  $Pets = call rest service get $Url
-    timeout 30
-    returns mapping BugTest519.IMM_Pet as list of BugTest519.PetResponse
+  $Pets = call rest service get $Url (
+    Timeout: 30,
+  ) returns mapping BugTest519.IMM_Pet as list of BugTest519.PetResponse
     on error rollback;
   return $Pets;
 end;

@@ -26,7 +26,7 @@ import (
 // mxcli could parse that shape and could neither write nor describe it, so a
 // binary body survived a read but vanished from a DESCRIBE round trip.
 
-// The builder maps `body binary <expr>` onto BinaryRequestHandling, carrying the
+// The builder maps `Body: binary <expr>` onto BinaryRequestHandling, carrying the
 // expression through as source text — quoting it would send the path as a
 // string literal instead of the bytes.
 func TestBuildRestCall_BinaryBody(t *testing.T) {
@@ -73,7 +73,7 @@ func TestFormatRestCallAction_BinaryBody(t *testing.T) {
 		RequestHandling: &microflows.BinaryRequestHandling{Expression: "$Doc/Contents"},
 		ResultHandling:  &microflows.ResultHandlingNone{},
 	})
-	if !strings.Contains(got, "body binary $Doc/Contents") {
+	if !strings.Contains(got, "Body: binary $Doc/Contents,") {
 		t.Errorf("describe must emit the binary body unquoted, got:\n%s", got)
 	}
 }

@@ -44,6 +44,7 @@ var topics = map[string][]string{
 	SettingsRemove:              {"settings.alter"},
 	ColumnForAttribute:          {"domain-model.entity"},
 	RestCall:                    {"rest.call"},
+	RestCallClauses:             {"rest.call"},
 	DescribeWidgetType:          {"page.widget-describe"},
 	DefineFragment:              {"fragment.define"},
 	"MDL-DEPR130":               {"image-collection", "icon-collection", "message-definition"},

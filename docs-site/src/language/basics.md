@@ -57,6 +57,31 @@ Each keyword has one spelling, and a page action uses the words a microflow uses
 
 `show entity X` and `show association X` are not `mdl 1`: `describe entity X` prints the definition as MDL, and `list entities in M` / `list associations in M` print the summary columns. `show version`, `show status`, `show connections` and `show catalog status` report the session, not the model: they are session commands (R7), typed at the REPL.
 
+## Activity Settings
+
+A microflow or nanoflow activity says what it does in words, and lists its
+settings in one property list ([ADR-0013](https://github.com/mendixlabs/mxcli/blob/main/docs/13-decisions/0013-activity-settings-property-list.md)):
+
+- **Words** carry the action and its data flow: the verb, the result variable
+  (`$x =`), the main operand (the method and URL, the called document, the
+  object), `returns …` and `on error …`.
+- **One `( Key: value, … )` list after the main operand** carries what a Studio
+  Pro user sets in the activity's properties dialog: headers, authentication,
+  timeout, request body. `:` sets a setting, `=` binds a value, trailing commas
+  are allowed, and an unknown key is an error.
+
+```sql
+$Html = call rest service get 'https://example.com' (
+  Headers: ('Accept': 'text/html'),
+  Timeout: 300,
+) returns String;
+```
+
+The keys are named as the matching document property is (`Headers`,
+`Authentication`, `Timeout`, as on a consumed REST service). An activity with
+one or two settings that read naturally as words keeps its clauses —
+`log info node 'App' 'text'`, `show message 'Saved' type Information`.
+
 ## Document Type Names
 
 Document types are named as Studio Pro names them: `consumed rest service(s)`, `consumed odata service(s)`, `published odata service(s)`, `task queue(s)`, `alter app security …`, `alter settings runtime …`, `list image collections` / `list icon collections` / `list message definition collections`, `ai model(s)` (the agent editor's model document), and `create json structure M.J sample '…'`.

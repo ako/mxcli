@@ -18,8 +18,8 @@
 -- Binary POST is expressible, just not here: it lives on the microflow REST
 -- CALL activity as Microflows$BinaryRequestHandling, which is what Studio Pro
 -- writes. See mdl-examples/bug-tests/rest-binary-post.mdl.
---     rest call post '<url>' header 'ContentType' = '<type>'
---       body binary $Doc/Contents returns response;
+--     call rest service post '<url>' (Headers: ('ContentType': '<type>'),
+--       Body: binary $Doc/Contents) returns response;
 --
 -- Writer sites that produced the bad document:
 --   mdl/backend/modelsdk/consumed_rest_write.go  (default engine)

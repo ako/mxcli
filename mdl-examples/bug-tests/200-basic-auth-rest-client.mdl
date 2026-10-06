@@ -102,11 +102,11 @@ returns boolean as $success
 begin
   declare $success boolean = false;
 
-  $response = call rest service get 'https://httpbin.org/basic-auth/testuser/testpass123!'
-    header Accept = 'application/json'
-    auth basic 'testuser' password 'testpass123!'
-    timeout 30
-    returns string
+  $response = call rest service get 'https://httpbin.org/basic-auth/testuser/testpass123!' (
+    Headers: ('Accept': 'application/json'),
+    Authentication: basic (Username: 'testuser', Password: 'testpass123!'),
+    Timeout: 30,
+  ) returns string
     on error continue;
 
   if $response != '' then

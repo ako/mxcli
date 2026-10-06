@@ -1502,11 +1502,12 @@ func buildAttributePathFromContext(ctx parser.IAttributePathContext) *ast.Attrib
 // REST Call Statements
 // ============================================================================
 
-// buildRestCallStatement converts REST CALL statement context to RestCallStmt.
-// Grammar: (VARIABLE EQUALS)? REST CALL httpMethod restCallUrl restCallUrlParams?
+// buildRestCallStatement converts a call rest service statement to RestCallStmt.
+// Grammar: (VARIABLE EQUALS)? restCallKw httpMethod restCallUrl restCallUrlParams?
 //
-//	restCallHeaderClause* restCallAuthClause? restCallBodyClause?
-//	restCallTimeoutClause? restCallReturnsClause onErrorClause?
+//	( restCallSettings
+//	| restCallHeaderClause* restCallAuthClause? restCallBodyClause? restCallTimeoutClause? )
+//	restCallReturnsClause onErrorClause?
 func buildRestCallStatement(ctx parser.IRestCallStatementContext) *ast.RestCallStmt {
 	if ctx == nil {
 		return nil
@@ -1555,6 +1556,12 @@ func buildRestCallStatement(ctx parser.IRestCallStatementContext) *ast.RestCallS
 		if tplParams := paramsCtx.TemplateParams(); tplParams != nil {
 			stmt.URLParams = buildTemplateParams(tplParams)
 		}
+	}
+
+	// The settings: one property list (ADR-0013), or the old clauses
+	// (MDL-DEPR720), which build the same statement.
+	if settings, ok := restCtx.RestCallSettings().(*parser.RestCallSettingsContext); ok && settings != nil {
+		restCallSettingsInto(stmt, settings)
 	}
 
 	// Get headers

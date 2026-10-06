@@ -1996,10 +1996,10 @@ returns string as $PageContent
 begin
   -- Fetch a webpage using HTTP GET
   -- The URL is a string template with parameters using {1}, {2}, etc.
-  $PageContent = call rest service get 'http://news.ycombinator.com'
-    header Accept = 'text/html'
-    timeout 300
-    returns string;
+  $PageContent = call rest service get 'http://news.ycombinator.com' (
+    Headers: ('Accept': 'text/html'),
+    Timeout: 300,
+  ) returns string;
 
   return $PageContent;
 end;
@@ -2019,10 +2019,10 @@ begin
   $response = call rest service get 'https://api.example.com/search?q={1}&page={2}' with (
     {1} = urlEncode($SearchTerm),
     {2} = toString($page)
-  )
-    header Accept = 'application/json'
-    timeout 60
-    returns string;
+  ) (
+    Headers: ('Accept': 'application/json'),
+    Timeout: 60,
+  ) returns string;
 
   return $response;
 end;
@@ -2039,15 +2039,14 @@ create microflow MfTest.M069_RestPostJson (
 returns string as $response
 begin
   -- POST with custom JSON body template
-  $response = call rest service post 'https://api.example.com/customers'
-    header 'Content-Type' = 'application/json'
-    header Accept = 'application/json'
-    body '{{"name": "{1}", "email": "{2}"}' with (
+  $response = call rest service post 'https://api.example.com/customers' (
+    Headers: ('Content-Type': 'application/json', 'Accept': 'application/json'),
+    Body: template '{{"name": "{1}", "email": "{2}"}' with (
       {1} = $CustomerName,
       {2} = $Email
-    )
-    timeout 30
-    returns string
+    ),
+    Timeout: 30,
+  ) returns string
     on error rollback;
 
   return $response;
@@ -2074,11 +2073,11 @@ create microflow MfTest.M072_RestWithAuth (
 returns string as $response
 begin
   -- REST call with basic authentication
-  $response = call rest service get 'https://api.example.com/secure/data'
-    header Accept = 'application/json'
-    auth basic $username password $password
-    timeout 30
-    returns string;
+  $response = call rest service get 'https://api.example.com/secure/data' (
+    Headers: ('Accept': 'application/json'),
+    Authentication: basic (Username: $username, Password: $password),
+    Timeout: 30,
+  ) returns string;
 
   return $response;
 end;
@@ -2096,10 +2095,10 @@ begin
   declare $success boolean = false;
 
   -- REST call with custom error handler
-  $response = call rest service get $url
-    header Accept = 'application/json'
-    timeout 30
-    returns string
+  $response = call rest service get $url (
+    Headers: ('Accept': 'application/json'),
+    Timeout: 30,
+  ) returns string
     on error without rollback begin
       log error node 'RestService' 'Failed to fetch: ' + $url;
       return false;
@@ -2124,11 +2123,11 @@ begin
 
   $response = call rest service put 'https://api.example.com/products/{1}' with (
     {1} = toString($ProductId)
-  )
-    header 'Content-Type' = 'application/json'
-    body '{{"price": {1}}' with ({1} = toString($NewPrice))
-    timeout 30
-    returns string
+  ) (
+    Headers: ('Content-Type': 'application/json'),
+    Body: template '{{"price": {1}}' with ({1} = toString($NewPrice)),
+    Timeout: 30,
+  ) returns string
     on error continue;
 
   set $success = true;
@@ -2150,10 +2149,10 @@ begin
   -- DELETE request - typically returns nothing
   call rest service delete 'https://api.example.com/resources/{1}' with (
     {1} = $ResourceId
-  )
-    header Accept = 'application/json'
-    timeout 30
-    returns nothing
+  ) (
+    Headers: ('Accept': 'application/json'),
+    Timeout: 30,
+  ) returns nothing
     on error continue;
 
   set $Deleted = true;

@@ -50,9 +50,9 @@ create constant MyModule.ApiBaseUrl ( Type: String, DefaultValue: 'https://api.e
 
 create microflow MyModule.CallApi() returns string
 begin
-  $response = call rest service get @MyModule.ApiBaseUrl + '/rates'
-    header Accept = 'application/json'
-    returns string;
+  $response = call rest service get @MyModule.ApiBaseUrl + '/rates' (
+    Headers: ('Accept': 'application/json'),
+  ) returns string;
   return $response;
 end;
 ```

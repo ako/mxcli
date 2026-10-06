@@ -282,9 +282,9 @@ end;
 create microflow MapUse.ACT_RestAsEntity ($Url : string)
 returns MapUse.PetResponse
 begin
-  $Pet = call rest service get $Url
-    timeout 30
-    returns mapping MapUse.IMM_Pet as MapUse.PetResponse
+  $Pet = call rest service get $Url (
+    Timeout: 30,
+  ) returns mapping MapUse.IMM_Pet as MapUse.PetResponse
     on error rollback;
   return $Pet;
 end;
@@ -320,9 +320,9 @@ end;
 create microflow MapUse.ACT_RestThenImport ($Url : string)
 returns MapUse.PetResponse
 begin
-  $Body = call rest service get $Url
-    timeout 30
-    returns string
+  $Body = call rest service get $Url (
+    Timeout: 30,
+  ) returns string
     on error rollback;
   $Pet = import from mapping MapUse.IMM_Pet($Body);
   return $Pet;

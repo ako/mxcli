@@ -137,13 +137,12 @@ Based on the BSON structure, design MDL syntax that:
 
 Example design for REST call:
 ```sql
-$response = call rest service get 'http://api.example.com/data'
-  header 'Content-Type' = 'application/json'
-  header Accept = 'application/json'
-  auth basic $username password $password
-  body '{"key": "{1}"}' with ({1} = $value)
-  timeout 30
-  returns string
+$response = call rest service get 'http://api.example.com/data' (
+  Headers: ('Content-Type': 'application/json', 'Accept': 'application/json'),
+  Authentication: basic (Username: $username, Password: $password),
+  Body: template '{"key": "{1}"}' with ({1} = $value),
+  Timeout: 30,
+) returns string
   on error rollback;
 ```
 
@@ -156,9 +155,9 @@ Add examples to `mdl-examples/doctype-tests/`:
 create microflow RestExamples.SimpleGet()
 returns string as $response
 begin
-  $response = call rest service get 'https://api.example.com/data'
-    timeout 30
-    returns string;
+  $response = call rest service get 'https://api.example.com/data' (
+    Timeout: 30,
+  ) returns string;
   return $response;
 end;
 ```
@@ -597,7 +596,7 @@ Expected: Valid MDL output that could be re-parsed.
 create microflow Test.RestExample()
 returns string as \$R
 begin
-  \$R = call rest service get 'http://example.com' timeout 30 returns string;
+  \$R = call rest service get 'http://example.com' (Timeout: 30) returns string;
   return \$R;
 end;"
 

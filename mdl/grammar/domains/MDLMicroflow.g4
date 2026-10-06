@@ -783,15 +783,55 @@ validationFeedbackStatement
 
 /**
  * REST call statement for making HTTP requests to external APIs.
+ *
+ * ADR-0013: the statement's words say what it does and where its data goes —
+ * the method and URL, `returns …` and `on error …` — and the settings of the
+ * activity's dialog are ONE property list after the URL:
+ *
+ *   $x = call rest service get 'https://…' (
+ *     Headers: ( 'Accept': 'text/html' ),
+ *     Authentication: basic ( Username: $u, Password: $p ),
+ *     Body: template '{"q": "{1}"}' with ({1} = $Q),
+ *     Timeout: 300,
+ *   ) returns String;
+ *
+ * The clauses (`header …`, `auth basic …`, `body …`, `timeout …`) are the old
+ * spelling of the same list, MDL-DEPR720. The two cannot be mixed: they are
+ * alternatives, so a clause after the list is a parse error.
  */
 restCallStatement
     : (VARIABLE EQUALS)? restCallKw httpMethod restCallUrl restCallUrlParams?
-      restCallHeaderClause*
-      restCallAuthClause?
-      restCallBodyClause?
-      restCallTimeoutClause?
+      ( restCallSettings
+      | /* @alias MDL-DEPR720 */ restCallHeaderClause* restCallAuthClause? restCallBodyClause? restCallTimeoutClause?
+      )
       restCallReturnsClause
       onErrorClause?
+    ;
+
+// ( Key: value, … ) — the activity's dialog settings (ADR-0013, R2/R3/R11).
+// The keys are checked by the visitor: Headers, Authentication, Body, Timeout.
+restCallSettings
+    : LPAREN restCallSetting (COMMA restCallSetting)* COMMA? RPAREN
+    ;
+
+restCallSetting
+    : identifierOrKeyword COLON restCallSettingValue
+    ;
+
+// The value shapes, one per key: the visitor reports a value whose shape is not
+// the key's. Ordered so a keyword-led shape is tried before a bare expression.
+restCallSettingValue
+    : LPAREN restCallMapEntry (COMMA restCallMapEntry)* COMMA? RPAREN   // Headers: ( 'Accept': 'text/html' )
+    | BASIC LPAREN restCallMapEntry (COMMA restCallMapEntry)* COMMA? RPAREN // Authentication: basic ( Username: $u, Password: $p )
+    | TEMPLATE STRING_LITERAL templateParams?                           // Body: template '…' [with ({1} = …)]
+    | MAPPING qualifiedName FROM VARIABLE                               // Body: mapping M.ExportMapping from $Obj
+    | BINARY_TYPE expression                                            // Body: binary $Doc/Contents
+    | expression templateParams?                                        // Body: $Text / Timeout: 300
+    ;
+
+// A header name is a string ('Content-Type'); a credential key is a word.
+restCallMapEntry
+    : (STRING_LITERAL | identifierOrKeyword) COLON expression
     ;
 
 // R6: `call rest service`, Studio Pro's name for the activity, in the

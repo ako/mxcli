@@ -55,10 +55,10 @@ returns boolean as $Ok
 begin
   declare $Ok boolean = false;
 
-  $Body = call rest service get 'https://httpbin.org/get'
-    header Accept = 'application/json'
-    timeout 15
-    returns string
+  $Body = call rest service get 'https://httpbin.org/get' (
+    Headers: ('Accept': 'application/json'),
+    Timeout: 15,
+  ) returns string
     on error continue;
 
   if $Body != '' then

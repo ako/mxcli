@@ -8,10 +8,10 @@ Calling external APIs from microflows -- GET, POST, authentication, and error ha
 CREATE MICROFLOW Integration.FetchWebpage ()
 RETURNS String AS $Content
 BEGIN
-  $Content = CALL REST SERVICE GET 'https://example.com/api/status'
-    HEADER Accept = 'application/json'
-    TIMEOUT 30
-    RETURNS String;
+  $Content = CALL REST SERVICE GET 'https://example.com/api/status' (
+    Headers: ('Accept': 'application/json'),
+    Timeout: 30,
+  ) RETURNS String;
   RETURN $Content;
 END;
 
@@ -29,10 +29,10 @@ BEGIN
   $Response = CALL REST SERVICE GET 'https://api.example.com/search?q={1}&page={2}' WITH (
     {1} = urlEncode($Query),
     {2} = toString($Page)
-  )
-    HEADER Accept = 'application/json'
-    TIMEOUT 60
-    RETURNS String;
+  ) (
+    Headers: ('Accept': 'application/json'),
+    Timeout: 60,
+  ) RETURNS String;
   RETURN $Response;
 END;
 
@@ -47,14 +47,14 @@ CREATE MICROFLOW Integration.CreateCustomer (
 )
 RETURNS String AS $Response
 BEGIN
-  $Response = CALL REST SERVICE POST 'https://api.example.com/customers'
-    HEADER 'Content-Type' = 'application/json'
-    BODY '{{"name": "{1}", "email": "{2}"}' WITH (
+  $Response = CALL REST SERVICE POST 'https://api.example.com/customers' (
+    Headers: ('Content-Type': 'application/json'),
+    Body: TEMPLATE '{{"name": "{1}", "email": "{2}"}' WITH (
       {1} = $Name,
       {2} = $Email
-    )
-    TIMEOUT 30
-    RETURNS String;
+    ),
+    Timeout: 30,
+  ) RETURNS String;
   RETURN $Response;
 END;
 
@@ -73,11 +73,11 @@ CREATE MICROFLOW Integration.UploadDocument (
 RETURNS Boolean AS $Ok
 BEGIN
   DECLARE $Ok Boolean = false;
-  $Response = CALL REST SERVICE POST 'https://api.example.com/documents'
-    HEADER 'ContentType' = 'application/pdf'
-    BODY BINARY $Doc/Contents
-    TIMEOUT 300
-    RETURNS response;
+  $Response = CALL REST SERVICE POST 'https://api.example.com/documents' (
+    Headers: ('ContentType': 'application/pdf'),
+    Body: BINARY $Doc/Contents,
+    Timeout: 300,
+  ) RETURNS response;
   SET $Ok = $Response/StatusCode = 200;
   RETURN $Ok;
 END;
@@ -104,11 +104,11 @@ CREATE MICROFLOW Integration.FetchSecureData (
 )
 RETURNS String AS $Response
 BEGIN
-  $Response = CALL REST SERVICE GET 'https://api.example.com/secure/data'
-    HEADER Accept = 'application/json'
-    AUTH BASIC $Username PASSWORD $Password
-    TIMEOUT 30
-    RETURNS String;
+  $Response = CALL REST SERVICE GET 'https://api.example.com/secure/data' (
+    Headers: ('Accept': 'application/json'),
+    Authentication: BASIC (Username: $Username, Password: $Password),
+    Timeout: 30,
+  ) RETURNS String;
   RETURN $Response;
 END;
 
@@ -126,10 +126,10 @@ RETURNS Boolean AS $Success
 BEGIN
   DECLARE $Success Boolean = false;
 
-  $Response = CALL REST SERVICE GET $Url
-    HEADER Accept = 'application/json'
-    TIMEOUT 30
-    RETURNS String
+  $Response = CALL REST SERVICE GET $Url (
+    Headers: ('Accept': 'application/json'),
+    Timeout: 30,
+  ) RETURNS String
     ON ERROR WITHOUT ROLLBACK BEGIN
       LOG ERROR NODE 'Integration' 'API call failed: ' + $Url;
       RETURN false;

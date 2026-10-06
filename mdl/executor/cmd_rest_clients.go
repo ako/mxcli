@@ -673,7 +673,7 @@ func checkFileRequestBody(opDef *ast.RestOperationDef) error {
 			"  write a string body holding the literal text %q, which sends %d bytes and\n"+
 			"  still returns 200.\n"+
 			"  Binary POST lives on the microflow activity, not the client document:\n"+
-			"    call rest service post '<url>' header 'ContentType' = '<type>' body binary %s/Contents\n"+
+			"    call rest service post '<url>' (Headers: ('ContentType': '<type>'), Body: binary %s/Contents)\n"+
 			"  (Microflows$BinaryRequestHandling — the shape Studio Pro writes).",
 		target, target, len(target), target)
 }

@@ -106,6 +106,7 @@ This preserves the audit trail.
 | [0010](0010-mdl-canonical-syntax-rules.md) | MDL has one canonical form, governed by twelve syntax rules | Accepted |
 | [0011](0011-mdl-language-versioning.md) | MDL evolves through deprecation aliases and a language header; meaning changes only across versions | Accepted |
 | [0012](0012-mdl-first-and-data-first-editing.md) | MDL-first and data-first editing share one syntax and one patch engine | Accepted |
+| [0013](0013-activity-settings-property-list.md) | Microflow activity settings: words for the statement, one property list for the dialog (refines R2/R3 of 0010 for activities) | Proposed |
 
 ## Candidates to back-fill
 

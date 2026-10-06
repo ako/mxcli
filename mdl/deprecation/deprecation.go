@@ -359,6 +359,14 @@ const (
 	// `'Bearer ' + $Token` or `$Token`: the value template `'Bearer {Token}'`
 	// written as an expression.
 	RestHeaderConcat = "MDL-DEPR711"
+
+	// Codes 720-729 are ADR-0013's: a microflow activity's dialog settings in
+	// one ( Key: value, … ) list after its main operand, instead of clauses.
+
+	// RestCallClauses is `call rest service`'s `header N = v`, `auth basic $u
+	// password $p`, `body …` and `timeout n` clauses: the settings list
+	// `( Headers: (…), Authentication: basic (…), Body: …, Timeout: n )`.
+	RestCallClauses = "MDL-DEPR720"
 )
 
 // entries is the registry. Append only: a code is never reused or renumbered,
@@ -660,6 +668,26 @@ var issue707Entries = []Entry{
 		CanonicalExample: "create consumed rest service M.Api (BaseUrl: 'https://x', Authentication: none) " +
 			"{ operation Get (Method: get, Path: '/a', Parameters: ($Token: String), " +
 			"Headers: ('Authorization': 'Bearer {Token}'), Response: none) };",
+	},
+	{
+		Code: RestCallClauses,
+		Old: "call rest service <method> <url> [header N = v …] [auth basic $u password $p] " +
+			"[body …] [timeout n] returns …",
+		Canonical: "call rest service <method> <url> (Headers: ('N': v), " +
+			"Authentication: basic (Username: $u, Password: $p), Body: …, Timeout: n) returns …",
+		Rewrite: Rewrite{Structural: "activity settings as one property list (ADR-0013): `header N = v` becomes " +
+			"`Headers: ('N': v)`, `auth basic $u password $p` becomes `Authentication: basic (Username: $u, " +
+			"Password: $p)`, `body '…'` becomes `Body: template '…'`, `body binary|mapping …` becomes " +
+			"`Body: binary|mapping …`, `timeout n` becomes `Timeout: n`"},
+		RemovedIn: 2,
+		Note: "The method, URL, `returns …` and `on error …` stay words; the dialog's settings are one list after " +
+			"the URL, keyed as the consumed REST service names them. The two forms cannot be mixed in one statement.",
+		Example: "create microflow M.F ($T: String) begin $R = call rest service post 'https://example.com' " +
+			"header 'Accept' = 'application/json' auth basic 'u' password $T body '{1}' with ({1} = $T) timeout 30 " +
+			"returns string; end;",
+		CanonicalExample: "create microflow M.F ($T: String) begin $R = call rest service post 'https://example.com' " +
+			"(Headers: ('Accept': 'application/json'), Authentication: basic (Username: 'u', Password: $T), " +
+			"Body: template '{1}' with ({1} = $T), Timeout: 30) returns string; end;",
 	},
 }
 

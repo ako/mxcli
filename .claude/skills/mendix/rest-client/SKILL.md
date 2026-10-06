@@ -148,10 +148,10 @@ returns HTTP 200 with a 4-byte payload.
 Upload binary from a **microflow** instead, which does have a binary body:
 
 ```sql
-call rest service post 'https://api.example.com/upload'
-  header 'ContentType' = 'application/pdf'
-  body binary $Doc/Contents
-  returns response;
+call rest service post 'https://api.example.com/upload' (
+  Headers: ('ContentType': 'application/pdf'),
+  Body: binary $Doc/Contents,
+) returns response;
 ```
 
 `response: file as $Doc` on an operation is unaffected — downloads work.
@@ -273,33 +273,33 @@ Call an HTTP endpoint directly from a microflow — no REST client document need
 
 ```sql
 -- Simple GET returning a string
-$response = call rest service get 'https://api.example.com/data'
-  header Accept = 'application/json'
-  timeout 30
-  returns string;
+$response = call rest service get 'https://api.example.com/data' (
+  Headers: ('Accept': 'application/json'),
+  Timeout: 30,
+) returns string;
 
 -- GET with URL template parameters
 $response = call rest service get 'https://api.example.com/users/{1}' with (
   {1} = toString($UserId)
-)
-  header Accept = 'application/json'
-  returns string;
+) (
+  Headers: ('Accept': 'application/json'),
+) returns string;
 
 -- POST with body
-$response = call rest service post 'https://api.example.com/items'
-  header 'Content-Type' = 'application/json'
-  body '{"name": "test"}'
-  returns string;
+$response = call rest service post 'https://api.example.com/items' (
+  Headers: ('Content-Type': 'application/json'),
+  Body: template '{"name": "test"}',
+) returns string;
 
 -- With basic auth
-$response = call rest service get 'https://api.example.com/secure'
-  auth basic 'username' password 'password'
-  returns string;
+$response = call rest service get 'https://api.example.com/secure' (
+  Authentication: basic (Username: 'username', Password: 'password'),
+) returns string;
 
 -- With import mapping (JSON → entity)
-$item = call rest service get 'https://api.example.com/item/1'
-  header Accept = 'application/json'
-  returns mapping Module.IMM_Item as Module.Item;
+$item = call rest service get 'https://api.example.com/item/1' (
+  Headers: ('Accept': 'application/json'),
+) returns mapping Module.IMM_Item as Module.Item;
 
 -- Fire and forget
 call rest service delete 'https://api.example.com/item/1'

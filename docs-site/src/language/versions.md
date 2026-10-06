@@ -255,7 +255,7 @@ refuse the spelling; until then it only warns.
 
 ### Deprecated spellings (`MDL-DEPR*`)
 
-85 old spellings mean exactly what their new form means. They warn with their code under every version before the one in the last column, which refuses them.
+86 old spellings mean exactly what their new form means. They warn with their code under every version before the one in the last column, which refuses them.
 
 | Code | Old form | New form | Rewritten by `fmt --upgrade` | Refused from |
 |---|---|---|---|---|
@@ -344,5 +344,6 @@ refuse the spelling; until then it only warns.
 | `MDL-DEPR555` | `alter settings model …` | `alter settings runtime …` | yes: section name: `model` becomes `runtime` | mdl 2 |
 | `MDL-DEPR710` | `create user role R (M.A, …) [manage all roles]` | `create user role R ( ModuleRoles: (M.A, …), ManageAllRoles: true, … )` | yes: user role properties: the role list becomes `ModuleRoles: (…)` in a ( Key: value ) list, and `manage all roles` becomes `ManageAllRoles: true` | mdl 2 |
 | `MDL-DEPR711` | `Headers: ('Authorization': 'Bearer ' + $Token) / ('X-Key': $Key)` | `Headers: ('Authorization': 'Bearer {Token}') / ('X-Key': '{Key}')` | yes: header value as a template: `'text' + $P` becomes `'text{P}'` | mdl 2 |
+| `MDL-DEPR720` | `call rest service <method> <url> [header N = v …] [auth basic $u password $p] [body …] [timeout n] returns …` | `call rest service <method> <url> (Headers: ('N': v), Authentication: basic (Username: $u, Password: $p), Body: …, Timeout: n) returns …` | yes: activity settings as one property list (ADR-0013): `header N = v` becomes `Headers: ('N': v)`, `auth basic $u password $p` becomes `Authentication: basic (Username: $u, Password: $p)`, `body '…'` becomes `Body: template '…'`, `body binary\|mapping …` becomes `Body: binary\|mapping …`, `timeout n` becomes `Timeout: n` | mdl 2 |
 
 <!-- END GENERATED: mxcli migration reference -->

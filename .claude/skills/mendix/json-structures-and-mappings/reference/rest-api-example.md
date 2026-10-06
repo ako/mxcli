@@ -140,10 +140,10 @@ create microflow Integration.GetCountryInfo ()
 returns string as $json
 begin
   -- Fetch country data from REST API
-  $response = call rest service get 'https://restcountries.com/v3.1/name/netherlands'
-    header Accept = 'application/json'
-    timeout 30
-    returns string
+  $response = call rest service get 'https://restcountries.com/v3.1/name/netherlands' (
+    Headers: ('Accept': 'application/json'),
+    Timeout: 30,
+  ) returns string
     on error continue;
 
   -- Import JSON into entity

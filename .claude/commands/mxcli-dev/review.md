@@ -88,10 +88,11 @@ done rather than how it is reviewed.
 ### Syntax design for MDL features
 New or modified MDL syntax must follow the design guidelines. See [ADR-0003: MDL is SQL-shaped](docs/13-decisions/0003-mdl-is-sql-shaped.md) for the underlying decision and rejected alternatives; the design checklist below operationalises it.
 - [ ] **Design skill consulted** — read `.claude/skills/design-mdl-syntax.md` before designing syntax
-- [ ] **Follows standard patterns** — uses `create`/`alter`/`drop`/`show`/`describe`, not custom verbs
+- [ ] **Follows standard patterns** — a document statement uses `create`/`alter`/`drop`/`list`/`describe`, not custom verbs; a microflow/nanoflow activity uses its Studio Pro verb (`call rest service`, `send email`)
 - [ ] **Reads as English** — a business analyst understands the statement on first reading
 - [ ] **Qualified names** — uses `Module.Element` everywhere, no implicit module context
 - [ ] **Property format** — uses `( key: value, ... )` with colon separators, one per line
+- [ ] **Activity settings (ADR-0013)** — an activity's dialog settings are ONE `( Key: value, … )` list after its main operand, keyed as the matching document property (`Headers`, `Authentication`, `Timeout`); the verb, `$x =`, operand, `returns` and `on error` stay words. Clauses only for one or two word-like settings — a new activity, or a third setting on an existing one, uses the list
 - [ ] **LLM-friendly** — one example is sufficient for an LLM to generate correct variants
 - [ ] **Diff-friendly** — adding one property is a one-line diff
 

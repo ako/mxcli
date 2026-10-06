@@ -33,7 +33,7 @@ func TestBuildRestClientOperation_RefusesFileRequestBody(t *testing.T) {
 	// The message must point at the route that WORKS. Binary POST is expressible
 	// on the microflow REST CALL activity (Microflows$BinaryRequestHandling);
 	// only the consumed client document has nowhere to put it.
-	for _, want := range []string{"binary", "$Doc", "call rest service post", "body binary"} {
+	for _, want := range []string{"binary", "$Doc", "call rest service post", "Body: binary"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should mention %q, got:\n%v", want, err)
 		}

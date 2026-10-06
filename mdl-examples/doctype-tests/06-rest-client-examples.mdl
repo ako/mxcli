@@ -383,8 +383,8 @@ create consumed rest service RestTest.RC014_JsonBodyAPI (
 -- Mendix has no binary request body: a consumed operation stores one of
 -- Rest$JsonBody, Rest$StringBody or Rest$ImplicitMappingBody. Binary POST is
 -- done from a microflow instead, which does have a binary request body:
---   rest call post '<url>' header 'ContentType' = '<type>'
---     body binary $Doc/Contents returns response;
+--   call rest service post '<url>' (Headers: ('ContentType': '<type>'),
+--     Body: binary $Doc/Contents) returns response;
 --
 -- Downloading is unaffected — `response: file as $Doc` works.
 
@@ -574,7 +574,7 @@ create consumed rest service RestTest.RC018_PetStoreAPI (
 
   -- Upload pet image: not expressible HERE. `body: file from $ImageFile` is
   -- refused as MDL-REST02 — a consumed operation has no binary request body.
-  -- Use a microflow: `rest call post ... body binary $ImageFile/Contents`.
+  -- Use a microflow: `call rest service post ... (Body: binary $ImageFile/Contents)`.
 };
 
 -- ============================================================================
@@ -826,10 +826,10 @@ returns boolean as $success
 begin
   declare $success boolean = false;
 
-  $response = call rest service get 'https://jsonplaceholder.typicode.com/posts'
-    header Accept = 'application/json'
-    timeout 15
-    returns string
+  $response = call rest service get 'https://jsonplaceholder.typicode.com/posts' (
+    Headers: ('Accept': 'application/json'),
+    Timeout: 15,
+  ) returns string
     on error continue;
 
   if $response != '' then
@@ -858,10 +858,10 @@ begin
 
   $response = call rest service get 'https://jsonplaceholder.typicode.com/users/{1}' with (
     {1} = '1'
-  )
-    header Accept = 'application/json'
-    timeout 15
-    returns string
+  ) (
+    Headers: ('Accept': 'application/json'),
+    Timeout: 15,
+  ) returns string
     on error continue;
 
   if $response != '' then
@@ -886,12 +886,11 @@ returns boolean as $success
 begin
   declare $success boolean = false;
 
-  $response = call rest service post 'https://httpbin.org/post'
-    header 'Content-Type' = 'application/json'
-    header Accept = 'application/json'
-    body '{{"title": "test", "body": "hello from MDL", "userId": 1}'
-    timeout 15
-    returns string
+  $response = call rest service post 'https://httpbin.org/post' (
+    Headers: ('Content-Type': 'application/json', 'Accept': 'application/json'),
+    Body: template '{{"title": "test", "body": "hello from MDL", "userId": 1}',
+    Timeout: 15,
+  ) returns string
     on error continue;
 
   if $response != '' then
@@ -919,10 +918,10 @@ begin
   $response = call rest service get 'https://httpbin.org/anything/search?q={1}&page={2}' with (
     {1} = 'mendix',
     {2} = '1'
-  )
-    header Accept = 'application/json'
-    timeout 15
-    returns string
+  ) (
+    Headers: ('Accept': 'application/json'),
+    Timeout: 15,
+  ) returns string
     on error continue;
 
   if $response != '' then
@@ -947,12 +946,11 @@ returns boolean as $success
 begin
   declare $success boolean = false;
 
-  $response = call rest service put 'https://httpbin.org/put'
-    header 'Content-Type' = 'application/json'
-    header Accept = 'application/json'
-    body '{{"name": "updated", "value": 42}'
-    timeout 15
-    returns string
+  $response = call rest service put 'https://httpbin.org/put' (
+    Headers: ('Content-Type': 'application/json', 'Accept': 'application/json'),
+    Body: template '{{"name": "updated", "value": 42}',
+    Timeout: 15,
+  ) returns string
     on error continue;
 
   if $response != '' then
@@ -977,10 +975,10 @@ returns boolean as $success
 begin
   declare $success boolean = false;
 
-  call rest service delete 'https://httpbin.org/delete'
-    header Accept = '*/*'
-    timeout 15
-    returns nothing
+  call rest service delete 'https://httpbin.org/delete' (
+    Headers: ('Accept': '*/*'),
+    Timeout: 15,
+  ) returns nothing
     on error continue;
 
   set $success = true;
@@ -1000,11 +998,11 @@ returns boolean as $success
 begin
   declare $success boolean = false;
 
-  $response = call rest service get 'https://httpbin.org/basic-auth/api_user/api_secret'
-    header Accept = 'application/json'
-    auth basic 'api_user' password 'api_secret'
-    timeout 15
-    returns string
+  $response = call rest service get 'https://httpbin.org/basic-auth/api_user/api_secret' (
+    Headers: ('Accept': 'application/json'),
+    Authentication: basic (Username: 'api_user', Password: 'api_secret'),
+    Timeout: 15,
+  ) returns string
     on error continue;
 
   if $response != '' then
@@ -1029,10 +1027,10 @@ returns boolean as $success
 begin
   declare $success boolean = false;
 
-  call rest service get 'https://httpbin.org/status/200'
-    header Accept = '*/*'
-    timeout 5
-    returns nothing
+  call rest service get 'https://httpbin.org/status/200' (
+    Headers: ('Accept': '*/*'),
+    Timeout: 5,
+  ) returns nothing
     on error continue;
 
   set $success = true;
@@ -1418,10 +1416,10 @@ returns boolean as $success
 begin
   declare $success boolean = false;
 
-  $Result = call rest service get 'https://jsonplaceholder.typicode.com/posts/1'
-    header Accept = 'application/json'
-    timeout 15
-    returns string
+  $Result = call rest service get 'https://jsonplaceholder.typicode.com/posts/1' (
+    Headers: ('Accept': 'application/json'),
+    Timeout: 15,
+  ) returns string
     on error continue;
 
   if $Result != '' then
@@ -1445,10 +1443,10 @@ end;
 create microflow RestTest.ACT_RestMappingSingleObject ()
 returns RestTest.PetResponse
 begin
-  $Pet = call rest service get 'https://api.example.com/pets/1'
-    header Accept = 'application/json'
-    timeout 15
-    returns mapping RestTest.IMM_Pet as RestTest.PetResponse
+  $Pet = call rest service get 'https://api.example.com/pets/1' (
+    Headers: ('Accept': 'application/json'),
+    Timeout: 15,
+  ) returns mapping RestTest.IMM_Pet as RestTest.PetResponse
     on error rollback;
 
   return $Pet;

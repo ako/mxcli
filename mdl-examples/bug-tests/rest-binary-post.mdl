@@ -1,5 +1,5 @@
 mdl 1;
--- Binary POST: `rest call ... body binary <expression>`.
+-- Binary POST: `call rest service ... (Body: binary <expression>)`.
 --
 -- Mendix models a binary request body on the microflow REST CALL activity, as
 -- Microflows$BinaryRequestHandling with an action-level RequestHandlingType of
@@ -32,11 +32,11 @@ create microflow BinaryPost.ACT_PostBinary ()
 begin
   retrieve $Doc from BinaryPost.Upload
     first;
-  call rest service post 'https://httpbingo.org/post'
-    header 'ContentType' = 'application/pdf'
-    body binary $Doc/Contents
-    timeout 300
-    returns response;
+  call rest service post 'https://httpbingo.org/post' (
+    Headers: ('ContentType': 'application/pdf'),
+    Body: binary $Doc/Contents,
+    Timeout: 300,
+  ) returns response;
   return;
 end;
 

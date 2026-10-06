@@ -73,10 +73,10 @@ Each row in `bindings` is an object of `{var: {type, value}}`. A JSLT transforme
 └────────────────────┘   └────────────────────┘   └────────────────────┘   └────────────────┘
 ```
 
-**Why inline `rest call` rather than `create consumed rest service` + `send rest request`?**
+**Why inline `call rest service` rather than `create consumed rest service` + `send rest request`?**
 
 - At the time of writing, REST Client `authentication: basic (username: '...', password: '...')` silently fails to attach the `Authorization` header when the password contains special characters (e.g. `!`). Result: `401 Unauthorized`.
-- Inline `rest call ... auth basic '<user>' password '<pass>'` handles the same credentials correctly.
+- Inline `call rest service ... (Authentication: basic (Username: '<user>', Password: '<pass>'))` handles the same credentials correctly.
 
 **Why persistent entities for the final list?**
 
@@ -184,14 +184,13 @@ begin
   end loop;
 
   -- Inline REST CALL — NOT the REST Client (see notes)
-  $RawJson = call rest service post 'https://graphstudio.mendixdemo.com/sparql/graphmart/http%3A%2F%2Fcambridgesemantics.com%2FGraphmart%2F3617250aca6a40d88972c1c0de38f86a'
-    header 'Accept'       = 'application/sparql-results+json'
-    header 'Content-Type' = 'application/sparql-query'
-    auth basic '<username>' password '<password>'
-    body 'PREFIX model: <http://cambridgesemantics.com/SourceLayer/c4ce0eca2e7241f2aee13b46fbdca3f8/Model#> SELECT ?customer ?customerId ?customerName FROM <http://cambridgesemantics.com/SourceLayer/c4ce0eca2e7241f2aee13b46fbdca3f8/Model> WHERE {1} ?customer a model:ExamplePlmBom.Customer; model:ExamplePlmBom.Customer.id ?customerId; model:ExamplePlmBom.Customer.name ?customerName; {2}'
-    with ({1} = '{', {2} = '}')
-    timeout 60
-    returns string
+  $RawJson = call rest service post 'https://graphstudio.mendixdemo.com/sparql/graphmart/http%3A%2F%2Fcambridgesemantics.com%2FGraphmart%2F3617250aca6a40d88972c1c0de38f86a' (
+    Headers: ('Accept': 'application/sparql-results+json', 'Content-Type': 'application/sparql-query'),
+    Authentication: basic (Username: '<username>', Password: '<password>'),
+    Body: template 'PREFIX model: <http://cambridgesemantics.com/SourceLayer/c4ce0eca2e7241f2aee13b46fbdca3f8/Model#> SELECT ?customer ?customerId ?customerName FROM <http://cambridgesemantics.com/SourceLayer/c4ce0eca2e7241f2aee13b46fbdca3f8/Model> WHERE {1} ?customer a model:ExamplePlmBom.Customer; model:ExamplePlmBom.Customer.id ?customerId; model:ExamplePlmBom.Customer.name ?customerName; {2}'
+    with ({1} = '{', {2} = '}'),
+    Timeout: 60,
+  ) returns string
     on error continue;
 
   log info node 'MyModule' '{1}' with ({1} = 'HTTP status: ' + toString($latestHttpResponse/StatusCode));
@@ -228,17 +227,17 @@ create page MyModule.Customer_Overview (
 
 ### `!` in Basic Auth password → 401
 
-REST Client `authentication: basic (...)` with a literal password containing `!` sends no auth header at runtime. Workaround: use inline `rest call ... auth basic '<user>' password '<pass>'`. The inline form works with the same literal credentials.
+REST Client `authentication: basic (...)` with a literal password containing `!` sends no auth header at runtime. Workaround: use inline `call rest service ... (Authentication: basic (Username: '<user>', Password: '<pass>'))`. The inline form works with the same literal credentials.
 
-### SPARQL `{` braces in `body` templates are consumed as placeholder escapes
+### SPARQL `{` braces in `Body: template` are consumed as placeholder escapes
 
-In `rest call ... body '...'`, the body is a template string where `{1}`, `{2}` are placeholders. A literal `{` must be escaped as `{{`, but in this runtime `{{` is sent **literally** rather than being converted to `{` → server returns `400 Bad request`.
+In `call rest service ... (Body: template '...')`, the body is a template string where `{1}`, `{2}` are placeholders. A literal `{` must be escaped as `{{`, but in this runtime `{{` is sent **literally** rather than being converted to `{` → server returns `400 Bad request`.
 
 **Solution:** pass literal braces as placeholder values:
 
 ```sql
-body '... WHERE {1} ... {2}'
-with ({1} = '{', {2} = '}')
+Body: template '... WHERE {1} ... {2}'
+  with ({1} = '{', {2} = '}')
 ```
 
 ### JSON structure auto-detects ISO strings as DateTime
