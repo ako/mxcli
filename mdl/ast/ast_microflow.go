@@ -1232,6 +1232,81 @@ type RestCallStmt struct {
 
 func (s *RestCallStmt) isMicroflowStatement() {}
 
+// SendEmailStmt is the built-in Send Email activity (Microflows$SendEmailAction,
+// 11.13+): `send email from … to … subject … host … port … [on error …]`.
+type SendEmailStmt struct {
+	From    Expression
+	To      Expression
+	Cc      Expression // optional
+	Bcc     Expression // optional
+	Subject EmailTemplateClause
+	// BodyText and BodyHTML are nil when the clause is absent.
+	BodyText   *EmailTemplateClause
+	BodyHTML   *EmailTemplateClause
+	Headers    []EmailHeader
+	Attachment string // variable name without $; empty when absent
+	Host       Expression
+	Port       Expression
+	// Security is the mode word as written (none/ssl/tls, any case); empty when
+	// the clause is absent. The executor validates it.
+	Security            string
+	CheckServerIdentity bool
+	// Timeout is the connection timeout in milliseconds; 0 when absent.
+	Timeout       int
+	Auth          *RestAuth // optional `auth basic … password …`
+	ErrorHandling *ErrorHandlingClause
+	Annotations   *ActivityAnnotations
+}
+
+func (s *SendEmailStmt) isMicroflowStatement() {}
+
+// Expressions returns every expression the statement holds — addresses,
+// template texts and parameters, host, port and credentials — skipping absent
+// ones. Walkers that collect variable references use it so a new slot cannot
+// be missed by one of them.
+func (s *SendEmailStmt) Expressions() []Expression {
+	var out []Expression
+	add := func(es ...Expression) {
+		for _, e := range es {
+			if e != nil {
+				out = append(out, e)
+			}
+		}
+	}
+	addTemplate := func(t *EmailTemplateClause) {
+		if t == nil {
+			return
+		}
+		add(t.Text)
+		for _, p := range t.Params {
+			add(p.Value)
+		}
+	}
+	add(s.From, s.To, s.Cc, s.Bcc)
+	addTemplate(&s.Subject)
+	addTemplate(s.BodyText)
+	addTemplate(s.BodyHTML)
+	add(s.Host, s.Port)
+	if s.Auth != nil {
+		add(s.Auth.Username, s.Auth.Password)
+	}
+	return out
+}
+
+// EmailTemplateClause is a subject or body: template text plus optional
+// `with ({1} = …)` parameters. Text is a string literal for a template, or any
+// other expression, which the builder wraps as `{1}`.
+type EmailTemplateClause struct {
+	Text   Expression
+	Params []TemplateParam
+}
+
+// EmailHeader is one `header 'Name' = 'value'` line; both are plain strings.
+type EmailHeader struct {
+	Name  string
+	Value string
+}
+
 // SendRestRequestStmt represents: [$Var =] SEND REST REQUEST Module.Service.Operation [BODY $var] [ON ERROR ...]
 // Calls a consumed REST service operation defined via CREATE REST CLIENT.
 type SendRestRequestStmt struct {

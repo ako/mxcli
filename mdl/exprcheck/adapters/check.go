@@ -158,6 +158,8 @@ func (c *CheckAdapter) walkBodyWithScope(body []ast.MicroflowStatement, mf strin
 			for _, a := range n.Arguments {
 				c.checkExpr(a.Value, "CallArgument.Value", mf, r)
 			}
+		case *ast.SendEmailStmt:
+			c.checkSendEmail(n, mf, r)
 		}
 		// A custom ON ERROR body is a block of ordinary statements and its
 		// expressions are as checkable as any other. It was not walked at all,
@@ -267,4 +269,36 @@ func mapSeverity(s exprhints.Severity) linter.Severity {
 		return linter.SeverityInfo
 	}
 	return linter.SeverityHint
+}
+
+// checkSendEmail checks each SEND EMAIL expression against the type mxbuild
+// requires for that field. A non-literal subject or body is stored as the one
+// parameter of a `{1}` template, so it is checked as a template parameter.
+func (c *CheckAdapter) checkSendEmail(n *ast.SendEmailStmt, mf string, r *Result) {
+	for _, e := range []ast.Expression{n.From, n.To, n.Cc, n.Bcc} {
+		if e != nil {
+			c.checkExpr(e, "SendEmailStmt.Address", mf, r)
+		}
+	}
+	for _, t := range []*ast.EmailTemplateClause{&n.Subject, n.BodyText, n.BodyHTML} {
+		if t == nil {
+			continue
+		}
+		if lit, ok := t.Text.(*ast.LiteralExpr); t.Text != nil && (!ok || lit.Kind != ast.LiteralString) && len(t.Params) == 0 {
+			c.checkExpr(t.Text, "SendEmailStmt.TemplateParam", mf, r)
+		}
+		for _, p := range t.Params {
+			c.checkExpr(p.Value, "SendEmailStmt.TemplateParam", mf, r)
+		}
+	}
+	if n.Host != nil {
+		c.checkExpr(n.Host, "SendEmailStmt.Host", mf, r)
+	}
+	if n.Port != nil {
+		c.checkExpr(n.Port, "SendEmailStmt.Port", mf, r)
+	}
+	if n.Auth != nil {
+		c.checkExpr(n.Auth.Username, "SendEmailStmt.Credential", mf, r)
+		c.checkExpr(n.Auth.Password, "SendEmailStmt.Credential", mf, r)
+	}
 }

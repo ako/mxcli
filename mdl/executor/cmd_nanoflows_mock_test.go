@@ -349,6 +349,7 @@ func TestValidateNanoflowBody_DisallowedActions(t *testing.T) {
 		{"ShowHomePage", &ast.ShowHomePageStmt{}, "SHOW HOME PAGE"},
 		{"RestCall", &ast.RestCallStmt{}, "REST"},
 		{"SendRestRequest", &ast.SendRestRequestStmt{}, "REST"},
+		{"SendEmail", &ast.SendEmailStmt{}, "SEND EMAIL"},
 		{"ImportFromMapping", &ast.ImportFromMappingStmt{}, "import mapping"},
 		{"ExportToMapping", &ast.ExportToMappingStmt{}, "export mapping"},
 		{"TransformJson", &ast.TransformJsonStmt{}, "JSON transformation"},

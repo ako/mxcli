@@ -221,3 +221,35 @@ func TestTrailingTokens_AcceptsTheCorrectSpellings(t *testing.T) {
 		}
 	}
 }
+
+// Send Email (mendixlabs/mxcli#1315). Measured on mxbuild 11.15.0-rc.4, one
+// fault per microflow: an Integer From/Host/Username is CE9528 "should be of
+// type String", a String port CE9528 "should be of type Integer/Long", an
+// Integer template parameter CE0117. The hint names the code mxbuild uses.
+func TestSlotKind_SendEmail(t *testing.T) {
+	for _, tc := range []struct {
+		slot, src string
+		want      bool
+		mxbuild   string
+	}{
+		{"SendEmailStmt.Address", "42", true, "CE9528"},
+		{"SendEmailStmt.Host", "42", true, "CE9528"},
+		{"SendEmailStmt.Credential", "42", true, "CE9528"},
+		{"SendEmailStmt.Port", "'25'", true, "Integer/Long"},
+		{"SendEmailStmt.TemplateParam", "42", true, "CE0117"},
+		// CONTROLS: the kinds mxbuild accepts.
+		{"SendEmailStmt.Address", "'a@example.com'", false, ""},
+		{"SendEmailStmt.Port", "25", false, ""},
+		{"SendEmailStmt.Port", "dateTimeToEpoch([%CurrentDateTime%])", false, ""}, // a Long
+		{"SendEmailStmt.TemplateParam", "toString(42)", false, ""},
+	} {
+		hs := parseIn(t, tc.src, tc.slot)
+		if hasCode(hs, "E009") != tc.want {
+			t.Errorf("%s %q: E009 = %v, want %v (%v)", tc.slot, tc.src, !tc.want, tc.want, codes(hs))
+			continue
+		}
+		if tc.want && !strings.Contains(hs[0].Problem, tc.mxbuild) {
+			t.Errorf("%s %q: message %q does not name %s", tc.slot, tc.src, hs[0].Problem, tc.mxbuild)
+		}
+	}
+}

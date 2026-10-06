@@ -654,6 +654,16 @@ BODY: B O D Y;
 RESPONSE: R E S P O N S E;
 REQUEST: R E Q U E S T;
 SEND: S E N D;
+// Send Email activity (Microflows$SendEmailAction, 11.13+). Each is also in
+// the `keyword` rule, so an attribute called Email or Subject still parses.
+EMAIL: E M A I L;
+CC: C C;
+BCC: B C C;
+SUBJECT: S U B J E C T;
+HTML: H T M L;
+ATTACHMENT: A T T A C H M E N T;
+SERVER: S E R V E R;
+IDENTITY: I D E N T I T Y;
 RECEIVE: R E C E I V E;
 DEPRECATED: D E P R E C A T E D;
 RESOURCE: R E S O U R C E;

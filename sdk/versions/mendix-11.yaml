@@ -50,6 +50,10 @@ features:
     synchronize_unsynchronized:
       min_version: "10.0.0"
       mdl: "SYNCHRONIZE UNSYNCHRONIZED  (nanoflow only)"
+    send_email:
+      min_version: "11.13.0"
+      mdl: "SEND EMAIL FROM … TO … SUBJECT … HOST … PORT …  (microflow only)"
+      notes: "Built-in Send Email activity (Microflows$SendEmailAction, beta). The metamodel type dates from 11.2.0, but its subject and bodies became StringTemplates in 11.12.0 and the plain Subject/MessageBody expressions were deleted in 11.13.0 (mendixmodelsdk StructureVersionInfo); 11.13.0 is also the release that put the activity in the toolbox."
     show_page_with_params:
       min_version: "11.0.0"
       mdl: "SHOW PAGE Module.PageName WITH PARAMS ..."

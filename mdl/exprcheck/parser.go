@@ -12,6 +12,7 @@
 package exprcheck
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/exprcheck/hints"
@@ -89,12 +90,16 @@ func checkSlotKind(expr RobustExpr, ctx Context) []Hint {
 		return nil
 	}
 	k := inferKind(expr, ctx)
-	if k == KindUnknown || k == sc.Kind {
+	if k == KindUnknown || k == sc.Kind || slices.Contains(sc.AlsoAccepts, k) {
 		return nil
 	}
 	// `empty` satisfies any slot: it is Mendix's null, not a kind of its own.
 	if k == KindEmpty {
 		return nil
+	}
+	mxbuild := sc.Mxbuild
+	if mxbuild == "" {
+		mxbuild = "CE0117 \"Error(s) in expression\""
 	}
 	fix := "Convert it, e.g. with toString(...)."
 	if sc.Kind != KindString {
@@ -107,7 +112,7 @@ func checkSlotKind(expr RobustExpr, ctx Context) []Hint {
 		Where:    hintsLocation(ctx, expr.Pos()),
 		YouWrote: "<" + typeKindName(k) + ">",
 		Problem: "This position requires " + typeKindName(sc.Kind) + ", but the expression has kind " +
-			typeKindName(k) + ". Mendix does not coerce here — it reports CE0117 \"Error(s) in expression\".",
+			typeKindName(k) + ". Mendix does not coerce here — it reports " + mxbuild + ".",
 		Fix: fix,
 	}}
 }

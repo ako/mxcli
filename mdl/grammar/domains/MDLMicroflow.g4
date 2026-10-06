@@ -286,6 +286,7 @@ microflowStatement
     | annotation* clearListStatement SEMICOLON
     | annotation* validationFeedbackStatement SEMICOLON
     | annotation* restCallStatement SEMICOLON
+    | annotation* sendEmailStatement SEMICOLON
     | annotation* sendRestRequestStatement SEMICOLON
     | annotation* importFromMappingStatement SEMICOLON
     | annotation* exportToMappingStatement SEMICOLON
@@ -852,6 +853,54 @@ restCallReturnsClause
     | RETURNS NOTHING                                           // Ignore response
     | RETURNS NONE /* @alias MDL-DEPR024 */                     // Ignore response (old second spelling)
     | RETURNS qualifiedName                                     // Store in file document (a System.FileDocument specialization)
+    ;
+
+/**
+ * SEND EMAIL — the built-in Send Email activity (Microflows$SendEmailAction,
+ * Studio Pro 11.13+ beta). SMTP from a microflow, without the Email Connector.
+ *
+ *   send email
+ *     from $Msg/Sender to $Msg/Recipient [cc …] [bcc …]
+ *     subject 'Order {1} confirmed' with ({1} = $Order/Number)
+ *     [body text 'template' [with (…)]] [body html 'template' [with (…)]]
+ *     [header 'X-Name' = 'value']*
+ *     [attachment $Doc]
+ *     host @Mod.SmtpHost port @Mod.SmtpPort
+ *     [security none | ssl [check server identity] | tls]
+ *     [timeout 20000]
+ *     [auth basic $User password @Mod.SmtpPassword]
+ *     [on error …];
+ *
+ * Clauses are in a fixed order, the order `describe` prints them. Subject and
+ * bodies are string templates: fixed text plus `{n}` placeholders, like `log`.
+ * Header names and values are plain strings, not expressions. The security
+ * mode is validated in the visitor (none/ssl/tls), keeping SSL and TLS out of
+ * the keyword set.
+ */
+sendEmailStatement
+    : SEND EMAIL
+      FROM expression
+      TO expression
+      (CC expression)?
+      (BCC expression)?
+      SUBJECT sendEmailTemplate
+      (BODY TEXT sendEmailTemplate)?
+      (BODY HTML sendEmailTemplate)?
+      sendEmailHeaderClause*
+      (ATTACHMENT VARIABLE)?
+      HOST expression PORT expression
+      (SECURITY identifierOrKeyword (CHECK SERVER IDENTITY)?)?
+      (TIMEOUT NUMBER_LITERAL)?
+      (AUTH BASIC expression PASSWORD expression)?
+      onErrorClause?
+    ;
+
+sendEmailTemplate
+    : expression templateParams?
+    ;
+
+sendEmailHeaderClause
+    : HEADER (IDENTIFIER | STRING_LITERAL) EQUALS STRING_LITERAL
     ;
 
 /**

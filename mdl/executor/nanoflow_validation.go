@@ -69,6 +69,8 @@ func checkDisallowedNanoflowAction(stmt ast.MicroflowStatement) string {
 		return "REST calls are not allowed in nanoflows"
 	case *ast.SendRestRequestStmt:
 		return "REST requests are not allowed in nanoflows"
+	case *ast.SendEmailStmt:
+		return "SEND EMAIL is not allowed in nanoflows — mail is sent over SMTP from the server"
 	case *ast.ImportFromMappingStmt:
 		return "import mapping is not allowed in nanoflows"
 	case *ast.ExportToMappingStmt:

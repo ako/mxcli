@@ -24,9 +24,18 @@ var staticExpectations = map[string]SlotConstraint{
 	// the activity. Measured on 11.13.0: an Integer attribute, an integer
 	// literal and an object each fail; a String attribute is clean; and
 	// toString(...) around any of them is clean (mendixlabs/mxcli#1043).
-	"LogStmt.TemplateParam":    {Kind: KindString},
-	"MfSetStmt.Value":          {Kind: KindUnknown, ResolveBy: "TargetVariable"},
-	"DeclareStmt.InitialValue": {Kind: KindUnknown, ResolveBy: "DeclareType"},
+	"LogStmt.TemplateParam": {Kind: KindString},
+	// Send Email (11.13+). Measured on mxbuild 11.15.0-rc.4: an Integer for
+	// From, Server Host or Username is CE9528 "The expression for '…' should
+	// be of type String."; a String port is CE9528 "should be of type
+	// Integer/Long"; an Integer template parameter is CE0117, as for LOG.
+	"SendEmailStmt.Address":       {Kind: KindString, Mxbuild: "CE9528 \"The expression for '…' should be of type String\""},
+	"SendEmailStmt.Host":          {Kind: KindString, Mxbuild: "CE9528 \"The expression for '…' should be of type String\""},
+	"SendEmailStmt.Port":          {Kind: KindInteger, AlsoAccepts: []TypeKind{KindLong}, Mxbuild: "CE9528 \"The expression for 'Server Port' should be of type Integer/Long\""},
+	"SendEmailStmt.Credential":    {Kind: KindString, Mxbuild: "CE9528 \"The expression for '…' should be of type String\""},
+	"SendEmailStmt.TemplateParam": {Kind: KindString},
+	"MfSetStmt.Value":             {Kind: KindUnknown, ResolveBy: "TargetVariable"},
+	"DeclareStmt.InitialValue":    {Kind: KindUnknown, ResolveBy: "DeclareType"},
 }
 
 type defaultSlotResolver struct{}

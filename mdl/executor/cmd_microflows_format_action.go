@@ -997,6 +997,9 @@ func formatAction(
 	case *microflows.RestCallAction:
 		return formatRestCallAction(ctx, a)
 
+	case *microflows.SendEmailAction:
+		return formatSendEmailAction(ctx, a)
+
 	case *microflows.RestOperationCallAction:
 		return formatRestOperationCallAction(ctx, a)
 
@@ -2003,6 +2006,81 @@ func (e *Executor) formatAction(action microflows.MicroflowAction, entityNames m
 
 func (e *Executor) formatListOperation(op microflows.ListOperation, outputVar string) string {
 	return formatListOperation(e.newExecContext(context.Background()), op, outputVar)
+}
+
+// formatSendEmailAction renders a Send Email activity as `send email`, one clause
+// per line in grammar order. Platform defaults (security TLS, timeout 20000, no
+// server-identity check, no authentication) are omitted, so a statement that
+// does not state them builds the same action (R12).
+func formatSendEmailAction(ctx *ExecContext, a *microflows.SendEmailAction) string {
+	var sb strings.Builder
+	sb.WriteString("send email")
+	clause := func(kw, expr string) {
+		sb.WriteString("\n    ")
+		sb.WriteString(kw)
+		sb.WriteString(" ")
+		sb.WriteString(expr)
+	}
+	exprOrEmpty := func(e string) string {
+		if d := describeExpr(ctx, e); d != "" {
+			return d
+		}
+		return "''"
+	}
+	template := func(t microflows.EmailTemplate) string {
+		out := mdlQuote(ctx, t.Text)
+		if len(t.Parameters) > 0 {
+			params := make([]string, 0, len(t.Parameters))
+			for i, p := range t.Parameters {
+				params = append(params, fmt.Sprintf("{%d} = %s", i+1, exprOrEmpty(p)))
+			}
+			out += " with (" + strings.Join(params, ", ") + ")"
+		}
+		return out
+	}
+	present := func(t microflows.EmailTemplate) bool { return t.Text != "" || len(t.Parameters) > 0 }
+
+	clause("from", exprOrEmpty(a.From))
+	clause("to", exprOrEmpty(a.To))
+	if a.Cc != "" {
+		clause("cc", describeExpr(ctx, a.Cc))
+	}
+	if a.Bcc != "" {
+		clause("bcc", describeExpr(ctx, a.Bcc))
+	}
+	clause("subject", template(a.Subject))
+	if present(a.BodyPlainText) {
+		clause("body text", template(a.BodyPlainText))
+	}
+	if present(a.BodyHTML) {
+		clause("body html", template(a.BodyHTML))
+	}
+	for _, h := range a.CustomHeaders {
+		clause("header", mdlQuote(ctx, h.Name)+" = "+mdlQuote(ctx, h.Value))
+	}
+	if a.Attachment != "" {
+		clause("attachment", "$"+strings.TrimPrefix(a.Attachment, "$"))
+	}
+	clause("host", exprOrEmpty(a.Host)+" port "+exprOrEmpty(a.Port))
+	sec := a.SecurityType
+	if sec == "" {
+		sec = microflows.EmailSecurityTLS
+	}
+	if sec != microflows.EmailSecurityTLS || a.CheckServerIdentity {
+		s := strings.ToLower(string(sec))
+		if a.CheckServerIdentity {
+			s += " check server identity"
+		}
+		clause("security", s)
+	}
+	if a.ConnectionTimeout != 0 && a.ConnectionTimeout != microflows.DefaultEmailConnectionTimeout {
+		clause("timeout", fmt.Sprintf("%d", a.ConnectionTimeout))
+	}
+	if a.UseAuthentication {
+		clause("auth basic", exprOrEmpty(a.Username)+" password "+exprOrEmpty(a.Password))
+	}
+	sb.WriteString(";")
+	return sb.String()
 }
 
 func (e *Executor) formatRestCallAction(a *microflows.RestCallAction) string {

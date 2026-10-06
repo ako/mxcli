@@ -69,6 +69,34 @@ func execCreateNanoflow(ctx *ExecContext, s *ast.CreateNanoflowStmt) error {
 // Unsynchronized mode. Recurses the same nesting validateNanoflowStatements does
 // — branches, loops and error-handler bodies — so a gated mode cannot slip
 // through by sitting inside an `if`.
+// bodyContains reports whether any statement in stmts — including those nested
+// in IF/LOOP/WHILE bodies and custom error handlers — satisfies match.
+func bodyContains(stmts []ast.MicroflowStatement, match func(ast.MicroflowStatement) bool) bool {
+	for _, stmt := range stmts {
+		if match(stmt) {
+			return true
+		}
+		switch s := stmt.(type) {
+		case *ast.IfStmt:
+			if bodyContains(s.ThenBody, match) || bodyContains(s.ElseBody, match) {
+				return true
+			}
+		case *ast.LoopStmt:
+			if bodyContains(s.Body, match) {
+				return true
+			}
+		case *ast.WhileStmt:
+			if bodyContains(s.Body, match) {
+				return true
+			}
+		}
+		if eh := getErrorHandling(stmt); eh != nil && bodyContains(eh.Body, match) {
+			return true
+		}
+	}
+	return false
+}
+
 func bodyUsesUnsynchronized(stmts []ast.MicroflowStatement) bool {
 	for _, stmt := range stmts {
 		if s, ok := stmt.(*ast.SynchronizeStmt); ok && s.SyncType == "Unsynchronized" {

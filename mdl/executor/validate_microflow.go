@@ -397,6 +397,8 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 			}
 		case *ast.SynchronizeStmt:
 			v.checkSynchronizeIsNanoflowOnly()
+		case *ast.SendEmailStmt:
+			v.checkSendEmail(stmt)
 		case *ast.ListOperationStmt:
 			v.checkRangeHasABound(stmt)
 		case *ast.WhileStmt:

@@ -100,6 +100,15 @@ func buildMicroflowFromStmt(ctx *ExecContext, s *ast.CreateMicroflowStmt, opts b
 		}
 	}
 
+	// SEND EMAIL writes the 11.13+ shape (StringTemplate subject and bodies);
+	// an older project stores a different EmailMessage, or no such activity.
+	if bodyContains(s.Body, func(st ast.MicroflowStatement) bool { _, ok := st.(*ast.SendEmailStmt); return ok }) {
+		if err := checkFeature(ctx, "microflows", "send_email", "send email",
+			"use the Email Connector module, or upgrade the project to 11.13+"); err != nil {
+			return nil, err
+		}
+	}
+
 	// Find the module, and the folder, WITHOUT creating either on a dry run:
 	// findOrCreateModule and resolveFolder both write, and `diff` must render a
 	// proposed flow against an unmodified project.

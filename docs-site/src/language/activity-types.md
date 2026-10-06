@@ -228,6 +228,49 @@ LOG INFO NODE 'OrderProcessing' 'Order created: ' + $Order/OrderNumber;
 LOG ERROR NODE 'PaymentGateway' 'Payment failed for order ' + $Order/OrderNumber;
 ```
 
+## Email
+
+### SEND EMAIL
+
+Sends mail over SMTP with the built-in **Send Email** activity (Studio Pro 11.13+,
+beta) — no Email Connector module needed. Microflows only.
+
+```sql
+SEND EMAIL
+  FROM @Shop.MailSender
+  TO $Order/CustomerEmail
+  CC 'archive@example.com'
+  SUBJECT 'Order {1} confirmed' WITH ({1} = $Order/OrderNumber)
+  BODY TEXT 'Hi {1}, your order ships soon.' WITH ({1} = $Order/CustomerName)
+  BODY HTML '<p>Your order ships soon.</p>'
+  HEADER 'X-Correlation-Id' = 'order-confirmation'
+  ATTACHMENT $Invoice
+  HOST @Shop.SmtpHost PORT @Shop.SmtpPort
+  SECURITY SSL CHECK SERVER IDENTITY
+  TIMEOUT 30000
+  AUTH BASIC @Shop.SmtpUser PASSWORD @Shop.SmtpPassword
+  ON ERROR WITHOUT ROLLBACK BEGIN
+    LOG ERROR NODE 'Mail' 'Sending failed';
+  END ERROR;
+```
+
+The clauses come in this order; `FROM`, `TO`, `SUBJECT`, `HOST` and `PORT` are required.
+
+- **Addresses, host, port, user and password** are expressions. All are String
+  except `PORT`, which is Integer or Long. Prefer constants for the connection
+  settings, and never a literal password.
+- **Subject and bodies** are string templates, as in `LOG`: fixed text with `{1}`,
+  `{2}` … placeholders, each filled by a String expression in `WITH`. Any other
+  expression is stored as the template `'{1}'`.
+- **Headers** are plain strings: the name holds letters, digits and hyphens.
+- **Attachment** is a `System.FileDocument` variable, a list of them, or a
+  specialization.
+- **Defaults**, which `DESCRIBE` leaves out: `SECURITY TLS`, `TIMEOUT 20000`, no
+  `CHECK SERVER IDENTITY` (it applies to SSL only), no authentication.
+
+Studio Pro's *Test Email* tab is an editor tool and is not part of MDL; rewriting
+the microflow stores it empty.
+
 ## Database Query Execution
 
 ### EXECUTE DATABASE QUERY
@@ -273,5 +316,6 @@ The query name follows a three-part naming convention: `Module.ConnectionName.Qu
 | Validation | `VALIDATION FEEDBACK $Var/Attr MESSAGE 'msg';` | -- |
 | Log | `LOG INFO\|WARNING\|ERROR [NODE 'name'] 'msg';` | -- |
 | DB query | `$Var = EXECUTE DATABASE QUERY Module.Conn.Query;` | Result set |
+| Send email | `SEND EMAIL FROM … TO … SUBJECT '…' HOST … PORT …;` (11.13+) | -- |
 | Assignment | `SET $Var = expression;` | -- |
 | Change list | `ADD $Item TO $List;` / `REMOVE $Item FROM $List;` / `CLEAR $List;` / `SET $List = $Other;` | -- |
