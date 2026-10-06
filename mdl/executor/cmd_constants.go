@@ -264,6 +264,22 @@ func formatDefaultValue(dt model.ConstantDataType, value string) string {
 	}
 }
 
+// storedConstantDefault puts a default value into the form Studio Pro stores. A
+// Boolean is "True" / "False": Studio Pro's constant dialog reads a stored "true" as
+// False while the runtime reads it as true, so the literal `true` (rendered by fmt
+// as "true") made the app run with a value the developer never sees (#1321).
+func storedConstantDefault(dt model.ConstantDataType, value string) string {
+	if dt.Kind == "Boolean" {
+		switch {
+		case strings.EqualFold(value, "true"):
+			return "True"
+		case strings.EqualFold(value, "false"):
+			return "False"
+		}
+	}
+	return value
+}
+
 // createConstant handles CREATE CONSTANT command.
 func createConstant(ctx *ExecContext, stmt *ast.CreateConstantStmt) error {
 	if !ctx.ConnectedForWrite() {
@@ -289,6 +305,7 @@ func createConstant(ctx *ExecContext, stmt *ast.CreateConstantStmt) error {
 	if stmt.DefaultValue != nil {
 		defaultValue = fmt.Sprintf("%v", stmt.DefaultValue)
 	}
+	defaultValue = storedConstantDefault(constType, defaultValue)
 
 	// Check if constant already exists in this module
 	existingConstants, err := ctx.Backend.ListConstants()

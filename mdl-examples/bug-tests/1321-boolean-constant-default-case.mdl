@@ -1,0 +1,20 @@
+mdl 1;
+-- ============================================================================
+-- mendixlabs/mxcli#1321: Boolean constant DefaultValue stored in Studio Pro's case
+-- ============================================================================
+--
+-- Before: `DefaultValue: true` and `DefaultValue: True` were stored as "true".
+-- Studio Pro stores a Boolean default as "True" / "False"; its constant dialog
+-- shows a stored "true" as False while the runtime reads it as true, so the
+-- value a developer sees and the value the app runs with differed. `mx check`
+-- reports nothing either way and `describe constant` prints both identically,
+-- so the difference only shows in the stored unit.
+--
+-- After: every spelling below is stored as "True" or "False".
+
+create module BugTest1321;
+
+create constant BugTest1321.FlagA (Type: Boolean, DefaultValue: true);
+create constant BugTest1321.FlagB (Type: Boolean, DefaultValue: True);
+create constant BugTest1321.FlagC (Type: Boolean, DefaultValue: 'True');
+create constant BugTest1321.FlagD (Type: Boolean, DefaultValue: false);
