@@ -2012,78 +2012,85 @@ func (e *Executor) formatListOperation(op microflows.ListOperation, outputVar st
 	return formatListOperation(e.newExecContext(context.Background()), op, outputVar)
 }
 
-// formatSendEmailAction renders a Send Email activity as `send email`, one clause
-// per line in grammar order. Platform defaults (security TLS, timeout 20000, no
-// server-identity check, no authentication) are omitted, so a statement that
+// formatSendEmailAction renders a Send Email activity as `send email ( … )`:
+// the dialog's settings as one property list (ADR-0013), one per line with a
+// trailing comma, in the order the visitor documents them. Platform defaults
+// (SecurityType tls, ConnectionTimeout 20000, CheckServerIdentity false, no
+// authentication) and empty optional settings are omitted, so a statement that
 // does not state them builds the same action (R12).
 func formatSendEmailAction(ctx *ExecContext, a *microflows.SendEmailAction) string {
-	var sb strings.Builder
-	sb.WriteString("send email")
-	clause := func(kw, expr string) {
-		sb.WriteString("\n    ")
-		sb.WriteString(kw)
-		sb.WriteString(" ")
-		sb.WriteString(expr)
-	}
-	exprOrEmpty := func(e string) string {
+	var settings []string
+	set := func(key, value string) { settings = append(settings, key+": "+value) }
+	expr := func(e string) string {
 		if d := describeExpr(ctx, e); d != "" {
 			return d
 		}
 		return "''"
 	}
-	template := func(t microflows.EmailTemplate) string {
-		out := mdlQuote(ctx, t.Text)
-		if len(t.Parameters) > 0 {
-			params := make([]string, 0, len(t.Parameters))
-			for i, p := range t.Parameters {
-				params = append(params, fmt.Sprintf("{%d} = %s", i+1, exprOrEmpty(p)))
-			}
-			out += " with (" + strings.Join(params, ", ") + ")"
+	params := func(t microflows.EmailTemplate) string {
+		if len(t.Parameters) == 0 {
+			return ""
 		}
-		return out
+		ps := make([]string, 0, len(t.Parameters))
+		for i, p := range t.Parameters {
+			ps = append(ps, fmt.Sprintf("{%d} = %s", i+1, expr(p)))
+		}
+		return " with (" + strings.Join(ps, ", ") + ")"
 	}
 	present := func(t microflows.EmailTemplate) bool { return t.Text != "" || len(t.Parameters) > 0 }
 
-	clause("from", exprOrEmpty(a.From))
-	clause("to", exprOrEmpty(a.To))
+	set("From", expr(a.From))
+	if a.To != "" {
+		set("To", describeExpr(ctx, a.To))
+	}
 	if a.Cc != "" {
-		clause("cc", describeExpr(ctx, a.Cc))
+		set("Cc", describeExpr(ctx, a.Cc))
 	}
 	if a.Bcc != "" {
-		clause("bcc", describeExpr(ctx, a.Bcc))
+		set("Bcc", describeExpr(ctx, a.Bcc))
 	}
-	clause("subject", template(a.Subject))
+	if present(a.Subject) {
+		set("Subject", mdlQuote(ctx, a.Subject.Text)+params(a.Subject))
+	}
 	if present(a.BodyPlainText) {
-		clause("body text", template(a.BodyPlainText))
+		set("Body", "template "+mdlQuote(ctx, a.BodyPlainText.Text)+params(a.BodyPlainText))
 	}
 	if present(a.BodyHTML) {
-		clause("body html", template(a.BodyHTML))
+		set("HtmlBody", "template "+mdlQuote(ctx, a.BodyHTML.Text)+params(a.BodyHTML))
 	}
-	for _, h := range a.CustomHeaders {
-		clause("header", mdlQuote(ctx, h.Name)+" = "+mdlQuote(ctx, h.Value))
+	if len(a.CustomHeaders) > 0 {
+		hdrs := make([]string, 0, len(a.CustomHeaders))
+		for _, h := range a.CustomHeaders {
+			hdrs = append(hdrs, mdlQuote(ctx, h.Name)+": "+mdlQuote(ctx, h.Value))
+		}
+		set("Headers", "("+strings.Join(hdrs, ", ")+")")
 	}
 	if a.Attachment != "" {
-		clause("attachment", "$"+strings.TrimPrefix(a.Attachment, "$"))
+		set("Attachment", "$"+strings.TrimPrefix(a.Attachment, "$"))
 	}
-	clause("host", exprOrEmpty(a.Host)+" port "+exprOrEmpty(a.Port))
-	sec := a.SecurityType
-	if sec == "" {
-		sec = microflows.EmailSecurityTLS
+	set("Host", expr(a.Host))
+	set("Port", expr(a.Port))
+	if a.SecurityType != "" && a.SecurityType != microflows.EmailSecurityTLS {
+		set("SecurityType", strings.ToLower(string(a.SecurityType)))
 	}
-	if sec != microflows.EmailSecurityTLS || a.CheckServerIdentity {
-		s := strings.ToLower(string(sec))
-		if a.CheckServerIdentity {
-			s += " check server identity"
-		}
-		clause("security", s)
+	if a.CheckServerIdentity {
+		set("CheckServerIdentity", "true")
 	}
 	if a.ConnectionTimeout != 0 && a.ConnectionTimeout != microflows.DefaultEmailConnectionTimeout {
-		clause("timeout", fmt.Sprintf("%d", a.ConnectionTimeout))
+		set("ConnectionTimeout", fmt.Sprintf("%d", a.ConnectionTimeout))
 	}
 	if a.UseAuthentication {
-		clause("auth basic", exprOrEmpty(a.Username)+" password "+exprOrEmpty(a.Password))
+		set("Authentication", "basic (Username: "+expr(a.Username)+", Password: "+expr(a.Password)+")")
 	}
-	sb.WriteString(";")
+
+	var sb strings.Builder
+	sb.WriteString("send email (")
+	for _, s := range settings {
+		sb.WriteString("\n    ")
+		sb.WriteString(s)
+		sb.WriteString(",")
+	}
+	sb.WriteString("\n  );")
 	return sb.String()
 }
 

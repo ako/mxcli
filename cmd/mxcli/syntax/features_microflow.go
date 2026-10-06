@@ -34,51 +34,58 @@ func init() {
 			"send email", "email", "mail", "smtp", "send mail", "e-mail",
 			"cc", "bcc", "subject", "attachment", "email connector",
 		},
-		Syntax: "SEND EMAIL\n" +
-			"  FROM <expr> TO <expr> [CC <expr>] [BCC <expr>]\n" +
-			"  SUBJECT 'text {1}' [WITH ({1} = <expr>, ...)]\n" +
-			"  [BODY TEXT 'text {1}' [WITH (...)]]\n" +
-			"  [BODY HTML '<p>{1}</p>' [WITH (...)]]\n" +
-			"  [HEADER 'X-Name' = 'value']...\n" +
-			"  [ATTACHMENT $FileDocumentOrList]\n" +
-			"  HOST <expr> PORT <expr>\n" +
-			"  [SECURITY NONE | SSL [CHECK SERVER IDENTITY] | TLS]\n" +
-			"  [TIMEOUT <milliseconds>]\n" +
-			"  [AUTH BASIC <user-expr> PASSWORD <password-expr>]\n" +
-			"  [ON ERROR ...];\n\n" +
+		Syntax: "SEND EMAIL (\n" +
+			"  From: <expr>,                       -- required\n" +
+			"  To: <expr>, Cc: <expr>, Bcc: <expr>, -- at least one\n" +
+			"  Subject: 'text {1}' [with ({1} = <expr>, ...)],\n" +
+			"  Body: template 'text {1}' [with (...)],\n" +
+			"  HtmlBody: template '<p>{1}</p>' [with (...)],\n" +
+			"  Headers: ('X-Name': 'value', ...),\n" +
+			"  Attachment: $FileDocumentOrList,\n" +
+			"  Host: <expr>,                       -- required\n" +
+			"  Port: <expr>,                       -- required\n" +
+			"  SecurityType: none | ssl | tls,     -- default tls\n" +
+			"  CheckServerIdentity: true | false,  -- ssl only\n" +
+			"  ConnectionTimeout: <milliseconds>,  -- default 20000\n" +
+			"  Authentication: basic (Username: <expr>, Password: <expr>),\n" +
+			") [ON ERROR ...];\n\n" +
 			"Microflow only, Mendix 11.13+ (Microflows$SendEmailAction). Sends mail over\n" +
-			"SMTP without the Email Connector module. Clauses are in this fixed order.\n\n" +
-			"FROM/TO/CC/BCC, HOST, PORT and the credentials are expressions: String,\n" +
-			"except PORT, which is Integer/Long (mxbuild CE9528 otherwise; `check`\n" +
+			"SMTP without the Email Connector module. The dialog's settings are one\n" +
+			"property list (ADR-0013); order does not matter, and an unknown, repeated or\n" +
+			"misshapen key is an error. A missing From, Host, Port or recipient is\n" +
+			"refused too: mxbuild reports each as CE0166.\n\n" +
+			"From/To/Cc/Bcc, Host, Port and the credentials are expressions: String,\n" +
+			"except Port, which is Integer/Long (mxbuild CE9528 otherwise; `check`\n" +
 			"reports E009 first). Prefer constants for host, port and password.\n\n" +
-			"SUBJECT and the bodies are string templates, like LOG: fixed text with {1},\n" +
-			"{2} ... placeholders filled by WITH. Each parameter must be a String (CE0117)\n" +
-			"and every placeholder needs one (CE0720). Any other expression is stored as\n" +
-			"'{1}' with the expression as its parameter.\n\n" +
-			"HEADER name and value are plain strings, not expressions: letters, digits\n" +
-			"and hyphens in the name, one line in the value (MDL-EMAIL03).\n" +
-			"ATTACHMENT names a System.FileDocument variable, a list of them, or a\n" +
-			"specialization. SECURITY defaults to TLS and TIMEOUT to 20000; CHECK SERVER\n" +
-			"IDENTITY applies to SSL only (MDL-EMAIL02).\n\n" +
+			"Subject is a text template, like LOG's message; Body and HtmlBody take\n" +
+			"template '...', like a REST body. Placeholders {1}, {2} ... are filled by\n" +
+			"WITH; each parameter must be a String (CE0117) and every placeholder needs\n" +
+			"one (CE0720). Any other expression is stored as '{1}' with the expression\n" +
+			"as its parameter.\n\n" +
+			"Headers are plain strings, not expressions: letters, digits and hyphens in\n" +
+			"the name, one line in the value (MDL-EMAIL03). Attachment names a\n" +
+			"System.FileDocument variable, a list of them, or a specialization.\n" +
+			"CheckServerIdentity applies to SSL only (MDL-EMAIL02).\n\n" +
 			"Studio Pro's Test Email tab is an editor tool and is not part of MDL: a\n" +
 			"rewrite of the microflow stores it empty.",
 		Example: "mdl 1;\n" +
 			"create or modify microflow Shop.SUB_SendConfirmation ($Order: Shop.Order, $Invoice: Shop.Invoice)\n" +
 			"returns Boolean as $Sent\n" +
 			"begin\n" +
-			"  send email\n" +
-			"    from @Shop.MailSender\n" +
-			"    to $Order/CustomerEmail\n" +
-			"    subject 'Order {1} confirmed' with ({1} = $Order/OrderNumber)\n" +
-			"    body text 'Hi {1}, your order ships soon.' with ({1} = $Order/CustomerName)\n" +
-			"    header 'X-Correlation-Id' = 'order-confirmation'\n" +
-			"    attachment $Invoice\n" +
-			"    host @Shop.SmtpHost port @Shop.SmtpPort\n" +
-			"    auth basic @Shop.SmtpUser password @Shop.SmtpPassword\n" +
-			"    on error without rollback begin\n" +
-			"      log error node 'Mail' 'Sending the confirmation failed';\n" +
-			"      return false;\n" +
-			"    end error;\n" +
+			"  send email (\n" +
+			"    From: @Shop.MailSender,\n" +
+			"    To: $Order/CustomerEmail,\n" +
+			"    Subject: 'Order {1} confirmed' with ({1} = $Order/OrderNumber),\n" +
+			"    Body: template 'Hi {1}, your order ships soon.' with ({1} = $Order/CustomerName),\n" +
+			"    Headers: ('X-Correlation-Id': 'order-confirmation'),\n" +
+			"    Attachment: $Invoice,\n" +
+			"    Host: @Shop.SmtpHost,\n" +
+			"    Port: @Shop.SmtpPort,\n" +
+			"    Authentication: basic (Username: @Shop.SmtpUser, Password: @Shop.SmtpPassword),\n" +
+			"  ) on error without rollback begin\n" +
+			"    log error node 'Mail' 'Sending the confirmation failed';\n" +
+			"    return false;\n" +
+			"  end error;\n" +
 			"  return true;\n" +
 			"end;",
 		SeeAlso: []string{"microflow.error-handling", "rest.call", "microflow.nanoflow"},

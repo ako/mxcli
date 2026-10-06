@@ -13,8 +13,9 @@ mdl 1;
 -- project, then `mxcli docker check`: 0 errors. Each fault mxbuild catches was
 -- measured one per microflow (CE0109 unknown attachment, CE9528 non-String
 -- address/host/user or non-Integer port, CE0117 non-String template parameter,
--- CE0720 placeholder without a parameter); `mxcli check` reports the type ones
--- as E009 before the build.
+-- CE0720 placeholder without a parameter, CE0166 a missing From, Host, Port
+-- or recipient); `mxcli check` reports the type ones as E009 and the missing
+-- ones as errors before the build.
 
 create module BugTest1315;
 
@@ -29,40 +30,48 @@ create constant BugTest1315.SmtpHost ( Type: String, DefaultValue: 'smtp.example
 create constant BugTest1315.SmtpPort ( Type: Integer, DefaultValue: 587 );
 create constant BugTest1315.SmtpPassword ( Type: String, DefaultValue: '' );
 
--- Every clause, in the order describe prints them.
+-- Every setting, in the order describe prints them (ADR-0013: the dialog's
+-- settings are one property list; the activity has no operand, so the list
+-- follows the verb).
 create or modify microflow BugTest1315.SUB_SendEmailSmtp (
   $Email: BugTest1315.OutboundEmail,
   $Invoice: BugTest1315.Invoice
 )
 returns Boolean as $Sent
 begin
-  send email
-    from $Email/Sender
-    to $Email/Recipient
-    cc 'archive@example.com'
-    subject 'Order {1} confirmed' with ({1} = $Email/OrderNumber)
-    body text 'Your order {1} ships soon.' with ({1} = $Email/OrderNumber)
-    body html '<p>Your order ships soon.</p>'
-    header 'X-Correlation-Id' = 'order-confirmation'
-    attachment $Invoice
-    host @BugTest1315.SmtpHost port @BugTest1315.SmtpPort
-    security ssl check server identity
-    timeout 30000
-    auth basic $Email/Sender password @BugTest1315.SmtpPassword
-    on error without rollback begin
-      log error node 'Mail' 'Sending failed';
-      return false;
-    end error;
+  send email (
+    From: $Email/Sender,
+    To: $Email/Recipient,
+    Cc: 'archive@example.com',
+    Subject: 'Order {1} confirmed' with ({1} = $Email/OrderNumber),
+    Body: template 'Your order {1} ships soon.' with ({1} = $Email/OrderNumber),
+    HtmlBody: template '<p>Your order ships soon.</p>',
+    Headers: ('X-Correlation-Id': 'order-confirmation'),
+    Attachment: $Invoice,
+    Host: @BugTest1315.SmtpHost,
+    Port: @BugTest1315.SmtpPort,
+    SecurityType: ssl,
+    CheckServerIdentity: true,
+    ConnectionTimeout: 30000,
+    Authentication: basic (Username: $Email/Sender, Password: @BugTest1315.SmtpPassword),
+  ) on error without rollback begin
+    log error node 'Mail' 'Sending failed';
+    return false;
+  end error;
   return true;
 end;
 
--- The minimum: defaults are TLS, 20000 ms, no authentication. A subject that
--- is an expression is stored as the template '{1}'.
+-- The minimum mxbuild accepts: From, Host, Port and one of To/Cc/Bcc (each
+-- missing one is CE0166; a missing Subject is not an error). Defaults are TLS,
+-- 20000 ms and no authentication. A subject that is an expression is stored
+-- as the template '{1}'.
 create or modify microflow BugTest1315.SUB_SendEmailMinimal ($Email: BugTest1315.OutboundEmail)
 begin
-  send email
-    from 'noreply@example.com'
-    to $Email/Recipient
-    subject $Email/Subject
-    host 'smtp.example.com' port 25;
+  send email (
+    From: 'noreply@example.com',
+    Bcc: $Email/Recipient,
+    Subject: $Email/Subject,
+    Host: 'smtp.example.com',
+    Port: 25,
+  );
 end;

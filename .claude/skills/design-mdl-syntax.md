@@ -141,7 +141,10 @@ $Customer = call rest service post 'https://api.example.com/customers/{1}' with 
 data flow, `on error` the error handling — all words. The four settings are the
 dialog's, so they are keys.
 
-Worked example — a new activity, designed to the rule (hypothetical `send email`):
+Worked example — a new activity, designed to the rule (`send email`, an
+activity with no main operand, so the list follows the verb; implementation in
+`mdl/visitor/visitor_send_email_settings.go`, which reuses `restCallMapEntry` and
+the credential check, and has no clause form and no deprecation code):
 
 ```mdl
 send email (

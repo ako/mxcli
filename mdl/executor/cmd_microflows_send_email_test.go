@@ -18,23 +18,25 @@ import (
 
 const sendEmailHeader = "create microflow M.SUB_Send ($Msg: M.Msg, $Doc: M.Doc) returns Boolean\nbegin\n"
 
-// The full statement, every clause at a non-default value. describe prints the
-// clauses in this order, so the body is also the expected description.
-const sendEmailFull = `send email
-    from $Msg/Sender
-    to $Msg/Recipient
-    cc 'cc@example.com'
-    bcc 'bcc@example.com'
-    subject 'Order {1} for {2}' with ({1} = $Msg/Number, {2} = $Msg/Name)
-    body text 'Hello {1}' with ({1} = $Msg/Name)
-    body html '<p>Hello</p>'
-    header 'X-Correlation-Id' = 'abc-123'
-    header 'X-Priority' = '1'
-    attachment $Doc
-    host @M.SmtpHost port @M.SmtpPort
-    security ssl check server identity
-    timeout 30000
-    auth basic @M.SmtpUser password @M.SmtpPassword;`
+// The full statement, every setting at a non-default value, in the order
+// describe prints them — so the statement is also the expected description.
+const sendEmailFull = `send email (
+    From: $Msg/Sender,
+    To: $Msg/Recipient,
+    Cc: 'cc@example.com',
+    Bcc: 'bcc@example.com',
+    Subject: 'Order {1} for {2}' with ({1} = $Msg/Number, {2} = $Msg/Name),
+    Body: template 'Hello {1}' with ({1} = $Msg/Name),
+    HtmlBody: template '<p>Hello</p>',
+    Headers: ('X-Correlation-Id': 'abc-123', 'X-Priority': '1'),
+    Attachment: $Doc,
+    Host: @M.SmtpHost,
+    Port: @M.SmtpPort,
+    SecurityType: ssl,
+    CheckServerIdentity: true,
+    ConnectionTimeout: 30000,
+    Authentication: basic (Username: @M.SmtpUser, Password: @M.SmtpPassword),
+  );`
 
 func sendEmailActionOf(t *testing.T, oc *microflows.MicroflowObjectCollection) *microflows.SendEmailAction {
 	t.Helper()
@@ -49,7 +51,7 @@ func sendEmailActionOf(t *testing.T, oc *microflows.MicroflowObjectCollection) *
 	return nil
 }
 
-// mendixlabs/mxcli#1315: `send email` builds a SendEmailAction holding exactly
+// mendixlabs/mxcli#1315: `send email ( … )` builds a SendEmailAction holding exactly
 // what the statement says, and describe gives the statement back — a fixed
 // point, so describe → exec keeps the activity.
 func TestSendEmail_BuildsAndDescribesRoundTrip(t *testing.T) {
@@ -96,7 +98,7 @@ func TestSendEmail_BuildsAndDescribesRoundTrip(t *testing.T) {
 // Defaults are omitted from describe (R12) and the minimal statement builds
 // the platform defaults: TLS, 20000 ms, no server-identity check, no auth.
 func TestSendEmail_MinimalStatementUsesPlatformDefaults(t *testing.T) {
-	minimal := "send email\n    from 'a@example.com'\n    to 'b@example.com'\n    subject 'Hi'\n    host 'smtp.example.com' port 25;"
+	minimal := "send email (\n    From: 'a@example.com',\n    To: 'b@example.com',\n    Subject: 'Hi',\n    Host: 'smtp.example.com',\n    Port: 25,\n  );"
 	described, oc := describeFold(t, sendEmailHeader+"  "+minimal+"\n  return true;\nend;")
 	a := sendEmailActionOf(t, oc)
 	if a.SecurityType != microflows.EmailSecurityTLS || a.ConnectionTimeout != 20000 || a.CheckServerIdentity || a.UseAuthentication {
@@ -112,7 +114,7 @@ func TestSendEmail_MinimalStatementUsesPlatformDefaults(t *testing.T) {
 // Studio Pro would hold it: '{1}' with the expression as the parameter — the
 // rule `log` applies to its message. Measured on mxbuild 11.15.0-rc.4: clean.
 func TestSendEmail_ExpressionSubjectBecomesOneParameterTemplate(t *testing.T) {
-	src := "  send email from 'a@x.com' to 'b@x.com' subject $Msg/Subject host 'h' port 25;\n  return true;"
+	src := "  send email (From: 'a@x.com', To: 'b@x.com', Subject: $Msg/Subject, Host: 'h', Port: 25);\n  return true;"
 	_, oc := describeFold(t, sendEmailHeader+src+"\nend;")
 	a := sendEmailActionOf(t, oc)
 	if a.Subject.Text != "{1}" || len(a.Subject.Parameters) != 1 || a.Subject.Parameters[0] != "$Msg/Subject" {
@@ -123,7 +125,7 @@ func TestSendEmail_ExpressionSubjectBecomesOneParameterTemplate(t *testing.T) {
 // The custom error handler is wired as on any other activity: without it the
 // activity stores CustomWithoutRollback with no error flow (CE0011).
 func TestSendEmail_CustomErrorHandler(t *testing.T) {
-	src := `  send email from 'a@x.com' to 'b@x.com' subject 'Hi' host 'h' port 25
+	src := `  send email (From: 'a@x.com', To: 'b@x.com', Subject: 'Hi', Host: 'h', Port: 25)
     on error without rollback begin
       log error node 'Mail' 'failed';
       return false;
@@ -147,17 +149,12 @@ func TestSendEmail_CustomErrorHandler(t *testing.T) {
 	}
 }
 
-// sendEmailViolations validates a statement with clauses spliced in: those
-// starting with `header` go before `host`, the rest after `port` (the grammar
-// fixes the order).
-func sendEmailViolations(t *testing.T, clauses string) map[string]string {
+// sendEmailViolations validates a statement with settings appended to a
+// minimal valid list and returns the MDL-EMAIL rules it trips.
+func sendEmailViolations(t *testing.T, settings string) map[string]string {
 	t.Helper()
-	before, after := "", clauses
-	if strings.HasPrefix(clauses, "header") {
-		before, after = clauses+" ", ""
-	}
-	prog, errs := visitor.Build("create microflow M.SUB_Send () begin\n  send email from 'a@x.com' to 'b@x.com' subject 'Hi' " +
-		before + "host 'h' port 25 " + after + ";\nend;")
+	prog, errs := visitor.Build("create microflow M.SUB_Send () begin\n  send email (From: 'a@x.com', To: 'b@x.com', Host: 'h', Port: 25, " +
+		settings + ");\nend;")
 	if len(errs) > 0 {
 		t.Fatalf("parse: %v", errs[0])
 	}
@@ -172,24 +169,22 @@ func sendEmailViolations(t *testing.T, clauses string) map[string]string {
 
 func TestSendEmail_CheckRules(t *testing.T) {
 	for _, tc := range []struct {
-		clauses string
-		want    map[string]string
+		settings string
+		want     map[string]string
 	}{
-		{"", map[string]string{}},
-		{"security ssl check server identity", map[string]string{}},
-		{"security none", map[string]string{}},
-		{"header 'X-Correlation-Id' = 'abc'", map[string]string{}},
-		// MDL-EMAIL01: the grammar takes any word; the builder can map three.
-		{"security starttls", map[string]string{"MDL-EMAIL01": "error"}},
+		{"Subject: 'Hi'", map[string]string{}},
+		{"SecurityType: ssl, CheckServerIdentity: true", map[string]string{}},
+		{"SecurityType: none", map[string]string{}},
+		{"Headers: ('X-Correlation-Id': 'abc')", map[string]string{}},
 		// MDL-EMAIL02: a warning, because mxbuild 11.15.0-rc.4 accepts it.
-		{"security tls check server identity", map[string]string{"MDL-EMAIL02": "warning"}},
-		{"security none check server identity", map[string]string{"MDL-EMAIL02": "warning"}},
+		{"SecurityType: tls, CheckServerIdentity: true", map[string]string{"MDL-EMAIL02": "warning"}},
+		{"CheckServerIdentity: true", map[string]string{"MDL-EMAIL02": "warning"}},
 		// MDL-EMAIL03: Studio Pro's header rules, also accepted by mxbuild.
-		{"header 'Bad Name!' = 'v'", map[string]string{"MDL-EMAIL03": "warning"}},
-		{"header 'X-Empty' = ''", map[string]string{"MDL-EMAIL03": "warning"}},
+		{"Headers: ('Bad Name!': 'v')", map[string]string{"MDL-EMAIL03": "warning"}},
+		{"Headers: ('X-Empty': '')", map[string]string{"MDL-EMAIL03": "warning"}},
 	} {
-		t.Run(tc.clauses, func(t *testing.T) {
-			got := sendEmailViolations(t, tc.clauses)
+		t.Run(tc.settings, func(t *testing.T) {
+			got := sendEmailViolations(t, tc.settings)
 			if fmtMap(got) != fmtMap(tc.want) {
 				t.Errorf("violations = %v, want %v", got, tc.want)
 			}
@@ -217,7 +212,7 @@ func TestSendEmail_VersionGate(t *testing.T) {
 		}))
 		return ctx
 	}
-	stmt := parseMicroflowStmt(t, "create microflow M.SUB_Send () begin\n  send email from 'a@x.com' to 'b@x.com' subject 'Hi' host 'h' port 25;\nend;")
+	stmt := parseMicroflowStmt(t, "create microflow M.SUB_Send () begin\n  send email (From: 'a@x.com', To: 'b@x.com', Host: 'h', Port: 25);\nend;")
 
 	for _, v := range [][2]int{{10, 24}, {11, 12}} {
 		_, err := buildMicroflowFromStmt(at(v[0], v[1]), stmt, buildFlowOpts{})

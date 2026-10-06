@@ -423,13 +423,6 @@ var mdlGeneratedKeywords = []protocol.CompletionItem{
 	{Label: "REQUEST", Kind: protocol.CompletionItemKindKeyword, Detail: "REST keyword"},
 	{Label: "SEND", Kind: protocol.CompletionItemKindKeyword, Detail: "REST keyword"},
 	{Label: "EMAIL", Kind: protocol.CompletionItemKindKeyword, Detail: "REST keyword"},
-	{Label: "CC", Kind: protocol.CompletionItemKindKeyword, Detail: "REST keyword"},
-	{Label: "BCC", Kind: protocol.CompletionItemKindKeyword, Detail: "REST keyword"},
-	{Label: "SUBJECT", Kind: protocol.CompletionItemKindKeyword, Detail: "REST keyword"},
-	{Label: "HTML", Kind: protocol.CompletionItemKindKeyword, Detail: "REST keyword"},
-	{Label: "ATTACHMENT", Kind: protocol.CompletionItemKindKeyword, Detail: "REST keyword"},
-	{Label: "SERVER", Kind: protocol.CompletionItemKindKeyword, Detail: "REST keyword"},
-	{Label: "IDENTITY", Kind: protocol.CompletionItemKindKeyword, Detail: "REST keyword"},
 
 	// Service keyword
 	{Label: "RECEIVE", Kind: protocol.CompletionItemKindKeyword, Detail: "Service keyword"},

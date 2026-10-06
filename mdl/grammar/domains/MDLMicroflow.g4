@@ -899,48 +899,41 @@ restCallReturnsClause
  * SEND EMAIL — the built-in Send Email activity (Microflows$SendEmailAction,
  * Studio Pro 11.13+ beta). SMTP from a microflow, without the Email Connector.
  *
- *   send email
- *     from $Msg/Sender to $Msg/Recipient [cc …] [bcc …]
- *     subject 'Order {1} confirmed' with ({1} = $Order/Number)
- *     [body text 'template' [with (…)]] [body html 'template' [with (…)]]
- *     [header 'X-Name' = 'value']*
- *     [attachment $Doc]
- *     host @Mod.SmtpHost port @Mod.SmtpPort
- *     [security none | ssl [check server identity] | tls]
- *     [timeout 20000]
- *     [auth basic $User password @Mod.SmtpPassword]
- *     [on error …];
+ *   send email (
+ *     From: @Shop.MailSender,
+ *     To: $Order/CustomerEmail,
+ *     Subject: 'Order {1} confirmed' with ({1} = $Order/Number),
+ *     Body: template 'Your order {1} ships soon.' with ({1} = $Order/Number),
+ *     Host: @Shop.SmtpHost,
+ *     Port: @Shop.SmtpPort,
+ *     Authentication: basic (Username: @Shop.SmtpUser, Password: @Shop.SmtpPassword),
+ *   ) [on error …];
  *
- * Clauses are in a fixed order, the order `describe` prints them. Subject and
- * bodies are string templates: fixed text plus `{n}` placeholders, like `log`.
- * Header names and values are plain strings, not expressions. The security
- * mode is validated in the visitor (none/ssl/tls), keeping SSL and TLS out of
- * the keyword set.
+ * ADR-0013: an activity's dialog settings are one ( Key: value, … ) list. The
+ * activity has no main operand and no result, so the list follows the verb.
+ * The keys, their value shapes and the required ones are checked by the
+ * visitor (visitor_send_email_settings.go), as for `call rest service`.
  */
 sendEmailStatement
-    : SEND EMAIL
-      FROM expression
-      TO expression
-      (CC expression)?
-      (BCC expression)?
-      SUBJECT sendEmailTemplate
-      (BODY TEXT sendEmailTemplate)?
-      (BODY HTML sendEmailTemplate)?
-      sendEmailHeaderClause*
-      (ATTACHMENT VARIABLE)?
-      HOST expression PORT expression
-      (SECURITY identifierOrKeyword (CHECK SERVER IDENTITY)?)?
-      (TIMEOUT NUMBER_LITERAL)?
-      (AUTH BASIC expression PASSWORD expression)?
-      onErrorClause?
+    : SEND EMAIL sendEmailSettings onErrorClause?
     ;
 
-sendEmailTemplate
-    : expression templateParams?
+sendEmailSettings
+    : LPAREN sendEmailSetting (COMMA sendEmailSetting)* COMMA? RPAREN
     ;
 
-sendEmailHeaderClause
-    : HEADER (IDENTIFIER | STRING_LITERAL) EQUALS STRING_LITERAL
+sendEmailSetting
+    : identifierOrKeyword COLON sendEmailSettingValue
+    ;
+
+// The value shapes, one per key; restCallSettingValue's, less the REST-only
+// mapping and binary bodies. Ordered so a keyword-led shape is tried before a
+// bare expression.
+sendEmailSettingValue
+    : LPAREN restCallMapEntry (COMMA restCallMapEntry)* COMMA? RPAREN       // Headers: ( 'X-Id': 'value' )
+    | BASIC LPAREN restCallMapEntry (COMMA restCallMapEntry)* COMMA? RPAREN // Authentication: basic ( Username: $u, Password: $p )
+    | TEMPLATE STRING_LITERAL templateParams?                               // Body: template '…' [with ({1} = …)]
+    | expression templateParams?                                            // Subject: '…' [with (…)] / To: $x / SecurityType: tls
     ;
 
 /**
