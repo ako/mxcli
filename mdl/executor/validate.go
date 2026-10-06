@@ -1765,6 +1765,10 @@ func getErrorHandlerBody(stmt ast.MicroflowStatement) []ast.MicroflowStatement {
 		if s.ErrorHandling != nil && s.ErrorHandling.Body != nil {
 			return s.ErrorHandling.Body
 		}
+	case *ast.SendEmailStmt:
+		if s.ErrorHandling != nil && s.ErrorHandling.Body != nil {
+			return s.ErrorHandling.Body
+		}
 	case *ast.CallJavaScriptActionStmt:
 		if s.ErrorHandling != nil && s.ErrorHandling.Body != nil {
 			return s.ErrorHandling.Body

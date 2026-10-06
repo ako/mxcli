@@ -997,6 +997,9 @@ func formatAction(
 	case *microflows.RestCallAction:
 		return formatRestCallAction(ctx, a)
 
+	case *microflows.SendEmailAction:
+		return formatSendEmailAction(ctx, a)
+
 	case *microflows.RestOperationCallAction:
 		return formatRestOperationCallAction(ctx, a)
 
@@ -2007,6 +2010,88 @@ func (e *Executor) formatAction(action microflows.MicroflowAction, entityNames m
 
 func (e *Executor) formatListOperation(op microflows.ListOperation, outputVar string) string {
 	return formatListOperation(e.newExecContext(context.Background()), op, outputVar)
+}
+
+// formatSendEmailAction renders a Send Email activity as `send email ( … )`:
+// the dialog's settings as one property list (ADR-0013), one per line with a
+// trailing comma, in the order the visitor documents them. Platform defaults
+// (SecurityType tls, ConnectionTimeout 20000, CheckServerIdentity false, no
+// authentication) and empty optional settings are omitted, so a statement that
+// does not state them builds the same action (R12).
+func formatSendEmailAction(ctx *ExecContext, a *microflows.SendEmailAction) string {
+	var settings []string
+	set := func(key, value string) { settings = append(settings, key+": "+value) }
+	expr := func(e string) string {
+		if d := describeExpr(ctx, e); d != "" {
+			return d
+		}
+		return "''"
+	}
+	params := func(t microflows.EmailTemplate) string {
+		if len(t.Parameters) == 0 {
+			return ""
+		}
+		ps := make([]string, 0, len(t.Parameters))
+		for i, p := range t.Parameters {
+			ps = append(ps, fmt.Sprintf("{%d} = %s", i+1, expr(p)))
+		}
+		return " with (" + strings.Join(ps, ", ") + ")"
+	}
+	present := func(t microflows.EmailTemplate) bool { return t.Text != "" || len(t.Parameters) > 0 }
+
+	set("From", expr(a.From))
+	if a.To != "" {
+		set("To", describeExpr(ctx, a.To))
+	}
+	if a.Cc != "" {
+		set("Cc", describeExpr(ctx, a.Cc))
+	}
+	if a.Bcc != "" {
+		set("Bcc", describeExpr(ctx, a.Bcc))
+	}
+	if present(a.Subject) {
+		set("Subject", mdlQuote(ctx, a.Subject.Text)+params(a.Subject))
+	}
+	if present(a.BodyPlainText) {
+		set("Body", "template "+mdlQuote(ctx, a.BodyPlainText.Text)+params(a.BodyPlainText))
+	}
+	if present(a.BodyHTML) {
+		set("HtmlBody", "template "+mdlQuote(ctx, a.BodyHTML.Text)+params(a.BodyHTML))
+	}
+	if len(a.CustomHeaders) > 0 {
+		hdrs := make([]string, 0, len(a.CustomHeaders))
+		for _, h := range a.CustomHeaders {
+			hdrs = append(hdrs, mdlQuote(ctx, h.Name)+": "+mdlQuote(ctx, h.Value))
+		}
+		set("Headers", "("+strings.Join(hdrs, ", ")+")")
+	}
+	if a.Attachment != "" {
+		set("Attachment", "$"+strings.TrimPrefix(a.Attachment, "$"))
+	}
+	set("Host", expr(a.Host))
+	set("Port", expr(a.Port))
+	if a.SecurityType != "" && a.SecurityType != microflows.EmailSecurityTLS {
+		set("SecurityType", strings.ToLower(string(a.SecurityType)))
+	}
+	if a.CheckServerIdentity {
+		set("CheckServerIdentity", "true")
+	}
+	if a.ConnectionTimeout != 0 && a.ConnectionTimeout != microflows.DefaultEmailConnectionTimeout {
+		set("ConnectionTimeout", fmt.Sprintf("%d", a.ConnectionTimeout))
+	}
+	if a.UseAuthentication {
+		set("Authentication", "basic (Username: "+expr(a.Username)+", Password: "+expr(a.Password)+")")
+	}
+
+	var sb strings.Builder
+	sb.WriteString("send email (")
+	for _, s := range settings {
+		sb.WriteString("\n    ")
+		sb.WriteString(s)
+		sb.WriteString(",")
+	}
+	sb.WriteString("\n  );")
+	return sb.String()
 }
 
 func (e *Executor) formatRestCallAction(a *microflows.RestCallAction) string {

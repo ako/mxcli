@@ -179,3 +179,31 @@ func TestBreakpointRegistry_SaveLoad(t *testing.T) {
 		t.Errorf("missing file: got %v err=%v, want nil,nil", bps, err)
 	}
 }
+
+// Every object type that carries a Caption reports it, and the type name is the
+// bare struct name, after objectTypeCaption stopped reading the object through
+// reflect.ValueOf (CodeQL go/clear-text-logging: a Send Email activity's
+// Password expression appeared to reach the `debug activities` output).
+func TestObjectTypeCaption_EveryCaptionedType(t *testing.T) {
+	email := &microflows.ActionActivity{
+		BaseActivity: microflows.BaseActivity{Caption: "Send confirmation"},
+		Action:       &microflows.SendEmailAction{Password: "'s3cret'"},
+	}
+	for _, tc := range []struct {
+		obj      microflows.MicroflowObject
+		typeName string
+		caption  string
+	}{
+		{email, "ActionActivity", "Send confirmation"},
+		{&microflows.ExclusiveSplit{Caption: "Valid?"}, "ExclusiveSplit", "Valid?"},
+		{&microflows.InheritanceSplit{Caption: "Kind"}, "InheritanceSplit", "Kind"},
+		{&microflows.LoopedActivity{Caption: "Each line"}, "LoopedActivity", "Each line"},
+		{&microflows.Annotation{Caption: "Note"}, "Annotation", "Note"},
+		{&microflows.EndEvent{}, "EndEvent", ""},
+	} {
+		gotType, gotCaption := objectTypeCaption(tc.obj)
+		if gotType != tc.typeName || gotCaption != tc.caption {
+			t.Errorf("objectTypeCaption(%T) = (%q, %q), want (%q, %q)", tc.obj, gotType, gotCaption, tc.typeName, tc.caption)
+		}
+	}
+}

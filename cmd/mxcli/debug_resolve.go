@@ -92,17 +92,33 @@ func extractActivities(mf *microflows.Microflow) []activityInfo {
 // objectTypeCaption returns a microflow object's struct name and its Caption (if
 // the concrete type carries one — action activities, splits, loops, annotations
 // do; bare start/end events do not).
+//
+// Neither is read through reflect.ValueOf: that hands every field of the object
+// to the caller as one value, so a reader cannot tell the Caption apart from,
+// say, a Send Email activity's Password expression — and neither can CodeQL,
+// which reported the object's Password as flowing to the `debug activities`
+// output. The type name comes from the static type, the caption from the field
+// itself.
 func objectTypeCaption(o microflows.MicroflowObject) (typeName, caption string) {
-	v := reflect.ValueOf(o)
-	for v.Kind() == reflect.Ptr {
-		v = v.Elem()
+	t := reflect.TypeOf(o)
+	if t == nil {
+		return "", ""
 	}
-	if v.Kind() != reflect.Struct {
-		return fmt.Sprintf("%T", o), ""
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
 	}
-	typeName = v.Type().Name()
-	if f := v.FieldByName("Caption"); f.IsValid() && f.Kind() == reflect.String {
-		caption = f.String()
+	typeName = t.Name()
+	switch x := o.(type) {
+	case *microflows.ActionActivity:
+		caption = x.Caption
+	case *microflows.ExclusiveSplit:
+		caption = x.Caption
+	case *microflows.InheritanceSplit:
+		caption = x.Caption
+	case *microflows.LoopedActivity:
+		caption = x.Caption
+	case *microflows.Annotation:
+		caption = x.Caption
 	}
 	return typeName, caption
 }

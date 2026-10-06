@@ -209,9 +209,14 @@ func (b *Builder) checkRestCallSettings(settings *parser.RestCallSettingsContext
 // checkRestCallCredentials checks `basic ( Username: …, Password: … )`: both
 // keys, each once, and nothing else.
 func (b *Builder) checkRestCallCredentials(line int, vc *parser.RestCallSettingValueContext) {
-	const what = "call rest service: Authentication"
+	b.checkRestCallCredentialsFor("call rest service: Authentication", line, vc.AllRestCallMapEntry())
+}
+
+// checkRestCallCredentialsFor is checkRestCallCredentials for any activity whose
+// settings take `Authentication: basic ( … )` (send email too).
+func (b *Builder) checkRestCallCredentialsFor(what string, line int, entries []parser.IRestCallMapEntryContext) {
 	seen := map[string]bool{}
-	for _, e := range vc.AllRestCallMapEntry() {
+	for _, e := range entries {
 		ec, ok := e.(*parser.RestCallMapEntryContext)
 		if !ok || ec == nil {
 			continue
