@@ -2249,7 +2249,7 @@ create page PgTest.P033b_DataGrid_ColumnProperties folder 'DataGrid'
     column (
       attribute: Stock, caption: 'In Stock',
       Alignment: center,
-      visible: '$showStockColumn',
+      visible: $showStockColumn,
       DynamicCellClass: if($currentObject/Stock < 10) then 'text-danger' else '' 
     )
 

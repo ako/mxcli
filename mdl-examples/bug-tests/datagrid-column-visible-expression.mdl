@@ -1,0 +1,54 @@
+mdl 1;
+-- ============================================================================
+-- A DataGrid 2 column's Visible expression was silently dropped
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   `Visible: $showPrices`, `Visible: if … then … else …`, `visible: not(…)` and
+--   the bracketed `Visible: [cond]` on a column passed check, exec reported
+--   "Created page", and the column was stored always visible (Expression
+--   "true"). Only the old quoted spelling `Visible: '<expr>'` was kept.
+--   `alter page … set (Visible: <expression>) on grid column(…)` was refused as
+--   "column property VisibleIf not found".
+--
+-- Root cause:
+--   The mirror image of widget-visible-expression.mdl. The visitor lowers
+--   every expression spelling of Visible to the key VisibleIf, the key a page
+--   widget's conditional visibility reads. The column writers read only
+--   `visible` / `Visible`: the widget engine by schema key plus
+--   types.ItemPropertyAliases, ALTER's insert path by the exact key.
+--
+-- After fix:
+--   `visible` <- `VisibleIf` alias (create and alter set; widget defs
+--   regenerate at generator version 18), the insert/replace path normalises
+--   the column's properties, and describe prints the bare expression.
+--   A column's visibility is evaluated once for the grid: it has no row
+--   object, so `$currentObject` there is CE0117 — refused at check time as
+--   MDL-WIDGET43. Use a page variable or parameter.
+--   Verified on Mendix 11.14.0: mx check = 0 errors; describe round-trips.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/datagrid-column-visible-expression.mdl -p app.mpr
+-- ============================================================================
+
+create entity MyFirstModule.ColVisItem ( Name: String(100), Price: Decimal );
+
+create or modify page MyFirstModule.P_ColumnVisible
+( Title: 'Column visible', Layout: Atlas_Core.Atlas_Default,
+  Variables: ( $showPrices: boolean = 'true' ) )
+{
+  datagrid dg (datasource: database MyFirstModule.ColVisItem) {
+    column (attribute: Name, caption: 'Var', Visible: $showPrices)
+    column (attribute: Price, caption: 'If', Visible: if $showPrices then true else false)
+    column (attribute: Price, caption: 'Not', visible: not($showPrices))
+    column (attribute: Name, caption: 'Hidden', Visible: false)
+    column (attribute: Name, caption: 'Later')
+  }
+};
+
+-- Previously refused: "column property VisibleIf not found".
+alter page MyFirstModule.P_ColumnVisible {
+  set (Visible: $showPrices) on dg column('Later')
+};
+
+describe page MyFirstModule.P_ColumnVisible;

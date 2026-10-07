@@ -220,7 +220,7 @@ func (pb *pageBuilder) buildColumnSpecFromAST(child *ast.WidgetV3) (*backend.Dat
 		ShowContentAs:     child.GetStringProp("ShowContentAs"),
 		Content:           child.GetContent(),
 		ContentParams:     pb.buildClientTemplateParams(child.GetContentParams()),
-		Properties:        child.Properties,
+		Properties:        columnSpecProperties(child),
 	}
 	for _, grandchild := range child.Children {
 		if filterWidgetID := dataGridFilterWidgetID(grandchild.Type); filterWidgetID != "" {
@@ -244,6 +244,38 @@ func (pb *pageBuilder) buildColumnSpecFromAST(child *ast.WidgetV3) (*backend.Dat
 		}
 	}
 	return &col, nil
+}
+
+// columnSpecProperties puts a column's properties in the terms the column
+// builder (widgetobj.BuildDataGrid2Column) reads: each expression property as a
+// string under its canonical key. The visitor routes every expression spelling
+// of Visible — `[cond]`, `if … then … else …`, `$currentObject/Flag` — to
+// "VisibleIf", `Visible: false` arrives as a bool, and a named expression
+// property keeps the key as written; the builder reads only a string under
+// "Visible" / "DynamicCellClass", so each of these was written as the default
+// (always visible, no class) with check clean and exec reporting success.
+// The AST map is copied, never changed.
+func columnSpecProperties(child *ast.WidgetV3) map[string]any {
+	if len(child.Properties) == 0 {
+		return child.Properties
+	}
+	props := make(map[string]any, len(child.Properties))
+	for k, v := range child.Properties {
+		switch {
+		case strings.EqualFold(k, "VisibleIf"), strings.EqualFold(k, "Visible"):
+			// resolved below
+		case strings.EqualFold(k, "DynamicCellClass"):
+			props["DynamicCellClass"] = v
+		default:
+			props[k] = v
+		}
+	}
+	if expr := child.GetStringProp("VisibleIf"); expr != "" {
+		props["Visible"] = expr
+	} else if expr, ok := pages.StaticVisibleExpression(child.Properties["Visible"]); ok {
+		props["Visible"] = expr
+	}
+	return props
 }
 
 func (pb *pageBuilder) buildDataGridColumnV3(w *ast.WidgetV3) (*pages.DataGridColumn, error) {
