@@ -25,9 +25,9 @@ create published odata service bug595.CustomerAPI (
   path: 'odata/customers/',
   version: '1.0.0',
   ODataVersion: OData4,
-  namespace: 'bug595.Customers'
+  namespace: 'bug595.Customers',
+  Authentication: (basic)
 )
-authentication basic
 {
   publish entity bug595.Customer as 'Customers' (
     ReadMode: source,

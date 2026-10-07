@@ -256,7 +256,7 @@ createODataServiceStatement
     : publishedODataServiceKw ifNotExists? qualifiedName
       (FOLDER STRING_LITERAL)?
       LPAREN odataPropertyAssignment (COMMA odataPropertyAssignment)* RPAREN
-      odataAuthenticationClause?
+      odataAuthenticationClause? /* @alias MDL-DEPR139 */
       (LBRACE (publishEntityBlock | publishMicroflowBlock)* RBRACE)?
     ;
 
@@ -277,8 +277,14 @@ odataPropertyValue
 // ClientCertificate, header values) and refuses an expression anywhere else,
 // so a plain-value property cannot silently read it as empty
 // (PROPOSAL_first_class_expressions.md §6.4).
+// `Authentication: none | ( method, … )` is a published service's
+// authentication (R9); the two forms come before `expression`, which would
+// otherwise read `(session)` as a parenthesised name. The trailing
+// `authentication …` clause is the old spelling (MDL-DEPR139).
 odataPropertyAssignment
     : identifierOrKeyword COLON odataPropertyValue
+    | identifierOrKeyword COLON NONE
+    | identifierOrKeyword COLON LPAREN odataAuthType (COMMA odataAuthType)* COMMA? RPAREN
     | identifierOrKeyword COLON expression
     ;
 

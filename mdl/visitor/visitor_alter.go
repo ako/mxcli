@@ -5,6 +5,7 @@ package visitor
 import (
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/grammar/parser"
+	"strings"
 )
 
 // ExitAlterStatement dispatches ALTER statements to their specific handlers.
@@ -68,6 +69,11 @@ func (b *Builder) ExitAlterStatement(ctx *parser.AlterStatementContext) {
 	}
 
 	changes := make(map[string]any)
+	var auth struct {
+		set   bool
+		types []string
+		mf    string
+	}
 	// One property, in either spelling: `set ( Key: value, … )` or the old
 	// `set Key = value, …` (MDL-DEPR061). Both build the same statement.
 	set := func(name string, value parser.IOdataPropertyValueContext, expr parser.IExpressionContext) {
@@ -83,7 +89,14 @@ func (b *Builder) ExitAlterStatement(ctx *parser.AlterStatementContext) {
 	if pl, ok := ctx.OdataAlterPropertyList().(*parser.OdataAlterPropertyListContext); ok && pl != nil {
 		for _, propCtx := range pl.AllOdataPropertyAssignment() {
 			prop := propCtx.(*parser.OdataPropertyAssignmentContext)
-			set(identifierOrKeywordText(prop.IdentifierOrKeyword()), prop.OdataPropertyValue(), prop.Expression())
+			name := identifierOrKeywordText(prop.IdentifierOrKeyword())
+			if ctx.PublishedODataServiceKw() != nil && strings.EqualFold(name, "authentication") {
+				if types, mf, ok := b.odataAuthenticationProperty(prop); ok {
+					auth.set, auth.types, auth.mf = true, types, mf
+				}
+				continue
+			}
+			set(name, prop.OdataPropertyValue(), prop.Expression())
 		}
 	}
 	for _, propCtx := range ctx.AllOdataAlterAssignment() {
@@ -99,8 +112,11 @@ func (b *Builder) ExitAlterStatement(ctx *parser.AlterStatementContext) {
 		})
 	} else if ctx.PublishedODataServiceKw() != nil {
 		b.statements = append(b.statements, &ast.AlterODataServiceStmt{
-			Name:    buildQualifiedName(qn),
-			Changes: changes,
+			Name:                buildQualifiedName(qn),
+			Changes:             changes,
+			AuthenticationSet:   auth.set,
+			AuthenticationTypes: auth.types,
+			AuthMicroflow:       auth.mf,
 		})
 	}
 }

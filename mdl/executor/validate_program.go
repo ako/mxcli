@@ -228,7 +228,7 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 	// has to be declared correctly up front, and nothing else checks that.
 	violations = append(violations, ValidateODataReadContract(prog)...)
 
-	// Flag `authentication microflow` with no microflow named. The grammar
+	// Flag the `microflow` authentication method with no microflow named. The grammar
 	// makes the name optional, so this parses and executes into a service
 	// Mendix refuses to build (CE0333).
 	violations = append(violations, ValidateODataAuth(prog)...)

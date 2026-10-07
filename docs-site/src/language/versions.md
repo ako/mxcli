@@ -255,7 +255,7 @@ refuse the spelling; until then it only warns.
 
 ### Deprecated spellings (`MDL-DEPR*`)
 
-86 old spellings mean exactly what their new form means. They warn with their code under every version before the one in the last column, which refuses them.
+87 old spellings mean exactly what their new form means. They warn with their code under every version before the one in the last column, which refuses them.
 
 | Code | Old form | New form | Rewritten by `fmt --upgrade` | Refused from |
 |---|---|---|---|---|
@@ -323,6 +323,7 @@ refuse the spelling; until then it only warns.
 | `MDL-DEPR136` | `create constant M.C type T default v [exposed to client]` | `create constant M.C ( Type: T, DefaultValue: v, ExposedToClient: true )` | yes: constant properties: `type T default v exposed to client` becomes `( Type: T, DefaultValue: v, ExposedToClient: true )` | mdl 2 |
 | `MDL-DEPR137` | `create demo user 'u' password 'p' [entity M.E] (Role, …)` | `create demo user 'u' ( Password: 'p', Entity: M.E, UserRoles: (Role, …) )` | yes: demo user properties: `password 'p' entity M.E (R1, R2)` becomes `( Password: 'p', Entity: M.E, UserRoles: (R1, R2) )` | mdl 2 |
 | `MDL-DEPR138` | `create constant M.C … private` | `create constant M.C …` | yes: constant's `private` modifier away: it is deleted | mdl 1 |
+| `MDL-DEPR139` | `create published odata service M.S ( … ) authentication basic, session, microflow M.F` | `create published odata service M.S ( …, Authentication: (basic, session, microflow M.F) )` | yes: published OData authentication: the trailing `authentication m1, m2` clause becomes the last property, `Authentication: (m1, m2)` | mdl 2 |
 | `MDL-DEPR140` | `alter workflow M.W set display 'x' / set description … / set export level … / set due date … / set overview page … / set parameter $P: M.E` | `alter workflow M.W { set ( Display: 'x', Description: …, ExportLevel: …, DueDate: …, OverviewPage: …, Parameter: $P: M.E ); }` | yes: property as `set ( Key: value )`, inside the statement's { } | mdl 2 |
 | `MDL-DEPR141` | `alter workflow M.W set activity X page M.P / description … / targeting … / due date …` | `alter workflow M.W { set ( Page: M.P, Description: …, Targeting: …, DueDate: … ) on X; }` | yes: `set activity X <prop> v` as `set ( Key: v ) on X`, inside the statement's { } | mdl 2 |
 | `MDL-DEPR142` | `alter workflow M.W insert after X <activity>;` | `alter workflow M.W { insert after X { <activity>; } }` | yes: inserted activity in { }, inside the statement's { } | mdl 2 |
