@@ -276,6 +276,41 @@ $n        = count $Approved;
 
 The same applies to both operands of `union`/`intersect`/`subtract`.
 
+### MDL-SET01: `set` on an object variable
+
+```
+cannot set object variable '$Cursor' (G46.Group): Mendix has no action that reassigns an
+object variable — Change variable takes only a primitive, and mxbuild rejects it with
+CE7247 "Variable 'Cursor' does not have a primitive type". [MDL-SET01]
+```
+
+**Cause:** `set $Var = …` is a Change variable activity, which takes only a primitive
+variable; on a list it is a Change list Replace. Mendix has no activity that reassigns an
+object variable, so the statement used to be written as a Change variable and fail the build
+with CE7247 (mendixlabs/mxcli#1323). It comes up naturally when walking a parent chain with
+`set $Cursor = $Next` in a `while` loop. On a parameter mxbuild words the same code
+`"Parameter 'X' cannot be changed."`.
+
+Plain `check` reports it for the objects it can see without a project — entity parameters,
+`create`, `retrieve … first`, loop iterators, casts, `head`. Whether an association retrieve
+is an object or a list depends on the association, so that case is reported by
+`check --references` and `exec`.
+
+**Solution:** Return the new object from a sub-microflow (recursion for a chain walk),
+retrieve it into a new variable, or change the object's members with `change $Obj (…)`.
+
+The same rule refuses `set` on a **parameter** of any type but a list, in a microflow, a
+nanoflow or a rule:
+
+```
+cannot set parameter '$N' (Integer): a Change variable cannot target a parameter, and
+mxbuild rejects it with CE7247 "Parameter 'N' cannot be changed". [MDL-SET01]
+```
+
+Copy the parameter into a variable and change that (`declare $Value Integer = $N;`). A list
+parameter is not refused — `set $L = $M` on one is a Change list Replace, which builds — and
+neither is a member change, `set $Param/Attr = …`.
+
 ### MDL-EMAIL02 / 03: A `send email` setting Studio Pro would not allow
 
 ```

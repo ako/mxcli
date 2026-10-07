@@ -694,7 +694,7 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 		// Reported together with the reference errors below rather than
 		// instead of them: a body error used to hide a call's unknown
 		// parameter, which mxbuild reports as well (CE1613, #953).
-		validationErrors := ValidateMicroflowBody(s)
+		validationErrors := validateFlowBody(s.Parameters, s.Body, true, checkAssociationShapes(ctx, sc))
 		// Validate references inside microflow body (pages, microflows, java actions, entities)
 		refErrors := validateFlowBodyReferences(ctx, s.Body, sc)
 		if len(refErrors) > 0 && s.Excluded {
@@ -737,7 +737,7 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 		// Reported together with the reference errors below rather than
 		// instead of them: a body error used to hide a call's unknown
 		// parameter, which mxbuild reports as well (CE1613, #953).
-		validationErrors := ValidateNanoflowBody(s)
+		validationErrors := validateFlowBody(s.Parameters, s.Body, true, checkAssociationShapes(ctx, sc))
 		// Validate references inside nanoflow body (an excluded nanoflow's are warnings)
 		refErrors := validateFlowBodyReferences(ctx, s.Body, sc)
 		if len(refErrors) > 0 && s.Excluded {
@@ -1843,6 +1843,10 @@ var execEnforcedMicroflowRules = map[string]bool{
 	// MDL-WF17: `lock workflow all` / `unlock workflow all` is CE1825, measured
 	// on 11.13.0 and 11.14.0 (mendixlabs/mxcli#870).
 	"MDL-WF17": true,
+	// MDL-SET01: `set` on an object variable or on a parameter is CE7247,
+	// measured on 11.14.0 (mendixlabs/mxcli#1323). The builder refuses an
+	// object itself; a primitive parameter it would write.
+	"MDL-SET01": true,
 }
 
 // validateMicroflowRules runs the MDL0xx microflow rule set (ValidateMicroflow)

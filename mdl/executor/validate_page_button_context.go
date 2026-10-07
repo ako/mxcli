@@ -25,7 +25,7 @@ func ValidatePageButtonContext(prog *ast.Program) []linter.Violation {
 	var out []linter.Violation
 	for _, stmt := range prog.Statements {
 		if label, widgets, ok := documentWidgets(stmt); ok {
-			out = append(out, checkButtonContextTree(widgets, "", false, label)...)
+			out = append(out, checkButtonContextTree(widgets, "", false, "", label)...)
 		}
 	}
 	return out
@@ -46,27 +46,100 @@ func ValidatePageButtonContext(prog *ast.Program) []linter.Violation {
 // context, and its control bar's $currentObject is that object — mxbuild builds
 // it clean. The grid's OWN data source never scopes its control bar, so the
 // control bar inherits the context from above the grid, not from the grid.
-func checkButtonContextTree(widgets []*ast.WidgetV3, controlBarOf string, inContext bool, locationPrefix string) []linter.Violation {
+//
+// nearest is the name of the data container whose object the widget sits in
+// ("" at the top), for MDL-BUTTON02 (mendixlabs/mxcli#1324). It moves with the
+// same rule as inContext: a control bar keeps the context from above its grid.
+func checkButtonContextTree(widgets []*ast.WidgetV3, controlBarOf string, inContext bool, nearest, locationPrefix string) []linter.Violation {
 	var out []linter.Violation
 	for _, w := range widgets {
 		if w == nil {
 			continue
 		}
-		if controlBarOf != "" && !inContext {
-			if a := w.GetAction(); a != nil {
+		if a := w.GetAction(); a != nil {
+			if controlBarOf != "" && !inContext {
 				out = append(out, checkControlBarAction(a, w.Name, controlBarOf, locationPrefix)...)
+			}
+			if nearest != "" {
+				out = append(out, checkOwnContainerName(a, w.Name, nearest, locationPrefix)...)
 			}
 		}
 		childContext := inContext || isObjectContextContainer(w)
+		childNearest := nearest
+		if isObjectContextContainer(w) && w.Name != "" {
+			childNearest = w.Name
+		}
 		for _, c := range w.Children {
-			childOf, ctx := controlBarOf, childContext
+			childOf, ctx, near := controlBarOf, childContext, childNearest
 			if c != nil && strings.EqualFold(c.Type, "controlbar") {
-				childOf, ctx = w.Name, inContext
+				childOf, ctx, near = w.Name, inContext, nearest
 			}
-			out = append(out, checkButtonContextTree([]*ast.WidgetV3{c}, childOf, ctx, locationPrefix)...)
+			out = append(out, checkButtonContextTree([]*ast.WidgetV3{c}, childOf, ctx, near, locationPrefix)...)
 		}
 	}
 	return out
+}
+
+// checkOwnContainerName flags an action argument (and its chained THEN action)
+// that reads the nearest data container by its widget name — `$dvGate` from a
+// button directly inside dvGate. A container's name is a variable only for the
+// containers nested BELOW it; in its own context the object is
+// $currentObject, and mxbuild reports the name as CE0117 "Error(s) in
+// expression." (mendixlabs/mxcli#1324, measured on 11.14.0 for data views,
+// list views, galleries and data grids alike).
+func checkOwnContainerName(a *ast.ActionV3, widgetName, nearest, locationPrefix string) []linter.Violation {
+	var out []linter.Violation
+	for a != nil {
+		for _, arg := range a.Args {
+			s, ok := arg.Value.(string)
+			if !ok || !exprReadsVariable(s, nearest) {
+				continue
+			}
+			out = append(out, linter.Violation{
+				RuleID:   "MDL-BUTTON02",
+				Severity: linter.SeverityError,
+				Message: fmt.Sprintf(
+					"%s: `%s` passes `%s` to its %s action, but `%s` is the data container the widget sits in directly — its name is a variable only inside a data container nested below it (CE0117)",
+					locationPrefix, widgetName, s, a.Type, nearest),
+				Suggestion: fmt.Sprintf(
+					"Use $currentObject for the object of `%s` here (`$currentObject/Attr` for an attribute); `$%s` works from a data view, list or grid nested inside it.",
+					nearest, nearest),
+			})
+		}
+		a = a.ThenAction
+	}
+	return out
+}
+
+// exprReadsVariable reports whether expression source reads $name as a
+// variable: a `$name` token outside a string literal, ending at a
+// non-identifier character. Case-insensitive, as widget names are unique
+// case-insensitively on a page.
+func exprReadsVariable(expr, name string) bool {
+	inString := false
+	for i := 0; i < len(expr); i++ {
+		c := expr[i]
+		if c == '\'' {
+			inString = !inString // '' inside a literal toggles twice
+			continue
+		}
+		if inString || c != '$' {
+			continue
+		}
+		j := i + 1
+		for j < len(expr) && isExprIdentByte(expr[j]) {
+			j++
+		}
+		if strings.EqualFold(expr[i+1:j], name) {
+			return true
+		}
+		i = j - 1
+	}
+	return false
+}
+
+func isExprIdentByte(c byte) bool {
+	return c == '_' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9'
 }
 
 // isObjectContextContainer reports whether w gives its (non-control-bar)

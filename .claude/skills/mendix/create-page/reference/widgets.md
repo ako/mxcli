@@ -1068,6 +1068,15 @@ A **container** takes an argument list exactly like an `actionbutton` does — t
 two share one action grammar. Reaching for a button because a container "cannot
 pass parameters" changes the rendering for no reason (mendixlabs/mxcli#1082).
 
+**A data container's name is a variable only *below* it.** `$dvOrder` reads data
+view `dvOrder`'s object from a data view, list or grid nested inside it. In the
+container's own context — directly inside it, through plain containers, or in the
+control bar of a grid inside it — the object is `$currentObject`, and
+`$dvOrder` is **CE0117** "Error(s) in expression." (`mxcli check` reports
+MDL-BUTTON02). The same goes for a list view, gallery or grid read by its own
+name from its item or row. A grid's own name *is* valid from its control bar —
+that is the selection, above (mendixlabs/mxcli#1324).
+
 ### Charts (Charts.mpk — ColumnChart / BarChart / AreaChart / PieChart)
 
 Charts are pluggable widgets whose data lives in one or more `series` object-list

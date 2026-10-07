@@ -1,0 +1,21 @@
+mdl 1;
+-- ============================================================================
+-- MDL-SET01 (the refusal): `set` on a PARAMETER, any type but a list
+-- ============================================================================
+--
+-- A Change variable activity cannot target a parameter. Measured on 11.14.0,
+-- an Integer or String parameter set in a microflow, a nanoflow or a rule
+-- builds as CE7247 "Parameter 'N' cannot be changed." — check and exec passed
+-- it before (found while fixing mendixlabs/mxcli#1323, which covered object
+-- variables). See set-on-parameter.mdl for the shapes that build.
+--
+-- This file is expected to FAIL `mxcli check`.
+-- ============================================================================
+
+create module FSP;
+
+create microflow FSP.Increment ($N: Integer) returns Integer
+begin
+  set $N = $N + 1;
+  return $N;
+end;

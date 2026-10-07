@@ -1,0 +1,27 @@
+mdl 1;
+-- ============================================================================
+-- MDL-SET01 (the controls): the parameter shapes mxbuild accepts
+-- ============================================================================
+--
+-- Companion to set-on-parameter.fail.mdl. Each of these built with 0 errors on
+-- 11.14.0: copying a primitive parameter into a variable and changing that,
+-- a Change list Replace (`set`) and an `add` on a LIST parameter, and a member
+-- change on an object parameter.
+-- ============================================================================
+
+create module FSPOK;
+create persistent entity FSPOK.E ("Name": String(50));
+
+create microflow FSPOK.Increment ($N: Integer) returns Integer
+begin
+  declare $Value Integer = $N;
+  set $Value = $Value + 1;
+  return $Value;
+end;
+
+create microflow FSPOK.ListParams ($L: list of FSPOK.E, $M: list of FSPOK.E, $O: FSPOK.E)
+begin
+  set $L = $M;
+  add $O to $L;
+  set $O/Name = 'x';
+end;
