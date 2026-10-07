@@ -215,7 +215,10 @@ where [Displayed = false()]
 Supported functions: `contains()`, `starts-with()`, `not()`, `true()`, `false()`
 
 The expression functions `startsWith()` / `endsWith()` are not XPath: in a
-constraint they are CE0161, and `check` reports them as **MDL091**. A member the
+constraint they are CE0161, and `check` reports them as **MDL091**. So is an
+operator inside a function argument — `starts-with(Name, 'MS-' + $Key)` is
+CE0161 although `Name = 'X-' + $Key` is fine: compute the value into a variable
+first (`declare $P String = 'MS-' + $Key;`, then `starts-with(Name, $P)`). A member the
 entity does not have is a reference error in `check -p`, and so is a system
 member written the way `describe` prints the attribute: XPath spells it
 `createdDate`, `changedDate`, `owner`, `changedBy` — `[CreatedDate > …]` is CE0161.
