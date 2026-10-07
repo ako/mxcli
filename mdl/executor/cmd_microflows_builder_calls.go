@@ -371,22 +371,22 @@ func (fb *flowBuilder) addCallJavaActionAction(s *ast.CallJavaActionStmt) model.
 			}
 		} else {
 			// Regular parameter: expression-based value
-			valueExpr := fb.exprToString(arg.Value)
 			if microflowTypeParams[arg.Name] {
 				// A Microflow parameter takes a name, never an expression
 				// (mendixlabs/mxcli#1210); the same decision reference
-				// validation reports.
+				// validation reports. The name is read without the whitespace
+				// written after it (mendixlabs/mxcli#1282).
 				if msg := microflowParamArgRefusal(actionQN, arg.Name, arg.Value); msg != "" {
 					fb.addError("%s", msg)
 				}
 				value = &microflows.MicroflowParameterValue{
 					BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
-					Microflow:   strings.Trim(valueExpr, "'"),
+					Microflow:   strings.Trim(fb.exprToString(javaActionArgumentValue(arg.Value)), "'"),
 				}
 			} else {
 				value = &microflows.BasicCodeActionParameterValue{
 					BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
-					Argument:    valueExpr,
+					Argument:    fb.exprToString(arg.Value),
 				}
 			}
 		}
@@ -600,7 +600,7 @@ func (fb *flowBuilder) entityTypeArgument(expr ast.Expression) string {
 }
 
 func isEmptyJavaActionArgument(expr ast.Expression) bool {
-	lit, ok := expr.(*ast.LiteralExpr)
+	lit, ok := javaActionArgumentValue(expr).(*ast.LiteralExpr)
 	return ok && (lit.Kind == ast.LiteralEmpty || lit.Kind == ast.LiteralNull)
 }
 

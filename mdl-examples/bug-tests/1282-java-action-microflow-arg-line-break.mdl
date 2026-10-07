@@ -1,0 +1,46 @@
+mdl 1;
+-- ============================================================================
+-- mendixlabs/mxcli#1282 — a Microflow-typed Java action argument followed by a
+-- line break before the closing parenthesis
+-- ============================================================================
+--
+-- Reported (mxcli 0.23/0.24, Mendix 11.12.4): check and exec passed, then
+-- mx check failed with
+--   [CE1613] "The selected microflow 'MyModule.SUB_Target⏎' no longer exists"
+-- because the line break was stored as part of the reference. With the `)`
+-- on the same line, mx check reported 0 errors.
+--
+-- The visitor keeps whitespace before `)` on the argument (a SourceExpr), so an
+-- expression argument round-trips as written. The Microflow-typed path must
+-- read the name inside that wrapper: once #1210's guard existed, the wrapper
+-- itself was refused as "not a microflow name". Both forms below must pass
+-- and store exactly `BugFlowArgNl.SUB_Target`.
+--
+-- Go tests: mdl/executor/javaaction_flow_param_whitespace_test.go and
+-- TestCheckExecAgree_MicroflowTypedJavaActionParameter.
+-- ============================================================================
+
+create module BugFlowArgNl;
+
+create java action BugFlowArgNl.DoSomething (Flow: Microflow) returns Boolean
+as $$
+return true;
+$$;
+
+create microflow BugFlowArgNl.SUB_Target () returns Nothing
+begin
+  log info 'x';
+end;
+
+-- The reported shape: `)` on the next line.
+create microflow BugFlowArgNl.ACT_LineBreak () returns Nothing
+begin
+  $ok = call java action BugFlowArgNl.DoSomething(Flow = BugFlowArgNl.SUB_Target
+  );
+end;
+
+-- Control: the same call with `)` on the same line.
+create microflow BugFlowArgNl.ACT_SameLine () returns Nothing
+begin
+  $ok = call java action BugFlowArgNl.DoSomething(Flow = BugFlowArgNl.SUB_Target);
+end;

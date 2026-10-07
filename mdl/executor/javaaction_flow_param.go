@@ -31,6 +31,7 @@ var microflowIdentifierRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z
 // Microflow-typed parameter param of action, or "" when it can. `empty` is not
 // passed here: it is the unbound marker, handled before the value is built.
 func microflowParamArgRefusal(action, param string, v ast.Expression) string {
+	v = javaActionArgumentValue(v)
 	switch e := v.(type) {
 	case *ast.QualifiedNameExpr:
 		return ""
@@ -43,6 +44,21 @@ func microflowParamArgRefusal(action, param string, v ast.Expression) string {
 		"name ('Module.Microflow'), not %s — Mendix has no dynamic microflow reference here, and the text "+
 		"would be stored as the reference, leaving a project that no longer loads", action, param,
 		expressionToString(v))
+}
+
+// javaActionArgumentValue is the argument as written, without the whitespace
+// the visitor keeps after it. An argument followed by whitespace before `)` —
+// `Flow = Module.Sub⏎)` — arrives as a SourceExpr whose Source carries that
+// whitespace, so an expression argument round-trips as typed. A Microflow
+// reference and the `empty` marker are names, not expressions: read through
+// the wrapper, the line break was stored as part of the name and mxbuild
+// reported CE1613 "The selected microflow 'Module.Sub⏎' no longer exists"
+// (mendixlabs/mxcli#1282).
+func javaActionArgumentValue(v ast.Expression) ast.Expression {
+	if se, ok := v.(*ast.SourceExpr); ok && se.Expression != nil {
+		return se.Expression
+	}
+	return v
 }
 
 // microflowTypedParams names the parameters a CREATE JAVA ACTION declares as
