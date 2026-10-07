@@ -67,17 +67,21 @@ func execShowStructure(ctx *ExecContext, s *ast.ShowStmt) error {
 // structureDepth1JSON emits structure as a JSON table with one row per module
 // and columns for each element type count.
 func structureDepth1JSON(ctx *ExecContext, modules []structureModule) error {
-	entityCounts := queryCountByModule(ctx, "entities")
-	mfCounts := queryCountByModule(ctx, flowTypeFilter(catalog.MicroflowTypeMicroflow))
-	nfCounts := queryCountByModule(ctx, flowTypeFilter(catalog.MicroflowTypeNanoflow))
-	pageCounts := queryCountByModule(ctx, "pages")
-	enumCounts := queryCountByModule(ctx, "enumerations")
-	snippetCounts := queryCountByModule(ctx, "snippets")
-	jaCounts := queryCountByModule(ctx, "java_actions")
-	wfCounts := queryCountByModule(ctx, "workflows")
-	odataClientCounts := queryCountByModule(ctx, "odata_clients")
-	odataServiceCounts := queryCountByModule(ctx, "odata_services")
-	beServiceCounts := queryCountByModule(ctx, "business_event_services")
+	var qerr error
+	entityCounts := queryCountByModule(ctx, "entities", &qerr)
+	mfCounts := queryCountByModule(ctx, flowTypeFilter(catalog.MicroflowTypeMicroflow), &qerr)
+	nfCounts := queryCountByModule(ctx, flowTypeFilter(catalog.MicroflowTypeNanoflow), &qerr)
+	pageCounts := queryCountByModule(ctx, "pages", &qerr)
+	enumCounts := queryCountByModule(ctx, "enumerations", &qerr)
+	snippetCounts := queryCountByModule(ctx, "snippets", &qerr)
+	jaCounts := queryCountByModule(ctx, "java_actions", &qerr)
+	wfCounts := queryCountByModule(ctx, "workflows", &qerr)
+	odataClientCounts := queryCountByModule(ctx, "odata_clients", &qerr)
+	odataServiceCounts := queryCountByModule(ctx, "odata_services", &qerr)
+	beServiceCounts := queryCountByModule(ctx, "business_event_services", &qerr)
+	if qerr != nil {
+		return qerr
+	}
 	constantCounts := countByModuleFromBackend(ctx, "constants")
 	scheduledEventCounts := countByModuleFromBackend(ctx, "scheduled_events")
 	queueCounts := countByModuleFromBackend(ctx, "queues")
@@ -189,18 +193,22 @@ func asString(v any) string {
 // ============================================================================
 
 func structureDepth1(ctx *ExecContext, modules []structureModule) error {
+	var qerr error
 	// Query counts per module from catalog
-	entityCounts := queryCountByModule(ctx, "entities")
-	mfCounts := queryCountByModule(ctx, flowTypeFilter(catalog.MicroflowTypeMicroflow))
-	nfCounts := queryCountByModule(ctx, flowTypeFilter(catalog.MicroflowTypeNanoflow))
-	pageCounts := queryCountByModule(ctx, "pages")
-	enumCounts := queryCountByModule(ctx, "enumerations")
-	snippetCounts := queryCountByModule(ctx, "snippets")
-	jaCounts := queryCountByModule(ctx, "java_actions")
-	wfCounts := queryCountByModule(ctx, "workflows")
-	odataClientCounts := queryCountByModule(ctx, "odata_clients")
-	odataServiceCounts := queryCountByModule(ctx, "odata_services")
-	beServiceCounts := queryCountByModule(ctx, "business_event_services")
+	entityCounts := queryCountByModule(ctx, "entities", &qerr)
+	mfCounts := queryCountByModule(ctx, flowTypeFilter(catalog.MicroflowTypeMicroflow), &qerr)
+	nfCounts := queryCountByModule(ctx, flowTypeFilter(catalog.MicroflowTypeNanoflow), &qerr)
+	pageCounts := queryCountByModule(ctx, "pages", &qerr)
+	enumCounts := queryCountByModule(ctx, "enumerations", &qerr)
+	snippetCounts := queryCountByModule(ctx, "snippets", &qerr)
+	jaCounts := queryCountByModule(ctx, "java_actions", &qerr)
+	wfCounts := queryCountByModule(ctx, "workflows", &qerr)
+	odataClientCounts := queryCountByModule(ctx, "odata_clients", &qerr)
+	odataServiceCounts := queryCountByModule(ctx, "odata_services", &qerr)
+	beServiceCounts := queryCountByModule(ctx, "business_event_services", &qerr)
+	if qerr != nil {
+		return qerr
+	}
 
 	// Get constants and scheduled events from backend (no catalog tables)
 	constantCounts := countByModuleFromBackend(ctx, "constants")
@@ -272,12 +280,31 @@ func structureDepth1(ctx *ExecContext, modules []structureModule) error {
 	return nil
 }
 
-// queryCountByModule queries a catalog table and returns a map of module name → count.
-func queryCountByModule(ctx *ExecContext, tableAndWhere string) map[string]int {
-	counts := make(map[string]int)
-	sql := fmt.Sprintf("select ModuleName, count(*) from %s GROUP by ModuleName", tableAndWhere)
+// structureQuery runs one of the structure overview's catalog queries. They are
+// fixed SQL against tables the catalog builder owns, so a failure is a column
+// or table drift inside mxcli, never a property of the user's project. They
+// used to discard the error, which is how depth 2 and 3 queried a ParentWidget
+// column widgets_data has never had and printed every page without its data
+// widgets, from the initial commit on.
+func structureQuery(ctx *ExecContext, sql string) (*catalog.QueryResult, error) {
 	result, err := ctx.Catalog.Query(sql)
 	if err != nil {
+		return nil, mdlerrors.NewBackend("run structure query "+sql, err)
+	}
+	return result, nil
+}
+
+// queryCountByModule queries a catalog table and returns a map of module name →
+// count. A failing query sets *errp (if not already set) and yields no counts,
+// so a caller can issue its whole batch and check once.
+func queryCountByModule(ctx *ExecContext, tableAndWhere string, errp *error) map[string]int {
+	counts := make(map[string]int)
+	sql := fmt.Sprintf("select ModuleName, count(*) from %s GROUP by ModuleName", tableAndWhere)
+	result, err := structureQuery(ctx, sql)
+	if err != nil {
+		if *errp == nil {
+			*errp = err
+		}
 		return counts
 	}
 	for _, row := range result.Rows {
@@ -479,10 +506,14 @@ func structureDepth2(ctx *ExecContext, modules []structureModule) error {
 		structureWorkflows(ctx, m.Name, wfByModule[m.Name], false)
 
 		// Pages (from catalog)
-		structurePages(ctx, m.Name)
+		if err := structurePages(ctx, m.Name); err != nil {
+			return err
+		}
 
 		// Snippets (from catalog)
-		structureSnippets(ctx, m.Name)
+		if err := structureSnippets(ctx, m.Name); err != nil {
+			return err
+		}
 
 		// Java Actions
 		outputJavaActions(ctx, m.Name, jaByModule[m.Name], false)
@@ -512,13 +543,19 @@ func structureDepth2(ctx *ExecContext, modules []structureModule) error {
 		}
 
 		// OData Clients
-		structureODataClients(ctx, m.Name)
+		if err := structureODataClients(ctx, m.Name); err != nil {
+			return err
+		}
 
 		// OData Services
-		structureODataServices(ctx, m.Name)
+		if err := structureODataServices(ctx, m.Name); err != nil {
+			return err
+		}
 
 		// Business Event Services
-		structureBusinessEventServices(ctx, m.Name)
+		if err := structureBusinessEventServices(ctx, m.Name); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -649,10 +686,14 @@ func structureDepth3(ctx *ExecContext, modules []structureModule) error {
 		structureWorkflows(ctx, m.Name, wfByModule[m.Name], true)
 
 		// Pages
-		structurePages(ctx, m.Name)
+		if err := structurePages(ctx, m.Name); err != nil {
+			return err
+		}
 
 		// Snippets
-		structureSnippets(ctx, m.Name)
+		if err := structureSnippets(ctx, m.Name); err != nil {
+			return err
+		}
 
 		// Java Actions (with param names)
 		outputJavaActions(ctx, m.Name, jaByModule[m.Name], true)
@@ -686,11 +727,17 @@ func structureDepth3(ctx *ExecContext, modules []structureModule) error {
 		}
 
 		// OData
-		structureODataClients(ctx, m.Name)
-		structureODataServices(ctx, m.Name)
+		if err := structureODataClients(ctx, m.Name); err != nil {
+			return err
+		}
+		if err := structureODataServices(ctx, m.Name); err != nil {
+			return err
+		}
 
 		// Business Event Services
-		structureBusinessEventServices(ctx, m.Name)
+		if err := structureBusinessEventServices(ctx, m.Name); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -772,68 +819,97 @@ func structureEntities(ctx *ExecContext, moduleName string, dm *domainmodel.Doma
 	}
 }
 
-// structurePages outputs pages for a module from the catalog.
-func structurePages(ctx *ExecContext, moduleName string) {
-	// Query pages from catalog
-	result, err := ctx.Catalog.Query(fmt.Sprintf(
+// structurePages outputs pages for a module from the catalog, each annotated
+// with its outermost data widgets — `Page M.P [DataView<Customer>, Datagrid<Order>]`.
+//
+// "Outermost" means no data widget above it in the page's widget tree: those are
+// the widgets that establish a data context. A data widget inside a layout grid
+// or container still counts (they are not data contexts), and one nested inside
+// another data widget does not (it is a detail of its parent). Filtering on the
+// page root instead would drop nearly everything, since real pages wrap their
+// content in a layout grid.
+//
+// widgets_data is only filled by a full catalog build, so on a fast-mode catalog
+// every page prints bare.
+func structurePages(ctx *ExecContext, moduleName string) error {
+	result, err := structureQuery(ctx, fmt.Sprintf(
 		"select Name from pages where ModuleName = '%s' ORDER by Name",
 		escapeSQLString(moduleName)))
-	if err != nil || len(result.Rows) == 0 {
-		return
+	if err != nil {
+		return err
+	}
+	if len(result.Rows) == 0 {
+		return nil
 	}
 
-	// Try to get top-level data widgets from widgets table
-	widgetsByPage := make(map[string][]string)
-	widgetResult, err := ctx.Catalog.Query(fmt.Sprintf(
-		"select ContainerQualifiedName, WidgetType, EntityRef from widgets where ModuleName = '%s' and ParentWidget = '' ORDER by ContainerQualifiedName, WidgetType",
+	widgetResult, err := structureQuery(ctx, fmt.Sprintf(
+		"select Id, ParentWidgetId, ContainerQualifiedName, WidgetType, EntityRef from widgets "+
+			"where ModuleName = '%s' and ContainerType = 'PAGE' ORDER by ContainerQualifiedName, WidgetType, Id",
 		escapeSQLString(moduleName)))
-	if err == nil {
-		for _, row := range widgetResult.Rows {
-			pageName := asString(row[0])
-			widgetType := asString(row[1])
-			entityRef := asString(row[2])
-
-			// Only include data-bound widgets
-			if !isDataWidget(widgetType) {
-				continue
-			}
-
-			// Extract short widget type name
-			shortType := shortWidgetType(widgetType)
-			if entityRef != "" {
-				// Extract entity name from qualified name
-				shortEntity := shortName(entityRef)
-				widgetsByPage[pageName] = append(widgetsByPage[pageName], fmt.Sprintf("%s<%s>", shortType, shortEntity))
-			} else {
-				widgetsByPage[pageName] = append(widgetsByPage[pageName], shortType)
+	if err != nil {
+		return err
+	}
+	type pageWidget struct {
+		parent, page, widgetType, entity string
+	}
+	byID := make(map[string]pageWidget, len(widgetResult.Rows))
+	var order []string
+	for _, row := range widgetResult.Rows {
+		id := asString(row[0])
+		byID[id] = pageWidget{parent: asString(row[1]), page: asString(row[2]), widgetType: asString(row[3]), entity: asString(row[4])}
+		order = append(order, id)
+	}
+	hasDataAncestor := func(w pageWidget) bool {
+		// ParentWidgetId chains end at the page root (""); the visited set only
+		// guards against a malformed cycle.
+		seen := map[string]bool{}
+		for p := w.parent; p != "" && !seen[p]; p = byID[p].parent {
+			seen[p] = true
+			if isDataWidget(byID[p].widgetType) {
+				return true
 			}
 		}
+		return false
+	}
+
+	widgetsByPage := make(map[string][]string)
+	for _, id := range order {
+		w := byID[id]
+		if !isDataWidget(w.widgetType) || hasDataAncestor(w) {
+			continue
+		}
+		label := shortWidgetType(w.widgetType)
+		if w.entity != "" {
+			label += "<" + shortName(w.entity) + ">"
+		}
+		widgetsByPage[w.page] = append(widgetsByPage[w.page], label)
 	}
 
 	for _, row := range result.Rows {
-		name := asString(row[0])
-		qualName := moduleName + "." + name
-		if widgets, ok := widgetsByPage[qualName]; ok && len(widgets) > 0 {
+		qualName := moduleName + "." + asString(row[0])
+		if widgets := widgetsByPage[qualName]; len(widgets) > 0 {
 			fmt.Fprintf(ctx.Output, "  Page %s [%s]\n", qualName, strings.Join(widgets, ", "))
 		} else {
 			fmt.Fprintf(ctx.Output, "  Page %s\n", qualName)
 		}
 	}
+	return nil
 }
 
 // structureSnippets outputs snippets for a module from the catalog.
-func structureSnippets(ctx *ExecContext, moduleName string) {
-	result, err := ctx.Catalog.Query(fmt.Sprintf(
+func structureSnippets(ctx *ExecContext, moduleName string) error {
+	result, err := structureQuery(ctx, fmt.Sprintf(
 		"select Name from snippets where ModuleName = '%s' ORDER by Name",
 		escapeSQLString(moduleName)))
-	if err != nil || len(result.Rows) == 0 {
-		return
+	if err != nil {
+		return err
 	}
 
 	for _, row := range result.Rows {
 		name := asString(row[0])
 		fmt.Fprintf(ctx.Output, "  Snippet %s.%s\n", moduleName, name)
 	}
+	return nil
 }
 
 // outputJavaActions outputs java actions for a module.
@@ -898,12 +974,12 @@ func formatJATypeDisplay(typeStr string) string {
 }
 
 // structureODataClients outputs OData clients for a module.
-func structureODataClients(ctx *ExecContext, moduleName string) {
-	result, err := ctx.Catalog.Query(fmt.Sprintf(
+func structureODataClients(ctx *ExecContext, moduleName string) error {
+	result, err := structureQuery(ctx, fmt.Sprintf(
 		"select Name, ODataVersion from odata_clients where ModuleName = '%s' ORDER by Name",
 		escapeSQLString(moduleName)))
-	if err != nil || len(result.Rows) == 0 {
-		return
+	if err != nil {
+		return err
 	}
 
 	for _, row := range result.Rows {
@@ -916,15 +992,16 @@ func structureODataClients(ctx *ExecContext, moduleName string) {
 			fmt.Fprintf(ctx.Output, "  ODataClient %s\n", qualName)
 		}
 	}
+	return nil
 }
 
 // structureODataServices outputs OData services for a module.
-func structureODataServices(ctx *ExecContext, moduleName string) {
-	result, err := ctx.Catalog.Query(fmt.Sprintf(
+func structureODataServices(ctx *ExecContext, moduleName string) error {
+	result, err := structureQuery(ctx, fmt.Sprintf(
 		"select Name, Path, EntitySetCount from odata_services where ModuleName = '%s' ORDER by Name",
 		escapeSQLString(moduleName)))
-	if err != nil || len(result.Rows) == 0 {
-		return
+	if err != nil {
+		return err
 	}
 
 	for _, row := range result.Rows {
@@ -938,15 +1015,16 @@ func structureODataServices(ctx *ExecContext, moduleName string) {
 			fmt.Fprintf(ctx.Output, "  ODataService %s\n", qualName)
 		}
 	}
+	return nil
 }
 
 // structureBusinessEventServices outputs business event services for a module.
-func structureBusinessEventServices(ctx *ExecContext, moduleName string) {
-	result, err := ctx.Catalog.Query(fmt.Sprintf(
+func structureBusinessEventServices(ctx *ExecContext, moduleName string) error {
+	result, err := structureQuery(ctx, fmt.Sprintf(
 		"select Name, MessageCount, PublishCount, SubscribeCount from business_event_services where ModuleName = '%s' ORDER by Name",
 		escapeSQLString(moduleName)))
-	if err != nil || len(result.Rows) == 0 {
-		return
+	if err != nil {
+		return err
 	}
 
 	for _, row := range result.Rows {
@@ -973,6 +1051,7 @@ func structureBusinessEventServices(ctx *ExecContext, moduleName string) {
 			fmt.Fprintf(ctx.Output, "  BusinessEventService %s\n", qualName)
 		}
 	}
+	return nil
 }
 
 // structureWorkflows outputs workflows for a module.
@@ -1131,7 +1210,8 @@ func shortName(qualifiedName string) string {
 func shortWidgetType(widgetType string) string {
 	// Widget types may look like "DataGrid", "DataView", "ListView", etc.
 	// Or pluggable widgets like "com.mendix.widget.web.datagrid2.DataGrid2"
-	if idx := strings.LastIndex(widgetType, "."); idx >= 0 {
+	// Built-in widgets are stored as "Forms$DataView", "Forms$ListView", …
+	if idx := strings.LastIndexAny(widgetType, ".$"); idx >= 0 {
 		return widgetType[idx+1:]
 	}
 	return widgetType

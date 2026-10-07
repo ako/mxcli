@@ -1,0 +1,32 @@
+mdl 1;
+-- mendixlabs/mxcli#1215 — ALTER PAGE could not add a tab page to an existing
+-- tab container. Both forms failed with
+--
+--   failed to insert: failed to build widgets: failed to build widget tpTwo:
+--   tabpage must be a direct child of tabcontainer
+--
+-- Cause: an INSERT built its widgets one by one, and the builder refuses a lone
+-- tab page (it only builds one as a tab container's child). A tab page is also
+-- not a widget: it lives in the control's TabPages list, so it takes its own
+-- path (InsertTabPages), as list view templates and DataGrid2 columns do.
+--
+-- Measured on Mendix 11.14.0: all three inserts below, then `mxcli docker
+-- check` → 0 errors, and `describe page` lists tpZero, tpOne, tpTwo, tpThree.
+-- With the tab page forced into the sibling tab page's Widgets instead, mx
+-- cannot load the project (TabPage has no constructor taking a TabPage).
+
+create module "ModT";
+create page "ModT"."TabsPage" (Title: 'Tabs', Layout: Atlas_Core.Atlas_Default) {
+  tabcontainer tabsMain {
+    tabpage tpOne (Caption: 'One') {
+      dynamictext txtOne (Content: 'one')
+    }
+  }
+};
+
+-- next to a sibling tab page
+alter page "ModT"."TabsPage" { insert after tpOne { tabpage tpTwo (Caption: 'Two') { dynamictext txtTwo (Content: 'two') } } };
+alter page "ModT"."TabsPage" { insert before tpOne { tabpage tpZero (Caption: 'Zero') { dynamictext txtZero (Content: 'zero') } } };
+
+-- appended to the tab container
+alter page "ModT"."TabsPage" { insert into tabsMain { tabpage tpThree (Caption: 'Three') { dynamictext txtThree (Content: 'three') } } };

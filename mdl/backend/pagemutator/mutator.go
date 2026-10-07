@@ -424,20 +424,22 @@ func refuseWidgetsAtColumnTarget(gridRef, columnRef string) error {
 // lives in the control's TabPages list rather than a widget list.
 const tabPageType = "Forms$TabPage"
 
-// refuseTabPageSiblingEdit refuses an operation that would edit the TabPages
-// list itself: INSERT BEFORE/AFTER and REPLACE would put ordinary widgets into a
-// list that holds only tab pages, and DROP can remove the page the control's
-// DefaultPagePointer names, leaving a dangling pointer. What a tab page does
-// support — SET Caption / Visible / Name and INSERT INTO it — goes through the
-// ordinary widget paths.
+// refuseTabPageSiblingEdit refuses an operation that would put ordinary widgets
+// into, or remove entries from, the TabPages list: INSERT BEFORE/AFTER and
+// REPLACE would put widgets into a list that holds only tab pages, and DROP can
+// remove the page the control's DefaultPagePointer names, leaving a dangling
+// pointer. What a tab page does support — SET Caption / Visible / Name, INSERT
+// INTO it — goes through the ordinary widget paths; adding a tab page next to
+// it goes through InsertTabPages (#1215).
 func refuseTabPageSiblingEdit(result *bsonWidgetResult, name, op string) error {
 	if result == nil || bsonnav.DGetString(result.widget, "$Type") != tabPageType {
 		return nil
 	}
-	return fmt.Errorf("%q is a tab page: %s would edit the tab container's list of pages, "+
-		"which ALTER PAGE does not do. Use `insert into %s { … }` to add widgets to it, "+
+	return fmt.Errorf("%q is a tab page: %s would put widgets into, or remove a page from, the tab "+
+		"container's list of pages, which ALTER PAGE does not do. Use `insert into %s { … }` to add "+
+		"widgets to it, `insert after %s { tabpage … }` to add a tab page next to it, "+
 		"`set Visible = false on %s` to hide it, or `describe page` and `create or modify page` "+
-		"to add, remove or reorder tab pages", name, op, name, name)
+		"to remove or reorder tab pages", name, op, name, name, name)
 }
 
 func (m *Mutator) InsertWidget(widgetRef string, columnRef string, position backend.InsertPosition, widgets []pages.Widget) error {
