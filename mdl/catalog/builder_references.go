@@ -68,6 +68,7 @@ const (
 	RefObjectNavigation             = "NAVIGATION"
 	RefObjectWidget                 = "WIDGET"
 	RefObjectJavaAction             = "JAVA_ACTION"
+	RefObjectJavaScriptAction       = "JAVASCRIPT_ACTION"
 	RefObjectRestOperation          = "REST_OPERATION"
 	RefObjectPublishedRestOperation = "PUBLISHED_REST_OPERATION"
 	RefObjectRegularExpression      = "REGULAR_EXPRESSION"
@@ -114,6 +115,7 @@ var (
 		RefObjectWorkflow,
 		RefObjectWidget,
 		RefObjectJavaAction,
+		RefObjectJavaScriptAction,
 		RefObjectRestOperation,
 		RefObjectRegularExpression,
 		RefObjectAttribute,
@@ -191,6 +193,12 @@ func microflowActionRef(action microflows.MicroflowAction) (targetType, targetNa
 	case *microflows.JavaActionCallAction:
 		if a.JavaAction != "" {
 			return RefObjectJavaAction, a.JavaAction, RefKindCall, true
+		}
+	case *microflows.JavaScriptActionCallAction:
+		// A nanoflow's JavaScript action call had no edge at all, so `show
+		// callers` and refs_from() never saw it (mendixlabs/mxcli#1305).
+		if a.JavaScriptAction != "" {
+			return RefObjectJavaScriptAction, a.JavaScriptAction, RefKindCall, true
 		}
 	case *microflows.RestOperationCallAction:
 		// Operation is a "Module.Service.Operation" name referencing a consumed

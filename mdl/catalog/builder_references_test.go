@@ -199,6 +199,15 @@ func TestMicroflowActionRef(t *testing.T) {
 			targetType: "JAVA_ACTION", targetName: "M.DoJava", refKind: RefKindCall,
 		},
 		{
+			// mendixlabs/mxcli#1305: a nanoflow that calls a JavaScript action
+			// had no refs_from() row for it.
+			name:       "JavaScriptActionCallAction",
+			action:     &microflows.JavaScriptActionCallAction{JavaScriptAction: "NanoflowCommons.ClearLocalStorage"},
+			wantOK:     true,
+			targetType: "JAVASCRIPT_ACTION", targetName: "NanoflowCommons.ClearLocalStorage", refKind: RefKindCall,
+		},
+		{name: "empty JavaScriptActionCallAction", action: &microflows.JavaScriptActionCallAction{}, wantOK: false},
+		{
 			name:       "CreateObjectAction",
 			action:     &microflows.CreateObjectAction{EntityQualifiedName: "M.Customer"},
 			wantOK:     true,

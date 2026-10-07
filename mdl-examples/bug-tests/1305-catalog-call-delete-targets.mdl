@@ -1,0 +1,51 @@
+mdl 1;
+-- Issue mendixlabs/mxcli#1305: the catalog's call and delete activities did not
+-- name their target. activities_for(…, nested = True) returned
+--
+--   Act_Loop MicroflowCallAction: action_ref="" entity_ref="" service_ref="" caption="" loop_depth=1
+--   Act_Loop DeleteObjectAction:  action_ref="" entity_ref="" service_ref="" caption="" loop_depth=1
+--
+-- for every call and delete below, although refs_from() named the targets, and
+-- a JavaScript action call had no refs_from() row at all.
+--
+-- After `refresh catalog full` the activities table holds:
+--   both calls       ActionRef  Bug1305.Sub_Process
+--   the queued call  QueueRef   Bug1305.SaleQueue
+--   the delete       EntityRef  Bug1305.Sale   (from the loop iterator's type)
+--   nanoflow call    ActionRef  Bug1305.Nav_Sub
+--   JavaScript call  ActionRef  NanoflowCommons.ClearLocalStorage
+-- and refs has a `call` row Nav_Loop -> JAVASCRIPT_ACTION.
+--
+--   select ActionType, ActionRef, QueueRef, EntityRef from CATALOG.ACTIVITIES
+--   where ParentLoopId <> '' and ModuleName = 'Bug1305';
+--
+-- NanoflowCommons ships with every new app (`mxcli new`).
+
+create or modify module Bug1305;
+
+create or modify persistent entity Bug1305.Sale (Amount: Integer);
+create or modify task queue Bug1305.SaleQueue (Parallelism: 1);
+create or modify microflow Bug1305.Sub_Process ($Sale: Bug1305.Sale)
+begin
+  log info node 'Bug1305' 'processing';
+end;
+create or modify microflow Bug1305.Act_Loop ($Sales: list of Bug1305.Sale)
+begin
+  loop $Sale in $Sales
+  begin
+    call microflow Bug1305.Sub_Process (Sale = $Sale);
+    call microflow Bug1305.Sub_Process (Sale = $Sale) in queue Bug1305.SaleQueue;
+    delete $Sale;
+  end loop;
+end;
+create or modify nanoflow Bug1305.Nav_Sub ()
+begin
+end;
+create or modify nanoflow Bug1305.Nav_Loop ($Sales: list of Bug1305.Sale)
+begin
+  loop $Sale in $Sales
+  begin
+    call nanoflow Bug1305.Nav_Sub ();
+    call javascript action NanoflowCommons.ClearLocalStorage ();
+  end loop;
+end;

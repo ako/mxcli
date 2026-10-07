@@ -80,14 +80,21 @@ func (b *Builder) buildMicroflows() error {
 				ParentLoopId, LoopDepth,
 				AutoGenerateCaption, ConditionExpression, ConditionRule, ErrorHandlingType,
 				LogLevel, LogNodeExpression, LogMessage, CommitType, WithEvents, RetrieveSource,
-				ProjectId, SnapshotId)
+				QueueRef, ProjectId, SnapshotId)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-				?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`)
 		if err != nil {
 			return err
 		}
 		defer actStmt.Close()
+	}
+
+	// A delete names a variable, not an entity; its EntityRef is resolved the
+	// way refs_from()'s delete edge is, from the flow's own variables.
+	var assocs map[string]assocEnds
+	if b.fullMode {
+		assocs = b.associationEnds()
 	}
 
 	projectID, snapshotID := b.snapshotMeta()
@@ -173,7 +180,8 @@ func (b *Builder) buildMicroflows() error {
 
 		// Insert activities only in full mode
 		if b.fullMode {
-			n, err := insertFlowActivities(actStmt, string(mf.ID), qualifiedName, moduleName, mf.ObjectCollection, projectID, snapshotID)
+			n, err := insertFlowActivities(actStmt, string(mf.ID), qualifiedName, moduleName, mf.ObjectCollection,
+				buildVarEntityMap(mf.Parameters, mf.ObjectCollection, assocs), projectID, snapshotID)
 			if err != nil {
 				return err
 			}
@@ -225,7 +233,8 @@ func (b *Builder) buildMicroflows() error {
 
 		// Insert activities only in full mode
 		if b.fullMode {
-			n, err := insertFlowActivities(actStmt, string(nf.ID), qualifiedName, moduleName, nf.ObjectCollection, projectID, snapshotID)
+			n, err := insertFlowActivities(actStmt, string(nf.ID), qualifiedName, moduleName, nf.ObjectCollection,
+				buildVarEntityMap(nf.Parameters, nf.ObjectCollection, assocs), projectID, snapshotID)
 			if err != nil {
 				return err
 			}
@@ -273,7 +282,8 @@ func (b *Builder) buildMicroflows() error {
 		ruleCount++
 
 		if b.fullMode {
-			n, err := insertFlowActivities(actStmt, string(rule.ID), qualifiedName, moduleName, rule.ObjectCollection, projectID, snapshotID)
+			n, err := insertFlowActivities(actStmt, string(rule.ID), qualifiedName, moduleName, rule.ObjectCollection,
+				buildVarEntityMap(rule.Parameters, rule.ObjectCollection, assocs), projectID, snapshotID)
 			if err != nil {
 				return err
 			}
@@ -515,8 +525,11 @@ func calculateRuleComplexity(rule *microflows.Rule) int {
 // (empty at the top level) and LoopDepth how many loops enclose the object (0
 // at the top level), so filtering on an empty ParentLoopId gives the rows the
 // table held before #1266.
+//
+// varEntity is the flow's variable→entity map (buildVarEntityMap), which a
+// delete's EntityRef is resolved through.
 func insertFlowActivities(stmt *sql.Stmt, flowID, qualifiedName, moduleName string,
-	oc *microflows.MicroflowObjectCollection, projectID, snapshotID string) (int, error) {
+	oc *microflows.MicroflowObjectCollection, varEntity map[string]string, projectID, snapshotID string) (int, error) {
 	if stmt == nil || oc == nil {
 		return 0, nil
 	}
@@ -528,7 +541,7 @@ func insertFlowActivities(stmt *sql.Stmt, flowID, qualifiedName, moduleName stri
 				continue
 			}
 			seq++
-			r := describeFlowObject(obj)
+			r := describeFlowObject(obj, varEntity)
 			if _, err := stmt.Exec(
 				string(obj.GetID()),
 				r.name,
@@ -558,6 +571,7 @@ func insertFlowActivities(stmt *sql.Stmt, flowID, qualifiedName, moduleName stri
 				r.commitType,
 				boolInt(r.withEvents),
 				r.retrieveSource,
+				r.queueRef,
 				projectID, snapshotID,
 			); err != nil {
 				return err
@@ -607,6 +621,9 @@ type flowObjectRow struct {
 	commitType                         string
 	withEvents                         bool
 	retrieveSource                     string
+	// queueRef is the task queue a microflow or Java action call runs in —
+	// asynchronously, outside the caller's transaction and loop.
+	queueRef string
 }
 
 // describeFlowObject derives the catalog columns of one flow object.
@@ -614,7 +631,7 @@ type flowObjectRow struct {
 // The caption is the stored one — a split's, an activity's, an annotation's
 // text. It was the placeholder "Activity" on every row (mendixlabs/mxcli#1267);
 // an object Mendix stores no caption for (events, merges, loops) now has none.
-func describeFlowObject(obj microflows.MicroflowObject) flowObjectRow {
+func describeFlowObject(obj microflows.MicroflowObject, varEntity map[string]string) flowObjectRow {
 	r := flowObjectRow{activityType: getMicroflowObjectType(obj)}
 	r.name = r.activityType
 	r.errorHandlingType = string(microflows.ObjectErrorHandlingType(obj))
@@ -643,15 +660,41 @@ func describeFlowObject(obj microflows.MicroflowObject) flowObjectRow {
 		if o.Action != nil {
 			r.actionType = getMicroflowActionType(o.Action)
 			r.name = r.actionType
-			describeAction(o.Action, &r)
+			describeAction(o.Action, varEntity, &r)
 		}
 	}
 	return r
 }
 
 // describeAction fills the action-specific columns.
-func describeAction(action microflows.MicroflowAction, r *flowObjectRow) {
+//
+// A call's ActionRef is the document it calls and a delete's EntityRef the
+// entity of the variable it deletes — the targets refs_from() already had,
+// which every call and delete row left empty (mendixlabs/mxcli#1305).
+func describeAction(action microflows.MicroflowAction, varEntity map[string]string, r *flowObjectRow) {
+	queue := func(qs *microflows.QueueSettings) string {
+		if qs == nil {
+			return ""
+		}
+		return qs.Queue
+	}
 	switch a := action.(type) {
+	case *microflows.MicroflowCallAction:
+		if a.MicroflowCall != nil {
+			r.actionRef = a.MicroflowCall.Microflow
+			r.queueRef = queue(a.MicroflowCall.QueueSettings)
+		}
+	case *microflows.NanoflowCallAction:
+		if a.NanoflowCall != nil {
+			r.actionRef = a.NanoflowCall.Nanoflow
+		}
+	case *microflows.JavaActionCallAction:
+		r.actionRef = a.JavaAction
+		r.queueRef = queue(a.QueueSettings)
+	case *microflows.JavaScriptActionCallAction:
+		r.actionRef = a.JavaScriptAction
+	case *microflows.DeleteObjectAction:
+		r.entityRef = varEntity[strings.TrimPrefix(a.DeleteVariable, "$")]
 	case *microflows.CreateObjectAction:
 		r.entityRef = a.EntityQualifiedName
 		r.commitType = string(a.Commit)
