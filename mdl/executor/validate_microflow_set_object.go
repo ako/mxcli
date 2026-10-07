@@ -25,6 +25,13 @@ const setObjectRule = "MDL-SET01"
 // direction, which needs the project — check --references and exec decide that
 // one (flowBuilder.refuseSetOnObject), and this rule leaves it alone rather
 // than guess.
+//
+// The same rule refuses `set` on a PRIMITIVE parameter: a Change variable
+// cannot target any parameter, and mxbuild answers CE7247 "Parameter 'N'
+// cannot be changed." — measured on 11.14.0 for an Integer and a String
+// parameter in a microflow, a nanoflow and a rule. A LIST parameter is not
+// refused: `set $L = $M` on one is a Change list Replace, which mxbuild
+// accepts, and so are `add`/`remove` and a member change `set $P/Attr = …`.
 func (v *microflowValidator) checkSetOnObjectVariable(params []ast.MicroflowParam, body []ast.MicroflowStatement) {
 	// objects maps each variable currently known to hold one object to its entity.
 	objects := map[string]string{}
@@ -43,6 +50,13 @@ func (v *microflowValidator) checkSetOnObjectVariable(params []ast.MicroflowPara
 			lists[p.Name] = p.Type.EntityRef.String()
 		}
 	}
+	// primitiveParams maps each primitive parameter to its type's name.
+	primitiveParams := map[string]string{}
+	for _, p := range params {
+		if p.Type.EntityRef == nil && p.Type.Kind != ast.TypeListOf {
+			primitiveParams[p.Name] = p.Type.Kind.String()
+		}
+	}
 
 	forEachMicroflowStatement(body, func(s ast.MicroflowStatement) {
 		if set, ok := s.(*ast.MfSetStmt); ok && !strings.Contains(set.Target, "/") {
@@ -58,6 +72,11 @@ func (v *microflowValidator) checkSetOnObjectVariable(params []ast.MicroflowPara
 						"%s.", name, entity, rejection),
 					fmt.Sprintf("Return the new object from a sub-microflow instead (recursion for a chain walk), "+
 						"retrieve it into a new variable, or change the object's members with `change $%s (…)`.", name))
+			} else if typ, ok := primitiveParams[name]; ok {
+				v.addViolation(setObjectRule, linter.SeverityError,
+					fmt.Sprintf("cannot set parameter '$%s' (%s): a Change variable cannot target a parameter, "+
+						"and mxbuild rejects it with CE7247 \"Parameter '%s' cannot be changed\".", name, typ, name),
+					fmt.Sprintf("Copy it into a variable and change that: `declare $%sValue %s = $%s;`.", name, typ, name))
 			}
 		}
 
@@ -67,6 +86,7 @@ func (v *microflowValidator) checkSetOnObjectVariable(params []ast.MicroflowPara
 			delete(objects, p.name)
 			delete(lists, p.name)
 			delete(isParam, p.name)
+			delete(primitiveParams, p.name)
 		}
 		switch st := s.(type) {
 		case *ast.CreateObjectStmt:
@@ -101,4 +121,14 @@ func (v *microflowValidator) checkSetOnObjectVariable(params []ast.MicroflowPara
 			}
 		}
 	})
+}
+
+// setTargetViolations runs MDL-SET01 alone over a flow that does not go
+// through ValidateMicroflow — a rule, which plain check validates only for
+// its parameter annotations and validateRule checks for check --references
+// and exec.
+func setTargetViolations(docType, name string, params []ast.MicroflowParam, body []ast.MicroflowStatement) []linter.Violation {
+	v := &microflowValidator{mfName: name, docType: docType}
+	v.checkSetOnObjectVariable(params, body)
+	return v.violations
 }
