@@ -22,6 +22,8 @@ func TestBrainRenameTargetOnlyClaimsWhatAnAnchorCanName(t *testing.T) {
 		{"ENUMERATION", "Sales.ENUM_Status", "Sales.ENUM_Status", true},
 		{"ASSOCIATION", "Sales.Order_Customer", "Sales.Order_Customer", true},
 		{"CONSTANT", "Sales.ApiRoot", "Sales.ApiRoot", true},
+		{"JAVA ACTION", "Sales.JA_Hash", "Sales.JA_Hash", true},
+		{"WORKFLOW", "Sales.WF_Approve", "Sales.WF_Approve", true},
 		{"MODULE", "Sales", "Sales", true},
 
 		// An element rename with no module cannot be turned into an anchor:

@@ -14,7 +14,7 @@ func init() {
 		},
 		Syntax:  "CREATE PAGE Module.Name [FOLDER 'FolderPath']\n  (\n    Title: 'Page Title',\n    Layout: Module.LayoutName\n    [, Params: ( $Param: Module.Entity )]\n    [, Url: 'page-url']\n    [, Variables: ( $var: Boolean = 'true' )]\n    [, PopupWidth: 800, PopupHeight: 480, PopupResizable: true]\n    [, PopupCloseAction: cancelButton1]\n    [, Class: 'css-class', Style: 'css: rule']\n  )\n  {\n    -- widgets\n  }",
 		Example: "CREATE PAGE MyModule.EditCustomer\n  (\n    Params: ( $Customer: MyModule.Customer ),\n    Title: 'Edit Customer',\n    Layout: Atlas_Core.PopupLayout,\n    Class: 'container-fluid'\n  )\n  {\n    DATAVIEW dvCustomer (DataSource: $Customer) {\n      TEXTBOX txtName (Label: 'Name', Attribute: Name)\n      FOOTER {\n        ACTIONBUTTON btnSave (Caption: 'Save', Action: SAVE CHANGES, ButtonStyle: Primary)\n        ACTIONBUTTON btnCancel (Caption: 'Cancel', Action: CANCEL CHANGES)\n      }\n    }\n  };",
-		SeeAlso: []string{"page.create", "page.widgets", "page.alter", "snippet"},
+		SeeAlso: []string{"page.create", "page.widgets", "page.alter", "snippet", "rename"},
 	})
 
 	Register(SyntaxFeature{

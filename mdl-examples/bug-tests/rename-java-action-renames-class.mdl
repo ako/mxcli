@@ -1,0 +1,33 @@
+mdl 1;
+-- ============================================================================
+-- RENAME JAVA ACTION left `public class JA_Old` inside JA_New.java
+-- ============================================================================
+--
+-- The rename moved javasource/<module>/actions/JA_Old.java to JA_New.java and
+-- left the class, its constructor and toString's "JA_Old" as they were. javac:
+--   class JA_Old is public, should be declared in a file named JA_Old.java
+-- `mxcli docker build` still succeeded — mxbuild regenerates the stub in its
+-- copy — so only the file on disk was wrong, which is the one `run --local
+-- --watch` hot reload and an IDE compile.
+--
+-- The file on disk is not something `mxcli check` can see, so the assertions
+-- are Go tests: sdk/javaactions/rename_test.go (against a golden mxbuild wrote)
+-- and mdl/backend/modelsdk/java_rename_source_test.go. This script is the
+-- reproduction: exec it, then javac javasource/bugrenameja/actions/JA_New.java
+-- against runtime/bundles/com.mendix.public-api.jar.
+-- ============================================================================
+
+CREATE MODULE BugRenameJa;
+
+CREATE JAVA ACTION BugRenameJa.JA_Old(Text: String NOT NULL) RETURNS String
+AS $$
+return Text.trim();
+$$;
+
+CREATE OR MODIFY MICROFLOW BugRenameJa.ACT_UsesJava ($t: String) RETURNS String
+BEGIN
+  $r = CALL JAVA ACTION BugRenameJa.JA_Old(Text = $t);
+  RETURN $r;
+END;
+
+RENAME JAVA ACTION BugRenameJa.JA_Old TO JA_New;
