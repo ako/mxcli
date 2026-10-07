@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **`RENAME JAVA ACTION` renames the Java class, not just the file** — renaming `M.JA_Old` to `JA_New` moved the source to `JA_New.java` but left `public class JA_Old`, its constructor and its `toString` inside it, which javac rejects (`class JA_Old is public, should be declared in a file named JA_Old.java`). A full build hid it, because mxbuild regenerates the stub in its own copy; `run --local --watch` hot reload and IDEs compile the file on disk. Those three places now follow the rename exactly as mxbuild rewrites them; user code and extra code are left as written. Applies to `mxcli rename java-action` too.
 - **`run --local --watch` starts on Mendix 10.24 and 11.6** — it waited the full web-client timeout (5 minutes) for a bundle that had finished in seconds, then failed with `web client watcher timed out`. The rollup runner those versions ship reports its status as `{"code":"SUCCESS"}` rather than the modern-web-bundler protocol mxcli was reading; both are now understood, including that runner's error reports.
 - **`run --local --watch` no longer loses a change made while the app boots** — the watch loop took its baseline after the boot, so a model written during the ~15 s boot was never built and the app kept serving the model from before it. The baseline is now the source time the boot build was made from, so that change is built on the first tick.
 

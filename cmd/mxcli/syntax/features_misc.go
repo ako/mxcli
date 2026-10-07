@@ -1096,7 +1096,8 @@ RENAME MODULE OldModule TO NewModule [DRY RUN];
 -- such a string and is left as it was; build or 'mxcli docker check' reports
 -- what remains.
 --
--- RENAME JAVA ACTION also renames the generated .java source file.
+-- RENAME JAVA ACTION also renames the .java source file and the class in it
+-- (class, constructor, toString); the user and extra code are left as written.
 -- RENAME MODULE rewrites every 'OldModule.' prefix project-wide.
 --
 -- DRY RUN changes nothing and lists each document that would change and how
