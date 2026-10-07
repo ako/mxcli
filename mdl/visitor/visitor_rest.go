@@ -3,6 +3,7 @@
 package visitor
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -362,12 +363,13 @@ func (b *Builder) ExitCreatePublishedRestServiceStatement(ctx *parser.CreatePubl
 		}
 	}
 
-	// Parse properties (Path, Version, ServiceName)
+	// Parse properties (Path, Version, ServiceName, Authentication)
 	for i, propCtx := range ctx.AllPublishedRestProperty() {
 		pc := propCtx.(*parser.PublishedRestPropertyContext)
-		key := identifierOrKeywordText(pc.IdentifierOrKeyword().(*parser.IdentifierOrKeywordContext))
-		b.checkProperty(pc, &publishedRestSchema, key, shapeString)
-		val := unquoteStringLit(pc.STRING_LITERAL())
+		key, val, auth, ok := b.publishedRestProperty(pc)
+		if !ok {
+			continue
+		}
 		switch strings.ToLower(key) {
 		case "path":
 			stmt.Path = val
@@ -375,6 +377,8 @@ func (b *Builder) ExitCreatePublishedRestServiceStatement(ctx *parser.CreatePubl
 			stmt.Version = val
 		case "servicename":
 			stmt.ServiceName = val
+		case "authentication":
+			stmt.Authentication = auth
 		case "folder":
 			if !folderClause {
 				stmt.Folder = val
@@ -392,6 +396,68 @@ func (b *Builder) ExitCreatePublishedRestServiceStatement(ctx *parser.CreatePubl
 	}
 
 	b.statements = append(b.statements, stmt)
+}
+
+// publishedRestProperty reads one `Key: value` of a published REST service's
+// property list: the key, the string value, or the authentication value when
+// the property is `Authentication`. The value's shape is checked against the
+// key, so `Authentication: 'basic'` or `Path: none` is reported rather than
+// read as empty. ok is false when error recovery left the property without a
+// key.
+func (b *Builder) publishedRestProperty(pc *parser.PublishedRestPropertyContext) (key, val string, auth *ast.PublishedRestAuthentication, ok bool) {
+	ik, isIK := pc.IdentifierOrKeyword().(*parser.IdentifierOrKeywordContext)
+	if !isIK || ik == nil {
+		return "", "", nil, false
+	}
+	key = identifierOrKeywordText(ik)
+	shape := shapeOther
+	switch {
+	case pc.STRING_LITERAL() != nil:
+		shape = shapeString
+		val = unquoteStringLit(pc.STRING_LITERAL())
+	case pc.NONE() != nil:
+		shape = shapeNone
+		auth = &ast.PublishedRestAuthentication{}
+	case pc.LPAREN() != nil:
+		shape = shapeAuthMethods
+		auth = b.publishedRestAuthMethods(pc)
+	}
+	b.checkProperty(pc, &publishedRestSchema, key, shape)
+	if shape == shapeOther {
+		// Error recovery: the syntax error is already recorded.
+		return "", "", nil, false
+	}
+	return key, val, auth, true
+}
+
+// publishedRestAuthMethods reads `( basic, session, microflow M.F )` in the
+// order written, which is the order Studio Pro stores the methods in.
+func (b *Builder) publishedRestAuthMethods(pc *parser.PublishedRestPropertyContext) *ast.PublishedRestAuthentication {
+	auth := &ast.PublishedRestAuthentication{}
+	seen := map[string]bool{}
+	for _, mCtx := range pc.AllPublishedRestAuthMethod() {
+		mc := mCtx.(*parser.PublishedRestAuthMethodContext)
+		var method string
+		switch {
+		case mc.BASIC() != nil:
+			method = "Basic"
+		case mc.SESSION() != nil:
+			method = "Session"
+		case mc.MICROFLOW() != nil && mc.QualifiedName() != nil:
+			method = "Microflow"
+			auth.Microflow = buildQualifiedName(mc.QualifiedName()).String()
+		default:
+			continue
+		}
+		if seen[method] {
+			b.addError(fmt.Errorf("line %d: authentication method '%s' listed twice",
+				mc.GetStart().GetLine(), strings.ToLower(method)))
+			continue
+		}
+		seen[method] = true
+		auth.Methods = append(auth.Methods, method)
+	}
+	return auth
 }
 
 // buildPublishedRestResourceDef converts a PublishedRestResourceContext to a
@@ -472,6 +538,24 @@ func (b *Builder) exitAlterPublishedRestServiceStatement(ctx *parser.AlterStatem
 	for _, actCtx := range ctx.AllAlterPublishedRestServiceAction() {
 		ac, ok := actCtx.(*parser.AlterPublishedRestServiceActionContext)
 		if !ok {
+			continue
+		}
+
+		// SET ( Key: value, ... ) — create's property list (R3)
+		if ac.SET() != nil && ac.LPAREN() != nil {
+			set := &ast.PublishedRestSetAction{Changes: make(map[string]string)}
+			for _, propCtx := range ac.AllPublishedRestProperty() {
+				key, val, auth, ok := b.publishedRestProperty(propCtx.(*parser.PublishedRestPropertyContext))
+				if !ok {
+					continue
+				}
+				if strings.EqualFold(key, "authentication") {
+					set.Authentication = auth
+					continue
+				}
+				set.Changes[key] = val
+			}
+			stmt.Actions = append(stmt.Actions, set)
 			continue
 		}
 

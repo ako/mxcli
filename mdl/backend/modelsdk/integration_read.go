@@ -411,6 +411,9 @@ func (b *Backend) ListPublishedRestServices() ([]*model.PublishedRestService, er
 			ServiceName:  g.ServiceName(),
 			Excluded:     g.Excluded(),
 			AllowedRoles: append([]string(nil), g.AllowedRolesQualifiedNames()...),
+
+			AuthenticationTypes:     append([]string(nil), g.AuthenticationTypesItems()...),
+			AuthenticationMicroflow: g.AuthenticationMicroflowQualifiedName(),
 		}
 		svc.ID = model.ID(g.ID())
 		svc.TypeName = "Rest$PublishedRestService"
