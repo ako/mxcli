@@ -36,3 +36,31 @@ alter snippet SN.SNIPPET_Order {
 alter snippet SN.SNIPPET_Order {
   set (Action: call microflow SN.ACT_Use(Order = $Order)) on btnSet
 };
+
+-- The same defect through the DATA GRID COLUMN builder (buildColumnSpecsFromAST):
+-- a flow button in a column inserted into a grid inside a snippet. Measured on
+-- mxbuild 11.12.2: before, PageParameter: "Order" and CE0115 at btnCol; after,
+-- SnippetParameter: "Order" and 0 errors. $currentObject stays an Expression.
+
+create module SC;
+create persistent entity SC.Order ( Code: String(20) );
+create persistent entity SC.Line ( Qty: Integer );
+create or modify microflow SC.ACT_Use ($Order: SC.Order, $Line: SC.Line)
+begin
+  log info 'use';
+end;
+create snippet SC.SNIPPET_Lines ( params: ( $Order: SC.Order ) ) {
+  container ctn {
+    datagrid dgLines ( datasource: database from SC.Line ) {
+      column (attribute: Qty, caption: 'Qty')
+    }
+  }
+};
+alter snippet SC.SNIPPET_Lines {
+  insert after dgLines.Qty {
+    column Act ( attribute: Qty, caption: 'Act', ShowContentAs: customContent ) {
+      actionbutton btnCol (Caption: 'Use',
+        Action: call microflow SC.ACT_Use(Order = $Order, Line = $currentObject))
+    }
+  }
+};
