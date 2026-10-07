@@ -1,0 +1,16 @@
+mdl 1;
+-- currentDateTime() is not a Mendix expression function. mxcli listed it as a
+-- built-in, so `check` and `exec` passed this microflow and mx check on 11.14.0
+-- then failed it (and the nanoflow form alike) with:
+--   [error] [CE0117] "Error(s) in expression." at Create variable activity
+--   'Create Date and time variable'
+-- MDL044 must refuse it and point at the [%CurrentDateTime%] token.
+-- Positive control: current-datetime-token.mdl.
+
+create module BugCurrentDateTime;
+
+create microflow BugCurrentDateTime.MF_Now () returns DateTime as $D
+begin
+  declare $D DateTime = currentDateTime();
+  return $D;
+end;

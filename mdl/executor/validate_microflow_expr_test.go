@@ -69,6 +69,13 @@ func TestValidateMicroflow_UnknownFunction(t *testing.T) {
 		{"unknown in log message", "log info 'device: ' + currentDeviceType();", true, ""},
 		{"unknown in log template param", "log info 'device: {1}' with ({1} = currentDeviceType());", true, ""},
 		{"known func in log message", "log info 'x: ' + toUpperCase($x);", false, ""},
+		// currentDateTime() was listed in funcTable, so check and exec passed it and
+		// the build failed: CE0117 on 11.14.0 in a microflow and a nanoflow alike.
+		// The current time is the [%CurrentDateTime%] token, which builds clean —
+		// the hint names it rather than a did-you-mean on spelling.
+		{"currentDateTime() is not a Mendix built-in", "declare $d DateTime = currentDateTime();", true, "[%CurrentDateTime%]"},
+		{"currentDateTime() nested in a call", "declare $d DateTime = addDays(currentDateTime(), 1);", true, "[%CurrentDateTime%]"},
+		{"the [%CurrentDateTime%] token is accepted", "declare $d DateTime = addDays([%CurrentDateTime%], 1);", false, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

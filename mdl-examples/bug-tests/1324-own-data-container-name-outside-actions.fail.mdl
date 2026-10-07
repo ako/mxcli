@@ -1,0 +1,30 @@
+-- mendixlabs/mxcli#1324 follow-up: a data container's own name outside actions
+--
+-- NEGATIVE TEST (.fail.mdl) — EXPECTED to fail `mxcli check`.
+-- `make check-mdl` inverts the exit code: an unexpected pass is a regression of
+-- MDL-BUTTON02's non-action slots.
+--
+-- Symptom: `check` and `exec` were clean, then `mx check` (Mendix 11.14.0)
+-- reported, for widgets placed directly inside data view dvP:
+--   [CE0117] "Error(s) in expression." at Container 'cVisOwn'
+-- and the same for a nested data view's microflow data-source argument,
+-- `Editable:` and `DynamicClasses:`, plus CE0161 "Error(s) in XPath
+-- constraint." for a nested list's `where`. These slots are evaluated in the
+-- enclosing context, where dvP's object is $currentObject; `$dvP` is a
+-- variable only one data container deeper (cVisOuter builds clean).
+
+create module G52;
+create persistent entity G52.Gate (Name: String(50));
+
+create page G52.VisibilityPage (Title: 'Gate', Layout: Atlas_Core.PopupLayout, Params: ( $Gate: G52.Gate )) {
+  dataview dvP (DataSource: $Gate) {
+    container cVisOwn (Visible: $dvP/Name != '') {
+      dynamictext dtA (Content: 'a')
+    }
+    dataview dvMid (DataSource: $Gate) {
+      container cVisOuter (Visible: $dvP/Name != '') {
+        dynamictext dtB (Content: 'b')
+      }
+    }
+  }
+};

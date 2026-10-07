@@ -110,3 +110,42 @@ func TestLoopWithoutCommitIsNotReported(t *testing.T) {
 		t.Errorf("a loop with no commit was flagged: %v", got)
 	}
 }
+
+// mendixlabs/mxcli#1217: `change $T (...) commit;` and `$X = create ... commit;`
+// in a loop commit once per iteration exactly as a separate `commit $T;` does.
+// CONV011 now counts them, so this rule must too — the boundary is CONV011's.
+func TestCommitClauseOnChangeOrCreateInLoopIsReported(t *testing.T) {
+	got := commitInLoopViolations(t, []ast.MicroflowStatement{
+		loopOver("Items",
+			&ast.ChangeObjectStmt{Variable: "Item", Commit: ast.CommitYes},
+			&ast.CreateObjectStmt{Variable: "Log", Commit: ast.CommitYesWithoutEvents},
+			&ast.IfStmt{ThenBody: []ast.MicroflowStatement{
+				&ast.ChangeObjectStmt{Variable: "Other", Commit: ast.CommitYes},
+			}},
+		),
+	})
+	if len(got) != 3 {
+		t.Fatalf("got %d findings, want 3 (change commit / create commit / change commit in branch): %v", len(got), got)
+	}
+	for _, msg := range got {
+		if !strings.Contains(msg, "CONV011") {
+			t.Errorf("message does not name CONV011:\n%s", msg)
+		}
+	}
+}
+
+// CONTROL: the commit clause outside a loop, and a non-committing change inside
+// one, are not per-iteration round trips.
+func TestCommitClauseOutsideLoopOrAbsentIsNotReported(t *testing.T) {
+	got := commitInLoopViolations(t, []ast.MicroflowStatement{
+		&ast.ChangeObjectStmt{Variable: "Item", Commit: ast.CommitYes},
+		&ast.CreateObjectStmt{Variable: "Log", Commit: ast.CommitYes},
+		loopOver("Items",
+			&ast.ChangeObjectStmt{Variable: "Item", Commit: ast.CommitNo},
+			&ast.CreateObjectStmt{Variable: "Log"},
+		),
+	})
+	if len(got) != 0 {
+		t.Errorf("flagged a commit clause that is not per iteration: %v", got)
+	}
+}
