@@ -118,8 +118,8 @@ var funcTable = map[string]funcSig{
 	"isSynced":  {args: []TypeKind{KindAny}, ret: KindBoolean},
 	"isSyncing": {args: []TypeKind{KindAny}, ret: KindBoolean},
 
-	// DateTime — construction
-	"currentDateTime": {args: []TypeKind{}, ret: KindDateTime},
+	// DateTime — construction. There is no currentDateTime(): the current time
+	// is the [%CurrentDateTime%] token (see tokenFuncs in unknown_funcs.go).
 	// dateTime/dateTimeUTC(year, month, day [, hour, minute, second]) — 3 or 6 args
 	"dateTime":    {args: []TypeKind{KindInteger, KindInteger, KindInteger, KindInteger, KindInteger, KindInteger}, minArgs: 3, ret: KindDateTime},
 	"dateTimeUTC": {args: []TypeKind{KindInteger, KindInteger, KindInteger, KindInteger, KindInteger, KindInteger}, minArgs: 3, ret: KindDateTime},
