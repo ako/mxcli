@@ -1,0 +1,66 @@
+mdl 1;
+-- Bug test: `describe structure depth 2|3` (CLI: `mxcli structure -d 3`) is
+-- meant to annotate each page with its data widgets -
+--   Page M.P [DataView<Customer>, DataGrid<Order>]
+-- and never did, on any project: every page printed bare.
+--
+-- Cause: the annotation query filtered on `ParentWidget = ''`, a column the
+-- catalog's widgets table has never had (the tree position is ParentWidgetId),
+-- and the query error was discarded. It was that way from the initial commit.
+--
+-- The annotation lists a page's OUTERMOST data widgets - those with no data
+-- widget above them. A data grid inside a layout grid counts (a layout grid is
+-- not a data context); a list view inside a data view does not. Built-in
+-- widgets only, so the script runs on a project without widget packages.
+--
+-- The widgets table is filled by a full catalog build only, so refresh first.
+--
+-- Expected after the fix, for page StructPageWidgets.Customer_Orders:
+--   Page StructPageWidgets.Customer_Orders [DataView<Customer>, ListView<CustomerOrder>]
+-- once: `allOrders` is listed, `customerOrders` is not (it is nested inside
+-- the data view). Both sit inside the layout grid, so filtering on the page
+-- root would have listed neither.
+
+create module StructPageWidgets;
+
+create persistent entity StructPageWidgets.Customer (
+  Name: String(200)
+);
+
+create persistent entity StructPageWidgets.CustomerOrder (
+  Number: String(20)
+);
+
+create page StructPageWidgets.Customer_Orders
+(
+  params: (
+    $Customer: StructPageWidgets.Customer
+  ),
+  title: 'Customer orders',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  layoutgrid mainGrid {
+    row {
+      column (desktopwidth: autofill) {
+        listview allOrders (datasource: database StructPageWidgets.CustomerOrder) {
+          dynamictext allOrderNumber (content: '{1}', contentparams: ({1} = Number))
+        }
+      }
+    }
+    row {
+      column (desktopwidth: autofill) {
+        dataview customerView (datasource: $Customer) {
+          textbox customerName (label: 'Name', attribute: Name)
+          listview customerOrders (datasource: database StructPageWidgets.CustomerOrder) {
+            dynamictext orderNumber (content: '{1}', contentparams: ({1} = Number))
+          }
+        }
+      }
+    }
+  }
+};
+
+refresh catalog full;
+
+describe structure depth 3 in StructPageWidgets;
