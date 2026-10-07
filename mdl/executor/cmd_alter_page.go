@@ -271,7 +271,7 @@ func applySetPropertyMutator(ctx *ExecContext, mutator backend.PageMutator, op *
 		} else if propName == "Action" {
 			// Action is a polymorphic node, not a scalar — it goes through the
 			// same builder CREATE PAGE uses rather than being written as a value.
-			action, err := convertASTAction(ctx, value, moduleName, moduleID)
+			action, err := convertASTAction(ctx, mutator, value, moduleName, moduleID)
 			if err != nil {
 				return err
 			}
@@ -284,7 +284,7 @@ func applySetPropertyMutator(ctx *ExecContext, mutator backend.PageMutator, op *
 			// Same builder as `Action`; the mutator checks the key is an
 			// action-typed property of the stored widget. Through
 			// SetWidgetProperty it would be stringified into a PrimitiveValue.
-			action, err := convertASTAction(ctx, value, moduleName, moduleID)
+			action, err := convertASTAction(ctx, mutator, value, moduleName, moduleID)
 			if err != nil {
 				return err
 			}
@@ -363,21 +363,31 @@ func convertASTDataSource(value interface{}) (pages.DataSource, error) {
 // alternative is the failure mode #855 documents for DataSource, where SET
 // carried a narrower vocabulary than REPLACE and each missing case surfaced as
 // its own bug report.
-func convertASTAction(ctx *ExecContext, value any, moduleName string, moduleID model.ID) (pages.ClientAction, error) {
+//
+// The builder is seeded with the stored document's parameters and variables, as
+// buildWidgetsFromAST is. Without them a `$Param` argument cannot be told from an
+// expression and is written as one, which Studio Pro does not bind
+// (mendixlabs/mxcli#1317, the #1140 rule).
+func convertASTAction(ctx *ExecContext, mutator backend.PageMutator, value any, moduleName string, moduleID model.ID) (pages.ClientAction, error) {
 	action, ok := value.(*ast.ActionV3)
 	if !ok {
 		return nil, mdlerrors.NewValidation("Action value must be an action expression, " +
 			"for example `set (Action: microflow Module.MF) on btnSave`")
 	}
+	paramScope, paramEntityNames := mutator.ParamScope()
 	pb := &pageBuilder{
-		ctx:           ctx,
-		backend:       ctx.Backend,
-		moduleID:      moduleID,
-		moduleName:    moduleName,
-		execCache:     ctx.Cache,
-		fragments:     ctx.Fragments,
-		themeRegistry: ctx.GetThemeRegistry(),
-		widgetBackend: ctx.Backend,
+		ctx:              ctx,
+		backend:          ctx.Backend,
+		moduleID:         moduleID,
+		moduleName:       moduleName,
+		paramScope:       paramScope,
+		paramEntityNames: paramEntityNames,
+		execCache:        ctx.Cache,
+		fragments:        ctx.Fragments,
+		themeRegistry:    ctx.GetThemeRegistry(),
+		widgetBackend:    ctx.Backend,
+		localVariables:   storedPageVariables(mutator),
+		isSnippet:        mutator.ContainerType() == backend.ContainerSnippet,
 	}
 	return pb.buildClientActionV3(action)
 }
@@ -788,6 +798,7 @@ func buildColumnSpecsFromAST(ctx *ExecContext, widgets []*ast.WidgetV3, moduleNa
 		themeRegistry:    ctx.GetThemeRegistry(),
 		widgetBackend:    ctx.Backend,
 		localVariables:   storedPageVariables(mutator),
+		isSnippet:        mutator.ContainerType() == backend.ContainerSnippet,
 	}
 
 	var result []*backend.DataGridColumnSpec
@@ -882,6 +893,7 @@ func buildWidgetsFromAST(ctx *ExecContext, widgets []*ast.WidgetV3, moduleName s
 		themeRegistry:    ctx.GetThemeRegistry(),
 		widgetBackend:    ctx.Backend,
 		localVariables:   storedPageVariables(mutator),
+		isSnippet:        mutator.ContainerType() == backend.ContainerSnippet,
 	}
 
 	var result []pages.Widget

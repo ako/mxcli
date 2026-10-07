@@ -1,0 +1,71 @@
+mdl 1;
+-- mendixlabs/mxcli#1317 — an ALTER PAGE that set a call-microflow action crashed
+-- Studio Pro's Changes panel when the change was opened:
+--
+--   System.InvalidOperationException: Objects with ID [redacted] of type
+--   Forms$MicroflowParameterMapping do not have the same properties.
+--   baseNames = Expression, Parameter, Variable; newNames = Parameter, Expression
+--
+-- Reported statement (Studio Pro 11.12.2, a pluggable widget's named slot):
+--   alter page LearningJourney.LearningJourney_Details {
+--     set ('onClickAction': call microflow LearningJourney.ACT_ExcludeItemStep(
+--            LearningJourney = $LearningJourney)) on pDSLink_ButtonAndTracking8 };
+--
+-- TWO DEFECTS, both on this statement:
+--
+-- 1. An argument bound through Expression (a literal, $currentObject, a path)
+--    was written WITHOUT the Variable key. Studio Pro writes all three keys and
+--    nulls the unused slot; the merge library compares key sets per $ID and
+--    throws. Same class as #1180 (DomainModels$NoGeneralization). Every flow
+--    action and nanoflow data source shares the writer, so this was never
+--    specific to ALTER.
+--
+-- 2. ALTER PAGE SET built the action with an EMPTY parameter scope, so
+--    `$LearningJourney` — a page parameter — was not recognised and was written
+--    as the Expression "$LearningJourney" instead of Variable -> PageVariable:
+--    the #1140 binding, which Studio Pro does not resolve (CE1571 on opening).
+--    CREATE PAGE and ALTER PAGE INSERT/REPLACE already seeded the scope.
+--
+-- REPRODUCING. `mx diff` runs the same merge library as the Changes panel:
+--
+--   mxcli exec 1317-flow-arg-mapping-null-variable.mdl -p app.mpr  (up to ALTER)
+--   copy app.mpr + mprcontents/ aside as the base, then run the ALTER
+--   mx diff base/app.mpr app.mpr out.mpr
+--
+-- Measured on mxbuild 11.12.2: before the fix `mx diff` exits 129 with
+-- "Objects with ID … of type Forms$MicroflowParameterMapping do not have the same
+-- properties. baseNames = Parameter, Expression, Variable; newNames = Parameter,
+-- Expression"; after, exit 0. `mx check` is 0 errors on BOTH — the build is not
+-- a safety net for either defect.
+
+create module LJ;
+
+create persistent entity LJ.LearningJourney ( Name: String(100) );
+
+create or modify layout LJ.App_Default ( layouttype: 'Responsive' ) {
+  scrollcontainer layoutContainer { region center { placeholder Main } }
+};
+
+create or modify microflow LJ.ACT_ExcludeItemStep
+  ($LearningJourney: LJ.LearningJourney, $Flag: Boolean)
+begin
+  log info 'exclude';
+end;
+
+create or modify page LJ.LearningJourney_Details (
+  Title: 'Details', Layout: LJ.App_Default,
+  Params: ( $LearningJourney: LJ.LearningJourney )
+) {
+  placeholder Main {
+    dataview dv (DataSource: $LearningJourney) {
+      actionbutton btnGo (Caption: 'Go',
+        Action: call microflow LJ.ACT_ExcludeItemStep(LearningJourney = $currentObject, Flag = true))
+    }
+  }
+};
+
+-- The ALTER. $LearningJourney must bind through Variable (defect 2); the literal
+-- `false` stays an Expression and must carry `Variable: null` (defect 1).
+alter page LJ.LearningJourney_Details {
+  set (Action: call microflow LJ.ACT_ExcludeItemStep(LearningJourney = $LearningJourney, Flag = false)) on btnGo
+};
