@@ -1,0 +1,27 @@
+mdl 1;
+-- ============================================================================
+-- mendixlabs/mxcli#1318 — "mxcli syntax rename" said "Unknown topic: rename"
+-- ============================================================================
+--
+-- RENAME MICROFLOW/PAGE/ENTITY parsed and ran, and `mxcli help rename`
+-- documented them, but `mxcli syntax` had no rename topic, so an agent
+-- concluded MDL could not rename a microflow and rebuilt it by hand.
+--
+-- The fix is a syntax topic; the guard that keeps it in step with the grammar
+-- is cmd/mxcli/syntax/rename_topic_test.go. This file keeps the documented
+-- forms parsing: every RENAME target, DRY RUN, and RENAME MODULE.
+-- ============================================================================
+
+CREATE MODULE BugRename1318;
+
+CREATE OR MODIFY PERSISTENT ENTITY BugRename1318.Customer ( Name: String(100) );
+
+CREATE OR MODIFY MICROFLOW BugRename1318.ACT_Old ()
+BEGIN
+  LOG INFO NODE 'BugRename1318' 'old';
+END;
+
+RENAME MICROFLOW BugRename1318.ACT_Old TO ACT_New DRY RUN;
+RENAME MICROFLOW BugRename1318.ACT_Old TO ACT_New;
+RENAME ENTITY BugRename1318.Customer TO Client;
+RENAME MODULE BugRename1318 TO BugRename1318b;
