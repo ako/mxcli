@@ -1403,6 +1403,21 @@ func (fb *flowBuilder) declaringMemberRef(entityQN, memberName string) string {
 	return entityQN + "." + memberName
 }
 
+// bareFeedbackMember resolves a dotless validation-feedback member. An attribute
+// in the generalization chain wins; failing that, an association the entity (or
+// an ancestor) owns is stored as one. Neither keeps the old attribute spelling,
+// which mxbuild names.
+func (fb *flowBuilder) bareFeedbackMember(entityQN, memberName string) (attributeName, associationName string) {
+	if entityQN != "" && fb.backend != nil {
+		if _, ok := DeclaringMemberRef(fb.backend, entityQN, memberName); !ok {
+			if ref, ok := DeclaringAssociationRef(fb.backend, entityQN, memberName); ok {
+				return "", ref
+			}
+		}
+	}
+	return fb.declaringMemberRef(entityQN, memberName), ""
+}
+
 // addValidationFeedbackAction creates a VALIDATION FEEDBACK statement as a ValidationFeedbackAction.
 func (fb *flowBuilder) addValidationFeedbackAction(s *ast.ValidationFeedbackStmt) model.ID {
 	// Build the template text from the message expression.
@@ -1444,8 +1459,9 @@ func (fb *flowBuilder) addValidationFeedbackAction(s *ast.ValidationFeedbackStmt
 		if len(segs) == 1 {
 			switch strings.Count(segs[0].Name, ".") {
 			case 0:
-				// Single bare segment: direct attribute access.
-				attributeName = fb.declaringMemberRef(entityQName, segs[0].Name)
+				// Single bare segment: an attribute, or an association the
+				// entity owns (#1322) — the dot count cannot tell them apart.
+				attributeName, associationName = fb.bareFeedbackMember(entityQName, segs[0].Name)
 			case 1:
 				// Qualified association names use Module.Association.
 				associationName = segs[0].Name
