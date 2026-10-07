@@ -219,6 +219,9 @@ func execCreateRule(ctx *ExecContext, s *ast.CreateRuleStmt) error {
 	if errMsg := validateRule(qualifiedName, s.Body, s.ReturnType); errMsg != "" {
 		return fmt.Errorf("%s", errMsg)
 	}
+	if err := validateRuleSetTargets(qualifiedName, s.Parameters, s.Body); err != nil {
+		return err
+	}
 
 	// Build flow graph from body statements
 	varTypes := make(map[string]string)

@@ -297,6 +297,18 @@ func init() {
 	codec.RegisterListMarker("Forms$MicroflowParameterMapping", 2)
 	codec.RegisterListMarker("Forms$PageParameterMapping", 2)
 	codec.RegisterListMarker("Forms$SnippetParameterMapping", 2)
+	// A flow argument fills one of two slots and Studio Pro writes both. The
+	// Variable side already writes Expression "" (bindParameterMappingValue);
+	// an Expression-bound argument left Variable unset, so the key was omitted
+	// and Studio Pro's Changes panel threw "do not have the same properties.
+	// baseNames = Expression, Parameter, Variable; newNames = Parameter,
+	// Expression" (mendixlabs/mxcli#1317, the #1180 class).
+	codec.RegisterTypeDefaults("Forms$MicroflowParameterMapping", codec.TypeDefaults{
+		NullFields: []string{"Variable"},
+	})
+	codec.RegisterTypeDefaults("Forms$NanoflowParameterMapping", codec.TypeDefaults{
+		NullFields: []string{"Variable"},
+	})
 	codec.RegisterTypeDefaults("Forms$SnippetCall", codec.TypeDefaults{
 		MandatoryListMarkers: map[string]int32{"ParameterMappings": 2},
 	})

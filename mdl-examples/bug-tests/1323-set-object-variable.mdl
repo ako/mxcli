@@ -1,0 +1,47 @@
+mdl 1;
+-- ============================================================================
+-- Upstream #1323: `set $Obj = $Other` on an OBJECT variable is refused
+-- ============================================================================
+--
+-- Reported (v0.24.0 and v0.25.0, Mendix 11.14.0): with $Cursor and $Next both
+-- single G46.Group objects (a Reference followed from its FROM entity),
+--
+--   set $Cursor = $Next;
+--
+-- passed `check --references` and `exec`, and was written as a
+-- Microflows$ChangeVariableAction. mx check then answered
+--   [CE7247] "Variable 'Cursor' does not have a primitive type."
+-- Mendix has no action that reassigns an object variable: Change variable
+-- takes only a primitive, and Change list Replace (ako/mxcli#949) only a list.
+-- `check` (MDL-SET01), `check --references` and `exec` now refuse it, naming
+-- the alternatives; 1323-set-object-variable.fail.mdl is the refusal.
+--
+-- This file holds the forms that DO build — each measured on 11.14.0 with
+-- mx check reporting 0 errors.
+-- ============================================================================
+
+create module F1323;
+create persistent entity F1323.Node ("Name": String(50));
+create association F1323.Node_Parent from F1323.Node to F1323.Node type Reference;
+
+-- 1. The workaround for a chain walk: recursion in a sub-microflow that
+--    RETURNS the next object, instead of reassigning a cursor variable.
+create microflow F1323.GET_Root ($Node: F1323.Node) returns F1323.Node as $Root
+begin
+  retrieve $Parent from $Node/F1323.Node_Parent;
+  if $Parent = empty then
+    return $Node;
+  else
+    $Root = call microflow F1323.GET_Root(Node = $Parent);
+    return $Root;
+  end if;
+end;
+
+-- 2. A self-association retrieve is typed as a LIST by Mendix, so `set` on it
+--    is a Change list Replace (ako/mxcli#949) and stays accepted.
+create microflow F1323.ReplaceList ($Start: F1323.Node, $Other: F1323.Node)
+begin
+  retrieve $Cursor from $Start/F1323.Node_Parent;
+  retrieve $Next from $Other/F1323.Node_Parent;
+  set $Cursor = $Next;
+end;

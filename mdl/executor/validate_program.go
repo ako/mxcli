@@ -120,6 +120,8 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 		if ruleStmt, ok := stmt.(*ast.CreateRuleStmt); ok {
 			violations = append(violations,
 				ValidateFlowParameterAnnotations("rule '"+ruleStmt.Name.String()+"'", ruleStmt.Parameters)...)
+			violations = append(violations,
+				setTargetViolations("rule", ruleStmt.Name.String(), ruleStmt.Parameters, ruleStmt.Body)...)
 		}
 		// Check workflow for constructs MxBuild rejects (missing page,
 		// single-outcome-with-activities, invalid decision outcome names)

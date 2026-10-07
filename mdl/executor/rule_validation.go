@@ -149,3 +149,18 @@ func validateRule(name string, body []ast.MicroflowStatement, retType *ast.Micro
 	}
 	return errMsg.String()
 }
+
+// validateRuleSetTargets is exec's MDL-SET01 gate for a rule: a `set` on a
+// rule parameter is CE7247 "Parameter 'N' cannot be changed." (measured on
+// 11.14.0). check reports it through ValidateProgram, so it is not part of
+// validateRule, which check --references also runs — that would print it twice.
+func validateRuleSetTargets(name string, params []ast.MicroflowParam, body []ast.MicroflowStatement) error {
+	var msgs []string
+	for _, v := range setTargetViolations("rule", name, params, body) {
+		msgs = append(msgs, fmt.Sprintf("[%s] %s", v.RuleID, v.Message))
+	}
+	if len(msgs) == 0 {
+		return nil
+	}
+	return fmt.Errorf("rule '%s' has validation errors:\n  - %s", name, strings.Join(msgs, "\n  - "))
+}

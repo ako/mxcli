@@ -23,6 +23,15 @@ type flowBuilder struct {
 	// validator scoped names per branch and counted every call output, so it
 	// was wrong both ways. Rules keep it — MDL063 does not run on them.
 	duplicateNamesOwnedElsewhere bool
+	// checkAssocShapes is check --references' view of the project's and the
+	// script's associations, so the validator types a forward Reference
+	// retrieve as the object it yields (validateFlowBody). nil on the exec path,
+	// which resolves associations through the backend instead.
+	checkAssocShapes map[string]assocShape
+	// assocObjectVars are the variables checkAssocShapes typed as one object,
+	// the only objects whose `set` the validator reports itself (MDL-SET01
+	// reports the rest without a project).
+	assocObjectVars map[string]bool
 
 	objects         []microflows.MicroflowObject
 	flows           []*microflows.SequenceFlow

@@ -1,0 +1,27 @@
+mdl 1;
+-- ============================================================================
+-- Upstream #1323 (the refusal): `set` on an OBJECT variable is MDL-SET01
+-- ============================================================================
+--
+-- Mendix has no action that reassigns an object variable. Written as a Change
+-- variable action, this is CE7247 "Variable 'Cursor' does not have a primitive
+-- type." at build time (measured on 11.14.0). Plain `mxcli check` must refuse
+-- it. The reported script used association retrieves, whose object-or-list
+-- typing needs the project (check --references / exec refuse that form); here
+-- the cursor is a `retrieve … first`, which plain check can see is an object.
+-- (On a parameter mxbuild words it "Parameter 'X' cannot be changed.", still
+-- CE7247.) See the companion 1323-set-object-variable.mdl for the forms that
+-- build.
+--
+-- This file is expected to FAIL `mxcli check`.
+-- ============================================================================
+
+create module F1323F;
+create persistent entity F1323F.Node ("Name": String(50));
+
+create microflow F1323F.Reassign ($Next: F1323F.Node) returns F1323F.Node
+begin
+  retrieve $Cursor from F1323F.Node first;
+  set $Cursor = $Next;
+  return $Cursor;
+end;

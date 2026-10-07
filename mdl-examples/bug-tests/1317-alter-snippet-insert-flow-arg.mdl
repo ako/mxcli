@@ -1,0 +1,66 @@
+mdl 1;
+-- Follow-up to mendixlabs/mxcli#1317 — ALTER SNIPPET INSERT/REPLACE bound a
+-- snippet-parameter flow argument as a PAGE parameter.
+--
+-- buildWidgetsFromAST / buildColumnSpecsFromAST seeded the stored parameter scope
+-- but never set isSnippet, so classifyFlowArgValue returned kind "parameter" and
+-- the mapping's Forms$PageVariable carried PageParameter: "Order" inside a
+-- snippet. CREATE SNIPPET and ALTER SNIPPET SET (fixed in #1317) bind the same
+-- argument as SnippetParameter: "Order".
+--
+-- Measured on mxbuild 11.12.2 with this script on a fresh project:
+--   before: [CE0115] "The arguments that are passed to microflow 'SN.ACT_Use' do
+--           not match the expected parameters and need to be refreshed." at
+--           Action button 'btnInsert'   -> 1 error, on the INSERTED button only
+--   after:  0 errors; all three buttons bind SnippetParameter: "Order"
+--
+-- btnCreate (CREATE path) and btnSet (SET path) are the controls.
+
+create module SN;
+create persistent entity SN.Order ( Code: String(20) );
+create or modify microflow SN.ACT_Use ($Order: SN.Order)
+begin
+  log info 'use';
+end;
+create snippet SN.SNIPPET_Order ( params: ( $Order: SN.Order ) ) {
+  container ctn {
+    actionbutton btnCreate (Caption: 'Create', Action: call microflow SN.ACT_Use(Order = $Order))
+    actionbutton btnSet (Caption: 'Set', Action: call microflow SN.ACT_Use(Order = empty))
+  }
+};
+alter snippet SN.SNIPPET_Order {
+  insert after btnCreate {
+    actionbutton btnInsert (Caption: 'Insert', Action: call microflow SN.ACT_Use(Order = $Order))
+  }
+};
+alter snippet SN.SNIPPET_Order {
+  set (Action: call microflow SN.ACT_Use(Order = $Order)) on btnSet
+};
+
+-- The same defect through the DATA GRID COLUMN builder (buildColumnSpecsFromAST):
+-- a flow button in a column inserted into a grid inside a snippet. Measured on
+-- mxbuild 11.12.2: before, PageParameter: "Order" and CE0115 at btnCol; after,
+-- SnippetParameter: "Order" and 0 errors. $currentObject stays an Expression.
+
+create module SC;
+create persistent entity SC.Order ( Code: String(20) );
+create persistent entity SC.Line ( Qty: Integer );
+create or modify microflow SC.ACT_Use ($Order: SC.Order, $Line: SC.Line)
+begin
+  log info 'use';
+end;
+create snippet SC.SNIPPET_Lines ( params: ( $Order: SC.Order ) ) {
+  container ctn {
+    datagrid dgLines ( datasource: database from SC.Line ) {
+      column (attribute: Qty, caption: 'Qty')
+    }
+  }
+};
+alter snippet SC.SNIPPET_Lines {
+  insert after dgLines.Qty {
+    column Act ( attribute: Qty, caption: 'Act', ShowContentAs: customContent ) {
+      actionbutton btnCol (Caption: 'Use',
+        Action: call microflow SC.ACT_Use(Order = $Order, Line = $currentObject))
+    }
+  }
+};

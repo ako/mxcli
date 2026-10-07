@@ -12,7 +12,7 @@ func init() {
 		},
 		Syntax:  "CREATE [OR REPLACE | OR MODIFY] MICROFLOW Module.Name ($Param: Type) RETURNS Type AS $Result\nBEGIN\n  <statements>\nEND;",
 		Example: "mdl 1;\nCREATE MICROFLOW MyModule.ACT_CreateOrder ($Code: String)\nRETURNS MyModule.Order AS $NewOrder\nBEGIN\n  $NewOrder = CREATE MyModule.Order (OrderNumber = $Code);\n  COMMIT $NewOrder;\n  RETURN $NewOrder;\nEND;\n\n-- Re-runnable: replaces the microflow if it already exists\nCREATE OR MODIFY MICROFLOW MyModule.ACT_CreateOrder ($Code: String)\nRETURNS MyModule.Order AS $NewOrder\nBEGIN\n  $NewOrder = CREATE MyModule.Order (OrderNumber = $Code);\n  RETURN $NewOrder;\nEND;",
-		SeeAlso: []string{"microflow.create", "microflow.variables", "microflow.control-flow", "create-modifiers"},
+		SeeAlso: []string{"microflow.create", "microflow.variables", "microflow.control-flow", "create-modifiers", "rename"},
 	})
 
 	Register(SyntaxFeature{
@@ -134,7 +134,12 @@ func init() {
 			"DECLARE $Var Type = expression;\n" +
 			"$Var = expression;                -- assign; SET is optional\n" +
 			"$Var/Attribute = expression;\n" +
-			"SET $Var = expression;            -- same statement, explicit form",
+			"SET $Var = expression;            -- same statement, explicit form\n" +
+			"-- $Var must be a primitive or a list (a list is a Change list Replace).\n" +
+			"-- An OBJECT variable cannot be reassigned (CE7247, MDL-SET01): return the\n" +
+			"-- new object from a sub-microflow, or `change $Obj (…)` its members.\n" +
+			"-- A parameter cannot be reassigned either (CE7247, MDL-SET01) unless it is\n" +
+			"-- a list: copy it first, `DECLARE $Value Integer = $N;`.",
 		Example: "DECLARE $Count Integer = 0;\nDECLARE $Name String;\nset $Count = $Count + 1;\nset $Name = 'Hello';\nSET $Order/Status = 'Pending';",
 		SeeAlso: []string{"microflow.object-operations"},
 	})

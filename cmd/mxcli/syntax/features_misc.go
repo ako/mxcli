@@ -1061,7 +1061,72 @@ DROP FOLDER 'OldFolder' IN Module;
 
 -- Read the placement back
 LIST FOLDERS IN MyModule;`,
-		SeeAlso: []string{"folders"},
+		SeeAlso: []string{"folders", "rename"},
+	})
+
+	// ── Rename ──────────────────────────────────────────────────────────
+
+	// RENAME parsed, ran and was in `mxcli help rename` but had no topic here,
+	// so an agent consulting `syntax` concluded a microflow could not be
+	// renamed and rebuilt it by hand (mendixlabs/mxcli#1318).
+	// rename_topic_test.go holds the target list to the grammar.
+	Register(SyntaxFeature{
+		Path:    "rename",
+		Summary: "RENAME — rename a document, entity, association or module and update every reference",
+		Keywords: []string{
+			"rename", "rename microflow", "rename nanoflow", "rename page",
+			"rename entity", "rename enumeration", "rename association",
+			"rename constant", "rename java action", "rename workflow",
+			"rename module", "dry run", "refactor", "update references",
+		},
+		Syntax: `RENAME <target> Module.OldName TO NewName [DRY RUN];
+-- target: ENTITY | MICROFLOW | NANOFLOW | PAGE | ENUMERATION | ASSOCIATION
+--         | CONSTANT | JAVA ACTION | WORKFLOW
+RENAME MODULE OldModule TO NewModule [DRY RUN];
+
+-- The new name is BARE: the element stays in its module (use MOVE to change
+-- module). An element of that name already in the module is an error.
+--
+-- Every reference is updated in the same statement: each stored string in the
+-- project that IS the old qualified name, or starts with it plus '.', is
+-- rewritten (Module.Old -> Module.New, Module.Old.Attr -> Module.New.Attr).
+-- That covers calls, page and microflow parameters, show-page actions,
+-- navigation, security, attribute types, association ends.
+-- A name inside free text — a microflow expression, an XPath string — is not
+-- such a string and is left as it was; build or 'mxcli docker check' reports
+-- what remains.
+--
+-- RENAME JAVA ACTION also renames the .java source file and the class in it
+-- (class, constructor, toString); the user and extra code are left as written.
+-- RENAME MODULE rewrites every 'OldModule.' prefix project-wide.
+--
+-- DRY RUN changes nothing and lists each document that would change and how
+-- many references it holds.
+--
+-- Members are renamed with ALTER, not RENAME:
+--   ALTER ENTITY Module.E RENAME ATTRIBUTE Old TO New;
+--   ALTER ENUMERATION Module.E RENAME VALUE Old TO New;
+--
+-- From the shell, the same statement for one element:
+--   mxcli rename -p app.mpr <type> Module.OldName NewName [--dry-run]
+--   type: entity | microflow | nanoflow | page | enumeration | association
+--         | constant | java-action | workflow | module
+--   (it also updates docs/brain/ anchors; see 'mxcli help rename')`,
+		Example: `mdl 1;
+-- See what would change first
+RENAME MICROFLOW Shop.ACT_Old TO ACT_ProcessOrder DRY RUN;
+
+RENAME MICROFLOW Shop.ACT_Old TO ACT_ProcessOrder;
+RENAME NANOFLOW Shop.NF_Old TO NF_Validate;
+RENAME PAGE Shop.OldPage TO Order_Edit;
+RENAME ENTITY Shop.Customer TO Client;
+RENAME ENUMERATION Shop.Status TO OrderStatus;
+RENAME ASSOCIATION Shop.Order_Customer TO Order_Client;
+RENAME CONSTANT Shop.ApiUrl TO ServiceUrl;
+RENAME JAVA ACTION Shop.JA_Old TO JA_Hash;
+RENAME WORKFLOW Shop.WF_Old TO WF_Approve;
+RENAME MODULE Shop TO Store;`,
+		SeeAlso: []string{"move", "domain-model.entity.alter", "domain-model.enumeration"},
 	})
 
 	// ── Folders ─────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ package executor
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 )
@@ -12,19 +13,21 @@ import (
 // ValidateMicroflowBody validates the microflow body for semantic errors without building objects.
 // This is used by the check command to validate scripts without executing them.
 func ValidateMicroflowBody(s *ast.CreateMicroflowStmt) []string {
-	return validateFlowBody(s.Parameters, s.Body, true)
+	return validateFlowBody(s.Parameters, s.Body, true, nil)
 }
 
 // ValidateNanoflowBody validates the nanoflow body for semantic errors without building objects.
 // This is used by the check command to validate scripts without executing them.
 func ValidateNanoflowBody(s *ast.CreateNanoflowStmt) []string {
-	return validateFlowBody(s.Parameters, s.Body, true)
+	return validateFlowBody(s.Parameters, s.Body, true, nil)
 }
 
 // validateFlowBody validates parameters and body statements for semantic errors.
 // duplicatesOwnedElsewhere leaves duplicate variable names to MDL063 — see
-// flowBuilder.duplicateNamesOwnedElsewhere.
-func validateFlowBody(params []ast.MicroflowParam, body []ast.MicroflowStatement, duplicatesOwnedElsewhere bool) []string {
+// flowBuilder.duplicateNamesOwnedElsewhere. assocs, when check --references has
+// a project, types an association retrieve as the object or list it yields;
+// nil leaves every association retrieve a list, as without a project.
+func validateFlowBody(params []ast.MicroflowParam, body []ast.MicroflowStatement, duplicatesOwnedElsewhere bool, assocs map[string]assocShape) []string {
 	varTypes := make(map[string]string)
 	declaredVars := make(map[string]string)
 
@@ -56,6 +59,8 @@ func validateFlowBody(params []ast.MicroflowParam, body []ast.MicroflowStatement
 		declaredVars:                 declaredVars,
 		errors:                       []string{},
 		duplicateNamesOwnedElsewhere: duplicatesOwnedElsewhere,
+		checkAssocShapes:             assocs,
+		assocObjectVars:              map[string]bool{},
 	}
 
 	fb.validateStatements(body)
@@ -101,6 +106,11 @@ func (fb *flowBuilder) validateStatement(stmt ast.MicroflowStatement) {
 			fb.addErrorWithExample(
 				fmt.Sprintf("variable '%s' is not declared", s.Target),
 				errorExampleDeclareVariable(s.Target))
+		} else if fb.assocObjectVars[strings.TrimPrefix(s.Target, "$")] {
+			// Only the association-retrieved object: every other object
+			// producer is visible without a project, and MDL-SET01 reports
+			// those once (checkSetOnObjectVariable).
+			fb.refuseSetOnObject(s.Target)
 		}
 
 	case *ast.IfStmt:
@@ -308,8 +318,12 @@ func (fb *flowBuilder) validateStatement(stmt ast.MicroflowStatement) {
 		// Register retrieved variable
 		if s.Variable != "" && s.Source.Module != "" {
 			if s.StartVariable != "" {
-				// Association retrieve always returns a list
-				fb.varTypes[s.Variable] = "List of " + s.Source.Module + "." + s.Source.Name
+				if to, ok := fb.forwardReferenceTarget(s); ok {
+					fb.varTypes[s.Variable] = to
+					fb.assocObjectVars[s.Variable] = true
+				} else {
+					fb.varTypes[s.Variable] = "List of " + s.Source.Module + "." + s.Source.Name
+				}
 			} else if s.First {
 				fb.varTypes[s.Variable] = s.Source.Module + "." + s.Source.Name
 			} else {
@@ -397,5 +411,21 @@ func (fb *flowBuilder) validateOutputVariable(varName, statement string) {
 // counterpart of ValidateMicroflowBody. What a rule may not *contain* is a
 // separate question, answered by validateRule.
 func ValidateRuleBody(s *ast.CreateRuleStmt) []string {
-	return validateFlowBody(s.Parameters, s.Body, false)
+	return validateFlowBody(s.Parameters, s.Body, false, nil)
+}
+
+// forwardReferenceTarget reports the entity a retrieve over association yields
+// when that is one object: a Reference followed from its FROM entity, the same
+// reading the builder makes. A self-association, a reverse traversal, a
+// ReferenceSet or an association check cannot resolve stays a list, so the
+// rules keyed on it never see an object that is not one.
+func (fb *flowBuilder) forwardReferenceTarget(s *ast.RetrieveStmt) (string, bool) {
+	shape, ok := fb.checkAssocShapes[strings.ToLower(s.Source.Module+"."+s.Source.Name)]
+	if !ok || shape.refSet || strings.EqualFold(shape.from, shape.to) {
+		return "", false
+	}
+	if !strings.EqualFold(fb.varTypes[s.StartVariable], shape.from) {
+		return "", false
+	}
+	return shape.to, true
 }
