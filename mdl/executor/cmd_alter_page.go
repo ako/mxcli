@@ -456,6 +456,25 @@ func applyInsertWidgetMutator(ctx *ExecContext, mutator backend.PageMutator, op 
 	into := strings.EqualFold(op.Position, "INTO")
 	entityCtx, _ := alterEntityContext(ctx, mutator, op.Target.Widget, into, moduleName, moduleID)
 
+	// Special path: adding tab pages to a tab container (#1215). A tab page lives
+	// in the container's TabPages list and is not a widget, so the builder
+	// refuses one on its own ("tabpage must be a direct child of tabcontainer")
+	// and InsertWidget would put it in a widget list. INTO targets the container,
+	// BEFORE/AFTER a sibling tab page; the mutator checks which the target is.
+	if allTabPages(op.Widgets) {
+		tabPages, err := buildTabPagesFromAST(ctx, op.Widgets, moduleName, moduleID, entityCtx, mutator)
+		if err != nil {
+			return mdlerrors.NewBackend("build tab pages", err)
+		}
+		return mutator.InsertTabPages(op.Target.Widget, backend.InsertPosition(op.Position), tabPages)
+	}
+	if hasTabPage(op.Widgets) {
+		return mdlerrors.NewValidation(
+			"mixing `tabpage` blocks with ordinary widgets in one INSERT is not supported: " +
+				"tab pages go in a tab container's list of pages, widgets inside a tab page. " +
+				"Use one INSERT for the tab pages and another for the widgets")
+	}
+
 	// Build new widgets from AST
 	widgets, err := buildWidgetsFromAST(ctx, op.Widgets, moduleName, moduleID, entityCtx, mutator)
 	if err != nil {
@@ -873,13 +892,71 @@ func resolveDataSourceFlowEntity(ctx *ExecContext, moduleName string, moduleID m
 // excludeFromScope removes named widgets from the duplicate-detection scope,
 // used when replacing a widget so the new one may reuse the target's name.
 func buildWidgetsFromAST(ctx *ExecContext, widgets []*ast.WidgetV3, moduleName string, moduleID model.ID, entityContext string, mutator backend.PageMutator, excludeFromScope ...string) ([]pages.Widget, error) {
+	pb := newAlterPageBuilder(ctx, moduleName, moduleID, entityContext, mutator, excludeFromScope...)
+
+	var result []pages.Widget
+	for _, w := range widgets {
+		widget, err := pb.buildWidgetV3(w)
+		if err != nil {
+			return nil, mdlerrors.NewBackend("build widget "+w.Name, err)
+		}
+		if widget == nil {
+			continue
+		}
+		result = append(result, widget)
+	}
+	return result, nil
+}
+
+// buildTabPagesFromAST builds the tab pages an INSERT adds to a tab container,
+// with the same builder CREATE PAGE uses for a tab container's children.
+func buildTabPagesFromAST(ctx *ExecContext, nodes []*ast.WidgetV3, moduleName string, moduleID model.ID, entityContext string, mutator backend.PageMutator) ([]*pages.TabPage, error) {
+	pb := newAlterPageBuilder(ctx, moduleName, moduleID, entityContext, mutator)
+	out := make([]*pages.TabPage, 0, len(nodes))
+	for _, node := range nodes {
+		tp, err := pb.buildTabPageV3(node)
+		if err != nil {
+			return nil, mdlerrors.NewBackend("build tab page "+node.Name, err)
+		}
+		out = append(out, tp)
+	}
+	return out, nil
+}
+
+// allTabPages reports whether every inserted node is a tab page.
+func allTabPages(widgets []*ast.WidgetV3) bool {
+	if len(widgets) == 0 {
+		return false
+	}
+	for _, w := range widgets {
+		if !strings.EqualFold(w.Type, "tabpage") {
+			return false
+		}
+	}
+	return true
+}
+
+// hasTabPage reports whether ANY inserted node is a tab page, so a mixed insert
+// is refused rather than sending the tab pages down the widget path.
+func hasTabPage(widgets []*ast.WidgetV3) bool {
+	for _, w := range widgets {
+		if strings.EqualFold(w.Type, "tabpage") {
+			return true
+		}
+	}
+	return false
+}
+
+// newAlterPageBuilder returns a page builder scoped to the stored page an ALTER
+// edits: its parameters, its widget names and its local variables.
+func newAlterPageBuilder(ctx *ExecContext, moduleName string, moduleID model.ID, entityContext string, mutator backend.PageMutator, excludeFromScope ...string) *pageBuilder {
 	paramScope, paramEntityNames := mutator.ParamScope()
 	widgetScope := mutator.WidgetScope()
 	for _, name := range excludeFromScope {
 		delete(widgetScope, name)
 	}
 
-	pb := &pageBuilder{
+	return &pageBuilder{
 		ctx:              ctx,
 		backend:          ctx.Backend,
 		moduleID:         moduleID,
@@ -895,17 +972,4 @@ func buildWidgetsFromAST(ctx *ExecContext, widgets []*ast.WidgetV3, moduleName s
 		localVariables:   storedPageVariables(mutator),
 		isSnippet:        mutator.ContainerType() == backend.ContainerSnippet,
 	}
-
-	var result []pages.Widget
-	for _, w := range widgets {
-		widget, err := pb.buildWidgetV3(w)
-		if err != nil {
-			return nil, mdlerrors.NewBackend("build widget "+w.Name, err)
-		}
-		if widget == nil {
-			continue
-		}
-		result = append(result, widget)
-	}
-	return result, nil
 }

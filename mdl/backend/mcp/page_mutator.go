@@ -502,6 +502,10 @@ func (m *mcpPageMutator) InsertListViewTemplates(listViewRef string, _ []*pages.
 	return fmt.Errorf("adding specialization templates to %s is not yet supported by the MCP backend", listViewRef)
 }
 
+func (m *mcpPageMutator) InsertTabPages(targetRef string, _ backend.InsertPosition, _ []*pages.TabPage) error {
+	return fmt.Errorf("adding tab pages at %s is not yet supported by the MCP backend", targetRef)
+}
+
 func (m *mcpPageMutator) DropListViewTemplate(listViewRef, specialization string) error {
 	return fmt.Errorf("dropping the %s template from %s is not yet supported by the MCP backend",
 		specialization, listViewRef)
