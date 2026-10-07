@@ -1,0 +1,33 @@
+-- mendixlabs/mxcli#1324: a button passing its OWN data container by widget name
+--
+-- NEGATIVE TEST (.fail.mdl) — EXPECTED to fail `mxcli check`.
+-- `make check-mdl` inverts the exit code: an unexpected pass is a regression of
+-- the MDL-BUTTON02 rule.
+--
+-- Symptom: `check --references` and `exec` were clean, then `mx check` reported
+--   [error] [CE0117] "Error(s) in expression." at Action button 'btnOwn'
+-- A data container's widget name ($dvGate) is a variable only for the data
+-- containers nested below it. Directly inside dvGate (a plain container is
+-- transparent) the object is $currentObject. The same holds for a list view,
+-- gallery or data grid read by its own name from its item or row, and for a
+-- control bar, which takes its context from above its grid.
+--
+-- Fix: `mxcli check` flags it as MDL-BUTTON02 (error), so exec refuses it.
+-- btnCur and btnOuter build clean (measured, Mendix 11.14.0) and are not flagged.
+
+create module G52;
+create persistent entity G52.Gate (Name: String(50));
+create microflow G52.ACT_Open ($Gate: G52.Gate)
+begin
+  log info node 'G52' 'open';
+end;
+
+create page G52.GatePage (Title: 'Gate', Layout: Atlas_Core.PopupLayout, Params: ( $Gate: G52.Gate )) {
+  dataview dvGate (DataSource: $Gate) {
+    actionbutton btnOwn (Caption: 'Own data view name', Action: call microflow G52.ACT_Open(Gate = $dvGate))
+    actionbutton btnCur (Caption: 'Current object', Action: call microflow G52.ACT_Open(Gate = $currentObject))
+    dataview dvInner (DataSource: $Gate) {
+      actionbutton btnOuter (Caption: 'Enclosing data view name', Action: call microflow G52.ACT_Open(Gate = $dvGate))
+    }
+  }
+};
