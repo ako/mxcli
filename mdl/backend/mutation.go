@@ -144,6 +144,12 @@ type PageMutator interface {
 	// list, which Studio Pro cannot open.
 	InsertListViewTemplates(listViewRef string, templates []*pages.ListViewTemplate) error
 
+	// InsertTabPages adds tab pages to a tab container: INTO the container
+	// appends, BEFORE/AFTER a tab page places them next to that sibling. A tab
+	// page lives in the container's TabPages list and is not a widget, so it
+	// cannot go through InsertWidget (#1215).
+	InsertTabPages(targetRef string, position InsertPosition, tabPages []*pages.TabPage) error
+
 	// DropListViewTemplate removes the template rendering the given
 	// specialization from a List View. A template has no name, so it is addressed
 	// by entity. Returns an error naming the templates that ARE present when the

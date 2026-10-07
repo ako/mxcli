@@ -1,0 +1,32 @@
+mdl 1;
+-- mendixlabs/mxcli#1216: the parse functions take an optional default value,
+-- returned when the text does not parse. `check -p` used to reject it:
+--   ✗ parseDateTimeUTC() expects 2 argument(s), got 3. [E006]
+-- while mx check on 11.14.0 reports 0 errors for every microflow below.
+-- (parseBoolean has no such overload: `parseBoolean($s, false)` is CE0117.)
+
+create module BugTest1216;
+
+create microflow BugTest1216.SUB_ParseUTC ($Text: String) returns DateTime as $D
+begin
+  declare $D DateTime = parseDateTimeUTC($Text, 'yyyy-MM-dd', empty);
+  return $D;
+end;
+
+create microflow BugTest1216.SUB_ParseLocal ($Text: String, $Fallback: DateTime) returns DateTime as $D
+begin
+  declare $D DateTime = parseDateTime($Text, 'yyyy-MM-dd', $Fallback);
+  return $D;
+end;
+
+create microflow BugTest1216.SUB_ParseInteger ($Text: String) returns Integer as $N
+begin
+  declare $N Integer = parseInteger($Text, 0);
+  return $N;
+end;
+
+create microflow BugTest1216.SUB_ParseDecimal ($Text: String) returns Decimal as $N
+begin
+  declare $N Decimal = parseDecimal($Text, '#.##', 0);
+  return $N;
+end;

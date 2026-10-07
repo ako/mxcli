@@ -60,6 +60,17 @@ end;`,
 			wantMDL: true,
 		},
 		{
+			// currentDateTime() is CE0117 in a nanoflow too (11.14.0); the
+			// [%CurrentDateTime%] token below is the working spelling.
+			name: "currentDateTime() is not a built-in",
+			src: `create nanoflow Test.NF_Now () returns DateTime
+begin
+  declare $d DateTime = currentDateTime();
+  return $d;
+end;`,
+			wantMDL: true,
+		},
+		{
 			// A token is not a function call, so MDL044 stays out of it. Measured
 			// on mxbuild 11.13.0: this nanoflow builds at 0 errors. (The report's
 			// suggested workaround, [%CurrentDeviceType%], does NOT — it is CE0117
