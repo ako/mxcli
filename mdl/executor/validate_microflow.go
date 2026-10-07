@@ -577,6 +577,8 @@ func (v *microflowValidator) checkExprFunctions(label string, expr ast.Expressio
 			suggestion = fmt.Sprintf(
 				"'%s' is an aggregate activity, not an expression function. Assign it to a variable first: $n = %s($List); then use $n in the expression.",
 				u.Name, u.Name)
+		} else if u.Token != "" {
+			suggestion = fmt.Sprintf("Use the %s token instead of '%s()'.", u.Token, u.Name)
 		} else {
 			suggestion = "Use a built-in Mendix expression function (see 'mxcli syntax microflow')."
 			if u.Suggestion != "" {
