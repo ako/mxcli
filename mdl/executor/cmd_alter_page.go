@@ -798,6 +798,7 @@ func buildColumnSpecsFromAST(ctx *ExecContext, widgets []*ast.WidgetV3, moduleNa
 		themeRegistry:    ctx.GetThemeRegistry(),
 		widgetBackend:    ctx.Backend,
 		localVariables:   storedPageVariables(mutator),
+		isSnippet:        mutator.ContainerType() == backend.ContainerSnippet,
 	}
 
 	var result []*backend.DataGridColumnSpec
@@ -892,6 +893,7 @@ func buildWidgetsFromAST(ctx *ExecContext, widgets []*ast.WidgetV3, moduleName s
 		themeRegistry:    ctx.GetThemeRegistry(),
 		widgetBackend:    ctx.Backend,
 		localVariables:   storedPageVariables(mutator),
+		isSnippet:        mutator.ContainerType() == backend.ContainerSnippet,
 	}
 
 	var result []pages.Widget

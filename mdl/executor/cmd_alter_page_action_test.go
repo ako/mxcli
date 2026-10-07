@@ -249,3 +249,61 @@ func TestAlterPage_SetNamedAction_PageParamBindsThroughVariable(t *testing.T) {
 		})
 	}
 }
+
+// The INSERT/REPLACE half of #1317's scope fix. buildWidgetsFromAST and
+// buildColumnSpecsFromAST seeded the parameter scope but never isSnippet, so a
+// button inserted into a snippet bound its `$Order` argument as a PageParameter.
+// mxbuild 11.12.2 reports it as CE0115 ("arguments … do not match the expected
+// parameters") on the inserted button only; CREATE SNIPPET and ALTER SET bind
+// the same argument as SnippetParameter.
+func TestAlterSnippet_InsertedFlowArgBindsSnippetParameter(t *testing.T) {
+	mod := mkModule("SN")
+	mf := mkMicroflow(mod.ID, "ACT_Use")
+	mb := &mock.MockBackend{
+		IsConnectedFunc:    func() bool { return true },
+		ListModulesFunc:    func() ([]*model.Module, error) { return []*model.Module{mod}, nil },
+		ListMicroflowsFunc: func() ([]*microflows.Microflow, error) { return []*microflows.Microflow{mf}, nil },
+	}
+	h := mkHierarchy(mod)
+	withContainer(h, mf.ContainerID, mod.ID)
+	ctx, _ := newMockCtx(t, withBackend(mb), withHierarchy(h))
+
+	for _, tc := range []struct {
+		container backend.ContainerKind
+		wantKind  string
+	}{
+		{backend.ContainerSnippet, "snippet"},
+		{backend.ContainerPage, "parameter"}, // control: a page keeps PageParameter
+	} {
+		t.Run(string(tc.container), func(t *testing.T) {
+			mut := &mock.MockPageMutator{
+				ContainerTypeFunc: func() backend.ContainerKind { return tc.container },
+				ParamScopeFunc: func() (map[string]model.ID, map[string]string) {
+					return map[string]model.ID{"Order": "p1"}, map[string]string{"Order": "SN.Order"}
+				},
+				WidgetScopeFunc: func() map[string]model.ID { return map[string]model.ID{} },
+			}
+			btn := &ast.WidgetV3{Type: "actionbutton", Name: "btnInsert", Properties: map[string]any{
+				"Caption": "Insert",
+				"Action": &ast.ActionV3{Type: "microflow", Target: "SN.ACT_Use",
+					Args: []ast.FlowArgV3{{Name: "Order", Value: "$Order"}}},
+			}}
+			ws, err := buildWidgetsFromAST(ctx, []*ast.WidgetV3{btn}, "SN", mod.ID, "", mut)
+			assertNoError(t, err)
+			if len(ws) != 1 {
+				t.Fatalf("widgets = %d, want 1", len(ws))
+			}
+			b, ok := ws[0].(*pages.ActionButton)
+			if !ok {
+				t.Fatalf("widget = %T, want *pages.ActionButton", ws[0])
+			}
+			mfa, ok := b.Action.(*pages.MicroflowClientAction)
+			if !ok || len(mfa.ParameterMappings) != 1 {
+				t.Fatalf("action = %#v, want one microflow mapping", b.Action)
+			}
+			if got := mfa.ParameterMappings[0].VariableKind; got != tc.wantKind {
+				t.Errorf("VariableKind = %q, want %q — mxbuild reports CE0115 on the button", got, tc.wantKind)
+			}
+		})
+	}
+}
