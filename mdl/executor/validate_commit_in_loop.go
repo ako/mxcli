@@ -10,7 +10,8 @@ import (
 )
 
 // checkCommitInLoop (MDL-PERF01) reports a commit inside a loop, which is one
-// database round trip per iteration.
+// database round trip per iteration — a `commit` statement, or a `create` /
+// `change` with a commit clause (mendixlabs/mxcli#1217).
 //
 // `lint` has known this as CONV011 since long before this rule, and that is the
 // problem it exists to solve rather than duplicate: CONV011 reads the STORED
@@ -49,6 +50,22 @@ func (v *microflowValidator) checkCommitInLoop(body []ast.MicroflowStatement) {
 						fmt.Sprintf("commit of $%s is inside a loop, so it runs one database round trip "+
 							"per iteration (`lint` reports this as CONV011)", st.Variable),
 						fmt.Sprintf("Add $%s to a list inside the loop and commit the list once after it", st.Variable))
+				}
+			case *ast.ChangeObjectStmt:
+				// mendixlabs/mxcli#1217: the commit clause is the same round
+				// trip per iteration as a separate commit, and CONV011 counts it.
+				if inLoop && st.Commit != ast.CommitNo {
+					v.addViolation("MDL-PERF01", linter.SeverityWarning,
+						fmt.Sprintf("change of $%s commits inside a loop, so it runs one database round trip "+
+							"per iteration (`lint` reports this as CONV011)", st.Variable),
+						fmt.Sprintf("Drop the commit clause, add $%s to a list inside the loop and commit the list once after it", st.Variable))
+				}
+			case *ast.CreateObjectStmt:
+				if inLoop && st.Commit != ast.CommitNo {
+					v.addViolation("MDL-PERF01", linter.SeverityWarning,
+						fmt.Sprintf("create of $%s commits inside a loop, so it runs one database round trip "+
+							"per iteration (`lint` reports this as CONV011)", st.Variable),
+						fmt.Sprintf("Drop the commit clause, add $%s to a list inside the loop and commit the list once after it", st.Variable))
 				}
 			case *ast.LoopStmt:
 				walk(st.Body, true)
