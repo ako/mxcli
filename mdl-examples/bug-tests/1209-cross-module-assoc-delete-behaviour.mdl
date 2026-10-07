@@ -1,0 +1,48 @@
+mdl 1;
+-- mendixlabs/mxcli#1209 — on a CROSS-MODULE association (DomainModels$CrossAssociation)
+-- the delete behaviour was not written:
+--
+--   1. `on delete restrict error message '…'` stored ChildErrorMessage = null, and the
+--      runtime then refused to start:
+--        AdminException: An error occurred while initializing the Runtime: None.get
+--        java.util.NoSuchElementException: None.get
+--          at com.mendix.basis.objectmanagement.SchemeFactory$.setDeleteBehavior
+--      `mx check` reports 0 errors on that shape, so only a boot catches it.
+--   2. CREATE OR MODIFY reported "Unchanged association" and ALTER "Altered
+--      association", yet DESCRIBE still showed `on delete restrict`.
+--
+-- Reported on v0.24.0. Both halves were already fixed before the report reached
+-- this fork — ako/mxcli#792 (UpdateDomainModel patches CrossAssociations) and
+-- ako/mxcli#803 (crossAssocToGen writes the restrict message), shipped in v0.25.0.
+-- This script is the end-to-end regression case the two unit tests lacked.
+--
+-- Run with `mxcli exec`, then `mxcli run --local --db-type hsqldb`: the app must
+-- boot. With the #803 call stubbed out it fails with the None.get above (measured
+-- on 11.14.0). After each step, `describe association Bug1209B.Other_Parent` must
+-- show the value just written. A restrict WITHOUT a message (Other2_Parent) is
+-- stored as an empty Texts$Text, not null, and boots.
+
+create module Bug1209A;
+create module Bug1209B;
+
+create persistent entity Bug1209A.Parent ("Name": String(100));
+create persistent entity Bug1209A.Child ("Name": String(100));
+create persistent entity Bug1209B.Other ("Name": String(100));
+
+-- same-module control
+create association Bug1209A.Child_Parent from Bug1209A.Child to Bug1209A.Parent type Reference
+  on delete restrict error message 'Parent is in use';
+
+-- cross-module: TO entity in another module
+create association Bug1209B.Other_Parent from Bug1209B.Other to Bug1209A.Parent type Reference
+  on delete restrict error message 'Parent is in use by Other';
+
+create association Bug1209B.Other2_Parent from Bug1209B.Other to Bug1209A.Parent type Reference
+  on delete restrict;
+
+-- changing it afterwards must land (describe: no `on delete` clause, the default)
+create or modify association Bug1209B.Other_Parent from Bug1209B.Other to Bug1209A.Parent type Reference
+  on delete set null;
+
+-- and back again through ALTER (describe: `on delete restrict error message 'again'`)
+alter association Bug1209B.Other_Parent set on delete restrict error message 'again';
