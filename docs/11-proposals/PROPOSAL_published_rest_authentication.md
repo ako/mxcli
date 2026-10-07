@@ -1,6 +1,6 @@
 ---
 title: Authentication on a published REST service
-status: draft
+status: implemented
 date: 2026-10-07
 related:
   - docs/13-decisions/0010-mdl-canonical-syntax-rules.md
@@ -126,14 +126,30 @@ scope here and noted under Open Questions.
 
 ## Validation
 
-At `check` / `exec` time:
+Measured with `mx check` on a fresh 11.14.0 project, one service per variant
+(`mxcli new AuthProbe --version 11.14.0`, written by this change):
 
-- **MDL-RESTAUTH01** (error): `Authentication: ()` with no methods, or a method
-  listed twice.
-- **MDL-RESTAUTH02** (error, `--references` and exec): the microflow does not
-  exist, or its signature is not one Mendix accepts for custom authentication.
-  The accepted signatures are **to be measured** against `mx check` (see Test
-  Plan) rather than taken from the sample.
+| Variant | `mx check` |
+|---|---|
+| microflow `($HttpRequest: System.HttpRequest) returns System.User` | clean |
+| the same with the parameter named `$Req` | clean — matched by type |
+| no parameters; `HttpRequest` + `HttpResponse`; `HttpResponse` only | clean |
+| returns `Boolean` | **CE0334** "Authentication Microflow … should return a User" |
+| a `String` parameter | **CE0336** "The microflow parameter ('Token') is not present in the custom authentication parameter list." |
+| custom authentication, app security off | **CE6600** |
+| authentication on, no allowed role | **CE0338** "At least one allowed role must be selected …" |
+| no authentication, with an allowed role | clean |
+| `(microflow M.F, session)` + role, security production | clean |
+
+So, at `check --references` and `exec` time:
+
+- **MDL-REST04** (error): the microflow does not exist, does not return
+  `System.User`, or has a parameter that is not a `System.HttpRequest` or
+  `System.HttpResponse`. A microflow the same script creates is resolved by name
+  at check time; `exec` checks its signature once it exists.
+- A repeated method (`(basic, basic)`) is a parse-time error; `()` does not parse.
+- CE0338 and CE6600 depend on statements that come later (`grant`) or project
+  state (app security), so they are documented, not predicted.
 
 ## Implementation Plan
 
@@ -146,7 +162,7 @@ At `check` / `exec` time:
 | `mdl/backend/modelsdk/integration_read.go` | read both fields |
 | `mdl/backend/modelsdk/published_rest_write.go` | write both from the model; drop them from `publishedRestServiceUnauthored` |
 | `mdl/executor/cmd_published_rest.go` | create / modify / alter: set, or carry the stored value when not stated; `describe` prints the property |
-| `mdl/executor/` validation | MDL-RESTAUTH01/02 |
+| `mdl/executor/validate.go` | MDL-REST04 at `check --references` |
 | `docs-site/`, `mxcli syntax`, skill | document the property |
 
 Moving the two fields from "carried by the writer" to "carried by the
@@ -167,7 +183,8 @@ Both fields exist on every version mxcli supports (10.0+), so no version gate.
   and alter; `none` clears methods and microflow; dropping `microflow` clears
   the microflow; `describe` → `exec` of each TestApp service writes nothing.
 - `mx check` (11.14.0): a service per state built by mxcli, plus the
-  microflow-signature variants, to pin MDL-RESTAUTH02 to what Mendix accepts.
+  microflow-signature variants, to pin MDL-REST04 to what Mendix accepts
+  (results under Validation).
 - `mdl-examples/doctype-tests/`: a published REST script exercising the property.
 
 ## Open Questions
@@ -175,5 +192,5 @@ Both fields exist on every version mxcli supports (10.0+), so no version gate.
 1. Migrate the published OData `authentication` clause to an `Authentication:`
    property (with the clause as a deprecated alias) so the two siblings agree.
    Separate change.
-2. Whether a service with roles but no authentication is accepted by
-   `mx check` — measured during implementation.
+2. ~~Whether a service with roles but no authentication is accepted~~ — it is
+   (Validation table). The reverse, authentication with no role, is CE0338.

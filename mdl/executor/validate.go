@@ -846,6 +846,16 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 			return mdlerrors.NewValidationf("workflow '%s' has reference errors:\n  - %s",
 				s.Name.String(), strings.Join(refErrors, "\n  - "))
 		}
+	case *ast.CreatePublishedRestServiceStmt:
+		return validatePublishedRestAuthMicroflow(ctx, s.Authentication, sc)
+	case *ast.AlterPublishedRestServiceStmt:
+		for _, a := range s.Actions {
+			if set, ok := a.(*ast.PublishedRestSetAction); ok {
+				if err := validatePublishedRestAuthMicroflow(ctx, set.Authentication, sc); err != nil {
+					return err
+				}
+			}
+		}
 	case *ast.AlterWorkflowStmt:
 		if refErrors := validateAlterWorkflowRefs(ctx, s, sc); len(refErrors) > 0 {
 			return mdlerrors.NewValidationf("workflow '%s' has reference errors:\n  - %s",
@@ -2008,4 +2018,24 @@ func flowValidationError(kind, name string, validationErrors, refErrors []string
 			kind, name, strings.Join(refErrors, "\n  - ")))
 	}
 	return mdlerrors.NewValidationf("%s", strings.Join(parts, "\n  "))
+}
+
+// validatePublishedRestAuthMicroflow is exec's MDL-REST04 at check time: the
+// custom-authentication microflow exists, and a project microflow has a
+// signature Mendix accepts. A microflow the script creates is known by name
+// only here; exec checks its signature once it exists.
+func validatePublishedRestAuthMicroflow(ctx *ExecContext, auth *ast.PublishedRestAuthentication, sc *scriptContext) error {
+	if auth == nil || auth.Microflow == "" {
+		return nil
+	}
+	if mf, ok := liveMicroflowsByQualifiedName(ctx)[auth.Microflow]; ok {
+		if problem := publishedRestAuthMicroflowProblem(mf); problem != "" {
+			return mdlerrors.NewValidationf("MDL-REST04: authentication microflow %s %s", auth.Microflow, problem)
+		}
+		return nil
+	}
+	if sc.microflows[auth.Microflow] {
+		return nil
+	}
+	return mdlerrors.NewValidationf("MDL-REST04: authentication microflow not found: %s", auth.Microflow)
 }
