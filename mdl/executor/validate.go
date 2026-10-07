@@ -701,6 +701,9 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 			sc.warnExcluded("microflow", s.Name.String(), refErrors)
 			refErrors = nil
 		}
+		// The signature's types, which exec resolves (and refuses) whether or
+		// not the document is excluded — so these are never relaxed.
+		refErrors = append(flowSignatureErrors(ctx, sc, "microflow", s.Name, s.Parameters, s.ReturnType), refErrors...)
 		if len(validationErrors) > 0 || len(refErrors) > 0 {
 			return flowValidationError("microflow", s.Name.String(), validationErrors, refErrors)
 		}
@@ -718,6 +721,10 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 		if validationErrors := ValidateRuleBody(s); len(validationErrors) > 0 {
 			return mdlerrors.NewValidationf("rule '%s' has validation errors:\n  - %s",
 				s.Name.String(), strings.Join(validationErrors, "\n  - "))
+		}
+		if sigErrors := flowSignatureErrors(ctx, sc, "rule", s.Name, s.Parameters, s.ReturnType); len(sigErrors) > 0 {
+			return mdlerrors.NewValidationf("rule '%s' has reference errors:\n  - %s",
+				s.Name.String(), strings.Join(sigErrors, "\n  - "))
 		}
 		if refErrors := validateFlowBodyReferences(ctx, s.Body, sc); len(refErrors) > 0 {
 			if s.Excluded {
@@ -744,6 +751,9 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 			sc.warnExcluded("nanoflow", s.Name.String(), refErrors)
 			refErrors = nil
 		}
+		// The signature's types, which exec resolves (and refuses) whether or
+		// not the document is excluded — so these are never relaxed.
+		refErrors = append(flowSignatureErrors(ctx, sc, "nanoflow", s.Name, s.Parameters, s.ReturnType), refErrors...)
 		if len(validationErrors) > 0 || len(refErrors) > 0 {
 			return flowValidationError("nanoflow", s.Name.String(), validationErrors, refErrors)
 		}
@@ -752,6 +762,12 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 			if _, err := findModule(ctx, s.Name.Module); err != nil {
 				return mdlerrors.NewNotFound("module", s.Name.Module)
 			}
+		}
+		// The parameters' entities: exec resolves each and stops on one it
+		// cannot find, excluded page or not.
+		if paramErrors := documentParameterErrors(ctx, sc, "page", s.Name, s.Parameters); len(paramErrors) > 0 {
+			return mdlerrors.NewValidationf("page '%s' has reference errors:\n  - %s",
+				s.Name.String(), strings.Join(paramErrors, "\n  - "))
 		}
 		// Every widget-bearing field, not just the bare body — see pageWidgets.
 		pageWidgets := allPageWidgets(s)
@@ -803,6 +819,10 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 			if _, err := findModule(ctx, s.Name.Module); err != nil {
 				return mdlerrors.NewNotFound("module", s.Name.Module)
 			}
+		}
+		if paramErrors := documentParameterErrors(ctx, sc, "snippet", s.Name, s.Parameters); len(paramErrors) > 0 {
+			return mdlerrors.NewValidationf("snippet '%s' has reference errors:\n  - %s",
+				s.Name.String(), strings.Join(paramErrors, "\n  - "))
 		}
 		// Validate widget references (DataSource, Action, Snippet). A snippet
 		// has no @excluded of its own; one exec keeps excluded (the carry) is
