@@ -210,6 +210,11 @@ func execCreateUserRole(ctx *ExecContext, s *ast.CreateUserRoleStmt) error {
 	if !ctx.ConnectedForWrite() {
 		return mdlerrors.NewNotConnectedWrite()
 	}
+	// Every name the statement stores is resolved before anything is written:
+	// unresolved, it was written as given and surfaced as CE1613 at build time.
+	if err := refuseUnresolvedSecurityRefs(ctx, s); err != nil {
+		return err
+	}
 
 	ps, err := ctx.Backend.GetProjectSecurity()
 	if err != nil {
@@ -294,6 +299,11 @@ func userRoleProperties(s *ast.CreateUserRoleStmt) backend.UserRoleProperties {
 func execAlterUserRole(ctx *ExecContext, s *ast.AlterUserRoleStmt) error {
 	if !ctx.ConnectedForWrite() {
 		return mdlerrors.NewNotConnectedWrite()
+	}
+	// Every name the statement stores is resolved before anything is written:
+	// unresolved, it was written as given and surfaced as CE1613 at build time.
+	if err := refuseUnresolvedSecurityRefs(ctx, s); err != nil {
+		return err
 	}
 
 	ps, err := ctx.Backend.GetProjectSecurity()
@@ -1321,6 +1331,11 @@ const demoUserPasswordPlaceholder = "***"
 func execCreateDemoUser(ctx *ExecContext, s *ast.CreateDemoUserStmt) error {
 	if !ctx.ConnectedForWrite() {
 		return mdlerrors.NewNotConnectedWrite()
+	}
+	// Every name the statement stores is resolved before anything is written:
+	// unresolved, it was written as given and surfaced as CE1613 at build time.
+	if err := refuseUnresolvedSecurityRefs(ctx, s); err != nil {
+		return err
 	}
 
 	ps, err := ctx.Backend.GetProjectSecurity()

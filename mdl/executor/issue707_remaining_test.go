@@ -110,12 +110,14 @@ func TestIssue707_UserRolePropertiesSurviveReplay(t *testing.T) {
 	}
 	stmt := findStmt[*ast.CreateUserRoleStmt](t, prog, out)
 
-	dst, dstBuf, ps := userRoleCtx(t)
+	// The manageable roles must exist where the replay lands: exec resolves
+	// them before writing.
+	dst, dstBuf, ps := userRoleCtx(t, &security.UserRole{Name: "Clerk"}, &security.UserRole{Name: "Viewer"})
 	assertNoError(t, execCreateUserRole(dst, stmt))
-	if len(ps.UserRoles) != 1 {
-		t.Fatalf("user roles after replay = %d, want 1", len(ps.UserRoles))
+	if len(ps.UserRoles) != 3 {
+		t.Fatalf("user roles after replay = %d, want 3", len(ps.UserRoles))
 	}
-	got := ps.UserRoles[0]
+	got := ps.UserRoles[2]
 	if !reflect.DeepEqual(got, stored) {
 		t.Errorf("replay stored\n  %+v\nwant\n  %+v\n%s", got, stored, out)
 	}

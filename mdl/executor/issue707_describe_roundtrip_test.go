@@ -380,6 +380,8 @@ func demoUserCtx(t *testing.T, users ...*security.DemoUser) (*ExecContext, *byte
 		EnableDemoUsers: true,
 		SecurityLevel:   security.SecurityLevelPrototype,
 		DemoUsers:       users,
+		// The role the demo users hold: exec resolves it before writing.
+		UserRoles: []*security.UserRole{{Name: "Administrator"}},
 	}
 	mb := &mock.MockBackend{
 		IsConnectedFunc:        func() bool { return true },

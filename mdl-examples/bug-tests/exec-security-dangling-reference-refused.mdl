@@ -1,0 +1,38 @@
+-- exec wrote the names a user-role or demo-user statement gives it without
+-- resolving them, so a script run with `mxcli exec` alone (no
+-- `check -p --references` first: `exec --no-check`, or `mxcli -c`) left a
+-- dangling reference in project security that only MxBuild reported:
+--
+--   mxcli exec this-file -p app.mpr --no-check     (one statement at a time)
+--     before:  "Created user role: BugExecProbe" … and `mx check` then fails
+--              CE1613 "The selected module role 'Administration.NopeRole' no
+--              longer exists" at User role 'BugExecProbe' (likewise at User
+--              role 'User', and "The selected user role / entity …" at the
+--              two demo users)
+--     after:   each statement is refused before it writes anything, with the
+--              message check --references prints for it, e.g.
+--              create user role BugExecProbe: module role Administration.NopeRole
+--              does not exist (module Administration has: Administrator, User)
+--
+-- Measured on Evora Factory Management (Mendix 10.24.15): 4 x CE1613 before;
+-- after, the .mpr is byte-identical and mtime unchanged.
+--
+-- Uses the Administration module and the User user role (in every blank app).
+-- exec stops at the first refusal, so run the statements one at a time to see
+-- each; check --references reports all of them at once.
+--
+-- Not a `.fail.mdl`: every refusal here needs the project, and `make check-mdl`
+-- runs without one — this file parses, and must keep parsing.
+--
+-- Still accepted (controls): System.User / System.Administrator in a user role,
+-- module and user roles an earlier statement in the script created, and
+-- `alter user role … drop module roles` of a role the user role does not hold
+-- (reported "Unchanged", which keeps a cleanup script re-runnable).
+
+mdl 1;
+
+create user role BugExecProbe ( ModuleRoles: (Administration.NopeRole, System.User) );
+create user role BugExecProbe2 ( ModuleRoles: (Administration.User, System.User), ManageableRoles: (NopeUserRole) );
+alter user role User add module roles (Administration.NopeRole);
+create demo user 'bug_exec_role' ( Password: 'Probe!23456789', Entity: Administration.Account, UserRoles: (NopeUserRole) );
+create demo user 'bug_exec_entity' ( Password: 'Probe!23456789', Entity: Administration.Nope, UserRoles: (User) );
