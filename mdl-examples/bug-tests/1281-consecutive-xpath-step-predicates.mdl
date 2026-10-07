@@ -1,0 +1,48 @@
+mdl 1;
+-- ============================================================================
+-- Bug: two predicates on one XPath step are a parse error (mendixlabs/mxcli#1281)
+-- ============================================================================
+--
+-- Symptom:
+--   retrieve $x from M.Location where
+--     [M.UserAssignment_TenantUser/M.TenantUser[Status = 'Active'][AnonymizedAt = empty]
+--      /M.TenantUser_Account = '[%CurrentUser%]'];
+--   -> "mismatched input '/' expecting ';'" when the path continues past the
+--      step, "missing ']' at '['" when it ends on it. Mendix accepts the form.
+--
+-- Root cause:
+--   xpathStep took at most one predicate: `xpathStepValue ([ xpathExpr ])?`.
+--
+-- Fix:
+--   `*` in the grammar; ast.XPathStep.Predicates holds each one in source
+--   order, so the stored constraint keeps `[a][b]` rather than an `and`.
+--
+-- Verify:
+--   mxcli exec mdl-examples/bug-tests/1281-consecutive-xpath-step-predicates.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe microflow BugTest1281.Mid"   # both predicates kept
+--   mx check app.mpr    # 0 errors (measured on 11.6.6)
+-- ============================================================================
+
+create module BugTest1281;
+
+create persistent entity BugTest1281.Account (Name: String(100));
+create persistent entity BugTest1281.TenantUser (Status: String(20), AnonymizedAt: DateTime);
+create persistent entity BugTest1281.Location (Name: String(100));
+create association BugTest1281.UserAssignment_TenantUser from BugTest1281.Location to BugTest1281.TenantUser;
+create association BugTest1281.TenantUser_Account from BugTest1281.TenantUser to BugTest1281.Account;
+
+-- The path continues after the step with two predicates.
+create microflow BugTest1281.Mid ()
+returns Nothing
+begin
+  retrieve $Locations from BugTest1281.Location
+    where [BugTest1281.UserAssignment_TenantUser/BugTest1281.TenantUser[Status = 'Active'][AnonymizedAt = empty]/BugTest1281.TenantUser_Account/BugTest1281.Account/Name = 'x'];
+end;
+
+-- The path ends on the step with two predicates.
+create microflow BugTest1281.End ()
+returns Nothing
+begin
+  retrieve $Locations from BugTest1281.Location
+    where [BugTest1281.UserAssignment_TenantUser/BugTest1281.TenantUser[Status = 'Active'][AnonymizedAt = empty]];
+end;

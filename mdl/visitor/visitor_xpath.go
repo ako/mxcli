@@ -168,7 +168,7 @@ func buildXPathPath(ctx parser.IXpathPathContext) ast.Expression {
 	}
 
 	// Optimization: single step without predicate → return the inner expression directly
-	if len(xpathSteps) == 1 && xpathSteps[0].Predicate == nil {
+	if len(xpathSteps) == 1 && len(xpathSteps[0].Predicates) == 0 {
 		return xpathSteps[0].Expr
 	}
 
@@ -183,9 +183,10 @@ func buildXPathStep(ctx parser.IXpathStepContext) ast.XPathStep {
 		Expr: buildXPathStepValue(stepCtx.XpathStepValue()),
 	}
 
-	// Check for nested predicate [expr]
-	if stepCtx.LBRACKET() != nil {
-		step.Predicate = buildXPathExpr(stepCtx.XpathExpr())
+	// Nested predicates [expr][expr]…, kept apart rather than and-ed together:
+	// `[reversed()]` is a step predicate too, and is not a condition.
+	for _, pred := range stepCtx.AllXpathExpr() {
+		step.Predicates = append(step.Predicates, buildXPathExpr(pred))
 	}
 
 	return step

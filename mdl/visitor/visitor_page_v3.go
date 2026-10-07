@@ -1998,8 +1998,8 @@ func xpathPathToString(path *ast.XPathPathExpr) string {
 	var parts []string
 	for _, step := range path.Steps {
 		s := xpathExprToString(step.Expr)
-		if step.Predicate != nil {
-			s += "[" + xpathExprToString(step.Predicate) + "]"
+		for _, pred := range step.Predicates {
+			s += "[" + xpathExprToString(pred) + "]"
 		}
 		parts = append(parts, s)
 	}

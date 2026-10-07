@@ -416,7 +416,7 @@ func TestXPath_ASTTypes(t *testing.T) {
 		if len(pathExpr.Steps) != 2 {
 			t.Errorf("expected 2 steps, got %d", len(pathExpr.Steps))
 		}
-		if pathExpr.Steps[1].Predicate == nil {
+		if len(pathExpr.Steps[1].Predicates) == 0 {
 			t.Error("expected predicate on second step")
 		}
 	})
@@ -483,6 +483,42 @@ func TestXPath_NegativeNumericLiteral(t *testing.T) {
 		}
 		if unary.Operand == nil {
 			t.Error("operand is nil — the literal was dropped")
+		}
+	})
+}
+
+// Two predicates on one path step — `Entity[a][b]` — are XPath, and Mendix
+// accepts them in a retrieve and an access rule alike. The step rule admitted
+// only one, so the second `[` was a parse error: "missing ']' at '['" when the
+// path ended on the step, "mismatched input '/' expecting ';'" when it went on
+// (mendixlabs/mxcli#1281). Each predicate is kept as written, never folded into
+// one `and`: `[reversed()]` is a step predicate too, and is not a condition.
+func TestXPath_ConsecutiveStepPredicates(t *testing.T) {
+	t.Run("parses in a retrieve", func(t *testing.T) {
+		for _, where := range []string{
+			// the issue's two shapes: the path continues after the step, and ends on it
+			"[M.UserAssignment_TenantUser/M.TenantUser[Status = 'Active'][AnonymizedAt = empty]/M.TenantUser_Account = '[%CurrentUser%]']",
+			"[M.UserAssignment_TenantUser/M.TenantUser[Status = 'Active'][AnonymizedAt = empty]]",
+		} {
+			src := "create microflow M.ZZ_Two ()\nreturns Nothing\nbegin\n  retrieve $x from M.Location where " + where + ";\nend;\n/\n"
+			if _, errs := Build(src); len(errs) > 0 {
+				t.Errorf("where %s: %v", where, errs)
+			}
+		}
+	})
+
+	t.Run("round-trips every predicate", func(t *testing.T) {
+		for _, in := range []string{
+			"[M.Assoc/M.Entity[Status = 'Active'][AnonymizedAt = empty]/M.Other = $v]",
+			"[M.Assoc/M.Entity[Status = 'Active'][AnonymizedAt = empty]]",
+			"[M.Assoc/M.Entity[A = 1 or B = 2][C = 3][D = 4]]",
+			"[System.roles[reversed()][Name = 'x']/System.UserRole = $role]",
+		} {
+			if got, ok := ParseXPathConstraint(in); !ok {
+				t.Errorf("ParseXPathConstraint(%q) did not parse", in)
+			} else if s := "[" + xpathExprToString(got) + "]"; s != in {
+				t.Errorf("round trip of %q = %q", in, s)
+			}
 		}
 	})
 }
