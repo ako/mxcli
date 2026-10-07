@@ -43,29 +43,31 @@ var misshapedPropertyValue = langver.Change{
 type propShape string
 
 const (
-	shapeString     propShape = "a string ('…')"
-	shapeDollar     propShape = "a $$…$$ block"
-	shapeName       propShape = "a name"
-	shapeQName      propShape = "a qualified name (Module.Name)"
-	shapeNumber     propShape = "a number"
-	shapeBool       propShape = "true or false"
-	shapeVarList    propShape = `a variable list ("Key": String, …)`
-	shapeVariable   propShape = "a $variable"
-	shapeConstant   propShape = "a constant (@Module.Name)"
-	shapeNone       propShape = "none"
-	shapeBasic      propShape = "basic (Username: …, Password: …)"
-	shapeMethod     propShape = "an HTTP method (get, post, put, patch, delete)"
-	shapeParamList  propShape = "a parameter list ($name: Type, …)"
-	shapeHeaderList propShape = "a header list ('Name' = value, …)"
-	shapeTemplate   propShape = "template '…'"
-	shapeMapping    propShape = "mapping Module.Entity { … }"
-	shapeJSONFrom   propShape = "json from $var"
-	shapeFileFrom   propShape = "file from $var"
-	shapeJSONAs     propShape = "json as $var"
-	shapeStringAs   propShape = "string as $var"
-	shapeFileAs     propShape = "file as $var"
-	shapeStatusAs   propShape = "status as $var"
-	shapeOther      propShape = "some other value"
+	shapeString   propShape = "a string ('…')"
+	shapeDollar   propShape = "a $$…$$ block"
+	shapeName     propShape = "a name"
+	shapeQName    propShape = "a qualified name (Module.Name)"
+	shapeNumber   propShape = "a number"
+	shapeBool     propShape = "true or false"
+	shapeVarList  propShape = `a variable list ("Key": String, …)`
+	shapeVariable propShape = "a $variable"
+	shapeConstant propShape = "a constant (@Module.Name)"
+	shapeNone     propShape = "none"
+	shapeBasic    propShape = "basic (Username: …, Password: …)"
+	// shapeAuthMethods is a published REST service's authentication methods.
+	shapeAuthMethods propShape = "a method list (basic, session, microflow Module.Name)"
+	shapeMethod      propShape = "an HTTP method (get, post, put, patch, delete)"
+	shapeParamList   propShape = "a parameter list ($name: Type, …)"
+	shapeHeaderList  propShape = "a header list ('Name' = value, …)"
+	shapeTemplate    propShape = "template '…'"
+	shapeMapping     propShape = "mapping Module.Entity { … }"
+	shapeJSONFrom    propShape = "json from $var"
+	shapeFileFrom    propShape = "file from $var"
+	shapeJSONAs      propShape = "json as $var"
+	shapeStringAs    propShape = "string as $var"
+	shapeFileAs      propShape = "file as $var"
+	shapeStatusAs    propShape = "status as $var"
+	shapeOther       propShape = "some other value"
 )
 
 // propKey is one key a property list reads, and the shapes it takes.
@@ -182,6 +184,7 @@ var publishedRestSchema = propSchema{on: "a published REST service", keys: []pro
 	{"Path", []propShape{shapeString}},
 	{"Version", []propShape{shapeString}},
 	{"ServiceName", []propShape{shapeString}},
+	{"Authentication", []propShape{shapeNone, shapeAuthMethods}},
 	{"Folder", []propShape{shapeString}},
 }}
 

@@ -131,12 +131,14 @@ func (b *Backend) UpdatePublishedRestServiceRoles(unitID model.ID, roles []strin
 
 // publishedRestServiceUnauthored are the Rest$PublishedRestService keys a
 // create or modify / alter cannot state: the writer emits a constant for each,
-// so a rewrite carries the stored value instead. Without the carry, executing
-// the describe output of a Studio Pro service turned its Basic and Session
-// authentication off (ako/mxcli#571).
+// so a rewrite carries the stored value instead.
+//
+// AuthenticationTypes and AuthenticationMicroflow were here until MDL could
+// state them (mendixlabs/mxcli#1331); before that, executing the describe
+// output of a Studio Pro service turned its Basic and Session authentication
+// off (ako/mxcli#571). They are written from the model now, and an unstated
+// setting is carried by the executor, which reads it with the service.
 var publishedRestServiceUnauthored = []string{
-	"AuthenticationMicroflow",
-	"AuthenticationTypes",
 	"CorsConfiguration",
 	"Documentation",
 	"Parameters",
@@ -155,9 +157,12 @@ func publishedRestServiceToGen(svc *model.PublishedRestService) element.Element 
 	if len(svc.AllowedRoles) > 0 {
 		addByNameRefList(g, "AllowedRoles", "Security$ModuleRole", svc.AllowedRoles)
 	}
-	// AllowedRoles (empty), AuthenticationTypes, Parameters, CorsConfiguration:
-	// emitted via the registered TypeDefaults.
-	addStr(g, "AuthenticationMicroflow", "")
+	// AllowedRoles (empty), Parameters, CorsConfiguration: emitted via the
+	// registered TypeDefaults. AuthenticationTypes is a marker-1 string list in
+	// the order given, which is the order Studio Pro stores the ticked methods
+	// in; empty is "Requires authentication = No" (ako/TestApp, #1331).
+	addStrList(g, "AuthenticationTypes", svc.AuthenticationTypes)
+	addStr(g, "AuthenticationMicroflow", svc.AuthenticationMicroflow)
 
 	resources := make([]element.Element, 0, len(svc.Resources))
 	for _, res := range svc.Resources {

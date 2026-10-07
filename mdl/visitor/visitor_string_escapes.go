@@ -44,7 +44,15 @@ func newScriptStream(input string, implicit langver.Version) antlr.CharStream {
 
 // unquoteStringLit is the value of a STRING_LITERAL (a terminal node, or a
 // rule whose text is one), read under the escape rule it was lexed with.
+//
+// A nil node reads as "": Build walks a failed parse on purpose, so a rule that
+// requires a STRING_LITERAL can still arrive here without one (an unquoted
+// value under error recovery, mendixlabs/mxcli#1331). The listener has already
+// recorded the syntax error, and that is what the author must see — not a panic.
 func unquoteStringLit(n interface{ GetText() string }) string {
+	if n == nil {
+		return ""
+	}
 	text := n.GetText()
 	if !lexedWithStrictEscapes(n) {
 		return unquoteString(text)

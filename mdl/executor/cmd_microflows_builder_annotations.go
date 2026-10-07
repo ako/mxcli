@@ -57,6 +57,13 @@ func (fb *flowBuilder) mergeStatementAnnotations(stmt ast.MicroflowStatement) {
 	if len(ann.FreeNotes) > 0 {
 		fb.pendingAnnotations.FreeNotes = append(fb.pendingAnnotations.FreeNotes, ann.FreeNotes...)
 	}
+	// Missing until #1328: the parser read @excluded and applyAnnotations wrote
+	// it, but this hand-written copy skipped it, so every excluded activity was
+	// written enabled. TestMergeStatementAnnotationsCopiesEveryField guards the
+	// next field added to ActivityAnnotations.
+	if ann.Excluded {
+		fb.pendingAnnotations.Excluded = true
+	}
 	if ann.Anchor != nil {
 		fb.pendingAnnotations.Anchor = ann.Anchor
 	}

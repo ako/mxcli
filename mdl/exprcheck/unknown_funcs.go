@@ -11,6 +11,16 @@ type FuncRef struct {
 	Line       int
 	Column     int
 	Suggestion string // nearest known built-in, or "" if none is close
+	Token      string // the [%Token%] the call stands in for, or "" (see tokenFuncs)
+}
+
+// tokenFuncs maps a call that reads like a built-in but is a Mendix token
+// (lower-cased name) to that token. A did-you-mean on spelling cannot reach it,
+// since the right answer is not a function. currentDateTime() was in funcTable
+// and failed the build with CE0117 in a microflow and a nanoflow on 11.14.0,
+// where [%CurrentDateTime%] builds at 0 errors. Add a row only when measured.
+var tokenFuncs = map[string]string{
+	"currentdatetime": "[%CurrentDateTime%]",
 }
 
 // UnknownFunctionCalls parses a Mendix expression and returns every call to a
@@ -42,6 +52,7 @@ func UnknownFunctionCalls(src string) []FuncRef {
 			Line:       c.Pos().Line,
 			Column:     c.Pos().Column,
 			Suggestion: nearestFunc(c.Name),
+			Token:      tokenFuncs[strings.ToLower(c.Name)],
 		})
 	})
 	return out
