@@ -56,13 +56,11 @@ func checkButtonContextTree(widgets []*ast.WidgetV3, controlBarOf string, inCont
 		if w == nil {
 			continue
 		}
-		if a := w.GetAction(); a != nil {
-			if controlBarOf != "" && !inContext {
-				out = append(out, checkControlBarAction(a, w.Name, controlBarOf, locationPrefix)...)
-			}
-			if nearest != "" {
-				out = append(out, checkOwnContainerName(a, w.Name, nearest, locationPrefix)...)
-			}
+		if a := w.GetAction(); a != nil && controlBarOf != "" && !inContext {
+			out = append(out, checkControlBarAction(a, w.Name, controlBarOf, locationPrefix)...)
+		}
+		if nearest != "" {
+			out = append(out, checkOwnContainerName(w, nearest, locationPrefix)...)
 		}
 		childContext := inContext || isObjectContextContainer(w)
 		childNearest := nearest
@@ -80,33 +78,59 @@ func checkButtonContextTree(widgets []*ast.WidgetV3, controlBarOf string, inCont
 	return out
 }
 
-// checkOwnContainerName flags an action argument (and its chained THEN action)
-// that reads the nearest data container by its widget name — `$dvGate` from a
-// button directly inside dvGate. A container's name is a variable only for the
-// containers nested BELOW it; in its own context the object is
-// $currentObject, and mxbuild reports the name as CE0117 "Error(s) in
-// expression." (mendixlabs/mxcli#1324, measured on 11.14.0 for data views,
-// list views, galleries and data grids alike).
-func checkOwnContainerName(a *ast.ActionV3, widgetName, nearest, locationPrefix string) []linter.Violation {
+// ownNameExprProps are the expression-valued widget properties evaluated in
+// the widget's enclosing context, keyed as the visitor stores them (`Visible:`
+// and `Editable:` expressions land under the *If keys) and named as written.
+var ownNameExprProps = []struct{ key, written string }{
+	{"VisibleIf", "Visible"}, {"EditableIf", "Editable"}, {"DynamicClasses", "DynamicClasses"},
+}
+
+// checkOwnContainerName flags a widget that reads the nearest data container
+// by its widget name — `$dvGate` from a widget directly inside dvGate. A
+// container's name is a variable only for the containers nested BELOW it; in
+// its own context the object is $currentObject (mendixlabs/mxcli#1324).
+//
+// Every slot here is evaluated in the widget's enclosing context, and each was
+// measured on mxbuild 11.14.0 against a control one data view deeper: action
+// arguments (and a chained THEN action's), a data source's flow arguments,
+// Visible, Editable and DynamicClasses are CE0117 "Error(s) in expression.",
+// and a data source's XPath `where` is CE0161 "Error(s) in XPath constraint.".
+func checkOwnContainerName(w *ast.WidgetV3, nearest, locationPrefix string) []linter.Violation {
 	var out []linter.Violation
-	for a != nil {
-		for _, arg := range a.Args {
-			s, ok := arg.Value.(string)
-			if !ok || !exprReadsVariable(s, nearest) {
-				continue
-			}
-			out = append(out, linter.Violation{
-				RuleID:   "MDL-BUTTON02",
-				Severity: linter.SeverityError,
-				Message: fmt.Sprintf(
-					"%s: `%s` passes `%s` to its %s action, but `%s` is the data container the widget sits in directly — its name is a variable only inside a data container nested below it (CE0117)",
-					locationPrefix, widgetName, s, a.Type, nearest),
-				Suggestion: fmt.Sprintf(
-					"Use $currentObject for the object of `%s` here (`$currentObject/Attr` for an attribute); `$%s` works from a data view, list or grid nested inside it.",
-					nearest, nearest),
-			})
+	flag := func(slot, expr, code string) {
+		if !exprReadsVariable(expr, nearest) {
+			return
 		}
-		a = a.ThenAction
+		out = append(out, linter.Violation{
+			RuleID:   "MDL-BUTTON02",
+			Severity: linter.SeverityError,
+			Message: fmt.Sprintf(
+				"%s: `%s` reads `%s` in its %s, but `%s` is the data container the widget sits in directly — its name is a variable only inside a data container nested below it (%s)",
+				locationPrefix, w.Name, expr, slot, nearest, code),
+			Suggestion: fmt.Sprintf(
+				"Use $currentObject for the object of `%s` here (`$currentObject/Attr` for an attribute); `$%s` works from a data view, list or grid nested inside it.",
+				nearest, nearest),
+		})
+	}
+	for a := w.GetAction(); a != nil; a = a.ThenAction {
+		for _, arg := range a.Args {
+			if v, ok := arg.Value.(string); ok {
+				flag(a.Type+" action argument", v, "CE0117")
+			}
+		}
+	}
+	if ds := w.GetDataSource(); ds != nil {
+		for _, arg := range ds.Args {
+			if v, ok := arg.Value.(string); ok {
+				flag("data source argument", v, "CE0117")
+			}
+		}
+		flag("data source XPath", ds.Where, "CE0161")
+	}
+	for _, p := range ownNameExprProps {
+		if v, ok := w.Properties[p.key].(string); ok {
+			flag(p.written+" expression", v, "CE0117")
+		}
 	}
 	return out
 }
