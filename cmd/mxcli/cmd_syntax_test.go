@@ -127,3 +127,17 @@ func firstLines(s string, n int) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// mendixlabs/mxcli#1318, the reported command verbatim: `mxcli syntax rename`
+// answered "Unknown topic: rename" while RENAME MICROFLOW parsed and ran.
+func TestSyntaxRenameTopic(t *testing.T) {
+	out := runSyntax(t, "rename")
+	if strings.Contains(out, "Unknown topic") {
+		t.Fatalf("mxcli syntax rename reported an unknown topic:\n%s", firstLines(out, 3))
+	}
+	for _, want := range []string{"RENAME MICROFLOW", "RENAME PAGE", "mxcli rename"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("mxcli syntax rename does not show %q", want)
+		}
+	}
+}

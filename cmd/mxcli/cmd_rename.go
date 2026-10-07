@@ -26,6 +26,8 @@ Types:
   enumeration    Rename an enumeration
   association    Rename an association
   constant       Rename a constant
+  java-action    Rename a Java action (also renames its .java source file)
+  workflow       Rename a workflow
   module         Rename a module (updates all qualified names)
 
 Use --dry-run to preview changes without modifying.
@@ -39,6 +41,8 @@ Example:
   mxcli rename -p app.mpr entity MyModule.Customer Client
   mxcli rename -p app.mpr microflow MyModule.ACT_Old ACT_New
   mxcli rename -p app.mpr page MyModule.OldPage NewPage
+  mxcli rename -p app.mpr java-action MyModule.JA_Old JA_New
+  mxcli rename -p app.mpr workflow MyModule.WF_Old WF_New
   mxcli rename -p app.mpr module OldModule NewModule
   mxcli rename -p app.mpr entity MyModule.Customer Client --dry-run
 `,
@@ -52,36 +56,12 @@ Example:
 
 		dryRun, _ := cmd.Flags().GetBool("dry-run")
 
-		objectType := strings.ToUpper(args[0])
 		qualifiedName := args[1]
 		newName := args[2]
 
-		var mdlCmd string
-		dryRunSuffix := ""
-		if dryRun {
-			dryRunSuffix = " DRY RUN"
-		}
-
-		switch objectType {
-		case "ENTITY":
-			mdlCmd = fmt.Sprintf("RENAME ENTITY %s TO %s%s", qualifiedName, newName, dryRunSuffix)
-		case "MICROFLOW":
-			mdlCmd = fmt.Sprintf("RENAME MICROFLOW %s TO %s%s", qualifiedName, newName, dryRunSuffix)
-		case "NANOFLOW":
-			mdlCmd = fmt.Sprintf("RENAME NANOFLOW %s TO %s%s", qualifiedName, newName, dryRunSuffix)
-		case "PAGE":
-			mdlCmd = fmt.Sprintf("RENAME PAGE %s TO %s%s", qualifiedName, newName, dryRunSuffix)
-		case "ENUMERATION":
-			mdlCmd = fmt.Sprintf("RENAME ENUMERATION %s TO %s%s", qualifiedName, newName, dryRunSuffix)
-		case "ASSOCIATION":
-			mdlCmd = fmt.Sprintf("RENAME ASSOCIATION %s TO %s%s", qualifiedName, newName, dryRunSuffix)
-		case "CONSTANT":
-			mdlCmd = fmt.Sprintf("RENAME CONSTANT %s TO %s%s", qualifiedName, newName, dryRunSuffix)
-		case "MODULE":
-			mdlCmd = fmt.Sprintf("RENAME MODULE %s TO %s%s", qualifiedName, newName, dryRunSuffix)
-		default:
-			fmt.Fprintf(os.Stderr, "Unknown type: %s\n", args[0])
-			fmt.Fprintln(os.Stderr, "Valid types: entity, microflow, nanoflow, page, enumeration, association, constant, module")
+		mdlCmd, objectType, err := renameStatement(args[0], qualifiedName, newName, dryRun)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 
@@ -116,6 +96,50 @@ Example:
 
 		renameBrainAnchors(projectPath, objectType, qualifiedName, newName, dryRun)
 	},
+}
+
+// renameTypes maps the subcommand's type argument to the RENAME target keyword.
+//
+// One table instead of a case per type: the switch it replaces offered eight of
+// the grammar's ten targets, JAVA ACTION and WORKFLOW being reachable only from
+// MDL, and nothing noticed. cmd_rename_test.go now holds this table to the
+// renameTarget rule in MDLParser.g4. A two-word keyword is typed with '-' (or
+// '_', or run together), since a space would split the shell argument.
+var renameTypes = []struct {
+	arg     string
+	keyword string
+}{
+	{"entity", "ENTITY"},
+	{"microflow", "MICROFLOW"},
+	{"nanoflow", "NANOFLOW"},
+	{"page", "PAGE"},
+	{"enumeration", "ENUMERATION"},
+	{"association", "ASSOCIATION"},
+	{"constant", "CONSTANT"},
+	{"java-action", "JAVA ACTION"},
+	{"workflow", "WORKFLOW"},
+	{"module", "MODULE"},
+}
+
+// renameStatement builds the RENAME statement for one `mxcli rename` call and
+// returns it with the target keyword, which is what renameBrainAnchors keys on.
+func renameStatement(typeArg, qualifiedName, newName string, dryRun bool) (stmt, keyword string, err error) {
+	norm := strings.NewReplacer("_", "", "-", "").Replace(strings.ToLower(typeArg))
+	var valid []string
+	for _, t := range renameTypes {
+		valid = append(valid, t.arg)
+		if strings.ReplaceAll(t.arg, "-", "") == norm {
+			keyword = t.keyword
+		}
+	}
+	if keyword == "" {
+		return "", "", fmt.Errorf("unknown type: %s (valid types: %s)", typeArg, strings.Join(valid, ", "))
+	}
+	stmt = fmt.Sprintf("RENAME %s %s TO %s", keyword, qualifiedName, newName)
+	if dryRun {
+		stmt += " DRY RUN"
+	}
+	return stmt, keyword, nil
 }
 
 // renameBrainAnchors keeps docs/brain/ pointing at the thing that was renamed.
@@ -185,7 +209,8 @@ func renameBrainAnchors(projectPath, objectType, qualifiedName, newName string, 
 // corrupt entries instead of repairing them.
 func brainRenameTarget(objectType, qualifiedName string) (string, bool) {
 	switch objectType {
-	case "ENTITY", "MICROFLOW", "NANOFLOW", "PAGE", "ENUMERATION", "ASSOCIATION", "CONSTANT":
+	case "ENTITY", "MICROFLOW", "NANOFLOW", "PAGE", "ENUMERATION", "ASSOCIATION", "CONSTANT",
+		"JAVA ACTION", "WORKFLOW":
 		// These are all Module.Element, which is what an anchor names.
 		if !strings.Contains(qualifiedName, ".") {
 			return "", false
