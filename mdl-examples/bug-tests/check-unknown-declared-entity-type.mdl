@@ -1,0 +1,24 @@
+-- Control for check-unknown-declared-entity-type.fail.mdl: real System entities
+-- and enumerations in declared types must keep passing check --references.
+-- Requires a project with the Atlas_Core module.
+
+mdl 1;
+
+create module BugDeclTypeOk;
+create persistent entity BugDeclTypeOk.Thing (Name: String(100));
+
+create association BugDeclTypeOk.Thing_User from BugDeclTypeOk.Thing to System.User;
+
+create microflow BugDeclTypeOk.MF_Ok (
+  $u: System.User,
+  $f: list of System.FileDocument,
+  $d: System.DeviceType,
+  $t: BugDeclTypeOk.Thing
+) returns System.Image
+begin
+  return empty;
+end;
+
+create nanoflow BugDeclTypeOk.NF_Ok ($s: System.Session) begin end;
+
+create page BugDeclTypeOk.P_Ok (params: ($x: System.User), title: 'x', layout: Atlas_Core.Atlas_Default) { };

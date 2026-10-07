@@ -1,0 +1,34 @@
+-- check --references passed a declared type naming an entity that does not exist.
+--
+-- Reported as `create association M.X_Y from System.Nope to M.Y` passing
+-- `mxcli check script.mdl -p app.mpr --references`. On current main that shape
+-- is refused (association endpoints are resolved since ako/mxcli#555), but the
+-- same unknown name in a flow's or page's SIGNATURE was not resolved at all:
+--
+--   mxcli check this-file -p app.mpr --references
+--     before:  "✓ All references valid" / "Check passed!"
+--     after:   one reference error per statement below, naming the entity
+--
+-- Measured on Evora Factory Management (Mendix 10.24.15). exec refuses the
+-- user-module shapes and every page/snippet parameter after the statements
+-- before it are written; a System entity in a flow signature it writes by
+-- name, leaving a reference nothing resolves.
+--
+-- Every statement below must be refused. The control script beside it,
+-- check-unknown-declared-entity-type.mdl, must pass.
+
+mdl 1;
+
+create module BugDeclType;
+create persistent entity BugDeclType.Thing (Name: String(100));
+
+-- the reported shape (already refused; kept as the regression)
+create association BugDeclType.Nope_Thing from System.Nope to BugDeclType.Thing;
+
+create microflow BugDeclType.MF_SystemParam ($p: System.Nope) begin end;
+create microflow BugDeclType.MF_UserParam ($p: BugDeclType.Nope) begin end;
+create microflow BugDeclType.MF_ListParam ($p: list of System.Nope) begin end;
+create microflow BugDeclType.MF_Return () returns System.Nope begin return empty; end;
+create nanoflow BugDeclType.NF_Param ($p: System.Nope) begin end;
+create page BugDeclType.P_Param (params: ($x: System.Nope), title: 'x', layout: Atlas_Core.Atlas_Default) { };
+create snippet BugDeclType.S_Param (params: ($x: BugDeclType.Nope)) { };

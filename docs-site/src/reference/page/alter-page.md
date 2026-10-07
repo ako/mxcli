@@ -89,7 +89,27 @@ Inserts new widgets immediately before or after a named widget within its parent
 
 Appends new widgets as the **last children** of a named container. This is the only way to fill an **empty** container, and the natural way to add a widget to a container or data view without needing a sibling to anchor to. Widgets inserted into a data view take that data view's entity as their context.
 
-Supported on simple containers (container/DivContainer, data view, group box, scroll-container region). A layout grid (rows/columns) and tab container have no single child list — insert relative to a widget inside the target column or tab instead.
+Supported on simple containers (container/DivContainer, data view, group box, tab page, scroll-container region). A layout grid (rows/columns) has no single child list — insert relative to a widget inside the target column instead. A tab container's children are tab pages; see below.
+
+### Adding Tab Pages
+
+A tab container holds tab pages, and only tab pages. `INSERT INTO` the tab
+container appends one; `INSERT BEFORE` / `INSERT AFTER` a tab page places it next
+to that sibling. The container keeps its default tab.
+
+```sql
+mdl 1;
+alter page ModT.TabsPage {
+  insert after tpOne { tabpage tpTwo (Caption: 'Two') { dynamictext txtTwo (Content: 'two') } }
+};
+alter page ModT.TabsPage {
+  insert into tabsMain { tabpage tpThree (Caption: 'Three') { dynamictext txtThree (Content: 'three') } }
+};
+```
+
+A tab page cannot go next to an ordinary widget or inside another tab page, and
+one `INSERT` cannot mix tab pages with widgets. Dropping, replacing or reordering
+tab pages still needs `CREATE OR MODIFY PAGE`.
 
 ### DROP
 

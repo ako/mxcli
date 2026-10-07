@@ -111,6 +111,8 @@ MyFirstModule
 
 Depth 3 is verbose but gives you the most complete picture without running individual DESCRIBE commands.
 
+At depths 2 and 3 each page also lists its outermost data widgets, the ones that set up a data context, for example `Page MyFirstModule.Customer_Edit [DataView<Customer>]`. A data widget nested inside another one is not listed. The widget index is built only by `REFRESH CATALOG FULL`, so on a default catalog pages print without the list.
+
 ## Filtering by module
 
 Use `IN` to show only a single module:
