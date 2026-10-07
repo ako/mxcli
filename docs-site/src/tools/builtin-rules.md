@@ -34,7 +34,7 @@ The **lint rules** below run with `mxcli lint`. There is also a separate group o
 
 | Rule | Description |
 |------|-------------|
-| **CONV011** | No commit in loop -- Detects COMMIT statements inside LOOP blocks (performance anti-pattern) |
+| **CONV011** | No commit in loop -- Detects COMMIT statements, and CREATE / CHANGE with a COMMIT clause, inside LOOP blocks (performance anti-pattern) |
 | **CONV012** | Exclusive split captions -- Checks that decision branches have meaningful captions |
 | **CONV013** | Error handling on external calls -- Ensures external service calls have error handling |
 | **CONV014** | No continue error handling -- Warns against using CONTINUE error handling without logging |

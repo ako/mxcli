@@ -100,3 +100,40 @@ func TestCreatePublishedRestService_EndResourceSyntax_NoPanic(t *testing.T) {
 	prog, _ := Build(input)
 	_ = prog
 }
+
+// TestCreatePublishedRestService_NonStringPropertyValue_NoPanic reproduces
+// mendixlabs/mxcli#1331: a property value that is not a string literal
+// (`Authentication: microflow M.F`, `Authentication: Basic`,
+// `Folder: microflow M.F`) crashed the binary with a nil pointer dereference in
+// unquoteStringLit. Build walks a failed parse on purpose, so the rule context
+// exists with no STRING_LITERAL child; the author must get the syntax error.
+func TestCreatePublishedRestService_NonStringPropertyValue_NoPanic(t *testing.T) {
+	for name, value := range map[string]string{
+		"microflow":      "Authentication: microflow MyFirstModule.AuthMf",
+		"keyword":        "Authentication: Basic",
+		"folder-non-str": "Folder: microflow MyFirstModule.AuthMf",
+	} {
+		t.Run(name, func(t *testing.T) {
+			input := `CREATE OR MODIFY PUBLISHED REST SERVICE MyFirstModule.TestApi (
+  Path: 'rest/test/v1',
+  Version: '1.0.0',
+  ServiceName: 'Test API',
+  ` + value + `
+)
+{
+  RESOURCE 'items' {
+    GET '' MICROFLOW MyFirstModule.GetItems;
+  }
+};`
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf("panic for %q: %v", value, r)
+				}
+			}()
+			_, errs := Build(input)
+			if len(errs) == 0 {
+				t.Fatalf("expected a syntax error for %q, got none", value)
+			}
+		})
+	}
+}

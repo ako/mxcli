@@ -116,3 +116,48 @@ func TestValidatePageButtonContext_OwnContainerName_Suggestion(t *testing.T) {
 		t.Errorf("message should name CE0117 and suggest $currentObject: %+v", vs[0])
 	}
 }
+
+// The same scope rule holds outside actions. Measured with `mx check` 11.14.0
+// (each slot once directly in dvP, once one data view deeper as the control):
+// a nested data view's microflow data-source argument, Visible, Editable and
+// DynamicClasses are CE0117 and a nested list's XPath `where` is CE0161 when
+// they read the container they sit in directly; every control builds clean.
+func TestValidatePageButtonContext_OwnContainerName_OutsideActions(t *testing.T) {
+	src := `create page G52.Probe3 (Title: 'Probe3', Layout: Atlas_Core.PopupLayout, Params: ( $Gate: G52.Gate )) {
+  dataview dvP (DataSource: $Gate) {
+    dataview dvDsOwn (DataSource: microflow G52.DS_Gate(Gate = $dvP)) {
+      dynamictext dtA (Content: 'a')
+    }
+    container cVisOwn (Visible: $dvP/Name != '') {
+      dynamictext dtB (Content: 'b')
+    }
+    textbox tbEdOwn (Attribute: Name, Editable: $dvP/Name != '')
+    container cClsOwn (DynamicClasses: if $dvP/Name = '' then 'a' else 'b') {
+      dynamictext dtE (Content: 'e')
+    }
+    listview lvXpOwn (DataSource: database from G52.Gate where [Name = $dvP/Name]) {
+      dynamictext dtF (Content: 'f')
+    }
+    dataview dvMid (DataSource: $Gate) {
+      dataview dvDsOuter (DataSource: microflow G52.DS_Gate(Gate = $dvP)) {
+        dynamictext dtC (Content: 'c')
+      }
+      container cVisOuter (Visible: $dvP/Name != '') {
+        dynamictext dtD (Content: 'd')
+      }
+      textbox tbEdOuter (Attribute: Name, Editable: $dvP/Name != '')
+      container cClsOuter (DynamicClasses: if $dvP/Name = '' then 'a' else 'b') {
+        dynamictext dtG (Content: 'g')
+      }
+      listview lvXpOuter (DataSource: database from G52.Gate where [Name = $dvP/Name]) {
+        dynamictext dtH (Content: 'h')
+      }
+    }
+  }
+};`
+	got := strings.Join(ownContainerFlagged(t, src), ",")
+	want := "cClsOwn,cVisOwn,dvDsOwn,lvXpOwn,tbEdOwn"
+	if got != want {
+		t.Fatalf("flagged %q, want %q (mx check 11.14.0's CE0117/CE0161 set)", got, want)
+	}
+}

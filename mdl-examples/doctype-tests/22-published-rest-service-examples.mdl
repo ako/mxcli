@@ -157,6 +157,42 @@ describe published rest service PrsTest.OrderAPI;
 alter published rest service PrsTest.OrderAPI drop resource 'shipments';
 
 -- ############################################################################
+-- PART 7b: AUTHENTICATION (mendixlabs/mxcli#1331)
+-- ############################################################################
+--
+-- The methods are stored in the order written. `none` is "Requires
+-- authentication: No"; leaving the property out keeps the stored setting.
+-- With authentication on, at least one role must be granted (CE0338).
+-- `microflow Module.Name` (custom) also needs app security on (CE6600), which
+-- this script does not switch on.
+
+create published rest service PrsTest.SecureAPI (
+  Path: 'rest/secure/v1',
+  Version: '1.0.0',
+  ServiceName: 'Secure API',
+  Authentication: (session, basic)
+)
+{
+  resource 'orders' {
+    get '' microflow PrsTest.PRS_GetAllOrders;
+  }
+};
+
+grant access on published rest service PrsTest.SecureAPI to PrsTest.user;
+
+describe published rest service PrsTest.SecureAPI;
+
+alter published rest service PrsTest.SecureAPI set (Version: '1.1.0');
+
+alter published rest service PrsTest.SecureAPI set (Authentication: (basic));
+
+describe published rest service PrsTest.SecureAPI;
+
+alter published rest service PrsTest.SecureAPI set (Authentication: none);
+
+drop published rest service PrsTest.SecureAPI;
+
+-- ############################################################################
 -- PART 8: DROP
 -- ############################################################################
 

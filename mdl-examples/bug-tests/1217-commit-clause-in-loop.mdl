@@ -1,0 +1,66 @@
+mdl 1;
+-- upstream mendixlabs/mxcli#1217: "Lint CONV011 (NoCommitInLoop) misses
+-- CHANGE … COMMIT (and CREATE … COMMIT) inside a loop; only a separate COMMIT
+-- activity is flagged".
+--
+-- A create/change activity with Commit = Yes is one database round trip per
+-- iteration exactly like a separate commit; Studio Pro's recommender flags both
+-- (MXP004). CONV011 and its check-time twin MDL-PERF01 only counted the
+-- separate commit activity.
+--
+-- Verify:
+--   mxcli check mdl-examples/bug-tests/1217-commit-clause-in-loop.mdl
+--     expect: MDL-PERF01 on SUB_CloseAll, SUB_CloseAll2 and SUB_LogAll,
+--             nothing on SUB_CloseOnce.
+--   mxcli exec … -p app.mpr && mxcli lint -p app.mpr -r CONV011
+--     expect: CONV011 on the same three, nothing on SUB_CloseOnce.
+
+create module CommitClauseLoop;
+
+create entity CommitClauseLoop.Task (
+  "Done": boolean
+);
+
+create entity CommitClauseLoop.LogLine (
+  "Text": string
+);
+
+-- The reported shape: commit clause on the change. Was not flagged.
+create microflow CommitClauseLoop.SUB_CloseAll($Tasks: list of CommitClauseLoop.Task)
+begin
+  loop $T in $Tasks
+  begin
+    change $T ("Done" = true) commit;
+  end loop;
+end;
+
+-- The shape that was already flagged: separate commit activity.
+create microflow CommitClauseLoop.SUB_CloseAll2($Tasks: list of CommitClauseLoop.Task)
+begin
+  loop $T in $Tasks
+  begin
+    change $T ("Done" = true);
+    commit $T;
+  end loop;
+end;
+
+-- Commit clause on a create, inside a branch inside the loop.
+create microflow CommitClauseLoop.SUB_LogAll($Tasks: list of CommitClauseLoop.Task)
+begin
+  loop $T in $Tasks
+  begin
+    if $T/Done then
+      $L = create CommitClauseLoop.LogLine ("Text" = 'done') commit;
+    end if;
+  end loop;
+end;
+
+-- CONTROL: change in the loop, commit the list once after it.
+create microflow CommitClauseLoop.SUB_CloseOnce($Tasks: list of CommitClauseLoop.Task)
+begin
+  loop $T in $Tasks
+  begin
+    change $T ("Done" = true);
+  end loop;
+  commit $Tasks;
+end;
