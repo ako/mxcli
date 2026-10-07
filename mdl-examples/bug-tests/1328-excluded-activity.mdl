@@ -1,0 +1,35 @@
+mdl 1;
+-- ============================================================================
+-- mendixlabs/mxcli#1328 — "@excluded on microflow activities does not seem to
+-- work anymore"
+-- ============================================================================
+--
+-- `@excluded declare $Variable Boolean = false;` parsed and `exec` reported
+-- success, but the activity was written enabled (Disabled = false), so
+-- DESCRIBE printed no @excluded and the round trip lost it.
+--
+-- The flow builder merges each statement's annotations into a pending set by
+-- hand, field by field, and never copied Excluded. Guard:
+-- mdl/executor/issue1328_excluded_activity_test.go.
+--
+-- After exec, DESCRIBE of each microflow must print @excluded above the
+-- marked activity, and only that one.
+-- ============================================================================
+
+CREATE MODULE BugExcluded1328;
+
+CREATE OR MODIFY MICROFLOW BugExcluded1328.ACT_disabled_activity ()
+BEGIN
+  @excluded
+  DECLARE $Variable Boolean = false;
+  RETURN;
+END;
+
+CREATE OR MODIFY MICROFLOW BugExcluded1328.ACT_disabled_log ()
+BEGIN
+  LOG INFO NODE 'BugExcluded1328' 'enabled';
+  @excluded
+  @caption 'Disabled log'
+  LOG INFO NODE 'BugExcluded1328' 'disabled';
+  RETURN;
+END;

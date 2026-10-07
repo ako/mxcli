@@ -1073,7 +1073,10 @@ view `dvOrder`'s object from a data view, list or grid nested inside it. In the
 container's own context — directly inside it, through plain containers, or in the
 control bar of a grid inside it — the object is `$currentObject`, and
 `$dvOrder` is **CE0117** "Error(s) in expression." (`mxcli check` reports
-MDL-BUTTON02). The same goes for a list view, gallery or grid read by its own
+MDL-BUTTON02). That holds for every slot evaluated there, not only action
+arguments: a nested widget's microflow data-source arguments, `Visible:`,
+`Editable:` and `DynamicClasses:` (CE0117), and a nested list's XPath `where`
+(**CE0161**). The same goes for a list view, gallery or grid read by its own
 name from its item or row. A grid's own name *is* valid from its control bar —
 that is the selection, above (mendixlabs/mxcli#1324).
 

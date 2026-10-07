@@ -72,9 +72,14 @@ var funcTable = map[string]funcSig{
 	"urlDecode":    {args: []TypeKind{KindString}, ret: KindString},
 
 	// Type conversion
-	"toString":     {args: []TypeKind{KindAny}, ret: KindString},
-	"parseInteger": {args: []TypeKind{KindString}, ret: KindInteger},
-	"parseDecimal": {args: []TypeKind{KindString}, ret: KindDecimal},
+	"toString": {args: []TypeKind{KindAny}, ret: KindString},
+	// parseInteger(value [, default]) and parseDecimal(value [, format [, default]])
+	// return the default when the text does not parse; a two-argument
+	// parseDecimal takes either a format or a default. parseBoolean has no
+	// default overload: `parseBoolean($s, false)` is CE0117. All measured with
+	// mx check on 11.14.0 (mendixlabs/mxcli#1216).
+	"parseInteger": {args: []TypeKind{KindString, KindInteger}, minArgs: 1, ret: KindInteger},
+	"parseDecimal": {args: []TypeKind{KindString, KindString, KindDecimal}, minArgs: 1, ret: KindDecimal},
 	"parseBoolean": {args: []TypeKind{KindString}, ret: KindBoolean},
 	// formatDecimal(value [, format [, languageTag]])  — format is optional
 	"formatDecimal": {args: []TypeKind{KindDecimal, KindString, KindString}, minArgs: 1, ret: KindString},
@@ -113,8 +118,8 @@ var funcTable = map[string]funcSig{
 	"isSynced":  {args: []TypeKind{KindAny}, ret: KindBoolean},
 	"isSyncing": {args: []TypeKind{KindAny}, ret: KindBoolean},
 
-	// DateTime — construction
-	"currentDateTime": {args: []TypeKind{}, ret: KindDateTime},
+	// DateTime — construction. There is no currentDateTime(): the current time
+	// is the [%CurrentDateTime%] token (see tokenFuncs in unknown_funcs.go).
 	// dateTime/dateTimeUTC(year, month, day [, hour, minute, second]) — 3 or 6 args
 	"dateTime":    {args: []TypeKind{KindInteger, KindInteger, KindInteger, KindInteger, KindInteger, KindInteger}, minArgs: 3, ret: KindDateTime},
 	"dateTimeUTC": {args: []TypeKind{KindInteger, KindInteger, KindInteger, KindInteger, KindInteger, KindInteger}, minArgs: 3, ret: KindDateTime},
@@ -199,13 +204,16 @@ var funcTable = map[string]funcSig{
 	"formatDateTime": {args: []TypeKind{KindDateTime, KindString}, ret: KindString},
 	"formatTime":     {args: []TypeKind{KindDateTime, KindString}, minArgs: 1, ret: KindString},
 	"formatDate":     {args: []TypeKind{KindDateTime, KindString}, minArgs: 1, ret: KindString},
-	"parseDateTime":  {args: []TypeKind{KindString, KindString}, ret: KindDateTime},
+	// parseDateTime/parseDateTimeUTC(value, format [, default]) — the default is
+	// returned when the text does not parse (mendixlabs/mxcli#1216; 3 args build
+	// at 0 errors on 11.14.0, 4 args are CE0117).
+	"parseDateTime": {args: []TypeKind{KindString, KindString, KindDateTime}, minArgs: 2, ret: KindDateTime},
 
 	// DateTime — formatting / parsing (UTC calendar)
 	"formatDateTimeUTC": {args: []TypeKind{KindDateTime, KindString}, ret: KindString},
 	"formatTimeUTC":     {args: []TypeKind{KindDateTime, KindString}, minArgs: 1, ret: KindString},
 	"formatDateUTC":     {args: []TypeKind{KindDateTime, KindString}, minArgs: 1, ret: KindString},
-	"parseDateTimeUTC":  {args: []TypeKind{KindString, KindString}, ret: KindDateTime},
+	"parseDateTimeUTC":  {args: []TypeKind{KindString, KindString, KindDateTime}, minArgs: 2, ret: KindDateTime},
 
 	// DateTime — epoch conversion
 	"dateTimeToEpoch": {args: []TypeKind{KindDateTime}, ret: KindLong},
