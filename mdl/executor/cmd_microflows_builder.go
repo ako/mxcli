@@ -28,6 +28,10 @@ type flowBuilder struct {
 	// retrieve as the object it yields (validateFlowBody). nil on the exec path,
 	// which resolves associations through the backend instead.
 	checkAssocShapes map[string]assocShape
+	// assocObjectVars are the variables checkAssocShapes typed as one object,
+	// the only objects whose `set` the validator reports itself (MDL-SET01
+	// reports the rest without a project).
+	assocObjectVars map[string]bool
 
 	objects         []microflows.MicroflowObject
 	flows           []*microflows.SequenceFlow

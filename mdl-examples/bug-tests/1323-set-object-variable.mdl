@@ -13,9 +13,8 @@ mdl 1;
 --   [CE7247] "Variable 'Cursor' does not have a primitive type."
 -- Mendix has no action that reassigns an object variable: Change variable
 -- takes only a primitive, and Change list Replace (ako/mxcli#949) only a list.
--- `check --references` and `exec` now refuse it, naming the alternatives.
--- (Plain `check` without -p does not run the flow-body validator, so the
--- refusal is pinned by mdl/executor/set_object_variable_test.go, not here.)
+-- `check` (MDL-SET01), `check --references` and `exec` now refuse it, naming
+-- the alternatives; 1323-set-object-variable.fail.mdl is the refusal.
 --
 -- This file holds the forms that DO build — each measured on 11.14.0 with
 -- mx check reporting 0 errors.

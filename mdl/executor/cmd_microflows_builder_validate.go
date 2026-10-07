@@ -60,6 +60,7 @@ func validateFlowBody(params []ast.MicroflowParam, body []ast.MicroflowStatement
 		errors:                       []string{},
 		duplicateNamesOwnedElsewhere: duplicatesOwnedElsewhere,
 		checkAssocShapes:             assocs,
+		assocObjectVars:              map[string]bool{},
 	}
 
 	fb.validateStatements(body)
@@ -105,7 +106,10 @@ func (fb *flowBuilder) validateStatement(stmt ast.MicroflowStatement) {
 			fb.addErrorWithExample(
 				fmt.Sprintf("variable '%s' is not declared", s.Target),
 				errorExampleDeclareVariable(s.Target))
-		} else if !strings.Contains(s.Target, "/") {
+		} else if fb.assocObjectVars[strings.TrimPrefix(s.Target, "$")] {
+			// Only the association-retrieved object: every other object
+			// producer is visible without a project, and MDL-SET01 reports
+			// those once (checkSetOnObjectVariable).
 			fb.refuseSetOnObject(s.Target)
 		}
 
@@ -316,6 +320,7 @@ func (fb *flowBuilder) validateStatement(stmt ast.MicroflowStatement) {
 			if s.StartVariable != "" {
 				if to, ok := fb.forwardReferenceTarget(s); ok {
 					fb.varTypes[s.Variable] = to
+					fb.assocObjectVars[s.Variable] = true
 				} else {
 					fb.varTypes[s.Variable] = "List of " + s.Source.Module + "." + s.Source.Name
 				}
