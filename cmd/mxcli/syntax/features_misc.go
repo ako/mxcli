@@ -1106,11 +1106,10 @@ RENAME MODULE OldModule TO NewModule [DRY RUN];
 --   ALTER ENTITY Module.E RENAME ATTRIBUTE Old TO New;
 --   ALTER ENUMERATION Module.E RENAME VALUE Old TO New;
 --
--- From the shell, the same statement for one element (no JAVA ACTION or
--- WORKFLOW there; use -c with the statement for those):
+-- From the shell, the same statement for one element:
 --   mxcli rename -p app.mpr <type> Module.OldName NewName [--dry-run]
 --   type: entity | microflow | nanoflow | page | enumeration | association
---         | constant | module
+--         | constant | java-action | workflow | module
 --   (it also updates docs/brain/ anchors; see 'mxcli help rename')`,
 		Example: `mdl 1;
 -- See what would change first
