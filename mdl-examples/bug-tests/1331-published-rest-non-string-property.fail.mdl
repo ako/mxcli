@@ -1,0 +1,28 @@
+-- mendixlabs/mxcli#1331: a published REST service property whose value is not
+-- a string literal
+--
+-- NEGATIVE TEST (.fail.mdl) — EXPECTED to fail `mxcli check` with a syntax error.
+--
+-- Symptom: `check` and `exec` crashed instead of reporting the error:
+--   panic: runtime error: invalid memory address or nil pointer dereference
+--   ... visitor.unquoteStringLit ... visitor_rest.go
+-- Build walks a failed parse on purpose, so the property's rule context arrived
+-- without its STRING_LITERAL child. `Authentication: Basic` and
+-- `Folder: microflow M.F` took the same path.
+--
+-- Fix: unquoteStringLit reads a missing node as "", so the author sees
+--   line 22:18 mismatched input 'microflow' expecting STRING_LITERAL
+-- A panic also exits non-zero, so this file cannot tell the two apart; the
+-- guard is TestCreatePublishedRestService_NonStringPropertyValue_NoPanic.
+
+create or modify published rest service MyFirstModule.TestApi (
+  Path: 'rest/test/v1',
+  Version: '1.0.0',
+  ServiceName: 'Test API',
+  Authentication: microflow MyFirstModule.AuthMf
+)
+{
+  resource 'items' {
+    get '' microflow MyFirstModule.GetItems;
+  }
+};

@@ -357,6 +357,51 @@ CREATE OR MODIFY PUBLISHED REST SERVICE Module.OrderAPI (
 };
 ```
 
+### Authentication
+
+`Authentication` sets how a caller authenticates — Studio Pro's **Requires
+authentication** and its methods:
+
+```sql
+mdl 1;
+CREATE OR MODIFY PUBLISHED REST SERVICE Module.OrderAPI (
+  Path: 'rest/orders/v1',
+  Version: '1.0.0',
+  ServiceName: 'Order API',
+  Authentication: (basic, session, microflow Module.PRS_Authenticate)
+)
+{
+  RESOURCE 'orders' {
+    GET '' MICROFLOW Module.PRS_GetAllOrders;
+  }
+};
+GRANT ACCESS ON PUBLISHED REST SERVICE Module.OrderAPI TO Module.User;
+
+ALTER PUBLISHED REST SERVICE Module.OrderAPI SET (Authentication: (session));
+ALTER PUBLISHED REST SERVICE Module.OrderAPI SET (Authentication: none);
+```
+
+| Method | Studio Pro |
+|---|---|
+| `basic` | Username and password |
+| `session` | Active session |
+| `microflow Module.Name` | Custom, with that authentication microflow |
+| `none` (instead of a list) | Requires authentication: No |
+
+- The methods are stored **in the order written**, as Studio Pro stores them in
+  the order they were ticked; `describe` prints the stored order.
+- **Left out**, `CREATE OR MODIFY` and `ALTER` keep the service's stored
+  setting. A new service without it requires no authentication. `describe`
+  does not print `none`.
+- The **authentication microflow** returns `System.User` — empty means "not
+  authenticated" — and its parameters can only be a `System.HttpRequest` and a
+  `System.HttpResponse`, matched by type (none at all is fine). `exec` and
+  `check --references` refuse anything else as **MDL-REST04** (Mendix: CE0334,
+  CE0336).
+- With authentication on, the service needs at least one allowed module role
+  (`GRANT ACCESS …`), or `mx check` reports CE0338. Custom authentication also
+  needs app security on (CE6600). Roles without authentication are accepted.
+
 ### Multiple Resources
 
 ```sql

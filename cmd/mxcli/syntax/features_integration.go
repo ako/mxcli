@@ -344,9 +344,10 @@ func init() {
 			"create published rest", "publish rest", "rest resource",
 			"rest operation", "microflow", "path parameter",
 			"query parameter", "body parameter", "import mapping", "export mapping", "commit",
-			"grant access", "revoke access",
+			"grant access", "revoke access", "authentication", "custom authentication",
+			"basic authentication", "active session", "authentication microflow",
 		},
-		Syntax: "CREATE [OR MODIFY] PUBLISHED REST SERVICE Module.Name (\n  Path: 'rest/api/v1',\n  Version: '1.0.0',\n  ServiceName: 'My API'\n)\n{\n  RESOURCE 'name' {\n    GET '' MICROFLOW Module.GetAll;\n    GET '{id}' MICROFLOW Module.GetById;\n    POST '' MICROFLOW Module.Create\n      [IMPORT MAPPING Module.IMM] [EXPORT MAPPING Module.EMM]\n      [COMMIT Yes | YesWithoutEvents | No];   -- no COMMIT clause: Yes\n  }\n};\n\n" +
+		Syntax: "CREATE [OR MODIFY] PUBLISHED REST SERVICE Module.Name (\n  Path: 'rest/api/v1',\n  Version: '1.0.0',\n  ServiceName: 'My API',\n  [Authentication: none | ( basic, session, microflow Module.Authenticate )]\n)\n{\n  RESOURCE 'name' {\n    GET '' MICROFLOW Module.GetAll;\n    GET '{id}' MICROFLOW Module.GetById;\n    POST '' MICROFLOW Module.Create\n      [IMPORT MAPPING Module.IMM] [EXPORT MAPPING Module.EMM]\n      [COMMIT Yes | YesWithoutEvents | No];   -- no COMMIT clause: Yes\n  }\n};\n\n" +
 			"-- Operation parameters come from the microflow, as Studio Pro derives them:\n" +
 			"--   a parameter named in the path ('{id}')  -> path parameter\n" +
 			"--   an object or a list                     -> the body\n" +
@@ -354,8 +355,17 @@ func init() {
 			"--   anything else                           -> query parameter\n" +
 			"-- each with the microflow parameter's type. Create the microflow first.\n" +
 			"-- A header parameter, a renamed one or a description set in Studio Pro has\n" +
-			"-- no MDL spelling: describe notes it, CREATE OR MODIFY / ALTER keep it.\n\nALTER PUBLISHED REST SERVICE Module.Name SET Version = '2.0.0';\nALTER PUBLISHED REST SERVICE Module.Name ADD RESOURCE 'items' { ... };\nALTER PUBLISHED REST SERVICE Module.Name DROP RESOURCE 'legacy';\nDROP PUBLISHED REST SERVICE Module.Name;",
-		Example: "mdl 1;\nCREATE PUBLISHED REST SERVICE Module.OrderAPI (\n  Path: 'rest/orders/v1',\n  Version: '1.0.0',\n  ServiceName: 'Order API'\n)\n{\n  RESOURCE 'orders' {\n    GET '' MICROFLOW Module.GetAllOrders;\n    GET '{id}' MICROFLOW Module.GetOrderById;\n    POST '' MICROFLOW Module.CreateOrder;\n    DELETE '{id}' MICROFLOW Module.DeleteOrder;\n  }\n};\n\nGRANT ACCESS ON PUBLISHED REST SERVICE Module.OrderAPI\n  TO Module.User, Module.Admin;",
+			"-- no MDL spelling: describe notes it, CREATE OR MODIFY / ALTER keep it.\n\n" +
+			"-- Authentication: the methods in the order given (Studio Pro keeps that\n" +
+			"-- order): basic = username and password, session = active session,\n" +
+			"-- microflow = custom. `none` is \"Requires authentication: No\". Left out,\n" +
+			"-- CREATE OR MODIFY and ALTER keep the stored setting; a new service has none.\n" +
+			"-- The microflow returns System.User (empty: not authenticated) and takes\n" +
+			"-- only a System.HttpRequest and/or System.HttpResponse (MDL-REST04).\n" +
+			"-- With authentication on, grant at least one module role (CE0338);\n" +
+			"-- custom authentication also needs app security on (CE6600).\n\n" +
+			"ALTER PUBLISHED REST SERVICE Module.Name SET ( Version: '2.0.0', Authentication: (session) );\nALTER PUBLISHED REST SERVICE Module.Name SET Version = '2.0.0';\nALTER PUBLISHED REST SERVICE Module.Name ADD RESOURCE 'items' { ... };\nALTER PUBLISHED REST SERVICE Module.Name DROP RESOURCE 'legacy';\nDROP PUBLISHED REST SERVICE Module.Name;",
+		Example: "mdl 1;\nCREATE PUBLISHED REST SERVICE Module.OrderAPI (\n  Path: 'rest/orders/v1',\n  Version: '1.0.0',\n  ServiceName: 'Order API',\n  Authentication: (basic, session)\n)\n{\n  RESOURCE 'orders' {\n    GET '' MICROFLOW Module.GetAllOrders;\n    GET '{id}' MICROFLOW Module.GetOrderById;\n    POST '' MICROFLOW Module.CreateOrder;\n    DELETE '{id}' MICROFLOW Module.DeleteOrder;\n  }\n};\n\nGRANT ACCESS ON PUBLISHED REST SERVICE Module.OrderAPI\n  TO Module.User, Module.Admin;",
 		SeeAlso: []string{"rest", "rest.consumed"},
 	})
 

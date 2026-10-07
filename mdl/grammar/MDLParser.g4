@@ -284,8 +284,11 @@ alterStatement
     | alterModuleJarDepStatement
     ;
 
+// `set ( Key: value, … )` takes create's property list (R3); the
+// `set Key = 'value'` form is the older spelling for the string properties.
 alterPublishedRestServiceAction
-    : SET publishedRestAlterAssignment (COMMA publishedRestAlterAssignment)*
+    : SET LPAREN publishedRestProperty (COMMA publishedRestProperty)* COMMA? RPAREN
+    | SET publishedRestAlterAssignment (COMMA publishedRestAlterAssignment)*
     | ADD publishedRestResource
     | DROP RESOURCE STRING_LITERAL
     ;

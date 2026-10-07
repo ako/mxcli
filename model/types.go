@@ -789,6 +789,14 @@ type PublishedRestService struct {
 	Excluded     bool                     `json:"excluded,omitempty"`
 	AllowedRoles []string                 `json:"allowedRoles,omitempty"`
 	Resources    []*PublishedRestResource `json:"resources,omitempty"`
+
+	// AuthenticationTypes are the methods a caller may authenticate with, in
+	// the order stored: "Basic", "Session", "Microflow". Empty is "Requires
+	// authentication = No". AuthenticationMicroflow is the custom
+	// authentication microflow's qualified name, "" unless "Microflow" is
+	// among the methods (Studio Pro clears it when Custom is unticked).
+	AuthenticationTypes     []string `json:"authenticationTypes,omitempty"`
+	AuthenticationMicroflow string   `json:"authenticationMicroflow,omitempty"`
 }
 
 // GetName returns the service's name.

@@ -47,6 +47,23 @@ func newPublishedRestFixture(t *testing.T, stored ...*model.PublishedRestService
 		mf("PutFile", param("file", &microflows.ObjectType{EntityQualifiedName: "RestQ.Upload"})),
 		mf("PutMany", param("items", &microflows.ListType{EntityQualifiedName: "RestQ.Item"})),
 	}
+	// Custom-authentication microflows, the shapes measured with mx check on
+	// 11.14.0 (mendixlabs/mxcli#1331).
+	user := &microflows.ObjectType{EntityQualifiedName: "System.User"}
+	authMf := func(name string, ret microflows.DataType, params ...*microflows.MicroflowParameter) *microflows.Microflow {
+		m := mf(name, params...)
+		m.ReturnType = ret
+		return m
+	}
+	mfs = append(mfs,
+		authMf("Authenticate", user, param("HttpRequest", &microflows.ObjectType{EntityQualifiedName: "System.HttpRequest"})),
+		authMf("AuthenticateBoth", user,
+			param("Req", &microflows.ObjectType{EntityQualifiedName: "System.HttpRequest"}),
+			param("Resp", &microflows.ObjectType{EntityQualifiedName: "System.HttpResponse"})),
+		authMf("AuthenticateNoParams", user),
+		authMf("AuthenticateBool", &microflows.BooleanType{}, param("HttpRequest", &microflows.ObjectType{EntityQualifiedName: "System.HttpRequest"})),
+		authMf("AuthenticateToken", user, param("Token", &microflows.StringType{})),
+	)
 	mb := &mock.MockBackend{
 		IsConnectedFunc: func() bool { return true },
 		ListModulesFunc: func() ([]*model.Module, error) { return []*model.Module{f.mod}, nil },

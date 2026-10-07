@@ -174,8 +174,20 @@ createPublishedRestServiceStatement
       LBRACE publishedRestResource* RBRACE
     ;
 
+// `Authentication: none | ( method, … )` is the one non-string value: the
+// methods in the order written, which is the order Studio Pro stores them
+// (mendixlabs/mxcli#1331). The visitor keys on the shape, not the key, so a
+// string `Authentication: 'basic'` is reported as misshapen, not dropped.
 publishedRestProperty
     : identifierOrKeyword COLON STRING_LITERAL
+    | identifierOrKeyword COLON NONE
+    | identifierOrKeyword COLON LPAREN publishedRestAuthMethod (COMMA publishedRestAuthMethod)* COMMA? RPAREN
+    ;
+
+publishedRestAuthMethod
+    : BASIC
+    | SESSION
+    | MICROFLOW qualifiedName
     ;
 
 publishedRestResource
