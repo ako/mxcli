@@ -120,6 +120,7 @@ func (v *microflowValidator) addViolation(ruleID string, severity linter.Severit
 func (v *microflowValidator) validate(body []ast.MicroflowStatement) {
 	v.checkListOperationIterator(body)
 	v.checkRetrieveLimitOneAsList(body)
+	v.checkSetOnObjectVariable(v.params, body)
 	v.checkListOperationSource(body)
 	v.checkMergeJoinLabels(body)
 	v.checkAnnotationLabels(body)
@@ -392,6 +393,7 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 				xp := expressionToXPath(stmt.Where)
 				v.checkXPathAssociationEmpty(stmt.Variable, xp)
 				v.checkXPathFunctionNames(stmt.Variable, xp)
+				v.checkXPathFunctionArgumentOperators(stmt.Variable, stmt.Where)
 				v.checkXPathIdConstraint(stmt.Variable, xp)
 				v.checkXPathVariableTraversal(stmt.Variable, xp)
 			}
@@ -826,6 +828,89 @@ func (v *microflowValidator) checkXPathFunctionNames(variable, xpath string) {
 			fmt.Sprintf("retrieve '$%s' constraint calls `%s()`, which is a Mendix expression function — XPath "+
 				"does not have it, and mxbuild reports CE0161 \"Error(s) in XPath constraint\"", variable, fn),
 			fix)
+	}
+}
+
+// xpathArithmeticOperators are the operators an XPath function argument cannot
+// carry. Measured on mxbuild 11.14.0 (mendixlabs/mxcli#1326):
+//
+//	starts-with(Name, 'MS-' + $Key)          CE0161 "Error(s) in XPath constraint"
+//	not(contains(Name, $Key + $Key))         CE0161
+//	contains(Name, $Key - 'a')               CE0161
+//	Name = 'X-' + $Key                       clean — the same operator at top level
+//	year-from-dateTime(Due) = $N - 1         clean — an operator beside a call, not in it
+//	starts-with(Name, $P)                    clean — the value computed beforehand
+//
+// `*`, `div` and `mod` are left out on purpose: the only argument they could
+// appear in is numeric, and `contains(Name, $N)` with an Integer $N is already
+// CE0161 with no operator at all, so no measurement isolates the operator. This
+// rule blocks exec, so it covers only what was shown to fail.
+var xpathArithmeticOperators = map[string]bool{"+": true, "-": true}
+
+// xpathFunctionArgumentOperators returns, for each XPath function call in a
+// retrieve constraint whose argument is itself a `+` or `-` operation,
+// the function name and the operator. Only an argument that IS the operation
+// counts: `not(Price > $A + 1)` has a comparison for an argument and is not
+// flagged — that shape was not measured.
+func xpathFunctionArgumentOperators(expr ast.Expression) (hits [][2]string) {
+	var walk func(ast.Expression)
+	walk = func(e ast.Expression) {
+		switch n := e.(type) {
+		case *ast.FunctionCallExpr:
+			for _, arg := range n.Arguments {
+				inner := unwrapXPathArgument(arg)
+				if b, ok := inner.(*ast.BinaryExpr); ok && xpathArithmeticOperators[strings.ToLower(b.Operator)] {
+					hits = append(hits, [2]string{mendixFunctionName(n.Name), b.Operator})
+				}
+				walk(arg)
+			}
+		case *ast.BinaryExpr:
+			walk(n.Left)
+			walk(n.Right)
+		case *ast.UnaryExpr:
+			walk(n.Operand)
+		case *ast.ParenExpr:
+			walk(n.Inner)
+		case *ast.SourceExpr:
+			walk(n.Expression)
+		case *ast.XPathPathExpr:
+			for _, s := range n.Steps {
+				walk(s.Expr)
+				walk(s.Predicate)
+			}
+		}
+	}
+	walk(expr)
+	return hits
+}
+
+// unwrapXPathArgument strips the parentheses and source wrappers around an
+// argument, down to the expression that is its value.
+func unwrapXPathArgument(e ast.Expression) ast.Expression {
+	for {
+		switch n := e.(type) {
+		case *ast.ParenExpr:
+			e = n.Inner
+		case *ast.SourceExpr:
+			e = n.Expression
+		default:
+			return e
+		}
+	}
+}
+
+// checkXPathFunctionArgumentOperators flags (MDL091) an operator inside an XPath
+// function argument — the other way an expression construct gets into a
+// retrieve constraint and out as CE0161 (mendixlabs/mxcli#1326).
+func (v *microflowValidator) checkXPathFunctionArgumentOperators(variable string, where ast.Expression) {
+	for _, h := range xpathFunctionArgumentOperators(where) {
+		v.addViolation("MDL091", linter.SeverityError,
+			fmt.Sprintf("retrieve '$%s' constraint computes `%s` inside an argument of `%s()` — XPath does not "+
+				"evaluate an operator in a function argument, and mxbuild reports CE0161 \"Error(s) in XPath constraint\"",
+				variable, h[1], h[0]),
+			fmt.Sprintf("Compute the value into a variable first, then pass the variable: "+
+				"`declare $P String = <the argument>;` and `%s(<attribute>, $P)`. An operator at the top "+
+				"level of the constraint (`Name = 'X-' + $Key`) is fine.", h[0]))
 	}
 }
 

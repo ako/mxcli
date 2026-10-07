@@ -71,7 +71,7 @@ func init() {
 		},
 		Syntax:  "CREATE PERSISTENT ENTITY Module.Name (\n  Attr: Type [constraints],\n  ...\n) [INDEX (attr1)];\n\n-- Documentation is the /** … */ doc comment before the statement.\n-- (A `COMMENT 'text'` option existed, set nothing, and has been removed.)\n\nCREATE NON-PERSISTENT ENTITY Module.Name (...);\n\nCREATE PERSISTENT ENTITY Module.Name EXTENDS Module.Parent (...);",
 		Example: "/** Stores customer information. */\nCREATE PERSISTENT ENTITY MyModule.Customer (\n  Name: String(100) NOT NULL ERROR MESSAGE 'Name is required',\n  Email: String(200) UNIQUE,\n  Balance: Decimal DEFAULT 0,\n  IsActive: Boolean DEFAULT true,\n  Status: Enumeration(MyModule.CustomerType)\n)\nINDEX (Email);",
-		SeeAlso: []string{"domain-model.entity.create", "domain-model.entity.alter", "domain-model.entity.attributes"},
+		SeeAlso: []string{"domain-model.entity.create", "domain-model.entity.alter", "domain-model.entity.attributes", "rename"},
 	})
 
 	Register(SyntaxFeature{
