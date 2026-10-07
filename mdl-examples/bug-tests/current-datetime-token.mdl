@@ -1,0 +1,19 @@
+mdl 1;
+-- The current time is the [%CurrentDateTime%] token. This is the positive
+-- control for current-datetime-function.fail.mdl: the same microflow and
+-- nanoflow with the token must pass, and on Mendix 11.14.0 both build at
+-- 0 errors.
+
+create module BugCurrentDateTimeOK;
+
+create microflow BugCurrentDateTimeOK.MF_Now () returns DateTime as $D
+begin
+  declare $D DateTime = addDays([%CurrentDateTime%], 1);
+  return $D;
+end;
+
+create nanoflow BugCurrentDateTimeOK.NF_Now () returns DateTime as $D
+begin
+  declare $D DateTime = [%CurrentDateTime%];
+  return $D;
+end;
