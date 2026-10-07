@@ -80,6 +80,7 @@ Without this, a rule that reads a full-only table under a fast build gets
 | `module_roles()` | list of module_role | All module roles (deduplicated from role mappings) |
 | `role_mappings()` | list of role_mapping | User role to module role assignments |
 | `project_security()` | project_security or None | Project-level security settings (requires MPR reader) |
+| `languages()` | list of language | The languages **enabled** in the project settings, in settings order (requires MPR reader; `[]` without one). Use it to scope per-language checks: `strings()` has a row for every stored translation, including languages the project never enabled |
 | `xpath_expressions()` | list of xpath_expression | All XPath constraint expressions in the catalog (access rules, retrieve actions, widgets) (full catalog — auto-detected) |
 | `modules()` | list of module | The user's modules (not System, not Marketplace), with their domain model's documentation |
 | `associations()` | list of association | All non-system associations, same-module and cross-module, with the delete behaviour of both ends |
@@ -570,6 +571,16 @@ Returned by `project_security()`. Returns `none` if no MPR reader is available.
 | `require_digit` | bool | Must contain a digit |
 | `require_mixed_case` | bool | Must contain upper and lower case |
 | `require_symbol` | bool | Must contain a symbol |
+
+### language
+
+Returned by `languages()`, one per language enabled in the project settings. A per-language check skips `strings()` rows whose `language` is not among these codes.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `code` | string | Language code: `"en_US"`, `"nl_NL"` |
+| `is_default` | bool | Whether this is the project's default language |
+| `check_completeness` | bool | Whether Studio Pro checks this language's translations for completeness |
 
 ## Helper Functions
 

@@ -24,6 +24,7 @@ type LintReader interface {
 	GetMicroflow(id model.ID) (*microflows.Microflow, error)
 	ListMicroflows() ([]*microflows.Microflow, error)
 	GetProjectSecurity() (*security.ProjectSecurity, error)
+	GetProjectSettings() (*model.ProjectSettings, error)
 	GetNavigation() (*types.NavigationDocument, error)
 	ListPages() ([]*pages.Page, error)
 	ListModules() ([]*model.Module, error)

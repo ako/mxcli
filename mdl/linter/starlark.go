@@ -417,6 +417,7 @@ func (r *StarlarkRule) buildPredeclared() starlark.StringDict {
 		"module_roles":     starlark.NewBuiltin("module_roles", r.builtinModuleRoles),
 		"role_mappings":    starlark.NewBuiltin("role_mappings", r.builtinRoleMappings),
 		"project_security": starlark.NewBuiltin("project_security", r.builtinProjectSecurity),
+		"languages":        starlark.NewBuiltin("languages", r.builtinLanguages),
 
 		// XPath / expression analysis
 		"xpath_expressions": starlark.NewBuiltin("xpath_expressions", r.builtinXPathExpressions),
@@ -912,6 +913,39 @@ func (r *StarlarkRule) builtinProjectSecurity(_ *starlark.Thread, _ *starlark.Bu
 		"admin_user_role": starlark.String(ps.AdminUserRole),
 		"password_policy": starlarkstruct.FromStringDict(starlark.String("password_policy"), ppDict),
 	}), nil
+}
+
+// builtinLanguages returns the languages enabled in the project settings
+// (mendixlabs/mxcli#1306). strings() cannot answer this: it has a row for every
+// stored translation, and a project carries texts in languages it never
+// enabled. A failed settings read fails the rule rather than answering [],
+// which a per-language rule would report as clean.
+func (r *StarlarkRule) builtinLanguages(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := starlark.UnpackArgs(b.Name(), args, kwargs); err != nil {
+		return nil, err
+	}
+	if r.ctx == nil || r.ctx.Reader() == nil {
+		return starlark.NewList(nil), nil
+	}
+	ps, err := r.ctx.Reader().GetProjectSettings()
+	if err != nil {
+		return nil, fmt.Errorf("%s: reading project settings: %w", b.Name(), err)
+	}
+	if ps == nil || ps.Language == nil {
+		return starlark.NewList(nil), nil
+	}
+	var out []starlark.Value
+	for _, l := range ps.Language.Languages {
+		if l.Code == "" {
+			continue
+		}
+		out = append(out, starlarkstruct.FromStringDict(starlark.String("language"), starlark.StringDict{
+			"code":               starlark.String(l.Code),
+			"is_default":         starlark.Bool(l.Code == ps.Language.DefaultLanguageCode),
+			"check_completeness": starlark.Bool(l.CheckCompleteness),
+		}))
+	}
+	return starlark.NewList(out), nil
 }
 
 // entityToStarlark converts an Entity to a Starlark struct.
