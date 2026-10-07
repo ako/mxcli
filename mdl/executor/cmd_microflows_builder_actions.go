@@ -2117,6 +2117,43 @@ func (fb *flowBuilder) isListVariable(name string) bool {
 	return strings.HasPrefix(fb.varTypes[strings.TrimPrefix(name, "$")], "List of ")
 }
 
+// objectVariableType returns the entity of a variable this flow knows to hold
+// a single OBJECT (a parameter, a retrieve's object range or forward Reference,
+// a create object, a cast, a head/find), and false for a primitive, a list, a
+// member path or a variable of unknown type.
+func (fb *flowBuilder) objectVariableType(name string) (string, bool) {
+	name = strings.TrimPrefix(name, "$")
+	if strings.Contains(name, "/") {
+		return "", false
+	}
+	if _, primitive := fb.declaredVars[name]; primitive {
+		return "", false
+	}
+	t := fb.varTypes[name]
+	if t == "" || strings.HasPrefix(t, "List of ") || !strings.Contains(t, ".") {
+		return "", false
+	}
+	return t, true
+}
+
+// refuseSetOnObject reports `set $Obj = …` on an object variable. Mendix has no
+// action that reassigns one: Change variable takes only a primitive, and
+// mxbuild answers CE7247 "Variable 'X' does not have a primitive type"
+// (mendixlabs/mxcli#1323). A list has Change list Replace (ako/mxcli#949); an
+// object has nothing, so the statement is refused rather than written.
+func (fb *flowBuilder) refuseSetOnObject(target string) bool {
+	entity, ok := fb.objectVariableType(target)
+	if !ok {
+		return false
+	}
+	name := strings.TrimPrefix(target, "$")
+	fb.addError("cannot set object variable '$%s' (%s): Mendix has no action that reassigns an object variable — "+
+		"Change variable takes only a primitive, and mxbuild rejects it with CE7247 \"Variable '%s' does not have a primitive type\". "+
+		"Return the new object from a sub-microflow instead (recursion for a chain walk), retrieve it into a new variable, "+
+		"or change the object's members with `change $%s (…)`", name, entity, name, name)
+	return true
+}
+
 // addChangeListAction appends a Change list activity of the given operation.
 // eh is the statement's `on error` clause, nil for the statements that take
 // none; the caller finishes a custom handler.
