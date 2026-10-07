@@ -656,6 +656,7 @@ func (fb *flowBuilder) addStatement(stmt ast.MicroflowStatement) model.ID {
 		if fb.isListVariable(s.Target) {
 			return fb.addReplaceListAction(s)
 		}
+		fb.refuseSetOnObject(s.Target)
 		return fb.addChangeVariableAction(s)
 	case *ast.ReturnStmt:
 		return fb.addEndEventWithReturn(s)

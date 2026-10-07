@@ -134,6 +134,12 @@ primitive type"). mxcli knows a variable is a list when it is a list parameter,
 a `create list`, a list retrieve or a list operation's result. Both work in
 microflows and nanoflows.
 
+`set` on an **object** variable is refused (`check --references` and `exec`):
+Mendix has no action that reassigns an object variable, and a Change variable on
+one is the same CE7247. To walk a chain (`$Cursor = $Next` in a `while` loop),
+write a sub-microflow that **returns** the next object and recurse; to change the
+object itself, use `change $Obj (…)`.
+
 ### One statement per activity
 
 Every list operation and aggregate is **one Studio Pro activity**, and it is
