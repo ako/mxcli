@@ -572,6 +572,8 @@ func microflowActionToGen(action microflows.MicroflowAction) element.Element {
 		addPartList(g, "ParameterMappings", params)
 		addStr(g, "Query", a.Query)
 		return g
+	case *microflows.SendEmailAction:
+		return sendEmailActionToGen(a)
 	case *microflows.SynchronizeAction:
 		// Built directly rather than through genMf.NewSynchronizeAction: gen binds
 		// VariableNames as a scalar Primitive[string] and exposes no setter for

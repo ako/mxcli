@@ -286,6 +286,7 @@ microflowStatement
     | annotation* clearListStatement SEMICOLON
     | annotation* validationFeedbackStatement SEMICOLON
     | annotation* restCallStatement SEMICOLON
+    | annotation* sendEmailStatement SEMICOLON
     | annotation* sendRestRequestStatement SEMICOLON
     | annotation* importFromMappingStatement SEMICOLON
     | annotation* exportToMappingStatement SEMICOLON
@@ -892,6 +893,47 @@ restCallReturnsClause
     | RETURNS NOTHING                                           // Ignore response
     | RETURNS NONE /* @alias MDL-DEPR024 */                     // Ignore response (old second spelling)
     | RETURNS qualifiedName                                     // Store in file document (a System.FileDocument specialization)
+    ;
+
+/**
+ * SEND EMAIL — the built-in Send Email activity (Microflows$SendEmailAction,
+ * Studio Pro 11.13+ beta). SMTP from a microflow, without the Email Connector.
+ *
+ *   send email (
+ *     From: @Shop.MailSender,
+ *     To: $Order/CustomerEmail,
+ *     Subject: 'Order {1} confirmed' with ({1} = $Order/Number),
+ *     Body: template 'Your order {1} ships soon.' with ({1} = $Order/Number),
+ *     Host: @Shop.SmtpHost,
+ *     Port: @Shop.SmtpPort,
+ *     Authentication: basic (Username: @Shop.SmtpUser, Password: @Shop.SmtpPassword),
+ *   ) [on error …];
+ *
+ * ADR-0013: an activity's dialog settings are one ( Key: value, … ) list. The
+ * activity has no main operand and no result, so the list follows the verb.
+ * The keys, their value shapes and the required ones are checked by the
+ * visitor (visitor_send_email_settings.go), as for `call rest service`.
+ */
+sendEmailStatement
+    : SEND EMAIL sendEmailSettings onErrorClause?
+    ;
+
+sendEmailSettings
+    : LPAREN sendEmailSetting (COMMA sendEmailSetting)* COMMA? RPAREN
+    ;
+
+sendEmailSetting
+    : identifierOrKeyword COLON sendEmailSettingValue
+    ;
+
+// The value shapes, one per key; restCallSettingValue's, less the REST-only
+// mapping and binary bodies. Ordered so a keyword-led shape is tried before a
+// bare expression.
+sendEmailSettingValue
+    : LPAREN restCallMapEntry (COMMA restCallMapEntry)* COMMA? RPAREN       // Headers: ( 'X-Id': 'value' )
+    | BASIC LPAREN restCallMapEntry (COMMA restCallMapEntry)* COMMA? RPAREN // Authentication: basic ( Username: $u, Password: $p )
+    | TEMPLATE STRING_LITERAL templateParams?                               // Body: template '…' [with ({1} = …)]
+    | expression templateParams?                                            // Subject: '…' [with (…)] / To: $x / SecurityType: tls
     ;
 
 /**

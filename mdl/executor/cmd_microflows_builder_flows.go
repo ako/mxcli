@@ -628,6 +628,13 @@ func errorHandlerStatementVarRefs(stmt ast.MicroflowStatement) []string {
 			}
 		}
 		refs = append(refs, exprVarRefs(s.Timeout)...)
+	case *ast.SendEmailStmt:
+		for _, e := range s.Expressions() {
+			refs = append(refs, exprVarRefs(e)...)
+		}
+		if s.Attachment != "" {
+			refs = append(refs, s.Attachment)
+		}
 	case *ast.SendRestRequestStmt:
 		for _, param := range s.Parameters {
 			refs = append(refs, sourceAttributeVarRefs(param.Expression)...)

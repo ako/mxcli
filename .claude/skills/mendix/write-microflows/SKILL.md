@@ -52,7 +52,7 @@ Choose the mode by who owns the microflow ([choose-edit-mode](../choose-edit-mod
 | Scenario | Use |
 |----------|-----|
 | Querying the database | Microflow |
-| Calling REST services or external actions | Microflow |
+| Calling REST services or external actions, or sending email (`send email`, 11.13+) | Microflow |
 | Running Java actions | Microflow |
 | File generation or download | Microflow |
 | Transactional commits (rollback on error) | Microflow |

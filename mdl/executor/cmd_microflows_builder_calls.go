@@ -2238,3 +2238,123 @@ func mappingRootPathCrossesArray(jsonPath string) bool {
 	}
 	return false
 }
+
+// addSendEmailAction creates a SEND EMAIL activity (Microflows$SendEmailAction).
+func (fb *flowBuilder) addSendEmailAction(s *ast.SendEmailStmt) model.ID {
+	action := &microflows.SendEmailAction{
+		BaseElement:         model.BaseElement{ID: model.ID(types.GenerateID())},
+		ErrorHandlingType:   microflows.ErrorHandlingTypeRollback,
+		From:                fb.optExprToString(s.From),
+		To:                  fb.optExprToString(s.To),
+		Cc:                  fb.optExprToString(s.Cc),
+		Bcc:                 fb.optExprToString(s.Bcc),
+		Subject:             fb.emailTemplate(&s.Subject),
+		BodyPlainText:       fb.emailTemplate(s.BodyText),
+		BodyHTML:            fb.emailTemplate(s.BodyHTML),
+		Attachment:          s.Attachment,
+		Host:                fb.optExprToString(s.Host),
+		Port:                fb.optExprToString(s.Port),
+		SecurityType:        microflows.EmailSecurityTLS,
+		CheckServerIdentity: s.CheckServerIdentity,
+		ConnectionTimeout:   microflows.DefaultEmailConnectionTimeout,
+	}
+	if s.Security != "" {
+		sec, ok := emailSecurityType(s.Security)
+		if !ok {
+			fb.addError("send email: unknown security mode %q — use none, ssl or tls", s.Security)
+		}
+		action.SecurityType = sec
+	}
+	if s.Timeout > 0 {
+		action.ConnectionTimeout = s.Timeout
+	}
+	for _, h := range s.Headers {
+		action.CustomHeaders = append(action.CustomHeaders, microflows.EmailCustomHeader{Name: h.Name, Value: h.Value})
+	}
+	if s.Auth != nil {
+		action.UseAuthentication = true
+		action.Username = fb.optExprToString(s.Auth.Username)
+		action.Password = fb.optExprToString(s.Auth.Password)
+	}
+	if s.ErrorHandling != nil {
+		action.ErrorHandlingType = fb.ehType(s.ErrorHandling)
+	}
+
+	activity := &microflows.ActionActivity{
+		BaseActivity: microflows.BaseActivity{
+			BaseMicroflowObject: microflows.BaseMicroflowObject{
+				BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+				Position:    model.Point{X: fb.posX, Y: fb.posY},
+				Size:        model.Size{Width: ActivityWidth, Height: ActivityHeight},
+			},
+			AutoGenerateCaption: true,
+		},
+		Action: action,
+	}
+
+	activityX := fb.posX
+	fb.objects = append(fb.objects, activity)
+	fb.posX += fb.spacing
+	fb.finishCustomErrorHandler(activity.ID, activityX, s.ErrorHandling, "")
+	return activity.ID
+}
+
+// emailSecurityType maps the MDL security word to the stored enum value.
+func emailSecurityType(word string) (microflows.EmailSecurityType, bool) {
+	switch strings.ToLower(word) {
+	case "none":
+		return microflows.EmailSecurityNone, true
+	case "ssl":
+		return microflows.EmailSecuritySSL, true
+	case "tls":
+		return microflows.EmailSecurityTLS, true
+	}
+	return microflows.EmailSecurityTLS, false
+}
+
+// emailTemplate turns a subject/body clause into a StringTemplate: a string
+// literal is the template text and the `with` parameters fill its {n}
+// placeholders; any other expression becomes `{1}` with the expression as its
+// one parameter — the same rule `log` applies to its message. A nil clause is
+// an empty template, which is what Studio Pro stores for an unused body.
+func (fb *flowBuilder) emailTemplate(c *ast.EmailTemplateClause) microflows.EmailTemplate {
+	if c == nil || c.Text == nil {
+		return microflows.EmailTemplate{}
+	}
+	lit, isLit := c.Text.(*ast.LiteralExpr)
+	if !isLit || lit.Kind != ast.LiteralString {
+		if len(c.Params) == 0 {
+			return microflows.EmailTemplate{Text: "{1}", Parameters: []string{fb.exprToString(c.Text)}}
+		}
+		return microflows.EmailTemplate{Text: fb.exprToString(c.Text), Parameters: fb.templateParamStrings(c.Params)}
+	}
+	return microflows.EmailTemplate{Text: fmt.Sprintf("%v", lit.Value), Parameters: fb.templateParamStrings(c.Params)}
+}
+
+// templateParamStrings orders `with ({n} = …)` parameters by placeholder index.
+func (fb *flowBuilder) templateParamStrings(params []ast.TemplateParam) []string {
+	maxIndex := 0
+	for _, p := range params {
+		if p.Index > maxIndex {
+			maxIndex = p.Index
+		}
+	}
+	if maxIndex == 0 {
+		return nil
+	}
+	out := make([]string, maxIndex)
+	for _, p := range params {
+		if p.Index > 0 {
+			out[p.Index-1] = fb.exprToString(p.Value)
+		}
+	}
+	return out
+}
+
+// optExprToString renders an optional expression; nil is the empty string.
+func (fb *flowBuilder) optExprToString(e ast.Expression) string {
+	if e == nil {
+		return ""
+	}
+	return fb.exprToString(e)
+}

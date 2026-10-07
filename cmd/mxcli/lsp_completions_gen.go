@@ -422,6 +422,7 @@ var mdlGeneratedKeywords = []protocol.CompletionItem{
 	{Label: "RESPONSE", Kind: protocol.CompletionItemKindKeyword, Detail: "REST keyword"},
 	{Label: "REQUEST", Kind: protocol.CompletionItemKindKeyword, Detail: "REST keyword"},
 	{Label: "SEND", Kind: protocol.CompletionItemKindKeyword, Detail: "REST keyword"},
+	{Label: "EMAIL", Kind: protocol.CompletionItemKindKeyword, Detail: "REST keyword"},
 
 	// Service keyword
 	{Label: "RECEIVE", Kind: protocol.CompletionItemKindKeyword, Detail: "Service keyword"},

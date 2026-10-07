@@ -28,6 +28,70 @@ func init() {
 	})
 
 	Register(SyntaxFeature{
+		Path:    "microflow.send-email",
+		Summary: "SEND EMAIL — the built-in Send Email activity (SMTP, Mendix 11.13+, beta)",
+		Keywords: []string{
+			"send email", "email", "mail", "smtp", "send mail", "e-mail",
+			"cc", "bcc", "subject", "attachment", "email connector",
+		},
+		Syntax: "SEND EMAIL (\n" +
+			"  From: <expr>,                       -- required\n" +
+			"  To: <expr>, Cc: <expr>, Bcc: <expr>, -- at least one\n" +
+			"  Subject: 'text {1}' [with ({1} = <expr>, ...)],\n" +
+			"  Body: template 'text {1}' [with (...)],\n" +
+			"  HtmlBody: template '<p>{1}</p>' [with (...)],\n" +
+			"  Headers: ('X-Name': 'value', ...),\n" +
+			"  Attachment: $FileDocumentOrList,\n" +
+			"  Host: <expr>,                       -- required\n" +
+			"  Port: <expr>,                       -- required\n" +
+			"  SecurityType: none | ssl | tls,     -- default tls\n" +
+			"  CheckServerIdentity: true | false,  -- ssl only\n" +
+			"  ConnectionTimeout: <milliseconds>,  -- default 20000\n" +
+			"  Authentication: basic (Username: <expr>, Password: <expr>),\n" +
+			") [ON ERROR ...];\n\n" +
+			"Microflow only, Mendix 11.13+ (Microflows$SendEmailAction). Sends mail over\n" +
+			"SMTP without the Email Connector module. The dialog's settings are one\n" +
+			"property list (ADR-0013); order does not matter, and an unknown, repeated or\n" +
+			"misshapen key is an error. A missing From, Host, Port or recipient is\n" +
+			"refused too: mxbuild reports each as CE0166.\n\n" +
+			"From/To/Cc/Bcc, Host, Port and the credentials are expressions: String,\n" +
+			"except Port, which is Integer/Long (mxbuild CE9528 otherwise; `check`\n" +
+			"reports E009 first). Prefer constants for host, port and password.\n\n" +
+			"Subject is a text template, like LOG's message; Body and HtmlBody take\n" +
+			"template '...', like a REST body. Placeholders {1}, {2} ... are filled by\n" +
+			"WITH; each parameter must be a String (CE0117) and every placeholder needs\n" +
+			"one (CE0720). Any other expression is stored as '{1}' with the expression\n" +
+			"as its parameter.\n\n" +
+			"Headers are plain strings, not expressions: letters, digits and hyphens in\n" +
+			"the name, one line in the value (MDL-EMAIL03). Attachment names a\n" +
+			"System.FileDocument variable, a list of them, or a specialization.\n" +
+			"CheckServerIdentity applies to SSL only (MDL-EMAIL02).\n\n" +
+			"Studio Pro's Test Email tab is an editor tool and is not part of MDL: a\n" +
+			"rewrite of the microflow stores it empty.",
+		Example: "mdl 1;\n" +
+			"create or modify microflow Shop.SUB_SendConfirmation ($Order: Shop.Order, $Invoice: Shop.Invoice)\n" +
+			"returns Boolean as $Sent\n" +
+			"begin\n" +
+			"  send email (\n" +
+			"    From: @Shop.MailSender,\n" +
+			"    To: $Order/CustomerEmail,\n" +
+			"    Subject: 'Order {1} confirmed' with ({1} = $Order/OrderNumber),\n" +
+			"    Body: template 'Hi {1}, your order ships soon.' with ({1} = $Order/CustomerName),\n" +
+			"    Headers: ('X-Correlation-Id': 'order-confirmation'),\n" +
+			"    Attachment: $Invoice,\n" +
+			"    Host: @Shop.SmtpHost,\n" +
+			"    Port: @Shop.SmtpPort,\n" +
+			"    Authentication: basic (Username: @Shop.SmtpUser, Password: @Shop.SmtpPassword),\n" +
+			"  ) on error without rollback begin\n" +
+			"    log error node 'Mail' 'Sending the confirmation failed';\n" +
+			"    return false;\n" +
+			"  end error;\n" +
+			"  return true;\n" +
+			"end;",
+		SeeAlso: []string{"microflow.error-handling", "rest.call", "microflow.nanoflow"},
+	})
+
+	Register(SyntaxFeature{
 		Path:    "microflow.create",
 		Summary: "Create a microflow with parameters, return type, and body",
 		Keywords: []string{

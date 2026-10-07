@@ -276,6 +276,23 @@ $n        = count $Approved;
 
 The same applies to both operands of `union`/`intersect`/`subtract`.
 
+### MDL-EMAIL02 / 03: A `send email` setting Studio Pro would not allow
+
+```
+send email: CheckServerIdentity has no effect without SecurityType: ssl (it is TLS) [MDL-EMAIL02]
+send email: header name "Bad Name!" may contain only letters, digits and hyphens [MDL-EMAIL03]
+```
+
+**Cause:** Studio Pro enables *Check Server Identity* only for SSL (MDL-EMAIL02),
+and restricts a custom header to a name of letters, digits and hyphens and a
+single-line, non-empty value (MDL-EMAIL03). mxbuild 11.15 accepts both, which is
+why they are warnings: a script is the only way to store them, and the flag is
+ignored or the header fails only when a mail is sent.
+
+**Solution:** `SecurityType: ssl, CheckServerIdentity: true`, or drop
+`CheckServerIdentity`; rename the header, e.g.
+`Headers: ('X-Correlation-Id': 'value')`.
+
 ### MDL-JSONNUM01: A locale-dependent number in hand-built JSON
 
 ```

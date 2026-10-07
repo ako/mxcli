@@ -844,6 +844,8 @@ func statementErrorHandling(stmt ast.MicroflowStatement) *ast.ErrorHandlingClaus
 		return s.ErrorHandling
 	case *ast.SendRestRequestStmt:
 		return s.ErrorHandling
+	case *ast.SendEmailStmt:
+		return s.ErrorHandling
 	case *ast.ImportFromMappingStmt:
 		return s.ErrorHandling
 	case *ast.ExportToMappingStmt:

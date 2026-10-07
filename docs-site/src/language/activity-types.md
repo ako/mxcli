@@ -228,6 +228,55 @@ LOG INFO NODE 'OrderProcessing' 'Order created: ' + $Order/OrderNumber;
 LOG ERROR NODE 'PaymentGateway' 'Payment failed for order ' + $Order/OrderNumber;
 ```
 
+## Email
+
+### SEND EMAIL
+
+Sends mail over SMTP with the built-in **Send Email** activity (Studio Pro 11.13+,
+beta) — no Email Connector module needed. Microflows only.
+
+```sql
+SEND EMAIL (
+  From: @Shop.MailSender,
+  To: $Order/CustomerEmail,
+  Cc: 'archive@example.com',
+  Subject: 'Order {1} confirmed' WITH ({1} = $Order/OrderNumber),
+  Body: TEMPLATE 'Hi {1}, your order ships soon.' WITH ({1} = $Order/CustomerName),
+  HtmlBody: TEMPLATE '<p>Your order ships soon.</p>',
+  Headers: ('X-Correlation-Id': 'order-confirmation'),
+  Attachment: $Invoice,
+  Host: @Shop.SmtpHost,
+  Port: @Shop.SmtpPort,
+  SecurityType: SSL,
+  CheckServerIdentity: true,
+  ConnectionTimeout: 30000,
+  Authentication: BASIC (Username: @Shop.SmtpUser, Password: @Shop.SmtpPassword),
+) ON ERROR WITHOUT ROLLBACK BEGIN
+  LOG ERROR NODE 'Mail' 'Sending failed';
+END ERROR;
+```
+
+The activity's settings are one property list, as for `CALL REST SERVICE`
+([Activity Settings](basics.md)); the order of the keys does not matter. `From`,
+`Host`, `Port` and at least one of `To`, `Cc` and `Bcc` are required — mxbuild
+reports a missing one as CE0166.
+
+- **Addresses, host, port, user and password** are expressions. All are String
+  except `Port`, which is Integer or Long. Prefer constants for the connection
+  settings, and never a literal password.
+- **Subject** is a text template, as in `LOG`; **Body** and **HtmlBody** take
+  `template '…'`, as a REST body does. Placeholders `{1}`, `{2}` … are filled by
+  String expressions in `WITH`. Any other expression is stored as the template `'{1}'`.
+- **Headers** are plain strings: the name holds letters, digits and hyphens.
+- **Attachment** is a `System.FileDocument` variable, a list of them, or a
+  specialization.
+- **Defaults**, which `DESCRIBE` leaves out: `SecurityType: tls`,
+  `ConnectionTimeout: 20000` (milliseconds), no `CheckServerIdentity` (it applies
+  to SSL only), no authentication.
+
+Studio Pro's *Test Email* tab is an editor tool and is not part of MDL; rewriting
+the microflow stores it empty.
+
 ## Database Query Execution
 
 ### EXECUTE DATABASE QUERY
@@ -273,5 +322,6 @@ The query name follows a three-part naming convention: `Module.ConnectionName.Qu
 | Validation | `VALIDATION FEEDBACK $Var/Attr MESSAGE 'msg';` | -- |
 | Log | `LOG INFO\|WARNING\|ERROR [NODE 'name'] 'msg';` | -- |
 | DB query | `$Var = EXECUTE DATABASE QUERY Module.Conn.Query;` | Result set |
+| Send email | `SEND EMAIL (From: …, To: …, Subject: '…', Host: …, Port: …);` (11.13+) | -- |
 | Assignment | `SET $Var = expression;` | -- |
 | Change list | `ADD $Item TO $List;` / `REMOVE $Item FROM $List;` / `CLEAR $List;` / `SET $List = $Other;` | -- |

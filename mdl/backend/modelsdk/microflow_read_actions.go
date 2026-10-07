@@ -489,6 +489,19 @@ func actionFromGen(el element.Element) microflows.MicroflowAction {
 		out.ID = model.ID(a.ID())
 		return out
 
+	case *genMf.SendEmailAction:
+		// SEND EMAIL. Read from raw: the gen type predates 11.12 and binds the
+		// message's subject and bodies as expressions, where 11.13+ stores
+		// StringTemplates (SubjectTemplate, …) plus CustomHeaders the gen type
+		// has no field for. nil — an UnsupportedAction one level up — for any
+		// stored shape MDL cannot restate.
+		out := sendEmailActionFromRaw(a.Raw())
+		if out == nil {
+			return nil
+		}
+		out.ID = model.ID(a.ID())
+		return out
+
 	case *genMf.DownloadFileAction:
 		// DOWNLOAD FILE. Without this case it renders "-- Empty action". Mirror
 		// legacy parseDownloadFileAction, including the Rollback default for an

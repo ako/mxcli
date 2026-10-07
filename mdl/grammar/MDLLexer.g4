@@ -654,6 +654,9 @@ BODY: B O D Y;
 RESPONSE: R E S P O N S E;
 REQUEST: R E Q U E S T;
 SEND: S E N D;
+// Send Email activity (Microflows$SendEmailAction, 11.13+). Its settings are
+// property-list keys (identifiers), so the verb is the only new word.
+EMAIL: E M A I L;
 RECEIVE: R E C E I V E;
 DEPRECATED: D E P R E C A T E D;
 RESOURCE: R E S O U R C E;

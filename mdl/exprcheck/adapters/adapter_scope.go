@@ -210,6 +210,8 @@ func StatementErrorHandling(stmt ast.MicroflowStatement) *ast.ErrorHandlingClaus
 		return s.ErrorHandling
 	case *ast.SynchronizeStmt:
 		return s.ErrorHandling
+	case *ast.SendEmailStmt:
+		return s.ErrorHandling
 	case *ast.CallJavaScriptActionStmt:
 		return s.ErrorHandling
 	case *ast.CallWebServiceStmt:

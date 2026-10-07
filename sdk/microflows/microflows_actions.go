@@ -592,6 +592,74 @@ type DownloadFileAction struct {
 
 func (DownloadFileAction) isMicroflowAction() {}
 
+// EmailSecurityType is the transport security of a Send Email action's SMTP
+// connection. Values are the Mendix Model SDK's `SecurityType` enum.
+type EmailSecurityType string
+
+const (
+	EmailSecurityNone EmailSecurityType = "None"
+	EmailSecuritySSL  EmailSecurityType = "SSL"
+	// EmailSecurityTLS is the platform default.
+	EmailSecurityTLS EmailSecurityType = "TLS"
+)
+
+// DefaultEmailConnectionTimeout is EmailConnectionConfig.ConnectionTimeout's
+// platform default, in milliseconds.
+const DefaultEmailConnectionTimeout = 20000
+
+// EmailTemplate is one Microflows$StringTemplate of a Send Email action: fixed
+// text with {1}, {2}, … placeholders and one expression per placeholder.
+type EmailTemplate struct {
+	Text       string   `json:"text,omitempty"`
+	Parameters []string `json:"parameters,omitempty"`
+}
+
+// EmailCustomHeader is one custom header line. Name and Value are plain
+// strings, not expressions.
+type EmailCustomHeader struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// SendEmailAction is the built-in Send Email activity (Microflows$SendEmailAction,
+// Studio Pro 11.13+ beta): it sends mail over SMTP without the Email Connector
+// module. The address, host, port and credential fields are microflow
+// expressions; Attachment is a bare variable name (no `$`).
+//
+// It models the 11.13+ shape only — subject and bodies as string templates and
+// basic authentication. The reader leaves any other stored shape as an
+// UnsupportedAction, so it can be described but never rewritten smaller.
+type SendEmailAction struct {
+	model.BaseElement
+	ErrorHandlingType ErrorHandlingType `json:"errorHandlingType,omitempty"`
+
+	// Connection (Microflows$EmailConnectionConfig).
+	From                string            `json:"from,omitempty"` // EmailId
+	Host                string            `json:"host,omitempty"`
+	Port                string            `json:"port,omitempty"`
+	SecurityType        EmailSecurityType `json:"securityType,omitempty"`
+	CheckServerIdentity bool              `json:"checkServerIdentity,omitempty"`
+	ConnectionTimeout   int               `json:"connectionTimeout,omitempty"`
+
+	// Authentication (Microflows$BasicAuthConfig). UseAuthentication is false
+	// when the action stores no authentication config.
+	UseAuthentication bool   `json:"useAuthentication,omitempty"`
+	Username          string `json:"username,omitempty"`
+	Password          string `json:"password,omitempty"`
+
+	// Message (Microflows$EmailMessage).
+	To            string              `json:"to,omitempty"`
+	Cc            string              `json:"cc,omitempty"`
+	Bcc           string              `json:"bcc,omitempty"`
+	Subject       EmailTemplate       `json:"subject"`
+	BodyPlainText EmailTemplate       `json:"bodyPlainText"`
+	BodyHTML      EmailTemplate       `json:"bodyHtml"`
+	CustomHeaders []EmailCustomHeader `json:"customHeaders,omitempty"`
+	Attachment    string              `json:"attachment,omitempty"`
+}
+
+func (SendEmailAction) isMicroflowAction() {}
+
 // Integration Actions
 
 // MicroflowCallAction calls another microflow.

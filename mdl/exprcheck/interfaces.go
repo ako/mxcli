@@ -91,7 +91,13 @@ type EntityScope interface {
 }
 
 type SlotConstraint struct {
-	Kind      TypeKind
+	Kind TypeKind
+	// AlsoAccepts lists further kinds the slot takes besides Kind — a Send
+	// Email port is "Integer/Long" in mxbuild's own message (CE9528).
+	AlsoAccepts []TypeKind
+	// Mxbuild is what mxbuild reports for a mismatch in this slot, when it is
+	// not the generic CE0117 "Error(s) in expression".
+	Mxbuild   string
 	ResolveBy string
 	Frequency int
 	Samples   []string

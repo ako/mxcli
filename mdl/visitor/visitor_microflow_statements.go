@@ -131,6 +131,8 @@ func buildMicroflowStatement(ctx parser.IMicroflowStatementContext) ast.Microflo
 		stmt = buildValidationFeedbackStatement(valFeedback)
 	} else if restCall := mfCtx.RestCallStatement(); restCall != nil {
 		stmt = buildRestCallStatement(restCall)
+	} else if sendEmail := mfCtx.SendEmailStatement(); sendEmail != nil {
+		stmt = buildSendEmailStatement(sendEmail)
 	} else if sendRest := mfCtx.SendRestRequestStatement(); sendRest != nil {
 		stmt = buildSendRestRequestStatement(sendRest)
 	} else if importMapping := mfCtx.ImportFromMappingStatement(); importMapping != nil {
