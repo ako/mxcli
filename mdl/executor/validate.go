@@ -706,6 +706,9 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 			sc.warnExcluded("microflow", s.Name.String(), refErrors)
 			refErrors = nil
 		}
+		// The signature's types, which exec resolves (and refuses) whether or
+		// not the document is excluded — so these are never relaxed.
+		refErrors = append(flowSignatureErrors(ctx, sc, "microflow", s.Name, s.Parameters, s.ReturnType), refErrors...)
 		if len(validationErrors) > 0 || len(refErrors) > 0 {
 			return flowValidationError("microflow", s.Name.String(), validationErrors, refErrors)
 		}
@@ -723,6 +726,10 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 		if validationErrors := ValidateRuleBody(s); len(validationErrors) > 0 {
 			return mdlerrors.NewValidationf("rule '%s' has validation errors:\n  - %s",
 				s.Name.String(), strings.Join(validationErrors, "\n  - "))
+		}
+		if sigErrors := flowSignatureErrors(ctx, sc, "rule", s.Name, s.Parameters, s.ReturnType); len(sigErrors) > 0 {
+			return mdlerrors.NewValidationf("rule '%s' has reference errors:\n  - %s",
+				s.Name.String(), strings.Join(sigErrors, "\n  - "))
 		}
 		if refErrors := validateFlowBodyReferences(ctx, s.Body, sc); len(refErrors) > 0 {
 			if s.Excluded {
@@ -749,6 +756,9 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 			sc.warnExcluded("nanoflow", s.Name.String(), refErrors)
 			refErrors = nil
 		}
+		// The signature's types, which exec resolves (and refuses) whether or
+		// not the document is excluded — so these are never relaxed.
+		refErrors = append(flowSignatureErrors(ctx, sc, "nanoflow", s.Name, s.Parameters, s.ReturnType), refErrors...)
 		if len(validationErrors) > 0 || len(refErrors) > 0 {
 			return flowValidationError("nanoflow", s.Name.String(), validationErrors, refErrors)
 		}
@@ -757,6 +767,12 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 			if _, err := findModule(ctx, s.Name.Module); err != nil {
 				return mdlerrors.NewNotFound("module", s.Name.Module)
 			}
+		}
+		// The parameters' entities: exec resolves each and stops on one it
+		// cannot find, excluded page or not.
+		if paramErrors := documentParameterErrors(ctx, sc, "page", s.Name, s.Parameters); len(paramErrors) > 0 {
+			return mdlerrors.NewValidationf("page '%s' has reference errors:\n  - %s",
+				s.Name.String(), strings.Join(paramErrors, "\n  - "))
 		}
 		// Every widget-bearing field, not just the bare body — see pageWidgets.
 		pageWidgets := allPageWidgets(s)
@@ -809,6 +825,10 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 				return mdlerrors.NewNotFound("module", s.Name.Module)
 			}
 		}
+		if paramErrors := documentParameterErrors(ctx, sc, "snippet", s.Name, s.Parameters); len(paramErrors) > 0 {
+			return mdlerrors.NewValidationf("snippet '%s' has reference errors:\n  - %s",
+				s.Name.String(), strings.Join(paramErrors, "\n  - "))
+		}
 		// Validate widget references (DataSource, Action, Snippet). A snippet
 		// has no @excluded of its own; one exec keeps excluded (the carry) is
 		// treated as an excluded page is.
@@ -850,6 +870,16 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 		if len(refErrors) > 0 {
 			return mdlerrors.NewValidationf("workflow '%s' has reference errors:\n  - %s",
 				s.Name.String(), strings.Join(refErrors, "\n  - "))
+		}
+	case *ast.CreatePublishedRestServiceStmt:
+		return validatePublishedRestAuthMicroflow(ctx, s.Authentication, sc)
+	case *ast.AlterPublishedRestServiceStmt:
+		for _, a := range s.Actions {
+			if set, ok := a.(*ast.PublishedRestSetAction); ok {
+				if err := validatePublishedRestAuthMicroflow(ctx, set.Authentication, sc); err != nil {
+					return err
+				}
+			}
 		}
 	case *ast.AlterWorkflowStmt:
 		if refErrors := validateAlterWorkflowRefs(ctx, s, sc); len(refErrors) > 0 {
@@ -2013,4 +2043,24 @@ func flowValidationError(kind, name string, validationErrors, refErrors []string
 			kind, name, strings.Join(refErrors, "\n  - ")))
 	}
 	return mdlerrors.NewValidationf("%s", strings.Join(parts, "\n  "))
+}
+
+// validatePublishedRestAuthMicroflow is exec's MDL-REST04 at check time: the
+// custom-authentication microflow exists, and a project microflow has a
+// signature Mendix accepts. A microflow the script creates is known by name
+// only here; exec checks its signature once it exists.
+func validatePublishedRestAuthMicroflow(ctx *ExecContext, auth *ast.PublishedRestAuthentication, sc *scriptContext) error {
+	if auth == nil || auth.Microflow == "" {
+		return nil
+	}
+	if mf, ok := liveMicroflowsByQualifiedName(ctx)[auth.Microflow]; ok {
+		if problem := publishedRestAuthMicroflowProblem(mf); problem != "" {
+			return mdlerrors.NewValidationf("MDL-REST04: authentication microflow %s %s", auth.Microflow, problem)
+		}
+		return nil
+	}
+	if sc.microflows[auth.Microflow] {
+		return nil
+	}
+	return mdlerrors.NewValidationf("MDL-REST04: authentication microflow not found: %s", auth.Microflow)
 }

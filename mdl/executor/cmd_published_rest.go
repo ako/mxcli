@@ -113,7 +113,14 @@ func describePublishedRestService(ctx *ExecContext, name ast.QualifiedName) erro
 		if svc.ServiceName != "" {
 			fmt.Fprintf(ctx.Output, ",\n  ServiceName: %s", mdlQuoted(svc.ServiceName))
 		}
+		authProp, authNote, hasAuth := publishedRestAuthenticationProperty(svc)
+		if hasAuth {
+			fmt.Fprintf(ctx.Output, ",\n  %s", authProp)
+		}
 		fmt.Fprintln(ctx.Output, "\n)")
+		if authNote != "" {
+			fmt.Fprintf(ctx.Output, "-- Authentication is stored as %s, which MDL cannot state; executing this keeps it.\n", authNote)
+		}
 
 		if len(svc.Resources) > 0 {
 			fmt.Fprintln(ctx.Output, "{")
@@ -161,6 +168,88 @@ func describePublishedRestService(ctx *ExecContext, name ast.QualifiedName) erro
 	}
 
 	return mdlerrors.NewNotFound("published rest service", name.String())
+}
+
+// applyPublishedRestAuthentication sets a service's authentication from the
+// statement; nil (not stated) leaves it as it is. Methods and microflow are
+// replaced together, so a list without `microflow` clears the microflow, as
+// Studio Pro does when Custom is unticked.
+//
+// The microflow is checked against what Mendix accepts before anything is
+// written (MDL-REST04).
+func applyPublishedRestAuthentication(ctx *ExecContext, svc *model.PublishedRestService, auth *ast.PublishedRestAuthentication) error {
+	if auth == nil {
+		return nil
+	}
+	if auth.Microflow != "" {
+		mf, ok := liveMicroflowsByQualifiedName(ctx)[auth.Microflow]
+		if !ok {
+			return mdlerrors.NewValidationf("MDL-REST04: authentication microflow not found: %s", auth.Microflow)
+		}
+		if problem := publishedRestAuthMicroflowProblem(mf); problem != "" {
+			return mdlerrors.NewValidationf("MDL-REST04: authentication microflow %s %s", auth.Microflow, problem)
+		}
+	}
+	svc.AuthenticationTypes = append([]string(nil), auth.Methods...)
+	svc.AuthenticationMicroflow = auth.Microflow
+	return nil
+}
+
+// publishedRestAuthMicroflowProblem says why Mendix would reject mf as a
+// published REST service's custom-authentication microflow, or "" when it
+// would not. Measured with mx check on 11.14.0 (mendixlabs/mxcli#1331): the
+// microflow returns System.User (CE0334), and each parameter is one Mendix
+// supplies, matched by type and not by name (CE0336). No parameters is fine.
+func publishedRestAuthMicroflowProblem(mf *microflows.Microflow) string {
+	if ot, ok := mf.ReturnType.(*microflows.ObjectType); !ok || ot.EntityQualifiedName != "System.User" {
+		return "must return System.User (CE0334)"
+	}
+	for _, p := range mf.Parameters {
+		ot, ok := p.Type.(*microflows.ObjectType)
+		if !ok || (ot.EntityQualifiedName != "System.HttpRequest" && ot.EntityQualifiedName != "System.HttpResponse") {
+			return fmt.Sprintf("has parameter $%s, which Mendix does not supply to an authentication microflow: "+
+				"its parameters can only be a System.HttpRequest and a System.HttpResponse (CE0336)", p.Name)
+		}
+	}
+	return ""
+}
+
+// publishedRestAuthenticationProperty renders a service's stored
+// authentication as the `Authentication:` property, in the stored order. ok is
+// false when there is nothing to print (no methods: the creation default) or
+// when the stored value has no MDL spelling — a method other than basic,
+// session and microflow, or a microflow without the Microflow method or the
+// reverse. note then says what is stored, for a comment: leaving the property
+// out keeps the stored value when the output is executed.
+func publishedRestAuthenticationProperty(svc *model.PublishedRestService) (prop, note string, ok bool) {
+	if len(svc.AuthenticationTypes) == 0 && svc.AuthenticationMicroflow == "" {
+		return "", "", false
+	}
+	parts := make([]string, 0, len(svc.AuthenticationTypes))
+	spellable, hasMicroflow := true, false
+	for _, t := range svc.AuthenticationTypes {
+		switch t {
+		case "Basic", "Session":
+			parts = append(parts, strings.ToLower(t))
+		case "Microflow":
+			hasMicroflow = true
+			if svc.AuthenticationMicroflow == "" {
+				spellable = false
+				continue
+			}
+			parts = append(parts, "microflow "+svc.AuthenticationMicroflow)
+		default:
+			spellable = false
+		}
+	}
+	if spellable && hasMicroflow == (svc.AuthenticationMicroflow != "") && len(parts) > 0 {
+		return "Authentication: (" + strings.Join(parts, ", ") + ")", "", true
+	}
+	note = "methods [" + strings.Join(svc.AuthenticationTypes, ", ") + "]"
+	if svc.AuthenticationMicroflow != "" {
+		note += ", microflow " + svc.AuthenticationMicroflow
+	}
+	return "", note, false
 }
 
 // publishedRestBindingClauses prints an operation's mapping bindings and its
@@ -284,6 +373,13 @@ func execCreatePublishedRestService(ctx *ExecContext, s *ast.CreatePublishedRest
 		svc.AllowedRoles = existing.AllowedRoles
 		// Excluded is model state, not script state (#914).
 		svc.Excluded = existing.Excluded
+		// An unstated authentication keeps the stored one; stating it below
+		// replaces it (mendixlabs/mxcli#1331, ako/mxcli#571).
+		svc.AuthenticationTypes = existing.AuthenticationTypes
+		svc.AuthenticationMicroflow = existing.AuthenticationMicroflow
+	}
+	if err := applyPublishedRestAuthentication(ctx, svc, s.Authentication); err != nil {
+		return err
 	}
 
 	for _, resDef := range s.Resources {
@@ -595,8 +691,11 @@ func execAlterPublishedRestService(ctx *ExecContext, s *ast.AlterPublishedRestSe
 				case "servicename":
 					svc.ServiceName = val
 				default:
-					return mdlerrors.NewUnsupported(fmt.Sprintf("unknown published rest service property: %s (allowed: Path, Version, ServiceName)", key))
+					return mdlerrors.NewUnsupported(fmt.Sprintf("unknown published rest service property: %s (allowed: Path, Version, ServiceName, Authentication)", key))
 				}
+			}
+			if err := applyPublishedRestAuthentication(ctx, svc, a.Authentication); err != nil {
+				return err
 			}
 
 		case *ast.PublishedRestAddResourceAction:
