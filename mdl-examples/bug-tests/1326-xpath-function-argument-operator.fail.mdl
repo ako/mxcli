@@ -1,0 +1,38 @@
+-- Issue mendixlabs/mxcli#1326: an operator inside an XPath function argument.
+--
+-- `mxcli check mdl-examples/bug-tests/1326-xpath-function-argument-operator.fail.mdl`
+-- reports MDL091 on SUB_PlusInFunc, and exec refuses it. Before the fix it passed
+-- check and exec, and mxbuild 11.14.0 rejected it: CE0161 "Error(s) in XPath
+-- constraint." The two microflows after it are the controls, 0 errors on the
+-- same mxbuild, and must stay clean.
+
+create or modify module G1326;
+
+create or modify persistent entity G1326.Item (
+  Name: String(50)
+);
+
+-- MDL091: the concatenation is inside the starts-with() argument.
+create or modify microflow G1326.SUB_PlusInFunc ($Key: String) returns Integer as $N
+begin
+  retrieve $L from G1326.Item where starts-with(Name, 'MS-' + $Key);
+  declare $N Integer = length($L);
+  return $N;
+end;
+
+-- Clean: the same operator at the top level of the constraint.
+create or modify microflow G1326.SUB_PlusTopLevel ($Key: String) returns Integer as $N
+begin
+  retrieve $L from G1326.Item where Name = 'X-' + $Key;
+  declare $N Integer = length($L);
+  return $N;
+end;
+
+-- Clean: the value computed beforehand — the fix MDL091 suggests.
+create or modify microflow G1326.SUB_PreComputed ($Key: String) returns Integer as $N
+begin
+  declare $P String = 'MS-' + $Key;
+  retrieve $L from G1326.Item where starts-with(Name, $P);
+  declare $N Integer = length($L);
+  return $N;
+end;
