@@ -125,7 +125,11 @@ func (b *Backend) DeleteJavaAction(id model.ID) error {
 	return b.writer.DeleteUnit(string(id))
 }
 
-// RenameJavaSourceFile renames javasource/<module>/actions/<old>.java to <new>.java.
+// RenameJavaSourceFile renames javasource/<module>/actions/<old>.java to
+// <new>.java and renames the class inside it, as mxbuild's regeneration does:
+// moving the file alone left `public class Old` in New.java, which is not valid
+// Java — a full build hides it by regenerating the stub in its own copy, but
+// `run --local --watch` hot reload and every IDE compile the file on disk.
 // A missing source file is not an error (the action may have no generated stub yet).
 func (b *Backend) RenameJavaSourceFile(moduleName, oldName, newName string) error {
 	if b.path == "" {
@@ -134,8 +138,22 @@ func (b *Backend) RenameJavaSourceFile(moduleName, oldName, newName string) erro
 	dir := filepath.Join(filepath.Dir(b.path), "javasource", strings.ToLower(moduleName), "actions")
 	oldPath := filepath.Join(dir, oldName+".java")
 	newPath := filepath.Join(dir, newName+".java")
-	if err := os.Rename(oldPath, newPath); err != nil && !os.IsNotExist(err) {
+	content, err := os.ReadFile(oldPath)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
 		return fmt.Errorf("RenameJavaSourceFile: %w", err)
+	}
+	// Move first, then rewrite in place, so the file keeps its mode and a
+	// failed rewrite still leaves the source where the model now expects it.
+	if err := os.Rename(oldPath, newPath); err != nil {
+		return fmt.Errorf("RenameJavaSourceFile: %w", err)
+	}
+	// The move is a write whether or not the text needed rewriting.
+	b.noteFileWrite(true)
+	if _, err := javaactions.WriteSourceIfChanged(newPath, javaactions.RenameSource(string(content), oldName, newName)); err != nil {
+		return fmt.Errorf("RenameJavaSourceFile: rewrite class name: %w", err)
 	}
 	return nil
 }
