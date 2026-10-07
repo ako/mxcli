@@ -52,8 +52,9 @@ end;`,
 			name: "unknown call nested in an if branch",
 			src: `create nanoflow Test.NF_Dev ($x: String)
 begin
+  declare $y String = $x;
   if $x != empty then
-    set $x = trunc(1.5);
+    set $y = trunc(1.5);
   end if;
 end;`,
 			wantMDL: true,

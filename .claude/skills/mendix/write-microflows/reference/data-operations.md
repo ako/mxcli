@@ -140,6 +140,11 @@ one is the same CE7247. To walk a chain (`$Cursor = $Next` in a `while` loop),
 write a sub-microflow that **returns** the next object and recurse; to change the
 object itself, use `change $Obj (…)`.
 
+`set` on a **parameter** is refused as well (MDL-SET01), whatever its type unless
+it is a list: a Change variable cannot target a parameter (CE7247 "Parameter 'N'
+cannot be changed."), in microflows, nanoflows and rules. Copy it into a variable
+first — `declare $Value Integer = $N;` — and change that.
+
 ### One statement per activity
 
 Every list operation and aggregate is **one Studio Pro activity**, and it is

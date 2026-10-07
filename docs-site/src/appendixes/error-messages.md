@@ -299,6 +299,18 @@ is an object or a list depends on the association, so that case is reported by
 **Solution:** Return the new object from a sub-microflow (recursion for a chain walk),
 retrieve it into a new variable, or change the object's members with `change $Obj (…)`.
 
+The same rule refuses `set` on a **parameter** of any type but a list, in a microflow, a
+nanoflow or a rule:
+
+```
+cannot set parameter '$N' (Integer): a Change variable cannot target a parameter, and
+mxbuild rejects it with CE7247 "Parameter 'N' cannot be changed". [MDL-SET01]
+```
+
+Copy the parameter into a variable and change that (`declare $Value Integer = $N;`). A list
+parameter is not refused — `set $L = $M` on one is a Change list Replace, which builds — and
+neither is a member change, `set $Param/Attr = …`.
+
 ### MDL-EMAIL02 / 03: A `send email` setting Studio Pro would not allow
 
 ```

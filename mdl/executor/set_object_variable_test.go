@@ -233,3 +233,74 @@ func TestPlainCheckQuotesParameterRejection(t *testing.T) {
 		t.Errorf("want the parameter wording of CE7247, got %q", hits)
 	}
 }
+
+// A Change variable cannot target ANY parameter: measured on 11.14.0, `set` on
+// an Integer or String parameter is CE7247 "Parameter 'N' cannot be changed."
+// in a microflow, a nanoflow and a rule. A LIST parameter is not refused —
+// `set $L = $M` is a Change list Replace, and mxbuild accepts it.
+func TestCheckRefusesSetOnPrimitiveParameter(t *testing.T) {
+	for name, src := range map[string]string{
+		"microflow Integer": "create microflow M.MF ($N: Integer)\nbegin\n  set $N = 1;\nend;\n",
+		"microflow String":  "create microflow M.MF ($S: String)\nbegin\n  set $S = 'x';\nend;\n",
+		"nanoflow Integer":  "create nanoflow M.NF ($N: Integer)\nbegin\n  set $N = 1;\nend;\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			hits := setObjectRuleHits(t, src)
+			if len(hits) != 1 || !strings.Contains(hits[0], "cannot be changed") {
+				t.Errorf("want one %s quoting \"Parameter '…' cannot be changed\", got %q", setObjectRule, hits)
+			}
+		})
+	}
+}
+
+// Controls: the parameter shapes mxbuild accepts.
+func TestCheckAcceptsSetOnListParameterAndMembers(t *testing.T) {
+	src := `create microflow M.MF ($L: list of M.E, $M: list of M.E, $O: M.E, $N: Integer)
+begin
+  set $L = $M;
+  set $O/Name = 'x';
+  declare $Local Integer = $N;
+  set $Local = 2;
+end;
+`
+	if hits := setObjectRuleHits(t, src); len(hits) != 0 {
+		t.Errorf("refused a set mxbuild accepts: %q", hits)
+	}
+}
+
+// A rule never goes through ValidateMicroflow: plain check reports MDL-SET01
+// from ValidateProgram, and exec refuses it through validateRuleSetTargets.
+func TestRuleRefusesSetOnParameter(t *testing.T) {
+	src := "create rule M.R ($N: Integer) returns Boolean\nbegin\n  set $N = 1;\n  return true;\nend;\n"
+	prog, errs := visitor.Build(src)
+	if len(errs) > 0 {
+		t.Fatalf("parse: %v", errs)
+	}
+	r := prog.Statements[0].(*ast.CreateRuleStmt)
+	if err := validateRuleSetTargets(r.Name.String(), r.Parameters, r.Body); err == nil ||
+		!strings.Contains(err.Error(), "cannot be changed") {
+		t.Errorf("exec's rule gate accepted `set` on a rule parameter: %v", err)
+	}
+	var plain []string
+	for _, v := range ValidateProgram(prog, "") {
+		if v.RuleID == setObjectRule {
+			plain = append(plain, v.Message)
+		}
+	}
+	if len(plain) != 1 {
+		t.Errorf("plain check: want one %s for the rule, got %q", setObjectRule, plain)
+	}
+}
+
+// exec refuses it too: MDL-SET01 is exec-enforced, so a script that skips
+// check does not write the Change variable mxbuild rejects.
+func TestExecEnforcesSetOnParameter(t *testing.T) {
+	prog, errs := visitor.Build("create microflow M.MF ($N: Integer)\nbegin\n  set $N = 1;\nend;\n")
+	if len(errs) > 0 {
+		t.Fatalf("parse: %v", errs)
+	}
+	if err := validateMicroflowRules(prog.Statements[0].(*ast.CreateMicroflowStmt)); err == nil ||
+		!strings.Contains(err.Error(), setObjectRule) {
+		t.Errorf("exec's rule gate let `set` on a parameter through: %v", err)
+	}
+}

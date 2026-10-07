@@ -1843,6 +1843,10 @@ var execEnforcedMicroflowRules = map[string]bool{
 	// MDL-WF17: `lock workflow all` / `unlock workflow all` is CE1825, measured
 	// on 11.13.0 and 11.14.0 (mendixlabs/mxcli#870).
 	"MDL-WF17": true,
+	// MDL-SET01: `set` on an object variable or on a parameter is CE7247,
+	// measured on 11.14.0 (mendixlabs/mxcli#1323). The builder refuses an
+	// object itself; a primitive parameter it would write.
+	"MDL-SET01": true,
 }
 
 // validateMicroflowRules runs the MDL0xx microflow rule set (ValidateMicroflow)

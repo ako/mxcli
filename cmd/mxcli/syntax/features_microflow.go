@@ -137,7 +137,9 @@ func init() {
 			"SET $Var = expression;            -- same statement, explicit form\n" +
 			"-- $Var must be a primitive or a list (a list is a Change list Replace).\n" +
 			"-- An OBJECT variable cannot be reassigned (CE7247, MDL-SET01): return the\n" +
-			"-- new object from a sub-microflow, or `change $Obj (…)` its members.",
+			"-- new object from a sub-microflow, or `change $Obj (…)` its members.\n" +
+			"-- A parameter cannot be reassigned either (CE7247, MDL-SET01) unless it is\n" +
+			"-- a list: copy it first, `DECLARE $Value Integer = $N;`.",
 		Example: "DECLARE $Count Integer = 0;\nDECLARE $Name String;\nset $Count = $Count + 1;\nset $Name = 'Hello';\nSET $Order/Status = 'Pending';",
 		SeeAlso: []string{"microflow.object-operations"},
 	})
