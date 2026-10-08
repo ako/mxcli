@@ -88,42 +88,22 @@ func (r *Reader) listUnitsByType(typeName string) ([]rawUnit, error) {
 	return r.listUnitsByTypeV1(typeName)
 }
 
-// listUnitsByTypeV1 handles MPR v1 format (contents in database).
-func (r *Reader) listUnitsByTypeV1(typeName string) ([]rawUnit, error) {
-	rows, err := r.db.Query(`
-		SELECT UnitID, ContainerID, ContainmentName, Contents
-		FROM Unit
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query units: %w", err)
+// listUnitTypes returns every unit's metadata and $Type without reading the
+// contents of any unit whose type is already indexed (Contents is nil). For
+// callers that need the project's shape, not its documents.
+func (r *Reader) listUnitTypes() ([]rawUnit, error) {
+	if r.version != MPRVersionV2 {
+		return r.listUnitTypesV1()
 	}
-	defer rows.Close()
-
-	var units []rawUnit
-	for rows.Next() {
-		var unitID, containerID []byte
-		var containmentName string
-		var contents []byte
-
-		if err := rows.Scan(&unitID, &containerID, &containmentName, &contents); err != nil {
-			return nil, fmt.Errorf("failed to scan unit row: %w", err)
-		}
-
-		if held, ok := r.overlaid(blobToUUID(unitID)); ok {
-			contents = held
-		}
-		unitType := getTypeFromContents(contents)
-		if typeName == "" || unitType == typeName {
-			units = append(units, rawUnit{
-				ID:              blobToUUID(unitID),
-				ContainerID:     blobToUUID(containerID),
-				ContainmentName: containmentName,
-				Type:            unitType,
-				Contents:        contents,
-			})
+	if !r.unitCacheValid {
+		if err := r.buildUnitCache(); err != nil {
+			return nil, err
 		}
 	}
-
+	units := make([]rawUnit, 0, len(r.unitCache))
+	for _, cu := range r.unitCache {
+		units = append(units, rawUnit{ID: cu.ID, ContainerID: cu.ContainerID, ContainmentName: cu.ContainmentName, Type: cu.Type})
+	}
 	return units, nil
 }
 

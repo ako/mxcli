@@ -69,3 +69,52 @@ mxcli diag -p app.mpr
 ```
 
 prints mxcli's diagnostics followed by a *Project* section with both checks.
+
+## Commit metadata: `mxcli git note`
+
+Studio Pro attaches a git note under `refs/notes/mx_metadata` to every commit
+it makes:
+
+```json
+{"BranchName":"feature-x","ModelerVersion":"11.13.0",
+ "ModelChanges":[{"Status":"Modified","UnitID":"…","UnitType":"Forms$Page",
+                  "UnitName":"Home_Web","Module":"MyModule"}],
+ "RelatedStories":[],"SolutionVersion":"","MPRFormatVersion":"Version2","HasModelerVersion":true}
+```
+
+It reads the note to check that a revision's Mendix version is compatible and to
+show what the revision changed. A commit made with plain git has none, and
+Studio Pro 11.13 back-fills one with `"(unknown)"` values and no changes.
+
+```bash
+mxcli git note -p app.mpr            # preview the notes for commits not yet pushed
+mxcli git note -p app.mpr --write    # attach them
+git push origin <branch> refs/notes/mx_metadata
+```
+
+The note is computed from the commit: the `.mpr` unit index and the
+`mprcontents` units at the commit and at its parent. With no commit argument it
+covers `@{upstream}..HEAD`, or `HEAD` when the branch has no upstream. A note
+Studio Pro wrote is kept unless you pass `--force`; a placeholder is replaced.
+
+| Status | Meaning |
+|--------|---------|
+| `Added` / `Deleted` | the unit is new / gone. A deleted module is listed once, as its `Projects$ModuleImpl` |
+| `Modified` | the unit's content changed. A re-serialisation that only mints new element IDs is not a change |
+| `Moved` | the unit moved to another folder (its container in the `.mpr` changed) |
+
+Measured against Studio Pro's own notes on a Team Server repository: for
+ordinary commits the note is identical, header and change list. For a Mendix
+**version upgrade** the header is identical but the change list is longer than
+Studio Pro's, because an upgrade re-serialises units in ways only Studio Pro
+knows to ignore. Upgrades are done in Studio Pro, which writes its own note. MPR
+v1 projects are not supported.
+
+**Push the notes ref soon.** `git push` does not push notes, and while the
+project is open Studio Pro fetches every few minutes and force-replaces the local
+`refs/notes/mx_metadata` with the Team Server's copy, discarding notes that were
+not pushed. If that happens, `mxcli git note --write` again: the discarded notes
+have become placeholders, which it replaces.
+
+The whole workflow (server branches, what to stage, never merging model history
+with git) is in the `teamserver-git` skill that `mxcli init` installs.

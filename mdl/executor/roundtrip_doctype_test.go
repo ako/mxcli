@@ -235,6 +235,13 @@ var scriptKnownCEErrors = map[string][]string{
 	"03-page-examples.mdl": {
 		"CE3637", // Data view listen to gallery in sibling layout-grid column — Mendix scoping limitation
 	},
+	"call-argument-blank.mdl": {
+		// The script's subject IS a blank call argument (`Param = nothing`),
+		// which Mendix reports as CE0127 "Missing argument for parameter" —
+		// the same error the Studio Pro original carries. The syntax exists so
+		// that DESCRIBE round-trips such a call, not to author new ones.
+		"CE0127",
+	},
 	"06b-soap-examples.mdl": {
 		"CE1613", // Dangling service/mapping refs — no web service defined in the test project
 	},
