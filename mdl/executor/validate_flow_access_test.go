@@ -18,7 +18,7 @@ import (
 )
 
 // CE0106, measured with mxbuild 11.14.0 on a fresh project (see the finding in
-// .claude/skills/fix-issue/findings/mdl-executor.jsonl):
+// .claude/skills/fix-issue/findings/mdl-executor/):
 //
 //	"At least one allowed role must be selected if the microflow is used from
 //	 navigation, a page, a nanoflow or a published service."

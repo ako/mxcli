@@ -1,0 +1,47 @@
+mdl 1;
+-- ============================================================================
+-- DESCRIBE MICROFLOW dropped the back-edge of a loop whose header sits inside
+-- a branch (Evora Factory Management:
+-- AmazonBedrockConnector.AmazonBedrockAgent_Sync, _KnowledgeBase_Sync)
+-- ============================================================================
+--
+-- A manual loop (a merge the path comes back round to) whose header is reached
+-- inside an `if` — the pagination loop of the Bedrock sync microflows. Authored
+-- here as `while true` with a `return` inside, which the builder writes as
+-- exactly that: a merge and a back-edge, not a loop activity.
+--
+-- Symptom (before fix):
+--   At the top level DESCRIBE writes such a merge as `while true`. Inside a
+--   branch it walked through it as a plain merge, so the way round came back to
+--   an activity already printed and stopped in silence: the description had no
+--   back-edge, and re-executed to a flow that ENDS where the original goes round
+--   again (MDL003). The warning for the merges on the way back called them
+--   no-ops, which was only true because the loop they close was not there.
+--
+-- After fix:
+--   The header is written as `while true` inside the branch too.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/describe-irreducible-loop-in-branch.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe microflow BugIrrLoop.LoopInBranch" > d.mdl
+--   mxcli check d.mdl -p app.mpr --references   -- expect: Check passed!
+--   mxcli exec d.mdl -p app.mpr                  -- expect: Unchanged microflow
+-- ============================================================================
+
+create module BugIrrLoop;
+
+create or modify microflow BugIrrLoop.LoopInBranch ($R: Boolean) returns Integer
+begin
+  if $R then
+    declare $N Integer = 0;
+    while true
+    begin
+      set $N = $N + 1;
+      if $N > 3 then
+        return $N;
+      end if;
+    end while;
+  else
+    return 0;
+  end if;
+end;

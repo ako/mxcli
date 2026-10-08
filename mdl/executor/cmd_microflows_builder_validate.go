@@ -61,6 +61,7 @@ func validateFlowBody(params []ast.MicroflowParam, body []ast.MicroflowStatement
 		duplicateNamesOwnedElsewhere: duplicatesOwnedElsewhere,
 		checkAssocShapes:             assocs,
 		assocObjectVars:              map[string]bool{},
+		joinScopes:                   map[string]flowBuilderVariableState{},
 	}
 
 	fb.validateStatements(body)
@@ -393,7 +394,61 @@ func (fb *flowBuilder) validateStatement(stmt ast.MicroflowStatement) {
 			fb.validateStatements(s.ErrorHandling.Body)
 		}
 
+	case *ast.JoinStmt:
+		fb.recordJoinScope(s.Label)
+
+	case *ast.MergeStmt:
+		fb.enterMergeScope(s.Label)
+
 		// Other statement types don't declare variables.
+	}
+}
+
+// recordJoinScope remembers what is declared where a path `join`s a label.
+//
+// What is in scope after a `merge <label>` is not what precedes it in the text:
+// the merge is entered from its joins, wherever they are. A description of an
+// irreducible graph puts a shared region in a section after the branches that
+// reach it (emitCrossedMergeSections), so read in text order every variable
+// those branches declared looked undeclared, and the faithful description of a
+// valid microflow failed check (AgentCommons.Tool_Validate, Evora).
+func (fb *flowBuilder) recordJoinScope(label string) {
+	if fb.joinScopes == nil {
+		return
+	}
+	scope, ok := fb.joinScopes[label]
+	if !ok {
+		scope = flowBuilderVariableState{varTypes: map[string]string{}, declaredVars: map[string]string{}}
+		fb.joinScopes[label] = scope
+	}
+	for k, v := range fb.varTypes {
+		scope.varTypes[k] = v
+	}
+	for k, v := range fb.declaredVars {
+		scope.declaredVars[k] = v
+	}
+}
+
+// enterMergeScope adds what the label's joins (so far) had declared. A union,
+// not an intersection: this validator exists to catch a misspelt or missing
+// variable, and a description of a model Studio Pro accepted must not fail it
+// on a path-sensitivity question it does not otherwise ask. A backward join
+// (a retry loop) comes after the merge and contributes nothing, which is right:
+// what it carries round was declared before the merge in the first place.
+func (fb *flowBuilder) enterMergeScope(label string) {
+	scope, ok := fb.joinScopes[label]
+	if !ok {
+		return
+	}
+	for k, v := range scope.varTypes {
+		if _, exists := fb.varTypes[k]; !exists {
+			fb.varTypes[k] = v
+		}
+	}
+	for k, v := range scope.declaredVars {
+		if _, exists := fb.declaredVars[k]; !exists {
+			fb.declaredVars[k] = v
+		}
 	}
 }
 

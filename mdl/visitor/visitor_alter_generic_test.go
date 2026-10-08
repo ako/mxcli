@@ -164,3 +164,46 @@ func TestGenericAlter_OrdinalZeroIsRefused(t *testing.T) {
 		t.Fatal("want an error for @0, got none")
 	}
 }
+
+// mendixlabs/mxcli#1234: `add parameters` was a parse error — "mismatched input
+// 'parameters' expecting VARIABLES_KW" — so adding a parameter to an existing
+// page meant CREATE OR REPLACE. The declaration is CREATE's own `pageParameter`,
+// so an entity and a primitive both parse, as does a quoted reserved name.
+func TestAlterPage_AddAndDropParameters(t *testing.T) {
+	stmt := buildAlterPage(t, `alter page Module.Page {
+		add parameters $Customer: Module.Customer;
+		add parameters $Count: Integer;
+		add parameters "List": String;
+		drop parameters $Old;
+	};`)
+	if len(stmt.Operations) != 4 {
+		t.Fatalf("want 4 operations, got %d", len(stmt.Operations))
+	}
+	entity, ok := stmt.Operations[0].(*ast.AddParameterOp)
+	if !ok {
+		t.Fatalf("op 0: %T", stmt.Operations[0])
+	}
+	if entity.Parameter.Name != "Customer" || entity.Parameter.EntityType.String() != "Module.Customer" {
+		t.Errorf("op 0: got %+v", entity.Parameter)
+	}
+	prim, ok := stmt.Operations[1].(*ast.AddParameterOp)
+	if !ok {
+		t.Fatalf("op 1: %T", stmt.Operations[1])
+	}
+	if prim.Parameter.Name != "Count" || prim.Parameter.Type.Kind != ast.TypeInteger || prim.Parameter.EntityType.Name != "" {
+		t.Errorf("op 1: got %+v", prim.Parameter)
+	}
+	if quoted, ok := stmt.Operations[2].(*ast.AddParameterOp); !ok || quoted.Parameter.Name != "List" {
+		t.Errorf("op 2: %T %+v", stmt.Operations[2], stmt.Operations[2])
+	}
+	drop, ok := stmt.Operations[3].(*ast.DropParameterOp)
+	if !ok {
+		t.Fatalf("op 3: %T", stmt.Operations[3])
+	}
+	if drop.ParameterName != "Old" {
+		t.Errorf("op 3: got %q, want Old", drop.ParameterName)
+	}
+	if got := deprecationCodes(mustBuild(t, `alter page Module.Page { add parameters $X: String; };`)); len(got) != 0 {
+		t.Errorf("add parameters is not an alias, recorded %v", got)
+	}
+}

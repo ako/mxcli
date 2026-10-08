@@ -3,17 +3,18 @@ title: DESCRIBE Round-Trip Gaps
 category: bug-pattern
 last-synced: 888e78cf
 sources:
-  - .claude/skills/fix-issue/findings/mdl-executor.jsonl
+  - .claude/skills/fix-issue/findings/mdl-executor/
   - mdl/executor/cmd_workflows.go
   - mdl/executor/cmd_pages_describe_pluggable.go
   - mdl/executor/cmd_microflows_show_crossed.go
   - mdl/executor/cmd_microflows_normalize.go
+  - mdl/executor/describe_graph_invariant_test.go
   - mdl/microflowgraph/structure.go
   - docs/11-proposals/PROPOSAL_structured_microflow_description.md
 ---
 
 > **Do not duplicate**: the per-construct fix recipes live in the findings
-> (`grep -l describe .claude/skills/fix-issue/findings/*.jsonl`), the MDL syntax
+> (`grep -rl describe .claude/skills/fix-issue/findings/`), the MDL syntax
 > in `docs/01-project/MDL_QUICK_REFERENCE.md`, the round-trip requirement in
 > CLAUDE.md's PR checklist, and the irreducible-graph design in
 > [its proposal](../../docs/11-proposals/PROPOSAL_structured_microflow_description.md).
@@ -115,6 +116,32 @@ corpus, so the corpus agrees with it by construction. The test that matters is o
 where the stored document means something *other* than the rule assumes, and you
 have to **construct** it: repoint one pointer in a copy and re-describe. The real
 microflow that motivated all of this round-tripped correctly by luck.
+
+**For a flow, the oracle exists: rebuild the description and compare graphs.**
+The *means something else* shape is invisible to every check that reads the
+text, but not to the builder. Parse the description, build it the way `exec`
+would, and compare the result with the stored graph modulo exclusive merges —
+every stored activity exactly once, every stored sequence flow present
+(`assertDescriptionRebuildsGraph`). A duplicated region shows up as two rebuilt
+activities on one stored position, a dropped back-edge as a missing flow. Run it
+over every flow of a real app, on the baseline and the branch, rather than over
+the flows someone reported: the reported ones are the ones whose symptom happened
+to be loud. And do not take `create or modify`'s `Unchanged` on a describe output
+as proof — that is the splice verdict, "the script equals the stored flow's own
+description", which a wrong description that parses also earns.
+
+**A flow describer is several searches that have to agree.** Which merges get
+a label, where an error handler stops, which merge closes which split, and
+whether anything is printed after a branch are each decided by a separate walk
+over the same graph. A node class one walk looks past and another stops at
+silently drops what lies beyond it — a merge with a single way in, which joins
+nothing, was the stop for one walk and invisible to the labelling one, so the
+rest of a handler vanished. And a statement's spelling can depend on what is
+printed *after its enclosing branch*, not on the node: an activity with no way
+out ends a loop iteration, and needs `continue` exactly when the description
+goes on after the branch closes — at any level up to the loop body. When a
+sweep turns up a new shape, ask which two walks disagree about it before
+adding a case to one of them.
 
 Three further measurement rules, each of which hid a defect until it was applied:
 

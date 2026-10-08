@@ -1,0 +1,49 @@
+mdl 1;
+-- ============================================================================
+-- DESCRIBE MICROFLOW dropped an error handler that two activities share
+-- (Evora Factory Management: PrePopulateData.ASU_CheckForWorkforce,
+--  GenAICommons.ToolCall_ProcessAndExecuteTool)
+-- ============================================================================
+--
+-- Two activities' error flows land on the same merge, and the handler body
+-- (here a log and a return) hangs off that merge. No normal path reaches it.
+--
+-- Symptom (before fix):
+--   Both calls came out as `on error without rollback begin end error;` and the
+--   handler body was gone. The handler walk stops at the first merge it meets
+--   and emits `join <label>` if the merge has a label — and only merges the
+--   normal path also reaches were labelled. Re-executed, the description
+--   deletes every activity in the shared handler. `mxcli check` passes it.
+--
+-- After fix:
+--   The merge is labelled like a crossed merge: each block says `join shared1;`
+--   and the handler body is printed once, in its own `merge shared1;` section.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/describe-irreducible-shared-error-handler.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe microflow BugIrrHandler.SharedHandler" > d.mdl
+--   mxcli check d.mdl -p app.mpr --references   -- expect: Check passed!
+--   mxcli exec d.mdl -p app.mpr                  -- expect: Unchanged microflow
+-- ============================================================================
+
+create module BugIrrHandler;
+
+create or modify microflow BugIrrHandler.Sub ($In: Integer) returns Integer
+begin
+  return $In;
+end;
+
+create or modify microflow BugIrrHandler.SharedHandler () returns Boolean
+begin
+  $X = call microflow BugIrrHandler.Sub(In = 1) on error without rollback begin
+    join on_failure;
+  end error;
+  $Y = call microflow BugIrrHandler.Sub(In = 2) on error without rollback begin
+    join on_failure;
+  end error;
+  log info node 'Bug' 'both calls succeeded';
+  return true;
+  merge on_failure;
+  log error node 'Bug' 'a call failed';
+  return false;
+end;

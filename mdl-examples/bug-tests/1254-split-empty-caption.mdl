@@ -1,0 +1,27 @@
+mdl 1;
+-- ============================================================================
+-- mendixlabs/mxcli#1254 — "roundtrip split caption does not work"
+-- ============================================================================
+--
+-- A decision whose caption was cleared in Studio Pro stores Caption ''. DESCRIBE
+-- used to leave an empty caption out, and a decision with no @caption is built
+-- with its condition as its caption — so describe -> exec added
+-- "@caption 'true'" to the diagram. DESCRIBE now prints @caption '' and the
+-- builder honours it.
+--
+-- Expect: DESCRIBE MICROFLOW Bug1254.ACT_split_caption prints @caption '' on
+-- the decision, and re-executing that output reports the microflow unchanged.
+-- ============================================================================
+
+CREATE MODULE Bug1254;
+
+CREATE OR MODIFY MICROFLOW Bug1254.ACT_split_caption ()
+RETURNS Boolean
+BEGIN
+  @caption ''
+  IF true THEN
+    RETURN true;
+  ELSE
+    RETURN false;
+  END IF;
+END;

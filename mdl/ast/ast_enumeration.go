@@ -17,6 +17,15 @@ type EnumValue struct {
 type CreateModuleStmt struct {
 	CreateGuard // `create … if not exists` (ako/mxcli#731)
 	Name        string
+	// CreateOrModify is `create or modify module`: on a module that exists, the
+	// statement's documentation is applied rather than the statement being a
+	// no-op.
+	CreateOrModify bool
+	// Documentation is the doc comment, stored as the module's domain model
+	// documentation: a Mendix module has none of its own, its
+	// DomainModels$DomainModel does (mendixlabs/mxcli#1314).
+	Documentation    string
+	DocumentationSet bool // see mendixlabs/mxcli#1018: absent preserves, empty clears
 }
 
 func (s *CreateModuleStmt) isStatement() {}

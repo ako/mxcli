@@ -596,6 +596,14 @@ func (m *mcpPageMutator) DropVariable(name string) error {
 	return fmt.Errorf("dropping page variable %q is not yet supported by the MCP backend", name)
 }
 
+func (m *mcpPageMutator) AddParameter(param backend.PageParameterSpec) error {
+	return fmt.Errorf("adding page parameter %q is not yet supported by the MCP backend", param.Name)
+}
+
+func (m *mcpPageMutator) DropParameter(name string) error {
+	return fmt.Errorf("dropping page parameter %q is not yet supported by the MCP backend", name)
+}
+
 // ResolveAlterTarget is the MCP page mutator's backend.AlterTargetResolver.
 // It addresses what this backend can edit — a widget by name — and says so
 // explicitly for a dotted `grid.Column` / `container.region` address, which no

@@ -22,7 +22,7 @@ func consumeUntilSafe(s *Stream) string {
 
 func isSafeBoundary(t Token) bool {
 	switch t.Kind {
-	case TokEOF, TokRParen, TokComma, TokPlus, TokMinus, TokStar,
+	case TokEOF, TokRParen, TokComma, TokPlus, TokMinus, TokStar, TokColon,
 		TokEq, TokNeq, TokLt, TokLe, TokGt, TokGe:
 		return true
 	case TokIdent:

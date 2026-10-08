@@ -26,6 +26,8 @@ const (
 	TokPlus
 	TokMinus
 	TokStar
+	// TokColon is `:`, Mendix division (the same operator as `div`).
+	TokColon
 	TokEq
 	TokNeq
 	TokLt
@@ -140,6 +142,9 @@ func Lex(src string) []Token {
 			advance(1)
 		case c == '*':
 			push(TokStar, "*", p)
+			advance(1)
+		case c == ':':
+			push(TokColon, ":", p)
 			advance(1)
 		case c == '=':
 			push(TokEq, "=", p)

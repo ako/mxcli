@@ -172,6 +172,10 @@ func (unimplemented) CreateMessageDefinitionCollection(_ *model.MessageDefinitio
 	return errUnimplemented("CreateMessageDefinitionCollection")
 }
 
+func (unimplemented) CreateMessageDefinitionDocument(_ *model.MessageDefinitionDocument) error {
+	return errUnimplemented("CreateMessageDefinitionDocument")
+}
+
 func (unimplemented) CreateMicroflow(_ *microflows.Microflow) error {
 	return errUnimplemented("CreateMicroflow")
 }
@@ -331,6 +335,10 @@ func (unimplemented) DeleteMenuDocument(_ model.ID) error {
 
 func (unimplemented) DeleteMessageDefinitionCollection(_ string) error {
 	return errUnimplemented("DeleteMessageDefinitionCollection")
+}
+
+func (unimplemented) DeleteMessageDefinitionDocument(_ string) error {
+	return errUnimplemented("DeleteMessageDefinitionDocument")
 }
 
 func (unimplemented) DeleteMicroflow(_ model.ID) error {
@@ -721,6 +729,11 @@ func (unimplemented) ListMessageDefinitionCollections() ([]*model.MessageDefinit
 	return r0, errUnimplemented("ListMessageDefinitionCollections")
 }
 
+func (unimplemented) ListMessageDefinitionDocuments() ([]*model.MessageDefinitionDocument, error) {
+	var r0 []*model.MessageDefinitionDocument
+	return r0, errUnimplemented("ListMessageDefinitionDocuments")
+}
+
 func (unimplemented) ListMicroflows() ([]*microflows.Microflow, error) {
 	var r0 []*microflows.Microflow
 	return r0, errUnimplemented("ListMicroflows")
@@ -1033,6 +1046,14 @@ func (unimplemented) SetDomainModelAnnotations(_ model.ID, _ []*domainmodel.Anno
 	return errUnimplemented("SetDomainModelAnnotations")
 }
 
+func (unimplemented) SetDomainModelDocumentation(_ model.ID, _ string) error {
+	return errUnimplemented("SetDomainModelDocumentation")
+}
+
+func (unimplemented) SetProjectAdminUserName(_ model.ID, _ string) error {
+	return errUnimplemented("SetProjectAdminUserName")
+}
+
 func (unimplemented) SetProjectDemoUsersEnabled(_ model.ID, _ bool) error {
 	return errUnimplemented("SetProjectDemoUsersEnabled")
 }
@@ -1151,6 +1172,10 @@ func (unimplemented) UpdateMenuDocument(_ *types.MenuDocument) error {
 
 func (unimplemented) UpdateMessageDefinitionCollection(_ *model.MessageDefinitionCollection) error {
 	return errUnimplemented("UpdateMessageDefinitionCollection")
+}
+
+func (unimplemented) UpdateMessageDefinitionDocument(_ *model.MessageDefinitionDocument) error {
+	return errUnimplemented("UpdateMessageDefinitionDocument")
 }
 
 func (unimplemented) UpdateMicroflow(_ *microflows.Microflow) error {

@@ -1,0 +1,1 @@
+{"area": "sdk/microflows", "date": "2026-04-16", "symptom": "Compile error: `undefined: microflows.XxxOperation`", "cause": "Missing SDK struct", "file": "`sdk/microflows/microflows_actions.go`", "insight": "Add struct + `func (XxxOperation) isListOperation() {}` marker"}

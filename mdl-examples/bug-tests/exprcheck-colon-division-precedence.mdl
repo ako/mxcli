@@ -1,0 +1,35 @@
+mdl 1;
+-- ============================================================================
+-- `:` division in a comparison — must PASS `mxcli check -p`
+-- ============================================================================
+--
+-- `:` is Mendix division, the same operator as `div` (spelled after ÷, since
+-- `/` is member navigation). Evora's ConversationalUI.*_GetGranularity
+-- microflows decide on `hoursBetween(…) : 4 < $MaxNumberOfBins`, which Studio
+-- Pro and mxbuild accept. `mxcli check -p` reported E009 ("requires Boolean, but
+-- the expression has kind Decimal") on every such condition: the expression
+-- type checker's lexer did not know `:`, the parse stopped there silently, and
+-- only `hoursBetween(…)` was typed.
+--
+-- The rule needs a project (it types `$` variables against the model), so a
+-- plain `mxcli check` of this file passed even while the bug was live; the
+-- precedence assertions are Go tests in mdl/exprcheck/colon_division_test.go.
+-- Run against a project: `mxcli check this.mdl -p app.mpr` — no E009.
+-- ============================================================================
+
+CREATE MODULE BugColonDiv;
+
+CREATE OR MODIFY MICROFLOW BugColonDiv.GetBucket ($DateFrom: DateTime, $DateTo: DateTime, $Max: Integer)
+RETURNS String
+BEGIN
+  IF hoursBetween($DateTo, $DateFrom) : 4 < $Max THEN
+    RETURN 'quarter-day';
+  ELSIF hoursBetween($DateTo, $DateFrom) div 24 < $Max THEN
+    RETURN 'day';
+  ELSIF $Max + hoursBetween($DateTo, $DateFrom) : 168 * 2 >= $Max THEN
+    RETURN 'fortnight';
+  ELSIF $Max mod 7 = 0 THEN
+    RETURN 'week-aligned';
+  END IF;
+  RETURN 'month';
+END;

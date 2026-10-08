@@ -438,15 +438,42 @@ func CheckProjectNameClashes(ctx *ExecContext, prog *ast.Program) []error {
 	if !ctx.Connected() {
 		return nil
 	}
-	project := map[string]*nameSet{}
+	// A kind is listed the first time a statement asks about it, and only if
+	// some statement can ask: a create, rename or move reads the kinds of its
+	// name space and nothing else. A drop, rename or move still updates a
+	// kind nothing reads — into an empty set, since what it holds is never
+	// consulted. Listing every kind up front cost a one-flow script ten
+	// listings it did not need.
+	checked := map[string]bool{}
 	for _, k := range nameClashCheckedKinds {
-		project[k] = loadNameSet(ctx, k)
+		checked[k] = true
 	}
+	asked := map[string]bool{}
+	for _, stmt := range prog.Statements {
+		var dt string
+		switch s := stmt.(type) {
+		case *ast.RenameStmt:
+			dt, _, _, _ = renameTarget(s)
+		case *ast.MoveStmt:
+			dt, _, _, _ = moveTarget(s)
+		default:
+			dt, _, _ = stmtCreateKind(stmt)
+		}
+		for _, k := range nameSpaceKinds(dt) {
+			asked[k] = true
+		}
+	}
+	project := map[string]*nameSet{}
 	sets := func(kind string) *nameSet {
 		if s, ok := project[kind]; ok {
 			return s
 		}
-		s := newNameSet(nil)
+		var s *nameSet
+		if checked[kind] && asked[kind] {
+			s = loadNameSet(ctx, kind)
+		} else {
+			s = newNameSet(nil)
+		}
 		project[kind] = s
 		return s
 	}

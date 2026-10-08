@@ -1375,7 +1375,12 @@ func irreducibleGraphWarnings(oc *microflows.MicroflowObjectCollection, declared
 		// retires the warning on the strength of something nothing emitted —
 		// caught on Administration.ManageMyAccount, where the description is
 		// byte-identical with and without Mode 2.
-		if len(f.Entries) == 1 && declaredCrossed[f.Entries[0]] {
+		//
+		// Every entry, not just a single one: a multi-way split whose arms share
+		// a region is interleaved (the region and the split's join are both
+		// entries), and when the description declared both, every arm says
+		// where it goes (sharedArmEntries).
+		if allDeclared(f.Entries, declaredCrossed) {
 			continue
 		}
 		pos := ""
@@ -1756,4 +1761,18 @@ func describableMessage(t *model.Text) (string, []string) {
 		return "", nil
 	}
 	return t.Translations[langs[0]], langs[1:]
+}
+
+// allDeclared reports whether every id is a crossed merge the description
+// declared. An empty list is not "all declared": nothing was emitted for it.
+func allDeclared(ids []model.ID, declared map[model.ID]bool) bool {
+	if len(ids) == 0 {
+		return false
+	}
+	for _, id := range ids {
+		if !declared[id] {
+			return false
+		}
+	}
+	return true
 }

@@ -1,0 +1,61 @@
+mdl 1;
+-- ============================================================================
+-- DESCRIBE MICROFLOW printed a region two `case` arms share once per arm
+-- (Evora Factory Management: OIDC.handleAuthorizationCode)
+-- ============================================================================
+--
+-- Two arms of a `case` reach the same activity before the case's join; a third
+-- reaches the join directly and a fourth returns. The returning arm makes the
+-- overlap INTERLEAVED (the shared activity and the join are both entries), and
+-- Mode 2 only labelled recombinable overlaps.
+--
+-- Symptom (before fix):
+--   Each `case` arm is walked with its own visited set, so the shared activity
+--   was printed in both arms. In OIDC it is the token REST call: the model has
+--   one, the description two, both with output $TokenResponse (MDL063) — and a
+--   third arm's call, $TokenResponse_1, read as if it were the extra copy.
+--   Re-executed, the description builds a microflow with an activity the model
+--   does not have. It also carried the #923 "NOT equivalent" warning.
+--
+-- After fix:
+--   The arms `join` the shared region, which is printed once in its section,
+--   and the warning is retired because it is no longer true.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/describe-irreducible-shared-case-arms.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe microflow BugIrrShared.SharedArms" > d.mdl
+--   mxcli check d.mdl -p app.mpr --references   -- expect: Check passed!
+--   mxcli exec d.mdl -p app.mpr                  -- expect: Unchanged microflow
+-- ============================================================================
+
+create module BugIrrShared;
+
+create enumeration BugIrrShared.Kind (
+  One 'One',
+  Two 'Two',
+  Three 'Three',
+  Four 'Four'
+);
+
+create or modify microflow BugIrrShared.SharedArms ($E: enum BugIrrShared.Kind) returns Boolean
+begin
+  case $E
+    when One then
+      log info node 'Bug' 'one';
+      join shared_path;
+    when Two then
+      log info node 'Bug' 'two';
+      join shared_path;
+    when Three then
+      log info node 'Bug' 'three';
+      join rejoin_path;
+    when Four, (empty) then
+      return false;
+  end case;
+  merge shared_path;
+  log info node 'Bug' 'shared by one and two';
+  join rejoin_path;
+  merge rejoin_path;
+  log info node 'Bug' 'continuation';
+  return true;
+end;

@@ -52,7 +52,7 @@ func SourceIsArithmeticDecimal(src string, vars map[string]TypeKind) bool {
 		return false
 	}
 	switch be.Op {
-	case "+", "-", "*", "div", "mod":
+	case "+", "-", "*", "div", ":", "mod":
 		return inferKind(be, ctx) == KindDecimal
 	}
 	return false

@@ -1,0 +1,60 @@
+mdl 1;
+-- Bug test: ALTER PAGE / ALTER SNIPPET can add and drop parameters.
+-- Issue mendixlabs/mxcli#1234: `add parameters` was a parse error —
+--   mismatched input 'parameters' expecting VARIABLES_KW
+-- so adding a parameter to an existing page meant CREATE OR REPLACE, which
+-- rebuilds the whole page and loses what describe does not round-trip.
+--
+-- After the fix: the parameter is appended to the stored page, nothing else
+-- changes, and `describe page` shows it in Params. A drop is refused while the
+-- page still uses the parameter (a data view bound to it, or an expression).
+--
+-- Run with: mxcli check 1234-alter-page-add-drop-parameters.mdl
+create module bug1234;
+
+create persistent entity bug1234.Customer (
+  Name: string(200)
+);
+
+create persistent entity bug1234.Order (
+  Number: string(20)
+);
+
+create page bug1234.Customer_Edit (
+  Title: 'Customer',
+  Url: 'customer-edit/{Customer}',
+  layout: Atlas_Core.Atlas_Default,
+  Params: ( $Customer: bug1234.Customer )
+) {
+  dataview dvCustomer (DataSource: $Customer) {
+    dynamictext txtName (Content: 'Customer')
+  }
+};
+
+create snippet bug1234.Customer_Card (
+  Params: ( $Customer: bug1234.Customer )
+) {
+  dynamictext txtCard (Content: 'Customer')
+};
+
+-- The reported statement: an entity and a primitive parameter. The page has a
+-- URL, so each new parameter needs a segment in it (CE5601 otherwise — exec
+-- refuses the add and names the URL to set).
+alter page bug1234.Customer_Edit {
+  set (Url: 'customer-edit/{Customer}/{Order}/{Mode}');
+  add parameters $Order: bug1234.Order;
+  add parameters $Mode: String;
+};
+
+-- Drop an unused one again, and its segment with it.
+alter page bug1234.Customer_Edit {
+  set (Url: 'customer-edit/{Customer}/{Order}');
+  drop parameters $Mode;
+};
+
+-- A snippet takes entity parameters (a primitive is MDL087 / CE0046).
+alter snippet bug1234.Customer_Card {
+  add parameters $Order: bug1234.Order;
+};
+
+describe page bug1234.Customer_Edit;

@@ -61,7 +61,7 @@ func TestMergeStatementAnnotationsCopiesEveryField(t *testing.T) {
 	pos := &ast.Position{X: 1, Y: 2}
 	anchors := &ast.FlowAnchors{From: ast.AnchorSideRight, To: ast.AnchorSideLeft}
 	full := &ast.ActivityAnnotations{
-		Position: pos, Caption: "c", Color: "Green",
+		Position: pos, Caption: "c", CaptionSet: true, Color: "Green",
 		Notes:     []ast.MicroflowAnnotation{{Text: "n"}},
 		FreeNotes: []ast.MicroflowAnnotation{{Text: "f"}},
 		Excluded:  true, Anchor: anchors,

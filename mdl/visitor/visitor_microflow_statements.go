@@ -267,10 +267,13 @@ func extractMicroflowAnnotations(annotations []parser.IAnnotationContext) *ast.A
 
 		case "caption":
 			// @caption 'text' — bare annotationValue
+			// An empty string is kept: `@caption ''` is a cleared caption, which
+			// describe prints so a decision does not come back captioned with its
+			// condition (#1254).
 			if valCtx := ann.AnnotationValue(); valCtx != nil {
-				text := extractAnnotationValueString(valCtx)
-				if text != "" {
+				if text, ok := annotationValueString(valCtx); ok {
 					result.Caption = text
+					result.CaptionSet = true
 					hasAny = true
 				}
 			}
@@ -609,21 +612,29 @@ func parseAnchorSideFromValue(val parser.IAnnotationValueContext) (ast.AnchorSid
 
 // extractAnnotationValueString extracts a string value from an annotationValue context.
 func extractAnnotationValueString(ctx parser.IAnnotationValueContext) string {
+	text, _ := annotationValueString(ctx)
+	return text
+}
+
+// annotationValueString is extractAnnotationValueString that also reports
+// whether the value was a string literal, so an empty string is told apart
+// from no string at all.
+func annotationValueString(ctx parser.IAnnotationValueContext) (string, bool) {
 	valCtx := ctx.(*parser.AnnotationValueContext)
 	if lit := valCtx.Literal(); lit != nil {
 		litCtx := lit.(*parser.LiteralContext)
 		if litCtx.STRING_LITERAL() != nil {
-			return unquoteStringLit(litCtx.STRING_LITERAL())
+			return unquoteStringLit(litCtx.STRING_LITERAL()), true
 		}
 	}
 	// Also try expression — it might be a string literal parsed as expression
 	if expr := valCtx.Expression(); expr != nil {
 		text := expr.GetText()
 		if len(text) >= 2 && text[0] == '\'' && text[len(text)-1] == '\'' {
-			return unquoteStringLit(expr)
+			return unquoteStringLit(expr), true
 		}
 	}
-	return ""
+	return "", false
 }
 
 // extractAnnotationValueIdentifier extracts an identifier value from an annotationValue context.

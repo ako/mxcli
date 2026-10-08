@@ -65,6 +65,7 @@ type MockBackend struct {
 	GetDomainModelByIDFunc                     func(id model.ID) (*domainmodel.DomainModel, error)
 	UpdateDomainModelFunc                      func(dm *domainmodel.DomainModel) error
 	SetDomainModelAnnotationsFunc              func(domainModelID model.ID, annotations []*domainmodel.Annotation) error
+	SetDomainModelDocumentationFunc            func(domainModelID model.ID, documentation string) error
 	CreateEntityFunc                           func(domainModelID model.ID, entity *domainmodel.Entity) error
 	UpdateEntityFunc                           func(domainModelID model.ID, entity *domainmodel.Entity) error
 	DeleteEntityFunc                           func(domainModelID model.ID, entityID model.ID) error
@@ -155,6 +156,7 @@ type MockBackend struct {
 	SetProjectSecurityLevelFunc          func(unitID model.ID, level string) error
 	SetProjectDemoUsersEnabledFunc       func(unitID model.ID, enabled bool) error
 	SetProjectStrictModeFunc             func(unitID model.ID, enabled bool) error
+	SetProjectAdminUserNameFunc          func(unitID model.ID, name string) error
 	SetProjectGuestAccessFunc            func(unitID model.ID, enabled bool, guestUserRole string) error
 	AddUserRoleFunc                      func(unitID model.ID, name string, moduleRoles []string, manageAllRoles bool) error
 	AlterUserRoleModuleRolesFunc         func(unitID model.ID, userRoleName string, add bool, moduleRoles []string) error

@@ -53,6 +53,10 @@ func (v *microflowValidator) checkMergeJoinLabels(body []ast.MicroflowStatement)
 			case *ast.WhileStmt:
 				walkInLoop(n.Body)
 			}
+			// A handler inside a loop is inside the loop's collection too.
+			if eh := handlerBodyForLabels(s); len(eh) > 0 {
+				walkInLoop(eh)
+			}
 		}
 	}
 
@@ -79,11 +83,21 @@ func (v *microflowValidator) checkMergeJoinLabels(body []ast.MicroflowStatement)
 			case *ast.LoopStmt:
 				walkInLoop(n.Body)
 			case *ast.WhileStmt:
-				walkInLoop(n.Body)
+				// `while true` around a return and no break is not a loop
+				// activity: the builder writes a merge and a back-edge in the
+				// enclosing graph (addManualWhileTrueStatement), so a label in
+				// it is in that graph too — DESCRIBE emits one when an error
+				// handler goes back round to before the loop (Evora:
+				// SnowflakeRESTSQL.GET_v1_RetrievePartition's token retry).
+				if isManualWhileTrueCandidate(n) {
+					walkTop(n.Body)
+				} else {
+					walkInLoop(n.Body)
+				}
 			}
 			// An `on error begin … end error` block is an ordinary body for labels: joining
 			// out of it into the main path is the case merge/join exists for.
-			if eh := getErrorHandlerBody(s); len(eh) > 0 {
+			if eh := handlerBodyForLabels(s); len(eh) > 0 {
 				walkTop(eh)
 			}
 		}
@@ -120,6 +134,18 @@ func (v *microflowValidator) checkMergeJoinLabels(body []ast.MicroflowStatement)
 					"Either send a path to it with `join %s;` or remove the declaration.", label))
 		}
 	}
+}
+
+// handlerBodyForLabels is a statement's `on error` body, read through the
+// builder's own list of what can carry one (statementErrorHandling). The
+// validator's getErrorHandlerBody knows fewer statement types — a REST call's
+// handler, among others — so a `join` inside one went unseen and its merge was
+// reported as joined by nothing.
+func handlerBodyForLabels(s ast.MicroflowStatement) []ast.MicroflowStatement {
+	if eh := statementErrorHandling(s); eh != nil {
+		return eh.Body
+	}
+	return nil
 }
 
 func sortedLabels(set map[string]bool) []string {

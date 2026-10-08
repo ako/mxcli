@@ -45,8 +45,9 @@ func (fb *flowBuilder) mergeStatementAnnotations(stmt ast.MicroflowStatement) {
 	if ann.Position != nil {
 		fb.pendingAnnotations.Position = ann.Position
 	}
-	if ann.Caption != "" {
+	if ann.HasCaption() {
 		fb.pendingAnnotations.Caption = ann.Caption
+		fb.pendingAnnotations.CaptionSet = true
 	}
 	if ann.Color != "" {
 		fb.pendingAnnotations.Color = ann.Color
@@ -96,7 +97,7 @@ func (fb *flowBuilder) applyAnnotations(activityID model.ID, ann *ast.ActivityAn
 	}
 
 	// Find the object by ID for @caption, @color, and @excluded
-	if ann.Caption != "" || ann.Color != "" || ann.Excluded {
+	if ann.HasCaption() || ann.Color != "" || ann.Excluded {
 		for _, obj := range fb.objects {
 			if obj.GetID() != activityID {
 				continue
@@ -116,8 +117,9 @@ func (fb *flowBuilder) applyAnnotations(activityID model.ID, ann *ast.ActivityAn
 				}
 			case *microflows.ExclusiveSplit:
 				// Splits carry a human-readable Caption (e.g. "Right format?")
-				// independent of the expression/rule being evaluated.
-				if ann.Caption != "" {
+				// independent of the expression/rule being evaluated. An
+				// explicit `@caption ''` clears it, as Studio Pro can (#1254).
+				if ann.HasCaption() {
 					activity.Caption = ann.Caption
 				}
 			case *microflows.InheritanceSplit:

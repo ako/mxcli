@@ -274,6 +274,14 @@ func docPreserveCases() []docPreserveCase {
 			rewrite:  "create or replace enumeration TestModule.DocEnum ( A 'A', B 'B', C 'C' );",
 			describe: "describe enumeration TestModule.DocEnum",
 		},
+		{
+			// The module's documentation is its domain model's
+			// (mendixlabs/mxcli#1314).
+			name:     "module",
+			create:   doc + "create module DocModule1314;",
+			rewrite:  "create or modify module DocModule1314;",
+			describe: "describe module DocModule1314",
+		},
 	}
 }
 

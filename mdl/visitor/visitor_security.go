@@ -562,8 +562,9 @@ func nextToken(stop antlr.Token, ctx antlr.ParserRuleContext) antlr.Token {
 }
 
 // appSecurityKeys are the properties `alter app security ( … )` takes: the
-// Security$ProjectSecurity property names.
-var appSecurityKeys = []string{"SecurityLevel", "EnableDemoUsers", "EnableGuestAccess", "GuestUserRole", "StrictMode"}
+// Security$ProjectSecurity property names. AdminPassword is deliberately absent
+// (mendixlabs/mxcli#624).
+var appSecurityKeys = []string{"SecurityLevel", "EnableDemoUsers", "EnableGuestAccess", "GuestUserRole", "StrictMode", "AdminUserName"}
 
 // appSecurityProperties reads the property list into stmt. A key or value the
 // list does not take is an error, never an ignored property.
@@ -632,6 +633,17 @@ func (b *Builder) appSecurityProperties(stmt *ast.AlterProjectSecurityStmt, opts
 				continue
 			}
 			stmt.GuestUserRole = settingsValueText(sv)
+		case "AdminUserName":
+			if sv.STRING_LITERAL() == nil {
+				b.addError(fmt.Errorf("line %d: AdminUserName takes the administrator's user name as a string, not %s", line, sv.GetText()))
+				continue
+			}
+			name := settingsValueText(sv)
+			if strings.TrimSpace(name) == "" {
+				b.addError(fmt.Errorf("line %d: AdminUserName cannot be empty — the administrator account needs a name", line))
+				continue
+			}
+			stmt.AdminUserName = name
 		}
 	}
 }
