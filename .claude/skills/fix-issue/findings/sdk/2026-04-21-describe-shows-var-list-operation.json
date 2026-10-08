@@ -1,0 +1,1 @@
+{"area": "sdk/mpr", "date": "2026-04-21", "symptom": "`describe` shows `$var = list operation ...;`", "cause": "Missing parser case", "file": "`sdk/mpr/parser_microflow.go` → `parseListOperation()`", "insight": "Add `case \"microflows$XxxType\":` returning the correct struct"}

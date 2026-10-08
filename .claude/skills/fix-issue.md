@@ -2,8 +2,8 @@
 
 A fast-path workflow for diagnosing and fixing bugs in mxcli.
 
-Each fix appends one finding to `findings/*.jsonl`. Those are **evidence, not
-reading material**: 630 findings at ~1.7 KB each. The entry point for a diagnosis
+Each fix adds one finding file under `findings/<area>/`. Those are **evidence, not
+reading material**: over 1,500 findings at ~1.7 KB each. The entry point for a diagnosis
 is [`docs-wiki/bug-patterns/`](../../docs-wiki/bug-patterns/), which digests them
 into failure classes; the findings are where you drill down for the instance.
 
@@ -45,31 +45,27 @@ into failure classes; the findings are where you drill down for the instance.
 > `.gitattributes` gave `merge=union` to the whole file, which kept two concurrent
 > appends instead of conflicting. That was the right driver on the wrong unit: union
 > applies file-wide, so two branches editing the same *prose* line would silently
-> keep both. The note that shipped with it called this exact shot — "if that starts
-> happening, split the table into its own file so `union` covers only append-only
-> content" — and the union driver now sits on `findings/*.jsonl`, where every line is
-> an independent record and keeping both sides is always correct.
->
-> It never solved the conflicts anyway: GitHub's server-side merge does not run merge
-> drivers, so every PR still had to merge `main` locally first. Sharding by area is
-> what actually reduces them — two fixes now collide only when they touch the same
-> area.
+> keep both. The table moved to `findings/<area>.jsonl` shards with the union driver
+> on them, which still left every fix-PR conflicting on GitHub: its server-side
+> merge does not run merge drivers, and nearly every fix appends to the same
+> `mdl-executor` shard. The findings are now one file per finding, so two fixes add
+> two different files and nothing conflicts at all. History in
+> [`findings/README.md`](fix-issue/findings/README.md).
 
 ---
 
 ## Finding a prior fix
 
-The findings live in `findings/*.jsonl`, one JSON object per line, sharded by
-area. They are **data, not reading material**: 630 findings at ~1.7 KB each do
-not fit in a context window, and the table they used to live in had grown past
-the point where GitHub's web editor would open it.
+The findings live in `findings/<area>/<date>-<slug>.json`, one finding per
+file, each a single JSON object on a single line. They are **data, not reading
+material**: over 1,500 findings at ~1.7 KB each do not fit in a context window.
 
-Grep is the fast path — the shard name narrows it, and every line is
-self-contained:
+Grep is the fast path. The directory narrows it by area, and every file is one
+self-contained line:
 
 ```bash
-grep -il 'CE0463' .claude/skills/fix-issue/findings/*.jsonl        # which areas
-grep -h  'CE0463' .claude/skills/fix-issue/findings/mdl-executor.jsonl | jq .
+grep -ril 'CE0463' .claude/skills/fix-issue/findings/                  # which findings
+grep -rh  'CE0463' .claude/skills/fix-issue/findings/mdl-executor/ | jq .
 ```
 
 For anything with a shape to it, the records have fields — `area`, `symptom`,
@@ -77,7 +73,7 @@ For anything with a shape to it, the records have fields — `area`, `symptom`,
 them — and DuckDB reads the files in place, no import step:
 
 ```bash
-duckdb -c "select symptom, file from '.claude/skills/fix-issue/findings/*.jsonl'
+duckdb -c "select symptom, file from read_json_auto('.claude/skills/fix-issue/findings/*/*.json')
            where list_contains(ce, 'CE0463')"
 ```
 
@@ -90,17 +86,24 @@ small enough to read. Start there, come here for the instance.
 
 ## Recording a fix
 
-Append one line to the shard for the area you touched — a new shard is fine if
-none fits. Keep it one line: `merge=union` in `.gitattributes` resolves two
-concurrent appends by keeping both, which is correct for a file of independent
-records and is not correct for prose.
+Add one new file in the directory for the area you touched (a new directory is
+fine if none fits), named `<YYYY-MM-DD>-<slug>.json`, with the slug a few words
+of the symptom. Keep the record on **one line**, so `grep -h` returns it whole.
+Never append to another finding's file: one file per finding is what keeps two
+fix-PRs from conflicting, since GitHub's merge cannot resolve two appends to
+the same file.
 
 ```bash
-cat >> .claude/skills/fix-issue/findings/mdl-executor.jsonl <<'JSON'
+cat > .claude/skills/fix-issue/findings/mdl-executor/2026-08-31-describe-drops-sort-order.json <<'JSON'
 {"area":"mdl/executor","date":"2026-08-31","symptom":"...","cause":"...","file":"...","insight":"...","refs":["#123"]}
 JSON
 make check-findings
 ```
+
+If a merge with `main` brings back a `findings/<area>.jsonl` file (a branch from
+before the split), run `scripts/split-findings.py`. It turns those lines into
+files and skips any that already exist; `check-findings` refuses the stray
+`.jsonl` until you do.
 
 `check-findings` prints one line saying how far `docs-wiki/bug-patterns/` has
 fallen behind; `make digest-status` breaks it down by area. **If the class of
@@ -128,7 +131,7 @@ Step 1: write a failing test at the layer the symptom lives in
 Step 2: confirm it fails — and that it fails with the REPORTED symptom
 Step 3: implement the minimum code to make it pass
 Step 4: go test ./...   (or the packages you touched)
-Step 5: append a finding to findings/<area>.jsonl
+Step 5: add a finding file under findings/<area>/
 ```
 
 Where the test goes, by layer:
@@ -216,5 +219,5 @@ Before writing "cannot":
 - [ ] Any "cannot be verified" claim carries its evidence, and a control that could have falsified it
 - [ ] `make test && make lint` pass
 - [ ] `mdl-examples/bug-tests/<issue>-<description>.mdl` added for the regression case
-- [ ] New finding appended to `findings/<area>.jsonl` (if not already covered), and `make check-findings` passes
+- [ ] New finding file added under `findings/<area>/` (if not already covered), and `make check-findings` passes
 - [ ] PR title: `fix: <one-line description matching the symptom>`

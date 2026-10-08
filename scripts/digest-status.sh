@@ -42,7 +42,7 @@ pages = sorted(glob.glob("docs-wiki/bug-patterns/*.md"))
 areas = collections.Counter()
 since = collections.Counter()
 undated = 0
-for fn in glob.glob(".claude/skills/fix-issue/findings/*.jsonl"):
+for fn in glob.glob(".claude/skills/fix-issue/findings/*/*.json"):
     for line in open(fn):
         r = json.loads(line)
         a = r.get("area", "unfiled")

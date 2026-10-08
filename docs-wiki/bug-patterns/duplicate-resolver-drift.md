@@ -3,7 +3,7 @@ title: One Question, Two Answers
 category: bug-pattern
 last-synced: ced830e0
 sources:
-  - .claude/skills/fix-issue/findings/mdl-executor.jsonl
+  - .claude/skills/fix-issue/findings/mdl-executor/
   - mdl/executor/validate_program.go
   - mdl/backend/backend.go
 ---

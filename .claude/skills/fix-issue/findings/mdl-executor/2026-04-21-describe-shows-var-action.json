@@ -1,0 +1,1 @@
+{"area": "mdl/executor", "date": "2026-04-21", "symptom": "`describe` shows `$var = action ...;`", "cause": "Missing formatter case", "file": "`mdl/executor/cmd_microflows_format_action.go` → `formatActionStatement()`", "insight": "Add `case *microflows.XxxAction:` with `fmt.Sprintf` output"}

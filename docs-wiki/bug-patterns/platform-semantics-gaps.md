@@ -3,7 +3,7 @@ title: Legal MDL, Illegal Mendix
 category: bug-pattern
 last-synced: ced830e0
 sources:
-  - .claude/skills/fix-issue/findings/mdl-executor.jsonl
+  - .claude/skills/fix-issue/findings/mdl-executor/
   - mdl/executor/validate_microflow_ce_gaps.go
   - mdl/executor/validate_microflow_loop_scope.go
 ---
