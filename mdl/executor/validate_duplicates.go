@@ -455,136 +455,142 @@ func CheckScriptDuplicates(prog *ast.Program) []linter.Violation {
 // Phase 2: CheckProjectConflicts
 // ----------------------------------------------------------------------------
 
-// projectNameSets holds sets of qualified names already present in the project,
-// loaded once before the walk.
+// projectNameSets answers which qualified names of a kind the project already
+// holds. Each kind is listed on first use and kept: a listing is a scan of the
+// stored model (on a 140 MB MPR v1 project ~0.1 s per document kind, and ~5 s
+// for module roles, which read every module's security), and the conflict
+// check asks about only the kinds its script plainly creates — usually none.
 type projectNameSets struct {
-	entities         map[string]bool
-	enumerations     map[string]bool
-	constants        map[string]bool
-	microflows       map[string]bool
-	nanoflows        map[string]bool
-	pages            map[string]bool
-	snippets         map[string]bool
-	layouts          map[string]bool
-	javaActions      map[string]bool
-	workflows        map[string]bool
-	businessEvents   map[string]bool
-	publishedRest    map[string]bool
-	jsonStructures   map[string]bool
-	importMappings   map[string]bool
-	exportMappings   map[string]bool
-	dataTransformers map[string]bool
-	agentModels      map[string]bool
-	knowledgeBases   map[string]bool
-	consumedMcp      map[string]bool
-	agents           map[string]bool
-	imageCollections map[string]bool
-	associations     map[string]bool
-	rules            map[string]bool
-	javaScriptActs   map[string]bool
-	moduleRoles      map[string]bool
-	demoUsers        map[string]bool
-	userRoles        map[string]bool
-	configurations   map[string]bool
-	menus            map[string]bool
-	queues           map[string]bool
-	scheduledEvents  map[string]bool
-	regexes          map[string]bool
-	messageColls     map[string]bool
-	messageDocs      map[string]bool
-	dbConnections    map[string]bool
-	restClients      map[string]bool
-	odataClients     map[string]bool
-	odataServices    map[string]bool
+	ctx    *ExecContext
+	h      *ContainerHierarchy
+	loaded map[string]map[string]bool
 }
 
-// projectSetFor returns the existence set for the given doc-type key, or nil
-// if we don't check project conflicts for that type.
+// setFor returns the existence set for the given doc-type key, listing that
+// kind on first use, or nil if we don't check project conflicts for that type.
 func (ps *projectNameSets) setFor(docType string) map[string]bool {
+	if set, ok := ps.loaded[docType]; ok {
+		return set
+	}
+	if ps.h == nil {
+		// No hierarchy, no qualified names — callers treat nil as "no conflicts".
+		return nil
+	}
+	ctx, h := ps.ctx, ps.h
+	var set map[string]bool
 	switch docType {
 	case "entity":
-		return ps.entities
+		set = buildEntityQualifiedNames(ctx)
 	case "enumeration":
-		return ps.enumerations
+		set = listedQualifiedNames(h, ctx.Backend.ListEnumerations)
 	case "constant":
-		return ps.constants
+		set = listedQualifiedNames(h, ctx.Backend.ListConstants)
 	case "microflow":
-		return ps.microflows
+		set = buildMicroflowQualifiedNames(ctx)
 	case "nanoflow":
-		return ps.nanoflows
+		set = buildNanoflowQualifiedNames(ctx)
 	case "page":
-		return ps.pages
+		set = buildPageQualifiedNames(ctx)
 	case "snippet":
-		return ps.snippets
+		set = buildSnippetQualifiedNames(ctx)
 	case "layout":
-		return ps.layouts
+		set = buildLayoutQualifiedNames(ctx)
 	case "javaaction":
-		return ps.javaActions
+		set = buildJavaActionQualifiedNames(ctx)
 	case "workflow":
-		return ps.workflows
+		set = listedQualifiedNames(h, ctx.Backend.ListWorkflows)
 	case "business-event-service":
-		return ps.businessEvents
+		set = listedQualifiedNames(h, ctx.Backend.ListBusinessEventServices)
 	case "published-rest-service":
-		return ps.publishedRest
+		set = listedQualifiedNames(h, ctx.Backend.ListPublishedRestServices)
 	case "json-structure":
-		return ps.jsonStructures
+		set = listedQualifiedNames(h, ctx.Backend.ListJsonStructures)
 	case "import-mapping":
-		return ps.importMappings
+		set = listedQualifiedNames(h, ctx.Backend.ListImportMappings)
 	case "export-mapping":
-		return ps.exportMappings
+		set = listedQualifiedNames(h, ctx.Backend.ListExportMappings)
 	case "data-transformer":
-		return ps.dataTransformers
+		set = listedQualifiedNames(h, ctx.Backend.ListDataTransformers)
 	case "agent-model":
-		return ps.agentModels
+		set = listedQualifiedNames(h, ctx.Backend.ListAgentEditorModels)
 	case "knowledge-base":
-		return ps.knowledgeBases
+		set = listedQualifiedNames(h, ctx.Backend.ListAgentEditorKnowledgeBases)
 	case "consumed-mcp-service":
-		return ps.consumedMcp
+		set = listedQualifiedNames(h, ctx.Backend.ListAgentEditorConsumedMCPServices)
 	case "agent":
-		return ps.agents
+		set = listedQualifiedNames(h, ctx.Backend.ListAgentEditorAgents)
 	case "image-collection":
-		return ps.imageCollections
+		set = listedQualifiedNames(h, ctx.Backend.ListImageCollections)
 	case "association":
-		return ps.associations
+		// Intra-module and cross-module.
+		set = buildAssociationQualifiedNames(ctx)
 	case "rule":
-		return ps.rules
+		set = buildRuleQualifiedNames(ctx)
 	case "javascriptaction":
-		return ps.javaScriptActs
+		set = buildJavaScriptActionQualifiedNames(ctx)
 	case "module-role":
-		return ps.moduleRoles
-	case "demo-user":
-		return ps.demoUsers
-	case "user-role":
-		return ps.userRoles
+		set = buildModuleRoleQualifiedNames(ctx)
+	case "demo-user", "user-role":
+		// The same lookups execCreateDemoUser and execCreateUserRole refuse on.
+		set = map[string]bool{}
+		if sec, err := ctx.Backend.GetProjectSecurity(); err == nil && sec != nil {
+			if docType == "demo-user" {
+				for _, du := range sec.DemoUsers {
+					if du != nil {
+						set[du.UserName] = true
+					}
+				}
+			} else {
+				for _, ur := range sec.UserRoles {
+					if ur != nil {
+						set[ur.Name] = true
+					}
+				}
+			}
+		}
 	case "configuration":
-		return ps.configurations
+		// Project settings, not documents, so not module-qualified.
+		set = map[string]bool{}
+		if st, err := ctx.Backend.GetProjectSettings(); err == nil && st != nil && st.Configuration != nil {
+			for _, cfg := range st.Configuration.Configurations {
+				if cfg != nil {
+					set[cfg.Name] = true
+				}
+			}
+		}
+	// The documents whose handlers refuse a plain CREATE of an existing one,
+	// read through the same Backend lists the handlers search (ako/mxcli#557).
 	case "menu":
-		return ps.menus
+		set = listedQualifiedNames(h, ctx.Backend.ListMenuDocuments)
 	case "queue":
-		return ps.queues
+		set = listedQualifiedNames(h, ctx.Backend.ListQueues)
 	case "scheduled-event":
-		return ps.scheduledEvents
+		set = listedQualifiedNames(h, ctx.Backend.ListScheduledEvents)
 	case "regular-expression":
-		return ps.regexes
+		set = listedQualifiedNames(h, ctx.Backend.ListRegularExpressions)
 	case "message-definition-collection":
-		return ps.messageColls
+		set = listedQualifiedNames(h, ctx.Backend.ListMessageDefinitionCollections)
 	case "message-definition":
-		return ps.messageDocs
+		set = listedQualifiedNames(h, ctx.Backend.ListMessageDefinitionDocuments)
 	case "database-connection":
-		return ps.dbConnections
+		set = listedQualifiedNames(h, ctx.Backend.ListDatabaseConnections)
 	case "rest-client":
-		return ps.restClients
+		set = listedQualifiedNames(h, ctx.Backend.ListConsumedRestServices)
 	case "odata-client":
-		return ps.odataClients
+		set = listedQualifiedNames(h, ctx.Backend.ListConsumedODataServices)
 	case "odata-service":
-		return ps.odataServices
+		set = listedQualifiedNames(h, ctx.Backend.ListPublishedODataServices)
+	default:
+		// "module" is deliberately absent: CREATE MODULE on an existing module
+		// is a no-op that prints "already exists" and exits 0, so `create
+		// module M;` is the standard script preamble. Flagging it would be a
+		// false positive on essentially every script.
+		// TestEveryCreateDocTypeIsProjectChecked carries this exemption
+		// explicitly so it stays a decision rather than an omission.
+		return nil
 	}
-	// "module" is deliberately absent: CREATE MODULE on an existing module is a
-	// no-op that prints "already exists" and exits 0, so `create module M;` is
-	// the standard script preamble. Flagging it would be a false positive on
-	// essentially every script. TestEveryCreateDocTypeIsProjectChecked carries
-	// this exemption explicitly so it stays a decision rather than an omission.
-	return nil
+	ps.loaded[docType] = set
+	return set
 }
 
 // execFoldsExistingName lists the kinds whose exec handler finds the stored
@@ -652,187 +658,13 @@ func listedQualifiedNames[T any](h *ContainerHierarchy, list func() ([]*T, error
 	return out
 }
 
-// loadProjectNameSets queries the project for all existing document names.
+// loadProjectNameSets prepares the project-side name lookup. Nothing is listed
+// here: setFor lists a kind the first time it is asked about.
 func loadProjectNameSets(ctx *ExecContext) *projectNameSets {
-	ps := &projectNameSets{}
-	h, err := getHierarchy(ctx)
-	if err != nil {
-		// Return empty sets — callers treat empty as "no conflicts".
-		return ps
+	ps := &projectNameSets{ctx: ctx, loaded: map[string]map[string]bool{}}
+	if h, err := getHierarchy(ctx); err == nil {
+		ps.h = h
 	}
-
-	ps.entities = buildEntityQualifiedNames(ctx)
-	ps.microflows = buildMicroflowQualifiedNames(ctx)
-	ps.nanoflows = buildNanoflowQualifiedNames(ctx)
-	ps.pages = buildPageQualifiedNames(ctx)
-	ps.snippets = buildSnippetQualifiedNames(ctx)
-	ps.layouts = buildLayoutQualifiedNames(ctx)
-	ps.javaActions = buildJavaActionQualifiedNames(ctx)
-
-	// Enumerations
-	ps.enumerations = make(map[string]bool)
-	if enums, err := ctx.Backend.ListEnumerations(); err == nil {
-		for _, e := range enums {
-			ps.enumerations[h.GetQualifiedName(e.ContainerID, e.Name)] = true
-		}
-	}
-
-	// Constants
-	ps.constants = make(map[string]bool)
-	if consts, err := ctx.Backend.ListConstants(); err == nil {
-		for _, c := range consts {
-			ps.constants[h.GetQualifiedName(c.ContainerID, c.Name)] = true
-		}
-	}
-
-	// Workflows
-	ps.workflows = make(map[string]bool)
-	if wfs, err := ctx.Backend.ListWorkflows(); err == nil {
-		for _, w := range wfs {
-			ps.workflows[h.GetQualifiedName(w.ContainerID, w.Name)] = true
-		}
-	}
-
-	// Business event services
-	ps.businessEvents = make(map[string]bool)
-	if bes, err := ctx.Backend.ListBusinessEventServices(); err == nil {
-		for _, b := range bes {
-			ps.businessEvents[h.GetQualifiedName(b.ContainerID, b.Name)] = true
-		}
-	}
-
-	// Published REST services
-	ps.publishedRest = make(map[string]bool)
-	if prs, err := ctx.Backend.ListPublishedRestServices(); err == nil {
-		for _, p := range prs {
-			ps.publishedRest[h.GetQualifiedName(p.ContainerID, p.Name)] = true
-		}
-	}
-
-	// JSON structures
-	ps.jsonStructures = make(map[string]bool)
-	if jss, err := ctx.Backend.ListJsonStructures(); err == nil {
-		for _, j := range jss {
-			ps.jsonStructures[h.GetQualifiedName(j.ContainerID, j.Name)] = true
-		}
-	}
-
-	// Import mappings
-	ps.importMappings = make(map[string]bool)
-	if ims, err := ctx.Backend.ListImportMappings(); err == nil {
-		for _, m := range ims {
-			ps.importMappings[h.GetQualifiedName(m.ContainerID, m.Name)] = true
-		}
-	}
-
-	// Export mappings
-	ps.exportMappings = make(map[string]bool)
-	if ems, err := ctx.Backend.ListExportMappings(); err == nil {
-		for _, m := range ems {
-			ps.exportMappings[h.GetQualifiedName(m.ContainerID, m.Name)] = true
-		}
-	}
-
-	// Data transformers
-	ps.dataTransformers = make(map[string]bool)
-	if dts, err := ctx.Backend.ListDataTransformers(); err == nil {
-		for _, d := range dts {
-			ps.dataTransformers[h.GetQualifiedName(d.ContainerID, d.Name)] = true
-		}
-	}
-
-	// Agent editor: models
-	ps.agentModels = make(map[string]bool)
-	if ms, err := ctx.Backend.ListAgentEditorModels(); err == nil {
-		for _, m := range ms {
-			ps.agentModels[h.GetQualifiedName(m.ContainerID, m.Name)] = true
-		}
-	}
-
-	// Agent editor: knowledge bases
-	ps.knowledgeBases = make(map[string]bool)
-	if kbs, err := ctx.Backend.ListAgentEditorKnowledgeBases(); err == nil {
-		for _, k := range kbs {
-			ps.knowledgeBases[h.GetQualifiedName(k.ContainerID, k.Name)] = true
-		}
-	}
-
-	// Agent editor: consumed MCP services
-	ps.consumedMcp = make(map[string]bool)
-	if svcs, err := ctx.Backend.ListAgentEditorConsumedMCPServices(); err == nil {
-		for _, s := range svcs {
-			ps.consumedMcp[h.GetQualifiedName(s.ContainerID, s.Name)] = true
-		}
-	}
-
-	// Agent editor: agents
-	ps.agents = make(map[string]bool)
-	if ags, err := ctx.Backend.ListAgentEditorAgents(); err == nil {
-		for _, a := range ags {
-			ps.agents[h.GetQualifiedName(a.ContainerID, a.Name)] = true
-		}
-	}
-
-	// Associations (intra-module and cross-module)
-	ps.associations = buildAssociationQualifiedNames(ctx)
-
-	// Rules
-	ps.rules = buildRuleQualifiedNames(ctx)
-
-	// JavaScript actions
-	ps.javaScriptActs = buildJavaScriptActionQualifiedNames(ctx)
-
-	// Module roles
-	ps.moduleRoles = buildModuleRoleQualifiedNames(ctx)
-
-	// Demo users and user roles: the same lookups execCreateDemoUser and
-	// execCreateUserRole refuse on.
-	ps.demoUsers = make(map[string]bool)
-	ps.userRoles = make(map[string]bool)
-	if sec, err := ctx.Backend.GetProjectSecurity(); err == nil && sec != nil {
-		for _, du := range sec.DemoUsers {
-			if du != nil {
-				ps.demoUsers[du.UserName] = true
-			}
-		}
-		for _, ur := range sec.UserRoles {
-			if ur != nil {
-				ps.userRoles[ur.Name] = true
-			}
-		}
-	}
-
-	// Configurations: project settings, not documents, so not module-qualified.
-	ps.configurations = make(map[string]bool)
-	if st, err := ctx.Backend.GetProjectSettings(); err == nil && st != nil && st.Configuration != nil {
-		for _, cfg := range st.Configuration.Configurations {
-			if cfg != nil {
-				ps.configurations[cfg.Name] = true
-			}
-		}
-	}
-
-	// The documents whose handlers refuse a plain CREATE of an existing one,
-	// read through the same Backend lists the handlers search (ako/mxcli#557).
-	ps.menus = listedQualifiedNames(h, ctx.Backend.ListMenuDocuments)
-	ps.queues = listedQualifiedNames(h, ctx.Backend.ListQueues)
-	ps.scheduledEvents = listedQualifiedNames(h, ctx.Backend.ListScheduledEvents)
-	ps.regexes = listedQualifiedNames(h, ctx.Backend.ListRegularExpressions)
-	ps.messageColls = listedQualifiedNames(h, ctx.Backend.ListMessageDefinitionCollections)
-	ps.messageDocs = listedQualifiedNames(h, ctx.Backend.ListMessageDefinitionDocuments)
-	ps.dbConnections = listedQualifiedNames(h, ctx.Backend.ListDatabaseConnections)
-	ps.restClients = listedQualifiedNames(h, ctx.Backend.ListConsumedRestServices)
-	ps.odataClients = listedQualifiedNames(h, ctx.Backend.ListConsumedODataServices)
-	ps.odataServices = listedQualifiedNames(h, ctx.Backend.ListPublishedODataServices)
-
-	// Image collections
-	ps.imageCollections = make(map[string]bool)
-	if ics, err := ctx.Backend.ListImageCollections(); err == nil {
-		for _, ic := range ics {
-			ps.imageCollections[h.GetQualifiedName(ic.ContainerID, ic.Name)] = true
-		}
-	}
-
 	return ps
 }
 
@@ -851,6 +683,16 @@ func CheckProjectConflicts(ctx *ExecContext, prog *ast.Program) []error {
 	}
 
 	ps := loadProjectNameSets(ctx)
+	// Only a plain CREATE is ever flagged, so only the kinds plainly created
+	// need their stored names — and a DROP matters only to a later plain
+	// CREATE of its kind. A script of `create or modify` statements lists
+	// nothing here.
+	plainlyCreated := map[string]bool{}
+	for _, stmt := range prog.Statements {
+		if dt, _, idempotent := stmtCreateInfo(stmt); dt != "" && !idempotent {
+			plainlyCreated[dt] = true
+		}
+	}
 	reg := newNameRegistry()
 	droppedFromProject := newNameRegistry()
 	var errs []error
@@ -873,7 +715,7 @@ func CheckProjectConflicts(ctx *ExecContext, prog *ast.Program) []error {
 		// record it so a subsequent CREATE is not flagged as a conflict.
 		if dt, name := stmtDropInfo(stmt); dt != "" {
 			reg.remove(dt, name)
-			if projectSetHas(dt, ps.setFor(dt), name) {
+			if plainlyCreated[dt] && projectSetHas(dt, ps.setFor(dt), name) {
 				droppedFromProject.add(dt, name, stmtNum)
 			}
 			continue
