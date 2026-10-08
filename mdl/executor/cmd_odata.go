@@ -1938,6 +1938,7 @@ func extractMicroflowRef(ref string) string {
 // entity name, so callers can resolve "what's on the other side of
 // AssocName from Entity X".
 type assocMembership struct {
+	QN       string                      // the association's own qualified name (its module, not necessarily the entity's)
 	ParentQN string                      // FROM entity (CLAUDE.md: ParentPointer holds the FROM/FK side)
 	ChildQN  string                      // TO entity (ChildPointer holds the TO/referenced side)
 	Type     domainmodel.AssociationType // Reference (to-one) vs ReferenceSet (to-many)
@@ -2046,9 +2047,64 @@ func lookupEntityMembers(ctx *ExecContext, entityQN ast.QualifiedName) (map[stri
 		if parentQN != entityQN.String() && childQN != entityQN.String() {
 			continue
 		}
-		assocs[a.Name] = &assocMembership{ParentQN: parentQN, ChildQN: childQN, Type: a.Type}
+		assocs[a.Name] = &assocMembership{QN: entityQN.Module + "." + a.Name, ParentQN: parentQN, ChildQN: childQN, Type: a.Type}
 	}
+	// A cross-module association is a DomainModels$CrossAssociation, kept apart
+	// from dm.Associations and stored in the FROM entity's module, with the TO
+	// entity by name (mendixlabs/mxcli#1335). Missing it here sent the member to
+	// the attribute fallback: CE1613 on a PublishedAttribute named after it.
+	for _, ca := range dm.CrossAssociations {
+		if parentQN := entityIDToQN[ca.ParentID]; parentQN == entityQN.String() {
+			assocs[ca.Name] = &assocMembership{QN: entityQN.Module + "." + ca.Name, ParentQN: parentQN, ChildQN: ca.ChildRef, Type: ca.Type}
+		}
+	}
+	// Published from the TO side, the association lives in another module's
+	// domain model, so the published entity's own one cannot find it.
+	addCrossAssociationsTo(ctx, entityQN, assocs)
 	return attrs, assocs
+}
+
+// addCrossAssociationsTo adds the cross-module associations whose TO entity is
+// entityQN. Best-effort like lookupEntityMembers: a backend failure leaves assocs
+// as it was. An association name already present (local to the module) wins.
+func addCrossAssociationsTo(ctx *ExecContext, entityQN ast.QualifiedName, assocs map[string]*assocMembership) {
+	modules, err := getModulesFromCache(ctx)
+	if err != nil {
+		return
+	}
+	dms, err := ctx.Backend.ListDomainModels()
+	if err != nil {
+		return
+	}
+	moduleNames := make(map[model.ID]string, len(modules))
+	for _, m := range modules {
+		moduleNames[m.ID] = m.Name
+	}
+	for _, dm := range dms {
+		modName := moduleNames[dm.ContainerID]
+		if modName == "" || modName == entityQN.Module {
+			continue
+		}
+		for _, ca := range dm.CrossAssociations {
+			if ca.ChildRef != entityQN.String() {
+				continue
+			}
+			if _, taken := assocs[ca.Name]; taken {
+				continue
+			}
+			var parentQN string
+			for _, e := range dm.Entities {
+				if e.ID == ca.ParentID {
+					parentQN = modName + "." + e.Name
+					break
+				}
+			}
+			if parentQN == "" {
+				continue
+			}
+			assocs[ca.Name] = &assocMembership{QN: modName + "." + ca.Name, ParentQN: parentQN, ChildQN: ca.ChildRef, Type: ca.Type}
+		}
+	}
 }
 
 // astEntityDefToModel converts an AST PublishedEntityDef to model PublishedEntityType
@@ -2058,8 +2114,8 @@ func lookupEntityMembers(ctx *ExecContext, entityQN ast.QualifiedName) (map[stri
 // Member kinds (attribute vs association) are auto-detected against the
 // entity's attributes and the module's associations: if a member's name
 // matches an attribute on the entity, it's an attribute; otherwise we
-// look for an association in the same module that involves this entity
-// and emit it as a PublishedAssociationEnd. The user writes the bare
+// look for an association that involves this entity — same-module, or a
+// cross-module one from either side — and emit it as a PublishedAssociationEnd. The user writes the bare
 // association name (e.g. `Order_Customer as 'Orders'`) and the executor
 // fills in the target entity and qualified names from the domain model.
 func astEntityDefToModel(ctx *ExecContext, def *ast.PublishedEntityDef) (*model.PublishedEntityType, *model.PublishedEntitySet) {
@@ -2104,6 +2160,9 @@ func astEntityDefToModel(ctx *ExecContext, def *ast.PublishedEntityDef) (*model.
 			member.EnumerationAsString = pub.AsString
 		} else if assoc := moduleAssocs[m.Name]; assoc != nil {
 			member.Kind = "association"
+			// Qualified here, not by the writer: it can only prefix the published
+			// entity's module, which is wrong from a cross association's TO side.
+			member.Name = assoc.QN
 			member.ExposedAssociationName = m.Name
 			// Target entity = the OTHER side of the association. Multiplicity
 			// (IsMany) of the exposed navigation: a ReferenceSet is to-many
