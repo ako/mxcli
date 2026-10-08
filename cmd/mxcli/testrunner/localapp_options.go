@@ -3,6 +3,7 @@
 package testrunner
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/mendixlabs/mxcli/cmd/mxcli/docker"
@@ -20,6 +21,7 @@ import (
 // configuration's values applied). Nothing errored; the assertion just ran
 // against the wrong constant. See docs/11-proposals/PROPOSAL_constant_values.md.
 func localAppOptions(opts RunOptions, logPath string, env []string, w io.Writer) docker.LocalAppOptions {
+	db := dbConfig(opts)
 	return docker.LocalAppOptions{
 		ProjectPath: opts.ProjectPath,
 		AppPort:     localTestAppPort,
@@ -32,12 +34,9 @@ func localAppOptions(opts RunOptions, logPath string, env []string, w io.Writer)
 		// (mxcli-ledger §150). The damage that sharing used to do, a headless boot
 		// deleting the browser bundle the running app serves, is undone by
 		// StartLocalApp carrying the bundle across the boot (FINDINGS §62).
-		DB: docker.DBConfig{
-			// A scratch database, so a `run --local` dev loop can keep serving the
-			// same project while the tests run.
-			Name: docker.DeriveDBName(opts.ProjectPath) + localTestDBSuffix,
-		},
-		EnsureDB:          true,
+		DB: db,
+		// Provisioning is PostgreSQL's; the file database is created by the runtime.
+		EnsureDB:          !db.IsFileBased(),
 		SkipBuild:         opts.SkipBuild,
 		Env:               env,
 		ConstantOverrides: opts.ConstantOverrides,
@@ -46,4 +45,43 @@ func localAppOptions(opts RunOptions, logPath string, env []string, w io.Writer)
 		Stdout:            w,
 		Stderr:            w,
 	}
+}
+
+// dbConfig is the scratch database a --local run boots against, so a
+// `run --local` dev loop can keep serving the same project while the tests run.
+//
+// The suffix applies to the file database too: there the name selects the
+// database files, and the unsuffixed ones are the dev loop's — sharing them
+// would let test writes land in the developer's data and contend for HSQLDB's
+// file lock with a running `run --local --db-type hsqldb`.
+//
+// Type is translated to the runtime spelling because DBConfig.IsFileBased keys
+// on it. opts.DBType is assumed canonical (see ResolveTestDBType); anything
+// that is not the file database boots on PostgreSQL, as before the flag.
+func dbConfig(opts RunOptions) docker.DBConfig {
+	kind := docker.DBTypePostgreSQL
+	if docker.IsFileBasedDBType(opts.DBType) {
+		kind = docker.DBTypeHSQLDB
+	}
+	return docker.DBConfig{
+		Type: docker.RuntimeDatabaseType(kind),
+		Name: docker.DeriveDBName(opts.ProjectPath) + localTestDBSuffix,
+	}
+}
+
+// ResolveTestDBType validates `mxcli test --db-type` and returns the canonical
+// type for RunOptions.DBType. Only a --local run that boots its own app has a
+// database to choose; --attach uses the database of the app it attaches to and
+// the Docker path configures the container, so the flag is refused there rather
+// than accepted and ignored. A value outside postgresql/hsqldb is refused before
+// anything is built.
+func ResolveTestDBType(raw string, local, attach bool) (string, error) {
+	if !local || attach {
+		if raw != "" {
+			return "", fmt.Errorf("--db-type applies only to a --local test run " +
+				"(--attach uses the database of the app it attaches to; the Docker path configures the container's)")
+		}
+		return "", nil
+	}
+	return docker.NormalizeDBType(raw)
 }

@@ -1,0 +1,15 @@
+/**
+ * mendixlabs/mxcli#1274: `mxcli test --local --db-type hsqldb` boots on the
+ * runtime's built-in file database, with no PostgreSQL on the machine.
+ *
+ * Setup: run 1274-test-db-type-hsqldb.mdl against the project first.
+ *
+ * The test commits, so it proves the file database took a write rather than
+ * only that the app booted.
+ *
+ * @test the file database accepts a committed write
+ * @cleanup none
+ * @expect $n >= 1
+ */
+$n = call microflow DbProbe.MF_InsertAndCount();
+/
