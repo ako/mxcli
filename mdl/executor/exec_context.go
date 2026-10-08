@@ -125,6 +125,13 @@ type ExecContext struct {
 	// activities by the @position printed above them.
 	describeFullLayout bool
 
+	// describeFallsOn is true while DESCRIBE walks a branch after which the
+	// description goes on printing statements within the same loop iteration —
+	// so an activity there with no way out (which ends the iteration in the
+	// model) must say `continue;`, or it would fall into what follows. Reset at
+	// every loop body; see traverseFlowUntilMerge.
+	describeFallsOn bool
+
 	// describeIn, when set, is the exact language DESCRIBE writes, in place of
 	// describeLanguage's default. create or modify pins it to the script's own
 	// version to describe the stored side of its diff, so both sides are read

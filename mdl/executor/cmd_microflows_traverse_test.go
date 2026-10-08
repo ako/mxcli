@@ -1082,8 +1082,11 @@ func TestCollectErrorHandlerStatements_StopsAtMerge(t *testing.T) {
 		},
 	}
 
+	// The main path enters the merge too: that is what makes it the rejoin.
+	// A merge with one way in joins nothing and is walked through.
 	flowsByOrigin := map[model.ID][]*microflows.SequenceFlow{
 		mkID("err_log"): {mkFlow("err_log", "merge")},
+		mkID("main"):    {mkFlow("main", "merge")},
 		mkID("merge"):   {mkFlow("merge", "after")},
 	}
 
@@ -1117,6 +1120,7 @@ func TestCollectErrorHandlerStatements_StructuredIfEmitsEndIf(t *testing.T) {
 			mkBranchFlow("split", "return_error", &microflows.ExpressionCase{Expression: "true"}),
 			mkBranchFlow("split", "merge", &microflows.ExpressionCase{Expression: "false"}),
 		},
+		mkID("main"):  {mkFlow("main", "merge")}, // the main path's way in: a rejoin
 		mkID("merge"): {mkFlow("merge", "after")},
 	}
 

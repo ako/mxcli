@@ -1226,7 +1226,10 @@ func traverseFlow(
 		isGuard := trueTerminates && flowLooksLikeGuardContinuation(falseFlow, obj, activityMap) && !hasExplicitFalseBranchAnchor(falseFlow)
 
 		if isGuard {
+			// A guard's THEN arm is followed by the false continuation.
+			restore := fallsOnBefore(ctx, falseFlow, activityMap, flowsByOrigin)
 			traverseFlowUntilMerge(ctx, trueFlow.DestinationID, mergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent+1, sourceMap, headerLineCount, annotationsByTarget, labels)
+			restore()
 			*lines = append(*lines, indentStr+"end if;")
 			recordSourceMap(sourceMap, currentID, startLine, len(*lines)+headerLineCount-1)
 
@@ -1270,7 +1273,9 @@ func traverseFlow(
 			*lines = append(*lines, indentStr+"end if;")
 			recordSourceMap(sourceMap, currentID, startLine, len(*lines)+headerLineCount-1)
 
-			continueAfterSplitJoin(ctx, mergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
+			if armFallsInto(currentID, mergeID, flowsByOrigin, labels) {
+				continueAfterSplitJoin(ctx, mergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
+			}
 		}
 		return
 	}
@@ -1336,6 +1341,14 @@ func traverseFlowUntilMerge(
 	obj := activityMap[currentID]
 	if obj == nil {
 		return
+	}
+
+	// What follows this branch once it closes: the walk up to mergeID is the
+	// branch, and whatever mergeID leads to is printed after it — as is
+	// whatever followed the enclosing branch. Nested branches inherit it.
+	if ctx != nil && !ctx.describeFallsOn && joinGoesOn(mergeID, activityMap, flowsByOrigin) {
+		ctx.describeFallsOn = true
+		defer func() { ctx.describeFallsOn = false }()
 	}
 
 	// Handle intermediate merge points - traverse through them without outputting
@@ -1436,7 +1449,10 @@ func traverseFlowUntilMerge(
 		isGuard := trueTerminates && flowLooksLikeGuardContinuation(falseFlow, obj, activityMap) && !hasExplicitFalseBranchAnchor(falseFlow)
 
 		if isGuard {
+			// A guard's THEN arm is followed by the false continuation.
+			restore := fallsOnBefore(ctx, falseFlow, activityMap, flowsByOrigin)
 			traverseFlowUntilMerge(ctx, trueFlow.DestinationID, nestedMergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent+1, sourceMap, headerLineCount, annotationsByTarget, labels)
+			restore()
 			*lines = append(*lines, indentStr+"end if;")
 			recordSourceMap(sourceMap, currentID, startLine, len(*lines)+headerLineCount-1)
 
@@ -1481,7 +1497,9 @@ func traverseFlowUntilMerge(
 			*lines = append(*lines, indentStr+"end if;")
 			recordSourceMap(sourceMap, currentID, startLine, len(*lines)+headerLineCount-1)
 
-			continueAfterNestedSplitJoin(ctx, nestedMergeID, mergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
+			if armFallsInto(currentID, nestedMergeID, flowsByOrigin, labels) {
+				continueAfterNestedSplitJoin(ctx, nestedMergeID, mergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
+			}
 		}
 		return
 	}
@@ -1514,10 +1532,61 @@ func traverseFlowUntilMerge(
 	emitActivityStatement(ctx, obj, stmt, flowsByOrigin, flowsByDest, activityMap, entityNames, microflowNames, lines, indentStr, annotationsByTarget, labels, sourceMap, headerLineCount)
 	recordSourceMap(sourceMap, currentID, startLine, len(*lines)+headerLineCount-1)
 
+	// An activity with no way out ends the loop iteration (a loop body is the
+	// only place Studio Pro accepts one). When the description goes on after
+	// this branch closes — the join leads somewhere, or an enclosing branch's
+	// does — closing the branch would send this path into what follows, so it
+	// has to say where it ends (Evora: GenAICommons.Trace_GetModelSpanInput,
+	// whose collecting arm fell into its siblings' `break`). Events are not
+	// included: they end the path by definition.
+	if _, isAction := obj.(*microflows.ActionActivity); isAction && len(normalFlows) == 0 && ctx != nil && ctx.describeFallsOn {
+		*lines = append(*lines, indentStr+"continue;")
+	}
+
 	// Follow normal (non-error-handler) outgoing flows until merge
 	for _, flow := range normalFlows {
 		traverseFlowUntilMerge(ctx, flow.DestinationID, mergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
 	}
+}
+
+// fallsOnBefore marks what is about to be walked as followed by next's path,
+// when that path goes on, and returns the function that undoes it.
+func fallsOnBefore(ctx *ExecContext, next *microflows.SequenceFlow, activityMap map[model.ID]microflows.MicroflowObject, flowsByOrigin map[model.ID][]*microflows.SequenceFlow) func() {
+	if ctx == nil || ctx.describeFallsOn || next == nil || !joinGoesOn(next.DestinationID, activityMap, flowsByOrigin) {
+		return func() {}
+	}
+	ctx.describeFallsOn = true
+	return func() { ctx.describeFallsOn = false }
+}
+
+// joinGoesOn reports whether a path that reaches mergeID goes on to an object
+// — rather than ending the loop iteration there, as a merge with no way out (or
+// one leading only to more such merges, or to a ContinueEvent) does. A branch
+// that stops dead before such a join needs no `continue`: it and the join end
+// the iteration alike.
+func joinGoesOn(mergeID model.ID, activityMap map[model.ID]microflows.MicroflowObject, flowsByOrigin map[model.ID][]*microflows.SequenceFlow) bool {
+	seen := map[model.ID]bool{}
+	var goesOn func(id model.ID) bool
+	goesOn = func(id model.ID) bool {
+		if id == "" || seen[id] {
+			return false
+		}
+		seen[id] = true
+		switch activityMap[id].(type) {
+		case *microflows.ExclusiveMerge:
+		case *microflows.ContinueEvent, nil:
+			return false
+		default:
+			return true
+		}
+		for _, f := range findNormalFlows(flowsByOrigin[id]) {
+			if goesOn(f.DestinationID) {
+				return true
+			}
+		}
+		return false
+	}
+	return goesOn(mergeID)
 }
 
 func continueAfterSplitJoin(
@@ -1552,6 +1621,9 @@ func continueAfterSplitJoin(
 		}
 		if label, ok := labels.of(joinID); ok && !visited[joinID] {
 			*lines = append(*lines, mergeDeclarationLines(indent, label, activityMap[joinID], annotationsByTarget.layoutKeep())...)
+		}
+		if emitJoinAsLoopHeader(ctx, joinID, "", activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels) {
+			return
 		}
 		visited[joinID] = true
 		for _, flow := range flowsByOrigin[joinID] {
@@ -1595,6 +1667,9 @@ func continueAfterNestedSplitJoin(
 		if label, ok := labels.of(joinID); ok && !visited[joinID] {
 			*lines = append(*lines, mergeDeclarationLines(indent, label, activityMap[joinID], annotationsByTarget.layoutKeep())...)
 		}
+		if emitJoinAsLoopHeader(ctx, joinID, parentMergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels) {
+			return
+		}
 		visited[joinID] = true
 		for _, flow := range flowsByOrigin[joinID] {
 			traverseFlowUntilMerge(ctx, flow.DestinationID, parentMergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
@@ -1602,6 +1677,77 @@ func continueAfterNestedSplitJoin(
 		return
 	}
 	traverseFlowUntilMerge(ctx, joinID, parentMergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
+}
+
+// armFallsInto reports whether some arm of splitID reaches joinID by falling
+// out of the `if` — rather than every arm returning, or ending in a `join` of
+// a crossed merge first. When none does, nothing arrives at the join after
+// `end if`, and a `join` of it there would be an edge out of nothing (a path
+// the builder then invents). Only a crossed join can be left unreached this
+// way; every other join is reported as reached.
+func armFallsInto(splitID, joinID model.ID, flowsByOrigin map[model.ID][]*microflows.SequenceFlow, labels mergeLabels) bool {
+	if !labels.isCrossed(joinID) {
+		return true
+	}
+	seen := map[model.ID]bool{splitID: true}
+	queue := []model.ID{}
+	for _, f := range findNormalFlows(flowsByOrigin[splitID]) {
+		queue = append(queue, f.DestinationID)
+	}
+	for len(queue) > 0 {
+		id := queue[0]
+		queue = queue[1:]
+		if id == joinID {
+			return true
+		}
+		if id == "" || seen[id] || labels.isCrossed(id) {
+			continue
+		}
+		seen[id] = true
+		for _, f := range findNormalFlows(flowsByOrigin[id]) {
+			queue = append(queue, f.DestinationID)
+		}
+	}
+	return false
+}
+
+// emitJoinAsLoopHeader writes a split's join as `while true` when it is also
+// the header of a loop — when a path out of it comes back to it without passing
+// stopID or anything already printed. Studio Pro draws one merge for both jobs;
+// MDL spells them as two statements, the `if` closing and the loop opening.
+// Walked on as a plain join, the way round came back to an activity already
+// printed and stopped in silence, so the description had no back-edge (Evora:
+// SnowflakeRESTSQL.POST_v1_ExecuteStatement, a 202 poll). Reports whether it
+// wrote the loop.
+func emitJoinAsLoopHeader(
+	ctx *ExecContext,
+	joinID model.ID,
+	stopID model.ID,
+	activityMap map[model.ID]microflows.MicroflowObject,
+	flowsByOrigin map[model.ID][]*microflows.SequenceFlow,
+	flowsByDest map[model.ID][]*microflows.SequenceFlow,
+	splitMergeMap map[model.ID]model.ID,
+	visited map[model.ID]bool,
+	entityNames map[model.ID]string,
+	microflowNames map[model.ID]string,
+	lines *[]string,
+	indent int,
+	sourceMap map[string]elkSourceRange,
+	headerLineCount int,
+	annotationsByTarget *annotationEmitter,
+	labels mergeLabels,
+) bool {
+	if visited[joinID] || !mergeIsUndescribedLoopHeader(joinID, stopID, flowsByOrigin, visited) {
+		return false
+	}
+	visited[joinID] = true
+	*lines = append(*lines, strings.Repeat("  ", indent)+"while true")
+	*lines = append(*lines, strings.Repeat("  ", indent)+"begin")
+	for _, flow := range findNormalFlows(flowsByOrigin[joinID]) {
+		traverseFlowUntilMerge(ctx, flow.DestinationID, joinID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent+1, sourceMap, headerLineCount, annotationsByTarget, labels)
+	}
+	*lines = append(*lines, strings.Repeat("  ", indent)+"end while;")
+	return true
 }
 
 func resolveNestedMergeID(
@@ -1704,6 +1850,13 @@ func emitLoopBody(
 ) {
 	if loop.ObjectCollection == nil || len(loop.ObjectCollection.Objects) == 0 {
 		return
+	}
+
+	// A loop body is a fresh iteration: nothing outside it follows its end.
+	if ctx != nil {
+		prevFallsOn := ctx.describeFallsOn
+		ctx.describeFallsOn = false
+		defer func() { ctx.describeFallsOn = prevFallsOn }()
 	}
 
 	loopAnnotationsByTarget := annotationsByTarget.withOverlay(buildAnnotationsByTarget(loop.ObjectCollection))
@@ -2532,7 +2685,8 @@ func collectErrorHandlerStatementSpans(
 	var statements []string
 	var spans []errorHandlerSpan
 	visited := make(map[model.ID]bool)
-	stopID := firstReachableErrorHandlerMerge(startID, activityMap, flowsByOrigin)
+	incoming := incomingCounts(flowsByOrigin)
+	stopID := firstReachableErrorHandlerMerge(startID, activityMap, flowsByOrigin, incoming)
 
 	// A handler-body activity's annotations are emitted here or nowhere: this
 	// traversal is a second, smaller describer and the main one never reaches
@@ -2578,6 +2732,15 @@ func collectErrorHandlerStatementSpans(
 			// silent rewrite Phase E is about.
 			if label, ok := labels.of(id); ok {
 				statements = append(statements, strings.Repeat("  ", indent)+"join "+label+";")
+				return
+			}
+			// A merge with one way in joins nothing: walk on, as
+			// firstReachableErrorHandlerMerge did to find where this ends.
+			if isNoOpMerge(id, activityMap, incoming) {
+				visited[id] = true
+				for _, flow := range findNormalFlows(flowsByOrigin[id]) {
+					traverse(flow.DestinationID, boundary, indent)
+				}
 			}
 			return
 		}
@@ -2659,6 +2822,7 @@ func firstReachableErrorHandlerMerge(
 	startID model.ID,
 	activityMap map[model.ID]microflows.MicroflowObject,
 	flowsByOrigin map[model.ID][]*microflows.SequenceFlow,
+	incoming map[model.ID]int,
 ) model.ID {
 	visited := make(map[model.ID]bool)
 	queue := []model.ID{startID}
@@ -2669,7 +2833,7 @@ func firstReachableErrorHandlerMerge(
 			continue
 		}
 		visited[id] = true
-		if _, isMerge := activityMap[id].(*microflows.ExclusiveMerge); isMerge {
+		if _, isMerge := activityMap[id].(*microflows.ExclusiveMerge); isMerge && !isNoOpMerge(id, activityMap, incoming) {
 			return id
 		}
 		for _, flow := range findNormalFlows(flowsByOrigin[id]) {
