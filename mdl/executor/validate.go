@@ -697,6 +697,9 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 		validationErrors := validateFlowBody(s.Parameters, s.Body, true, checkAssociationShapes(ctx, sc))
 		// Validate references inside microflow body (pages, microflows, java actions, entities)
 		refErrors := validateFlowBodyReferences(ctx, s.Body, sc)
+		if ctx.Connected() {
+			refErrors = append(refErrors, validateRetrieveOperandTypes(ctx, s.Parameters, s.Body, sc)...)
+		}
 		if len(refErrors) > 0 && s.Excluded {
 			sc.warnExcluded("microflow", s.Name.String(), refErrors)
 			refErrors = nil
@@ -747,6 +750,9 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 		validationErrors := validateFlowBody(s.Parameters, s.Body, true, checkAssociationShapes(ctx, sc))
 		// Validate references inside nanoflow body (an excluded nanoflow's are warnings)
 		refErrors := validateFlowBodyReferences(ctx, s.Body, sc)
+		if ctx.Connected() {
+			refErrors = append(refErrors, validateRetrieveOperandTypes(ctx, s.Parameters, s.Body, sc)...)
+		}
 		if len(refErrors) > 0 && s.Excluded {
 			sc.warnExcluded("nanoflow", s.Name.String(), refErrors)
 			refErrors = nil
