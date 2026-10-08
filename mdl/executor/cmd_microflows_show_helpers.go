@@ -906,7 +906,9 @@ func emitObjectAnnotations(
 		}
 	}
 
-	if split, ok := obj.(*microflows.ExclusiveSplit); ok && split.Caption != "" && !captionIsCondition(split) {
+	// An empty caption is printed too: left out, the decision re-executes
+	// captioned with its condition (#1254).
+	if split, ok := obj.(*microflows.ExclusiveSplit); ok && !captionIsCondition(split) {
 		*lines = append(*lines, indentStr+fmt.Sprintf("@caption %s", annotationsByTarget.quote(split.Caption)))
 	}
 	if split, ok := obj.(*microflows.InheritanceSplit); ok && split.Caption != "" {
