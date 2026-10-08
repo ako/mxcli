@@ -218,6 +218,58 @@ func DeclaringMemberRef(b entityLookupBackend, entityQN, memberName string) (str
 	return "", false
 }
 
+// DeclaringAssociationRef returns the qualified name of the association called
+// assocName that entityQN, or one of its generalizations, OWNS — the FROM end,
+// ParentID in Mendix's inverted naming — as "Module.Association". Reports false
+// when no link in the chain owns one of that name, or the chain cannot be walked.
+//
+// It is DeclaringMemberRef's counterpart for the other kind of member: a bare
+// `$Input/Input_Person` names an association as readily as an attribute, and
+// spelling it as the attribute "G45.Input.Input_Person" is CE1613 (upstream
+// #1322). An association lives in its FROM entity's module — in Associations, or
+// in CrossAssociations when the far end is in another module — so the module
+// searched at each link is that link's own.
+func DeclaringAssociationRef(b entityLookupBackend, entityQN, assocName string) (string, bool) {
+	if b == nil || entityQN == "" || assocName == "" {
+		return "", false
+	}
+	seen := map[string]bool{}
+	for currentQN := entityQN; currentQN != ""; {
+		if seen[currentQN] {
+			return "", false
+		}
+		seen[currentQN] = true
+		parts := strings.SplitN(currentQN, ".", 2)
+		if len(parts) != 2 {
+			return "", false
+		}
+		mod, err := b.GetModuleByName(parts[0])
+		if err != nil || mod == nil {
+			return "", false
+		}
+		dm, err := b.GetDomainModel(mod.ID)
+		if err != nil || dm == nil {
+			return "", false
+		}
+		entity := dm.FindEntityByName(parts[1])
+		if entity == nil {
+			return "", false
+		}
+		for _, a := range dm.Associations {
+			if a != nil && a.Name == assocName && a.ParentID == entity.ID {
+				return parts[0] + "." + assocName, true
+			}
+		}
+		for _, a := range dm.CrossAssociations {
+			if a != nil && a.Name == assocName && a.ParentID == entity.ID {
+				return parts[0] + "." + assocName, true
+			}
+		}
+		currentQN = entity.GeneralizationRef
+	}
+	return "", false
+}
+
 // ResolveMemberType returns the data type of an entity's member, following the
 // generalization chain. Returns "" when the member cannot be resolved.
 func ResolveMemberType(b entityLookupBackend, entityQN, memberName string) string {
