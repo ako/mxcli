@@ -79,6 +79,9 @@ func labelCrossedMerges(col *microflows.MicroflowObjectCollection) mergeLabels {
 	for id := range sharedArmEntries(col, objects, findings) {
 		needsLabel[id] = true
 	}
+	for id := range sharedHandlerEntries(col, objects) {
+		needsLabel[id] = true
+	}
 	for _, f := range findings {
 		if f.Class != microflowgraph.Recombinable || len(f.Entries) != 1 {
 			continue
@@ -353,6 +356,70 @@ func sharedArmEntries(
 			out[id] = true
 		}
 		out[join] = true
+	}
+	return out
+}
+
+// sharedHandlerEntries finds the merges two or more error handlers settle on
+// that no normal path reaches: one handler body drawn once and wired to several
+// activities.
+//
+// Each guarded activity describes its own `on error … begin … end error` block,
+// and the handler walk (collectErrorHandlerStatementSpans) stops at the first
+// merge it meets — emitting `join <label>` if the merge has one, and nothing at
+// all if it does not. labelRejoinMerges only names merges the normal path also
+// reaches, so a merge reached by handlers alone had no name, every block came
+// out EMPTY, and the shared handler body — every activity in it — vanished from
+// the description (Evora: PrePopulateData.ASU_CheckForWorkforce, three java
+// action calls sharing a log + end; GenAICommons.ToolCall_ProcessAndExecuteTool,
+// two calls sharing four activities that rejoin the main path).
+//
+// Treating it as a crossed merge says exactly what the model holds: each block
+// ends in `join <label>`, and the body is printed once, in its own section,
+// after the main flow. A merge one handler alone settles on is left alone: it
+// is not shared, and is not what this describes.
+func sharedHandlerEntries(
+	col *microflows.MicroflowObjectCollection,
+	objects map[model.ID]microflows.MicroflowObject,
+) map[model.ID]bool {
+	out := map[model.ID]bool{}
+	normalSucc := map[model.ID][]model.ID{}
+	var errorFlows []*microflows.SequenceFlow
+	var startID model.ID
+	for _, o := range col.Objects {
+		if _, ok := o.(*microflows.StartEvent); ok {
+			startID = o.GetID()
+		}
+	}
+	for _, fl := range col.Flows {
+		if fl == nil {
+			continue
+		}
+		if fl.IsErrorHandler {
+			errorFlows = append(errorFlows, fl)
+			continue
+		}
+		normalSucc[fl.OriginID] = append(normalSucc[fl.OriginID], fl.DestinationID)
+	}
+	if len(errorFlows) < 2 {
+		return out
+	}
+	normal := reachableUntil(startID, "", normalSucc)
+	handlers := map[model.ID]map[model.ID]bool{}
+	for _, ef := range errorFlows {
+		m := firstMergeFrom(ef.DestinationID, objects, normalSucc)
+		if m == "" || normal[m] {
+			continue
+		}
+		if handlers[m] == nil {
+			handlers[m] = map[model.ID]bool{}
+		}
+		handlers[m][ef.OriginID] = true
+	}
+	for m, origins := range handlers {
+		if len(origins) >= 2 {
+			out[m] = true
+		}
 	}
 	return out
 }
