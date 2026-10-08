@@ -45,6 +45,13 @@ func (m *MockBackend) SetDomainModelAnnotations(domainModelID model.ID, annotati
 	return fmt.Errorf("MockBackend.SetDomainModelAnnotations not configured")
 }
 
+func (m *MockBackend) SetDomainModelDocumentation(domainModelID model.ID, documentation string) error {
+	if m.SetDomainModelDocumentationFunc != nil {
+		return m.SetDomainModelDocumentationFunc(domainModelID, documentation)
+	}
+	return fmt.Errorf("MockBackend.SetDomainModelDocumentation not configured")
+}
+
 func (m *MockBackend) CreateEntity(domainModelID model.ID, entity *domainmodel.Entity) error {
 	if m.CreateEntityFunc != nil {
 		return m.CreateEntityFunc(domainModelID, entity)

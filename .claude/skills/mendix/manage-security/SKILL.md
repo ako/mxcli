@@ -460,6 +460,10 @@ alter app security ( SecurityLevel: production );
 -- Enable/disable demo users
 alter app security ( EnableDemoUsers: true );
 alter app security ( EnableDemoUsers: false );
+
+-- Rename the built-in administrator (default MxAdmin). The password is not
+-- settable from MDL.
+alter app security ( AdminUserName: 'appadmin' );
 ```
 
 ### Guest (Anonymous) Access

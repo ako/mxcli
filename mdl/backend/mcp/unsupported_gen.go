@@ -1152,6 +1152,16 @@ func (unsupportedBackend) SetDomainModelAnnotations(_ model.ID, _ []*domainmodel
 	return
 }
 
+func (unsupportedBackend) SetDomainModelDocumentation(_ model.ID, _ string) (err0 error) {
+	err0 = errUnsupported("SetDomainModelDocumentation")
+	return
+}
+
+func (unsupportedBackend) SetProjectAdminUserName(_ model.ID, _ string) (err0 error) {
+	err0 = errUnsupported("SetProjectAdminUserName")
+	return
+}
+
 func (unsupportedBackend) SetProjectDemoUsersEnabled(_ model.ID, _ bool) (err0 error) {
 	err0 = errUnsupported("SetProjectDemoUsersEnabled")
 	return

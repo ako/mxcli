@@ -1,0 +1,32 @@
+mdl 1;
+-- mendixlabs/mxcli#1314: since #1269 lint reads
+-- modules().domain_model_documentation and project_security().admin_user_name,
+-- and MDL could write neither, so the rules over them had no negative case in
+-- an MDL-built app. Reported:
+--
+--   line 2: the doc comment before `create or modify module MyFirstModule` is lost
+--   … that statement cannot store documentation, so the comment is ignored [MDL089]
+--   line 2: alter app security has no property "AdminUserName"; …
+--
+-- A Mendix module has no documentation property; its domain model
+-- (DomainModels$DomainModel.Documentation) does, and that is what the doc
+-- comment on `create module` now sets. `describe module` prints it back as
+-- that comment. A comment that is absent leaves the stored text alone; `/** */`
+-- clears it. A plain `create module` of a module that exists stays a no-op.
+--
+-- The admin password stays out of MDL (mendixlabs/mxcli#624).
+--
+-- Verify:
+--
+--   mxcli exec 1314-module-documentation-and-admin-user-name.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe module Bug1314Sales"   -- prints the /** … */
+--   mxcli -p app.mpr -c "show project security"         -- Admin User: appadmin
+--   mxcli docker check -p app.mpr
+--
+-- Then perturb: drop the doc comment and re-run — describe still prints it
+-- (absent preserves); replace it with `/** */` — it is gone.
+
+/** Sales data, per region */
+create or modify module Bug1314Sales;
+
+alter app security ( AdminUserName: 'appadmin' );

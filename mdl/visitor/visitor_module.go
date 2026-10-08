@@ -12,9 +12,14 @@ func (b *Builder) ExitCreateModuleStatement(ctx *parser.CreateModuleStatementCon
 	if iok := ctx.IdentifierOrKeyword(); iok != nil {
 		name = identifierOrKeywordText(iok)
 	}
-	b.statements = append(b.statements, &ast.CreateModuleStmt{
-		Name: name,
-	})
+	stmt := &ast.CreateModuleStmt{Name: name}
+	if createStmt := findParentCreateStatement(ctx); createStmt != nil {
+		stmt.CreateOrModify = createStmt.OR() != nil && (createStmt.MODIFY() != nil || createStmt.REPLACE() != nil)
+	}
+	// The doc comment is the domain model's documentation, the only
+	// documentation a module has (mendixlabs/mxcli#1314).
+	stmt.Documentation, stmt.DocumentationSet = findDocComment(ctx)
+	b.statements = append(b.statements, stmt)
 }
 
 // ----------------------------------------------------------------------------

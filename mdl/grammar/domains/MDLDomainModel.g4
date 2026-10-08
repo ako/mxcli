@@ -383,9 +383,9 @@ moduleOptions
     : moduleOption+
     ;
 
-// COMMENT is deliberately absent, and unlike the others it could never have
-// worked: Projects$Module has no Documentation property, so there is nowhere in
-// the model for a module comment to go.
+// COMMENT is deliberately absent: Projects$Module has no Documentation
+// property. A module's documentation is its domain model's, and is written as
+// the statement's `/** … */` doc comment (mendixlabs/mxcli#1314).
 moduleOption
     : FOLDER STRING_LITERAL
     ;
