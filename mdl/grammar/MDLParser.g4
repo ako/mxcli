@@ -361,7 +361,8 @@ alterStylingAssignment
  * test fails when a marker here has no entry there (or the reverse).
  *
  * Page-family operations that have no generic spelling yet (`set layout = … map`,
- * `drop template for … in …`, `add variables`, `drop variables`) keep their own
+ * `drop template for … in …`, `add variables`, `drop variables`,
+ * `add parameters`, `drop parameters`) keep their own
  * form inside the generic block; they are not aliases.
  */
 alterDocumentType
@@ -378,6 +379,8 @@ alterOperation
     | alterPageDropTemplate SEMICOLON?
     | alterPageAddVariable SEMICOLON?
     | alterPageDropVariable SEMICOLON?
+    | alterPageAddParameter SEMICOLON?
+    | alterPageDropParameter SEMICOLON?
     ;
 
 alterSet
@@ -570,6 +573,19 @@ alterPageAddVariable
 
 alterPageDropVariable
     : DROP VARIABLES_KW VARIABLE              // DROP Variables $show
+    ;
+
+// A page or snippet parameter, declared with the same `pageParameter` rule as
+// CREATE's `Params: (...)`, so the two spellings cannot drift. Before these
+// existed the only way to add a parameter was CREATE OR REPLACE, which rebuilds
+// the whole page and loses whatever describe does not round-trip
+// (mendixlabs/mxcli#1234).
+alterPageAddParameter
+    : ADD PARAMETERS pageParameter            // ADD Parameters $Customer: Module.Customer
+    ;
+
+alterPageDropParameter
+    : DROP PARAMETERS VARIABLE                // DROP Parameters $Customer
     ;
 
 // A native profile's home is a page or a NANOFLOW (Navigation$NativeHomePage

@@ -1717,6 +1717,8 @@ This is the generic ALTER — `alter <type> Module.Name { set (Key: value) on <t
 | Insert column | `insert after dgGrid column(Attr) { column (…) }` | Add attribute to DataGrid; a column takes no name |
 | Add variable | `add variables $name: type = 'expr'` | Add a page variable |
 | Drop variable | `drop variables $name` | Remove a page variable |
+| Add parameter | `add parameters $name: type` | Add a page/snippet parameter (entity or primitive; snippet: entity only). A page with a `Url` needs a `{name}` segment — `set (Url: …)` in the same statement |
+| Drop parameter | `drop parameters $name` | Remove a parameter; refused while the page still uses it |
 | Set layout | `set layout = Module.LayoutName` | Change page layout, auto-maps placeholders |
 | Set layout + map | `set layout = Module.Layout map (Old as New)` | Explicit placeholder mapping |
 

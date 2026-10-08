@@ -79,6 +79,9 @@ func (d *countingDeps) SerializeCustomWidgetDataSource(pages.DataSource) bson.D 
 func (d *countingDeps) BuildDataGrid2Column(*backend.DataGridColumnSpec, string, map[string]pages.PropertyTypeIDEntry) (bson.D, error) {
 	return nil, nil
 }
+func (d *countingDeps) SerializeParameter(backend.ContainerKind, backend.PageParameterSpec) (bson.D, error) {
+	return nil, nil
+}
 func (d *countingDeps) SaveUnit(string, []byte) error { d.saves++; return nil }
 
 // gridPageCtx wires a project holding exactly one page, MyModule.P_Grid, whose

@@ -383,6 +383,33 @@ drop variables $showStockColumn
 
 Removes a page variable by name.
 
+### ADD Parameters - Add a Page or Snippet Parameter
+
+```sql
+mdl 1;
+alter page MyModule.Order_Edit {
+  add parameters $Order: MyModule.Order;
+  add parameters $Count: integer;
+};
+```
+
+Adds a `Forms$PageParameter` (or `Forms$SnippetParameter`) to the stored document and touches nothing else — reach for it instead of `create or replace page`, which rebuilds every widget and loses whatever `describe` does not round-trip. Same declaration as `Params:` on CREATE.
+
+- **A page with a `Url` needs a `{Name}` segment per parameter** (CE5601). Set it in the same statement — `set (Url: 'orders/{Customer}/{Order}');` — or exec refuses and prints the URL to use.
+- **A snippet parameter must be an entity** (MDL087 / CE0046).
+- **Callers are not updated.** Every page that opens this page (or places this snippet) must now pass the parameter; `mxcli docker check` names the ones that do not.
+
+### DROP Parameters - Remove a Parameter
+
+```sql
+mdl 1;
+alter page MyModule.Order_Edit {
+  drop parameters $Order;
+};
+```
+
+Refused while the page still uses the parameter — a data source bound to it (`DataSource: $Order`) or an expression naming `$Order`. Rebind or drop those first.
+
 ### SET Layout - Change Page Layout
 
 ```sql

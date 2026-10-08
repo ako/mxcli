@@ -47,6 +47,12 @@ func execAlterPage(ctx *ExecContext, s *ast.AlterPageStmt) error {
 		}
 	}
 
+	if containerType == "page" {
+		if err := checkAddedParameterURLSegments(ctx, s, h); err != nil {
+			return err
+		}
+	}
+
 	// Texts are written in the project's default language (the one DESCRIBE
 	// shows): resolve it before the first mutation, since the mutator reads it
 	// through model.AuthoringLanguage rather than as a parameter.
@@ -110,6 +116,18 @@ func execAlterPage(ctx *ExecContext, s *ast.AlterPageStmt) error {
 			if err := mutator.DropVariable(o.VariableName); err != nil {
 				return mdlerrors.NewBackend("drop VARIABLE", err)
 			}
+		case *ast.AddParameterOp:
+			spec, err := alterParameterSpec(ctx, s, containerType, o.Parameter)
+			if err != nil {
+				return err
+			}
+			if err := mutator.AddParameter(spec); err != nil {
+				return mdlerrors.NewBackend("add PARAMETER", err)
+			}
+		case *ast.DropParameterOp:
+			if err := mutator.DropParameter(o.ParameterName); err != nil {
+				return mdlerrors.NewBackend("drop PARAMETER", err)
+			}
 		case *ast.SetLayoutOp:
 			if containerType == "snippet" {
 				return mdlerrors.NewUnsupported("set Layout is not supported for snippets")
@@ -133,6 +151,97 @@ func execAlterPage(ctx *ExecContext, s *ast.AlterPageStmt) error {
 
 	fmt.Fprintf(ctx.Output, "Altered %s %s\n", strings.ToLower(containerType), s.PageName.String())
 	return nil
+}
+
+// checkAddedParameterURLSegments refuses `add parameters` on a page whose URL
+// would then lack a `{Name}` segment for the new parameter — MDL-PAGE20 on
+// CREATE, CE5601 from mxbuild. Measured on 11.12.1: adding $Order to a page
+// with Url 'customer-edit/{Customer}' and nothing else fails `mx check` with
+// "The URL property of this Page is missing a parameter segment for parameter
+// "Order"." The URL a statement ends with is what counts, so a `set (Url: …)`
+// in the same statement that names the parameter satisfies it. Parameters the
+// page already had are not this statement's business.
+func checkAddedParameterURLSegments(ctx *ExecContext, s *ast.AlterPageStmt, h *ContainerHierarchy) error {
+	var added []string
+	url, urlSet := "", false
+	for _, op := range s.Operations {
+		switch o := op.(type) {
+		case *ast.AddParameterOp:
+			added = append(added, o.Parameter.Name)
+		case *ast.SetPropertyOp:
+			if o.Target.Widget != "" {
+				continue
+			}
+			for k, v := range o.Properties {
+				if strings.EqualFold(k, "Url") {
+					url, _ = v.(string)
+					urlSet = true
+				}
+			}
+		}
+	}
+	if len(added) == 0 {
+		return nil
+	}
+	if !urlSet {
+		page, err := findPageByName(ctx, s.PageName, h)
+		if err != nil {
+			return err
+		}
+		url = page.URL
+	}
+	if url == "" {
+		return nil
+	}
+	var missing []string
+	suggested := url
+	for _, name := range added {
+		if !urlBindsParameter(url, name) {
+			missing = append(missing, name)
+			suggested = strings.TrimRight(suggested, "/") + "/{" + name + "}"
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	return mdlerrors.NewValidationf(
+		"page %s has Url '%s' with no segment for parameter %s — Mendix binds each page "+
+			"parameter from the URL, and mxbuild rejects the page (CE5601). Set the URL in the "+
+			"same statement: `set (Url: '%s');`",
+		s.PageName.String(), url, quoteList(missing), suggested)
+}
+
+// alterParameterSpec resolves an `add parameters` declaration the way CREATE
+// resolves its Params clause (cmd_pages_builder_v3.go): a primitive becomes its
+// DataTypes $Type, anything else must name an entity that exists, and a snippet
+// takes entities only (MDL087 — mxbuild's CE0046 otherwise).
+func alterParameterSpec(ctx *ExecContext, s *ast.AlterPageStmt, containerType string, p ast.PageParameter) (backend.PageParameterSpec, error) {
+	spec := backend.PageParameterSpec{Name: p.Name}
+	bsonType := pageParamBSONType(p.Type)
+	if strings.EqualFold(containerType, "snippet") {
+		if caption := types.SnippetParameterTypeRule(bsonType); caption != "" {
+			return spec, mdlerrors.NewValidationf(
+				"snippet '%s' cannot take parameter $%s with the primitive type %s — a snippet "+
+					"parameter must be an entity, and mxbuild rejects a primitive one with "+
+					"CE0046 (\"Invalid data type '%s'.\"). Pass the value on an object, or "+
+					"keep the primitive on the calling page's parameters.",
+				s.PageName.String(), p.Name, paramTypeSourceName(p.Type), caption)
+		}
+	}
+	if bsonType != "" {
+		spec.PrimitiveType = bsonType
+		return spec, nil
+	}
+	if p.EntityType.Name == "" || p.EntityType.Module == "" {
+		return spec, mdlerrors.NewValidationf(
+			"parameter $%s: a page parameter is an entity (Module.Entity) or one of "+
+				"String, Integer, Long, Decimal, Boolean, DateTime", p.Name)
+	}
+	if _, err := findEntity(ctx, p.EntityType.Module, p.EntityType.Name); err != nil {
+		return spec, mdlerrors.NewBackend("resolve entity "+p.EntityType.String(), err)
+	}
+	spec.EntityName = p.EntityType.String()
+	return spec, nil
 }
 
 // alterTargetOf converts an operation's target, as the visitor recorded it,

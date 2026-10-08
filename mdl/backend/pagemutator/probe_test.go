@@ -23,6 +23,9 @@ func (d *recordingDeps) SerializeCustomWidgetDataSource(pages.DataSource) bson.D
 func (d *recordingDeps) BuildDataGrid2Column(*backend.DataGridColumnSpec, string, map[string]pages.PropertyTypeIDEntry) (bson.D, error) {
 	return nil, nil
 }
+func (d *recordingDeps) SerializeParameter(backend.ContainerKind, backend.PageParameterSpec) (bson.D, error) {
+	return nil, nil
+}
 func (d *recordingDeps) SaveUnit(string, []byte) error { d.saves++; return nil }
 
 // TestProbeWritesReachNothing is the property the whole check-time dry run rests
