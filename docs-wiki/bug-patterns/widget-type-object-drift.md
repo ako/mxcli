@@ -3,10 +3,10 @@ title: Widget Type / Object Drift (CE0463)
 category: bug-pattern
 last-synced: 392cacd6
 sources:
-  - .claude/skills/fix-issue/findings/mdl-executor.jsonl
-  - .claude/skills/fix-issue/findings/cmd-mxcli.jsonl
-  - .claude/skills/fix-issue/findings/sdk.jsonl
-  - .claude/skills/fix-issue/findings/mdl-backend.jsonl
+  - .claude/skills/fix-issue/findings/mdl-executor/
+  - .claude/skills/fix-issue/findings/cmd-mxcli/
+  - .claude/skills/fix-issue/findings/sdk/
+  - .claude/skills/fix-issue/findings/mdl-backend/
   - .claude/skills/diagnose-ce0463.md
   - .claude/skills/debug-bson.md
   - sdk/widgets/templates/README.md

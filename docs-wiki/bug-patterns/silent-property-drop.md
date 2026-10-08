@@ -3,7 +3,7 @@ title: Properties That Parse but Never Persist
 category: bug-pattern
 last-synced: ced830e0
 sources:
-  - .claude/skills/fix-issue/findings/mdl-executor.jsonl
+  - .claude/skills/fix-issue/findings/mdl-executor/
   - mdl/executor/validate_widgets.go
   - modelsdk/widgets/definitions/
 ---

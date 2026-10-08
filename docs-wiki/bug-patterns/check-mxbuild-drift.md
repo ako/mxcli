@@ -3,9 +3,9 @@ title: When `mxcli check` and mxbuild Disagree
 category: bug-pattern
 last-synced: 038f810e
 sources:
-  - .claude/skills/fix-issue/findings/mdl-executor.jsonl
-  - .claude/skills/fix-issue/findings/mdl-backend.jsonl
-  - .claude/skills/fix-issue/findings/mdl-grammar.jsonl
+  - .claude/skills/fix-issue/findings/mdl-executor/
+  - .claude/skills/fix-issue/findings/mdl-backend/
+  - .claude/skills/fix-issue/findings/mdl-grammar/
   - mdl/executor/validate_program.go
   - docs/11-proposals/PROPOSAL_check_mxbuild_gap_heuristics.md
 ---
