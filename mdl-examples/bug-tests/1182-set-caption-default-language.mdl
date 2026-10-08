@@ -1,0 +1,44 @@
+mdl 1;
+-- mendixlabs/mxcli#1182 — "SET caption is refering to first language, not
+-- default language" (reported on mxcli v0.23.0, Mendix 11.12.2):
+--
+--   "SET Caption wrote Dutch, and restating the snippet deleted the other
+--    languages."
+--
+-- The shape that triggers it: a caption first written while the project's
+-- default was nl_NL, then translated to en_US, then the default switched to
+-- en_US. The stored Texts$Text lists nl_NL FIRST. Inspect it with
+--   mxcli bson dump -p app.mpr --type snippet --object MyFirstModule.SNIPPET_1182 --format ndsl
+--
+--   v0.23.0: step 2 writes 'Save changes' into nl_NL (en_US stays 'Save');
+--            step 3 leaves en_US only — 'Opslaan' is gone.
+--   fixed:   step 2 writes en_US, nl_NL stays 'Opslaan';
+--            step 3 writes en_US 'Save all changes', nl_NL stays 'Opslaan'.
+--
+-- Run on a fresh project (e.g. `mxcli new App --version 11.12.2`). It leaves
+-- nl_NL enabled and en_US as the default.
+
+-- 1. The stored shape: nl_NL first, en_US second, default en_US.
+alter settings LANGUAGE ADD OR MODIFY 'nl_NL';
+alter settings LANGUAGE (DefaultLanguageCode: 'nl_NL');
+create or modify snippet MyFirstModule.SNIPPET_1182 {
+  CONTAINER c {
+    ACTIONBUTTON btnSave (Caption: 'Opslaan')
+  }
+};
+create or modify translations in MyFirstModule for en_US ( 'Opslaan' AS 'Save' );
+alter settings LANGUAGE (DefaultLanguageCode: 'en_US');
+
+-- 2. SET writes the default language's entry and keeps nl_NL.
+alter snippet MyFirstModule.SNIPPET_1182 { set (Caption: 'Save changes') on btnSave };
+
+-- 3. Restating with new English and a changed shape keeps nl_NL.
+create or modify snippet MyFirstModule.SNIPPET_1182 {
+  CONTAINER c {
+    DYNAMICTEXT intro (Content: 'Edit below')
+    ACTIONBUTTON btnSave (Caption: 'Save all changes')
+  }
+};
+
+-- Expect: 'Save all changes' as 'Opslaan'
+describe translations in MyFirstModule for nl_NL;
