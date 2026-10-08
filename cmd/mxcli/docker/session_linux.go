@@ -55,17 +55,30 @@ func SessionMembers(sid int, notBefore time.Time) []int {
 		if !ok || st.session != sid || st.state == "Z" {
 			continue
 		}
-		if !notBefore.IsZero() && !boot.IsZero() {
-			started := boot.Add(time.Duration(st.startTicks) * time.Second / clockTicks)
-			// One second of slack: starttime has tick resolution, notBefore
-			// wall-clock resolution.
-			if started.Before(notBefore.Add(-time.Second)) {
-				continue
-			}
+		if !notBefore.IsZero() && !boot.IsZero() && startedBefore(boot, st.startTicks, notBefore) {
+			continue
 		}
 		out = append(out, pid)
 	}
 	return out
+}
+
+// startSlack is how far before notBefore a rebuilt start time may fall and
+// still count. The rebuild is btime + starttime: btime is whole seconds (up to
+// 1s early) and starttime whole ticks (up to 10ms early), and the kernel's
+// boot-time arithmetic and Go's wall clock can disagree by a little more. The
+// previous 1s covered the first alone, so on a machine whose boot fell late in
+// a second a run's own leader read as older than the run and was dropped:
+// `run stop` saw nothing to stop. Fixed per machine, not per call — such a CI
+// VM failed every session test in the run. Pid reuse, which this guards
+// against, comes from a session that started long before, never seconds.
+const startSlack = 2 * time.Second
+
+// startedBefore reports whether a process whose stat starttime is startTicks
+// began before notBefore, beyond startSlack.
+func startedBefore(boot time.Time, startTicks int64, notBefore time.Time) bool {
+	started := boot.Add(time.Duration(startTicks) * time.Second / clockTicks)
+	return started.Before(notBefore.Add(-startSlack))
 }
 
 // procStat is the part of /proc/<pid>/stat SessionMembers needs.
