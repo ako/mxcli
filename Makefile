@@ -35,7 +35,7 @@ GO_BUILD_FLAGS = -trimpath
 # Clean version for VS Code extension (must be valid semver: major.minor.patch)
 VSCE_VERSION = $(shell echo "$(VERSION)" | sed 's/^v//; s/-.*//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$$' || echo "0.0.0")
 
-.PHONY: build build-debug size release clean test test-mdl check-mdl check-skill-mdl check-conformance conformance-shrink gen-migration-reference check-migration-reference check-skill-pack-js check-findings check-wiki-pages digest-status check-tunnel-deps check-widget-versions test-integration test-integration-executor test-integration-roundtrip test-integration-parity test-integration-upgrade test-integration-other grammar completions sync-skills sync-skill-packs sync-commands sync-lint-rules sync-changelog sync-all docs documentation docs-site docs-serve vscode-ext vscode-install source-tree sbom sbom-report lint lint-go lint-ts fmt fmt-check vet
+.PHONY: build build-debug size release clean test test-mdl check-mdl check-skill-mdl check-conformance conformance-shrink gen-migration-reference check-migration-reference check-skill-pack-js check-findings check-wiki-pages digest-status check-tunnel-deps check-test-timeouts check-widget-versions test-integration test-integration-executor test-integration-roundtrip test-integration-parity test-integration-upgrade test-integration-other grammar completions sync-skills sync-skill-packs sync-commands sync-lint-rules sync-changelog sync-all docs documentation docs-site docs-serve vscode-ext vscode-install source-tree sbom sbom-report lint lint-go lint-ts fmt fmt-check vet
 
 # Helper: copy file only if content differs (avoids mtime updates that invalidate go build cache)
 # Usage: $(call copy-if-changed,src,dst)
@@ -164,8 +164,19 @@ release: clean grammar vscode-ext sync-all
 # where the skills layout had changed under a bare `go build` failed six tests in
 # cmd/mxcli with an error that pointed at the go:embed directive rather than at
 # the missing build step (mxcli-formula1 finding 68).
+#
+# -timeout is per test BINARY, and without one Go applies 10m. That is a
+# coin-flip under `./...`: every package runs at once, so a package's wall time
+# is set by the machine's load, not by its tests. mdl/linter passes in ~25s on
+# its own and was measured at 552s and 872s inside `make test` — the second
+# reported `panic: test timed out after 10m0s` as a FAIL in a package the PR had
+# not touched (#1291). 30m is twice the slowest measurement. Override with
+# `make test TEST_TIMEOUT=...`; scripts/check-test-timeouts.sh (make lint)
+# refuses any go test here without a -timeout.
+TEST_TIMEOUT ?= 30m
+
 test: grammar sync-all
-	CGO_ENABLED=0 go test ./...
+	CGO_ENABLED=0 go test -timeout $(TEST_TIMEOUT) ./...
 
 # Check MDL syntax for all example scripts.
 #
@@ -276,7 +287,7 @@ check-skill-mdl: build
 # mdl-examples/deprecated-aliases/ is exempt: it is the old-spelling corpus
 # `fmt --upgrade` is proven on (see its README).
 check-conformance:
-	@go test ./mdl/conformance -count=1
+	@go test ./mdl/conformance -count=1 -timeout 20m
 
 # The "Language versions and migration" page's tables are generated from the
 # language-change and deprecation registries (mdl/migration). check- is the CI
@@ -288,7 +299,7 @@ check-migration-reference:
 	@go run ./cmd/gen-migration-reference -check
 
 conformance-shrink:
-	@MXCLI_CONFORMANCE_SHRINK=1 go test ./mdl/conformance -run 'TestConformanceGate$$' -count=1
+	@MXCLI_CONFORMANCE_SHRINK=1 go test ./mdl/conformance -timeout 20m -run 'TestConformanceGate$$' -count=1
 
 # Guard: the embedded tunnel (chisel) must stay out of the Windows/macOS builds.
 # See docs/13-decisions/0009-tunnel-is-linux-only.md. Needs no build — it reads
@@ -330,6 +341,10 @@ check-wiki-pages:
 
 check-tunnel-deps:
 	@./scripts/check-tunnel-deps.sh
+
+# Every go test above must choose its own -timeout (#1291); see the script.
+check-test-timeouts:
+	@scripts/check-test-timeouts.sh
 
 # Run integration tests (requires mx binary / mxbuild)
 #
@@ -409,7 +424,7 @@ check-widget-versions: build
 	done
 
 # Lint all code (Go + TypeScript)
-lint: lint-go lint-ts check-conformance
+lint: lint-go lint-ts check-conformance check-test-timeouts
 
 # Lint Go code
 #

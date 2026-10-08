@@ -1027,8 +1027,12 @@ VARIABLE: '$' ID_BODY+;
 IDENTIFIER: ID_START ID_BODY*;
 
 // Hyphenated identifier: starts-with, ends-with (for XPath functions)
-// Must contain at least one hyphen
-HYPHENATED_ID: ID_START (ID_BODY* '-')+ ID_BODY*;
+// Must contain at least one hyphen, and every hyphen must be followed by a
+// letter or underscore. A hyphen followed by a digit, a `$`, a space or
+// nothing is a minus: Studio Pro stores expressions as typed, so
+// `$P/Offset-1` and `($I/OEE-$B/OEE)` are ordinary stored text, and when this
+// rule also matched `Offset-1` / `OEE-` their describe output did not parse.
+HYPHENATED_ID: ID_START ID_BODY* ('-' ID_START ID_BODY*)+;
 
 // Quoted identifier: "double-quoted" (ANSI SQL) or `backtick` (MySQL) style
 QUOTED_IDENTIFIER
