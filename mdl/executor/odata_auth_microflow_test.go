@@ -113,50 +113,61 @@ func TestODataAuth_SilentForOtherMethods(t *testing.T) {
 // (`-- Auth Microflow: …`) made the output look complete while replaying into a
 // service Mendix rejects — the same shape as §39.
 func TestDescribeODataService_RoundTripsTheAuthMicroflow(t *testing.T) {
-	got := odataAuthClause(&model.PublishedODataService{
+	got, _, ok := odataAuthenticationProperty(&model.PublishedODataService{
 		AuthenticationTypes: []string{"Microflow"},
 		AuthMicroflow:       "T.Authenticate",
 	})
-	if got != "Microflow T.Authenticate" {
-		t.Errorf("got %q, want %q", got, "Microflow T.Authenticate")
+	if want := "Authentication: (microflow T.Authenticate)"; !ok || got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }
 
-func TestDescribeODataService_AuthClauseKeepsOtherMethods(t *testing.T) {
-	got := odataAuthClause(&model.PublishedODataService{
+func TestDescribeODataService_AuthPropertyKeepsOtherMethods(t *testing.T) {
+	got, _, _ := odataAuthenticationProperty(&model.PublishedODataService{
 		AuthenticationTypes: []string{"Basic", "Microflow"},
 		AuthMicroflow:       "T.Authenticate",
 	})
-	if got != "Basic, Microflow T.Authenticate" {
+	if got != "Authentication: (basic, microflow T.Authenticate)" {
 		t.Errorf("got %q", got)
 	}
 }
 
-// A stored microflow with no matching method would otherwise vanish from the
-// output; append it rather than lose it.
-func TestDescribeODataService_AuthMicroflowWithoutAMethodIsStillEmitted(t *testing.T) {
-	got := odataAuthClause(&model.PublishedODataService{
+// A stored microflow with no matching method is not lost: it is named in a
+// comment and the property is left out, so replaying the output keeps it. It
+// used to be printed as `Microflow T.Authenticate`, which added the method.
+func TestDescribeODataService_AuthMicroflowWithoutAMethodIsKept(t *testing.T) {
+	prop, note, ok := odataAuthenticationProperty(&model.PublishedODataService{
 		AuthenticationTypes: []string{"Basic"},
 		AuthMicroflow:       "T.Authenticate",
 	})
-	if got != "Basic, Microflow T.Authenticate" {
-		t.Errorf("got %q", got)
+	if ok || prop != "" || !strings.Contains(note, "T.Authenticate") {
+		t.Errorf("got prop %q note %q ok %v", prop, note, ok)
 	}
 }
 
 // The whole point: what DESCRIBE prints must parse back to the same service.
-func TestDescribeODataService_AuthClauseReParses(t *testing.T) {
-	clause := odataAuthClause(&model.PublishedODataService{
+func TestDescribeODataService_AuthPropertyReParses(t *testing.T) {
+	prop, _, _ := odataAuthenticationProperty(&model.PublishedODataService{
 		AuthenticationTypes: []string{"Basic", "Microflow"},
 		AuthMicroflow:       "T.Authenticate",
 	})
-	svc := authService(t, "authentication "+clause)
+	svc := authServiceWithProperty(t, prop)
 	if svc.AuthMicroflow != "T.Authenticate" {
 		t.Errorf("round trip lost the microflow: %q", svc.AuthMicroflow)
 	}
 	if strings.Join(svc.AuthenticationTypes, ",") != "Basic,Microflow" {
 		t.Errorf("round trip changed the methods: %v", svc.AuthenticationTypes)
 	}
+}
+
+// authServiceWithProperty parses a service whose list ends with prop.
+func authServiceWithProperty(t *testing.T, prop string) *ast.CreateODataServiceStmt {
+	t.Helper()
+	prog, errs := visitor.Build("create odata service T.Api (\n  path: 'odata/t/', version: '1.0.0', ODataVersion: OData4,\n  namespace: 'T.Api', ServiceName: 'Api',\n  " + prop + "\n);")
+	if len(errs) > 0 {
+		t.Fatalf("parse: %v", errs)
+	}
+	return prog.Statements[0].(*ast.CreateODataServiceStmt)
 }
 
 // describeAction renders one published microflow through the DESCRIBE emitter.
@@ -309,5 +320,22 @@ func TestOutputPublishedODataServiceMDL_ActionOnlyServiceStillEmitsABody(t *test
 	}
 	if got := buf.String(); !strings.Contains(got, "publish microflow T.Ping") {
 		t.Errorf("an action-only service emitted no body:\n%s", got)
+	}
+}
+
+// The property and `alter … set (Authentication: …)` are held to MDL-ODATA04
+// as the clause was.
+func TestODataAuth_FlagsThePropertyAndAlter(t *testing.T) {
+	for _, src := range []string{
+		"create odata service T.Api (path: 'odata/t/', namespace: 'T.Api', Authentication: (basic, microflow));",
+		"alter published odata service T.Api set (Authentication: (microflow));",
+	} {
+		prog, errs := visitor.Build(src)
+		if len(errs) > 0 {
+			t.Fatalf("parse %q: %v", src, errs)
+		}
+		if vs := ValidateODataAuth(prog); len(vs) != 1 || vs[0].RuleID != "MDL-ODATA04" {
+			t.Errorf("%q: violations %+v, want one MDL-ODATA04", src, vs)
+		}
 	}
 }

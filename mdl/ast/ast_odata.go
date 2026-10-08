@@ -111,9 +111,14 @@ type CreateODataServiceStmt struct {
 	// every service was before, so an unset value is left alone rather than
 	// opted in. Set records whether the author said anything, which is what
 	// keeps `alter` from turning it off on a service that had it on.
-	SupportsGraphQL     bool
-	SupportsGraphQLSet  bool
+	SupportsGraphQL    bool
+	SupportsGraphQLSet bool
+	// AuthenticationTypes are the methods in the order written. AuthenticationSet
+	// records whether the statement stated them at all: `Authentication: none`
+	// is set with no methods, and an unstated setting keeps the stored one on
+	// create or modify.
 	AuthenticationTypes []string
+	AuthenticationSet   bool
 	// AuthMicroflow is the microflow named by `authentication microflow X`.
 	// Custom authentication is the only method that carries a target, and
 	// Mendix rejects the service without one (CE0333 "Please select a microflow
@@ -193,6 +198,11 @@ type PublishedMemberDef struct {
 type AlterODataServiceStmt struct {
 	Name    QualifiedName
 	Changes map[string]any // property name -> new value
+	// Authentication, when the list states it (AuthenticationSet): the methods
+	// in order and the custom-authentication microflow; none is set and empty.
+	AuthenticationSet   bool
+	AuthenticationTypes []string
+	AuthMicroflow       string
 }
 
 func (s *AlterODataServiceStmt) isStatement() {}

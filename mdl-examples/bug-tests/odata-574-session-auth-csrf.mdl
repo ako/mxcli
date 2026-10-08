@@ -80,9 +80,9 @@ create or modify published odata service MyFirstModule.ChartApi (
   version: '1.0.0',
   ODataVersion: OData4,
   namespace: 'MyFirstModule.ChartApi',
-  ServiceName: 'ChartApi'
+  ServiceName: 'ChartApi',
+  Authentication: (basic, session)
 )
-authentication basic, session
 {
   publish entity MyFirstModule.Row as 'Rows' (
     ReadMode: source,

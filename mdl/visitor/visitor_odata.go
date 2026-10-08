@@ -3,10 +3,12 @@
 package visitor
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
+	"github.com/mendixlabs/mxcli/mdl/deprecation"
 	"github.com/mendixlabs/mxcli/mdl/grammar/parser"
 )
 
@@ -139,6 +141,10 @@ func (b *Builder) ExitCreateODataServiceStatement(ctx *parser.CreateODataService
 		case "supportsgraphql":
 			stmt.SupportsGraphQL = strings.EqualFold(value, "true") || strings.EqualFold(value, "yes")
 			stmt.SupportsGraphQLSet = true
+		case "authentication":
+			if types, mf, ok := b.odataAuthenticationProperty(prop); ok {
+				stmt.AuthenticationTypes, stmt.AuthMicroflow, stmt.AuthenticationSet = types, mf, true
+			}
 		case "folder":
 			if !folderClause {
 				stmt.Folder = value
@@ -149,9 +155,19 @@ func (b *Builder) ExitCreateODataServiceStatement(ctx *parser.CreateODataService
 		}
 	}
 
-	// Parse authentication clause
-	if authCtx := ctx.OdataAuthenticationClause(); authCtx != nil {
-		stmt.AuthenticationTypes, stmt.AuthMicroflow = parseODataAuthTypes(authCtx)
+	// The trailing `authentication …` clause: the old spelling of the
+	// Authentication property (MDL-DEPR139).
+	if authCtx, ok := ctx.OdataAuthenticationClause().(*parser.OdataAuthenticationClauseContext); ok && authCtx != nil {
+		if stmt.AuthenticationSet {
+			b.addError(fmt.Errorf("line %d: authentication is stated both as the Authentication property and as "+
+				"the trailing authentication clause; keep the property", authCtx.GetStart().GetLine()))
+		} else {
+			stmt.AuthenticationTypes, stmt.AuthMicroflow = parseODataAuthTypes(authCtx.AllOdataAuthType())
+			stmt.AuthenticationSet = true
+			b.recordDeprecation(deprecation.ODataAuthenticationClause, authCtx.AUTHENTICATION().GetSymbol(), "")
+			fix, noFix := odataAuthenticationClauseFix(ctx, authCtx)
+			b.fixLastDeprecation(deprecation.ODataAuthenticationClause, fix, noFix)
+		}
 	}
 
 	// Parse PUBLISH MICROFLOW blocks (OData actions)
@@ -339,10 +355,8 @@ func odataAssignmentValueText(prop *parser.OdataPropertyAssignmentContext) strin
 // discarded, so `authentication microflow M.Auth` parsed, checked and executed
 // while the model got a Microflow auth type with no microflow — a service that
 // then failed to build with CE0333 (mxcli-formula1 §40).
-func parseODataAuthTypes(authCtx parser.IOdataAuthenticationClauseContext) (types []string, microflow string) {
-	clause := authCtx.(*parser.OdataAuthenticationClauseContext)
-
-	for _, atCtx := range clause.AllOdataAuthType() {
+func parseODataAuthTypes(methods []parser.IOdataAuthTypeContext) (types []string, microflow string) {
+	for _, atCtx := range methods {
 		at := atCtx.(*parser.OdataAuthTypeContext)
 		if at.BASIC() != nil {
 			types = append(types, "Basic")
@@ -532,4 +546,95 @@ func parseExposeMembers(ctx parser.IExposeClauseContext) []*ast.PublishedMemberD
 func odataBoolPtr(value string) *bool {
 	b := strings.EqualFold(value, "true") || strings.EqualFold(value, "yes")
 	return &b
+}
+
+// odataAuthenticationProperty reads a published OData service's
+// `Authentication: none | ( method, … )`. The methods keep the order written.
+// Unlike the clause it replaces, the property takes only the methods MDL has a
+// keyword for: an arbitrary identifier wrote an unknown method into the model.
+// ok is false when the value has another shape (reported) or error recovery
+// left it empty.
+func (b *Builder) odataAuthenticationProperty(prop *parser.OdataPropertyAssignmentContext) (types []string, microflow string, ok bool) {
+	line := prop.GetStart().GetLine()
+	switch {
+	case prop.NONE() != nil, isBareNone(prop):
+		return nil, "", true
+	case prop.LPAREN() != nil && len(prop.AllOdataAuthType()) > 0:
+	default:
+		b.addError(fmt.Errorf("line %d: Authentication takes none or a method list "+
+			"(basic, session, guest, microflow Module.Name), not %s", line, odataPropertyValueSource(prop)))
+		return nil, "", false
+	}
+	seen := map[string]bool{}
+	for _, atCtx := range prop.AllOdataAuthType() {
+		at := atCtx.(*parser.OdataAuthTypeContext)
+		if at.IDENTIFIER() != nil {
+			b.addError(fmt.Errorf("line %d: '%s' is not an authentication method: write basic, session, guest "+
+				"or microflow Module.Name", at.GetStart().GetLine(), at.IDENTIFIER().GetText()))
+			return nil, "", false
+		}
+		t, mf := parseODataAuthTypes([]parser.IOdataAuthTypeContext{at})
+		if len(t) == 0 {
+			continue
+		}
+		if seen[t[0]] {
+			b.addError(fmt.Errorf("line %d: authentication method '%s' listed twice", at.GetStart().GetLine(), strings.ToLower(t[0])))
+			continue
+		}
+		seen[t[0]] = true
+		types = append(types, t[0])
+		if mf != "" {
+			microflow = mf
+		}
+	}
+	return types, microflow, true
+}
+
+// isBareNone reports a value of `none` that parsed as a bare name: the first
+// alternative of odataPropertyAssignment takes it before the NONE one does.
+func isBareNone(prop *parser.OdataPropertyAssignmentContext) bool {
+	v, ok := prop.OdataPropertyValue().(*parser.OdataPropertyValueContext)
+	return ok && v != nil && v.QualifiedName() != nil && v.MICROFLOW() == nil && v.AT() == nil &&
+		strings.EqualFold(v.GetText(), "none")
+}
+
+// odataPropertyValueSource is a property's value as written, for a message.
+func odataPropertyValueSource(prop *parser.OdataPropertyAssignmentContext) string {
+	if prop.COLON() == nil || prop.GetStop() == nil {
+		return "that"
+	}
+	in := prop.GetStart().GetInputStream()
+	return strings.TrimSpace(in.GetText(prop.COLON().GetSymbol().GetStop()+1, prop.GetStop().GetStop()))
+}
+
+// odataAuthenticationClauseFix moves a trailing `authentication m1, m2` clause
+// into the property list as its last property, `Authentication: (m1, m2)`, the
+// methods as written. A method MDL has no keyword for has no property spelling,
+// so that clause is reported and left alone.
+func odataAuthenticationClauseFix(ctx *parser.CreateODataServiceStatementContext, clause *parser.OdataAuthenticationClauseContext) (*ast.Fix, string) {
+	props := ctx.AllOdataPropertyAssignment()
+	if len(props) == 0 || clause.AUTHENTICATION() == nil || clause.GetStop() == nil {
+		return nil, "the statement did not parse completely"
+	}
+	in := clause.GetStart().GetInputStream()
+	var items []string
+	for _, atCtx := range clause.AllOdataAuthType() {
+		at := atCtx.(*parser.OdataAuthTypeContext)
+		if at.IDENTIFIER() != nil {
+			return nil, "'" + at.IDENTIFIER().GetText() + "' is not an authentication method MDL has a keyword for"
+		}
+		items = append(items, in.GetText(at.GetStart().GetStart(), at.GetStop().GetStop()))
+	}
+	// A list written one property per line gets the new one on its own line,
+	// indented like the last; a one-line list gets it inline.
+	lastProp := props[len(props)-1]
+	last := lastProp.GetStop()
+	sep := ", "
+	if lp := ctx.LPAREN(); lp != nil && lastProp.GetStart().GetLine() > lp.GetSymbol().GetLine() {
+		sep = ",\n" + strings.Repeat(" ", lastProp.GetStart().GetColumn())
+	}
+	return &ast.Fix{Edits: []ast.TextEdit{
+		insertAt(last.GetStop()+1, sep+"Authentication: ("+strings.Join(items, ", ")+")"),
+		{Start: startAfterSpace(clause.AUTHENTICATION().GetSymbol()), Stop: clause.GetStop().GetStop() + 1},
+	}}, ""
 }

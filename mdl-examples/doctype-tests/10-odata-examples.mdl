@@ -189,9 +189,9 @@ create published odata service OdTest.CustomerAPI folder 'Integration/APIs' (
   namespace: 'OdTest.Customers',
   ServiceName: 'Customer Service',
   Summary: 'API for managing customers',
-  PublishAssociations: Yes
+  PublishAssociations: Yes,
+  Authentication: (basic, session)
 )
-authentication basic, session
 {
   publish entity OdTest.Customer as 'Customers' (
     ReadMode: source,
@@ -431,9 +431,9 @@ create or modify published odata service OdTest.ActionApi (
   version: '1.0.0',
   ODataVersion: OData4,
   namespace: 'OdTest.Actions',
-  ServiceName: 'Action Service'
+  ServiceName: 'Action Service',
+  Authentication: (basic)
 )
-authentication basic
 {
   -- An action alongside no entity sets at all is legitimate.
   publish microflow OdTest.RecordNote as 'RecordNote'
@@ -465,9 +465,9 @@ create or modify published odata service OdTest.CustomerAPI (
   namespace: 'OdTest.Customers',
   ServiceName: 'Customer Service',
   Summary: 'API for managing customers (modified, grants not restated)',
-  PublishAssociations: Yes
+  PublishAssociations: Yes,
+  Authentication: (basic, session)
 )
-authentication basic, session
 {
   publish entity OdTest.Customer as 'Customers' (
     ReadMode: source,

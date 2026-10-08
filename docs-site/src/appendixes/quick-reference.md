@@ -125,9 +125,9 @@ CREATE PUBLISHED ODATA SERVICE MyModule.CustomerAPI (
   Path: '/odata/customers',
   Version: '1.0.0',
   ODataVersion: OData4,
-  Namespace: 'MyModule.Customers'
+  Namespace: 'MyModule.Customers',
+  Authentication: (basic, session)
 )
-AUTHENTICATION Basic, Session
 {
   PUBLISH ENTITY MyModule.Customer AS 'Customers' (
     ReadMode: SOURCE,

@@ -229,6 +229,10 @@ const (
 	// property for, which was never stored (ako/mxcli#865). The one entry
 	// refused from mdl 1 rather than 2, because mdl 1 never had it.
 	ConstantPrivate = "MDL-DEPR138"
+	// ODataAuthenticationClause is a published OData service's trailing
+	// `authentication basic, session, …` clause: the `Authentication: ( … )`
+	// property in the service's list (R9), which `alter … set ( … )` can set.
+	ODataAuthenticationClause = "MDL-DEPR139"
 
 	// Codes 160-169 are the migration aliases the beta dress rehearsal found
 	// (ako/mxcli#714), numbered apart so the parallel fixes do not collide.
@@ -611,6 +615,19 @@ var headerPropertyEntries = []Entry{
 			"and the documentation a doc comment (R9).",
 		Example:          "create constant M.ApiUrl type String default 'https://x' exposed to client;",
 		CanonicalExample: "create constant M.ApiUrl ( Type: String, DefaultValue: 'https://x', ExposedToClient: true );",
+	},
+	{
+		Code:      ODataAuthenticationClause,
+		Old:       "create published odata service M.S ( … ) authentication basic, session, microflow M.F",
+		Canonical: "create published odata service M.S ( …, Authentication: (basic, session, microflow M.F) )",
+		Rewrite: Rewrite{Structural: "published OData authentication: the trailing `authentication m1, m2` clause " +
+			"becomes the last property, `Authentication: (m1, m2)`"},
+		RemovedIn: 2,
+		Note: "The methods keep their order. A clause naming a method MDL has no keyword for is reported but not " +
+			"rewritten. The property also takes `none`, which the clause could not say, and `alter … set ( … )` " +
+			"takes it.",
+		Example:          "create published odata service M.S ( Path: 'odata/s/v1', Namespace: 'M' ) authentication basic, session;",
+		CanonicalExample: "create published odata service M.S ( Path: 'odata/s/v1', Namespace: 'M', Authentication: (basic, session) );",
 	},
 	{
 		Code:      ConstantPrivate,

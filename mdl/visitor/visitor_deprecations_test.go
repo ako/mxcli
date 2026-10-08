@@ -85,7 +85,7 @@ var createOrReplaceCases = map[string]string{
 	"restclient":                  "consumed rest service M.PetStore (BaseUrl: 'https://petstore.example.com', Authentication: NONE) { };",
 	"index":                       "index idx_name on M.Customer (Name);",
 	"odataclient":                 "consumed odata service M.Api (Version: '1.0', ODataVersion: OData4, MetadataUrl: 'https://api.example.com/$metadata');",
-	"odataservice":                "published odata service M.CustomerAPI (path: 'odata/customers/', version: '1.0.0', ODataVersion: OData4, namespace: 'M.Customers') authentication basic { };",
+	"odataservice":                "published odata service M.CustomerAPI (path: 'odata/customers/', version: '1.0.0', ODataVersion: OData4, namespace: 'M.Customers', Authentication: (basic)) { };",
 	"externalentity":              "external entity M.Remote from consumed odata service M.Api (EntitySet: 'Remotes', RemoteName: 'Remote');",
 	"externalentities":            "external entities from M.Api into Integration;",
 	"navigation":                  "navigation Responsive home page M.Home_Web;",
