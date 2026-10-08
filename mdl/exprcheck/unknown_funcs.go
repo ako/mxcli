@@ -177,7 +177,7 @@ func SourceRejectedForIntegerTarget(src string, vars map[string]TypeKind) bool {
 	switch n := root.(type) {
 	case *BinExpr:
 		switch n.Op {
-		case "+", "-", "*", "div", "mod":
+		case "+", "-", "*", "div", ":", "mod":
 			return inferKind(n, ctx) == KindDecimal
 		}
 	case *CallExpr:
