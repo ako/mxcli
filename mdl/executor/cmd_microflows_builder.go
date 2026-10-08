@@ -166,6 +166,12 @@ type flowBuilder struct {
 	// would fight the box rather than help the reader.
 	allowWrap bool
 	row       rowTracker
+	// joinScopes is the check-time validator's view of what is declared at
+	// each `join <label>`, keyed by label, so a `merge <label>` statement sees
+	// the variables of the paths that reach it (recordJoinScope). nil outside
+	// validateFlowBody. A map, so the per-branch copies validateScopedStatements
+	// makes all record into the same table.
+	joinScopes map[string]flowBuilderVariableState
 }
 
 type flowBuilderVariableState struct {

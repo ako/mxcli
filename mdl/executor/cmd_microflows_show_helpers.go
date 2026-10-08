@@ -1183,7 +1183,7 @@ func traverseFlow(
 		emitObjectAnnotations(obj, lines, indentStr, annotationsByTarget, flowsByOrigin, flowsByDest, activityMap)
 		emitInheritanceSplitStatement(ctx, currentID, mergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
 		recordSourceMap(sourceMap, currentID, startLine, len(*lines)+headerLineCount-1)
-		if mergeID != "" {
+		if mergeID != "" && !joinCrossedMerge(mergeID, labels, lines, indent) {
 			visited[mergeID] = true
 			for _, flow := range flowsByOrigin[mergeID] {
 				traverseFlow(ctx, flow.DestinationID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
@@ -1230,10 +1230,12 @@ func traverseFlow(
 			*lines = append(*lines, indentStr+"end if;")
 			recordSourceMap(sourceMap, currentID, startLine, len(*lines)+headerLineCount-1)
 
-			// Continue from the false branch (skip through merge if present)
+			// Continue from the false branch (skip through merge if present).
+			// A labelled merge is not skipped: walking past it is how a crossed
+			// merge's suffix got printed inline AND in its own section.
 			if falseFlow != nil {
 				contID := falseFlow.DestinationID
-				if _, isMerge := activityMap[contID].(*microflows.ExclusiveMerge); isMerge {
+				if _, isMerge := activityMap[contID].(*microflows.ExclusiveMerge); isMerge && !isLabelledMerge(contID, labels) {
 					visited[contID] = true
 					for _, flow := range flowsByOrigin[contID] {
 						contID = flow.DestinationID
@@ -1371,7 +1373,7 @@ func traverseFlowUntilMerge(
 		emitObjectAnnotations(obj, lines, indentStr, annotationsByTarget, flowsByOrigin, flowsByDest, activityMap)
 		emitInheritanceSplitStatement(ctx, currentID, mergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
 		recordSourceMap(sourceMap, currentID, startLine, len(*lines)+headerLineCount-1)
-		if nestedMergeID != "" && nestedMergeID != mergeID {
+		if nestedMergeID != "" && nestedMergeID != mergeID && !joinCrossedMerge(nestedMergeID, labels, lines, indent) {
 			visited[nestedMergeID] = true
 			for _, flow := range flowsByOrigin[nestedMergeID] {
 				traverseFlowUntilMerge(ctx, flow.DestinationID, mergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
@@ -1424,7 +1426,7 @@ func traverseFlowUntilMerge(
 			if falseFlow != nil {
 				contID := falseFlow.DestinationID
 				if contID != mergeID {
-					if _, isMerge := activityMap[contID].(*microflows.ExclusiveMerge); isMerge {
+					if _, isMerge := activityMap[contID].(*microflows.ExclusiveMerge); isMerge && !isLabelledMerge(contID, labels) {
 						visited[contID] = true
 						for _, flow := range flowsByOrigin[contID] {
 							contID = flow.DestinationID
@@ -1561,6 +1563,17 @@ func continueAfterNestedSplitJoin(
 		return
 	}
 	if _, isMerge := activityMap[joinID].(*microflows.ExclusiveMerge); isMerge {
+		// The same rule as continueAfterSplitJoin, which this lacked: a crossed
+		// merge is where the path STOPS and says so. Walked through instead, its
+		// suffix came out here and again in its own section (a shared region
+		// printed twice), or — when this walk marked it visited first — the
+		// section never declared it and other branches' joins dangled.
+		if joinCrossedMerge(joinID, labels, lines, indent) {
+			return
+		}
+		if label, ok := labels.of(joinID); ok && !visited[joinID] {
+			*lines = append(*lines, mergeDeclarationLines(indent, label, activityMap[joinID], annotationsByTarget.layoutKeep())...)
+		}
 		visited[joinID] = true
 		for _, flow := range flowsByOrigin[joinID] {
 			traverseFlowUntilMerge(ctx, flow.DestinationID, parentMergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
@@ -2699,4 +2712,27 @@ func (e *Executor) collectErrorHandlerStatements(
 	annotationsByTarget *annotationEmitter,
 ) []string {
 	return collectErrorHandlerStatements(e.newExecContext(context.Background()), startID, activityMap, flowsByOrigin, entityNames, microflowNames, annotationsByTarget, mergeLabels{})
+}
+
+// joinCrossedMerge emits `join <label>` when id is a crossed merge and reports
+// whether it did. Every place a traversal would otherwise walk THROUGH a merge
+// asks this first: a crossed merge is reached by several paths, so arriving at
+// one is never a place to continue from (see emitCrossedMergeSections).
+func joinCrossedMerge(id model.ID, labels mergeLabels, lines *[]string, indent int) bool {
+	if !labels.isCrossed(id) {
+		return false
+	}
+	label, ok := labels.of(id)
+	if !ok {
+		return false
+	}
+	*lines = append(*lines, strings.Repeat("  ", indent)+"join "+label+";")
+	return true
+}
+
+// isLabelledMerge reports whether a merge carries a describe label, and so must
+// be handed to the traversal (which declares or joins it) rather than skipped.
+func isLabelledMerge(id model.ID, labels mergeLabels) bool {
+	_, ok := labels.of(id)
+	return ok
 }

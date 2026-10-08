@@ -1,0 +1,93 @@
+mdl 1;
+-- ============================================================================
+-- DESCRIBE MICROFLOW: a crossed merge nested inside a branch was walked
+-- through instead of joined (Evora Factory Management:
+-- SnowflakeIntegration.Request_Validation, SnowflakeRESTSQL.Request_Validation,
+-- AgentCommons.Tool_Validate)
+-- ============================================================================
+--
+-- The graph is mendixlabs/mxcli#923's crossing — $A's false arm and $B's
+-- false arm meet at `failed_path` before the shared continuation — but one
+-- level down, inside another decision (BugIrrCrossed.InBranch) or inside an
+-- arm of a `case` (BugIrrCrossed.InCaseArm).
+--
+-- Symptom (before fix):
+--   The nested decision's continuation walked THROUGH the crossed merge and
+--   printed the continuation inline. Then either
+--     * the merge was marked visited, so its own section was never declared and
+--       the description ended in `merge shared1; join shared2;` with nothing
+--       declaring shared2 (MDL-FLOW02, MDL003) — InBranch; or
+--     * the arm's private visited set hid the walk, so the section printed the
+--       continuation a SECOND time — two copies of one activity (MDL063 when it
+--       has an output variable) — InCaseArm.
+--
+-- After fix:
+--   Every path that reaches a crossed merge says `join`; the continuation is
+--   printed once, in its section. The description re-executes to the stored
+--   graph.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/describe-irreducible-crossed-merge-in-branch.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe microflow BugIrrCrossed.InBranch" > d.mdl
+--   mxcli check d.mdl -p app.mpr --references   -- expect: Check passed!
+--   mxcli exec d.mdl -p app.mpr                  -- expect: Unchanged microflow
+--   (and the same for BugIrrCrossed.InCaseArm)
+-- ============================================================================
+
+create module BugIrrCrossed;
+
+create enumeration BugIrrCrossed.Kind (
+  One 'One',
+  Two 'Two'
+);
+
+create or modify microflow BugIrrCrossed.InBranch ($R: Boolean, $A: Boolean, $B: Boolean) returns Boolean
+begin
+  if $R then
+    if $A then
+      if $B then
+        join ok_path;
+      else
+        log info node 'Bug' 'b failed';
+        join failed_path;
+      end if;
+    else
+      log info node 'Bug' 'a failed';
+      join failed_path;
+    end if;
+  else
+    log info node 'Bug' 'no request';
+    return false;
+  end if;
+  merge failed_path;
+  join ok_path;
+  merge ok_path;
+  log info node 'Bug' 'continuation';
+  return true;
+end;
+
+create or modify microflow BugIrrCrossed.InCaseArm ($E: enum BugIrrCrossed.Kind, $A: Boolean, $B: Boolean) returns Boolean
+begin
+  case $E
+    when One then
+      declare $IsValid Boolean = true;
+      if $A then
+        if $B then
+          join ok_path;
+        else
+          set $IsValid = false;
+          join failed_path;
+        end if;
+      else
+        set $IsValid = false;
+        join failed_path;
+      end if;
+    when Two, (empty) then
+      return false;
+  end case;
+  merge failed_path;
+  join ok_path;
+  merge ok_path;
+  log info node 'Bug' 'continuation';
+  return $IsValid;
+end;
