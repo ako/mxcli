@@ -1,0 +1,54 @@
+mdl 1;
+-- describe output that did not parse: a call argument left blank.
+--
+-- Studio Pro keeps a parameter mapping for every parameter of a called
+-- microflow; when the argument field is left blank it stores the mapping with
+-- `Argument: ""` (Evora Factory Management: ten flows, e.g.
+-- ConversationalUI.SpanTreeView_CreateFromSpan's `TraceID`, a parameter
+-- added to the callee after the caller was written). describe printed it as
+-- `TraceID = ,` / `ID = )`, which does not parse.
+--
+-- The MDL spelling is `Param = nothing`. Neither existing spelling
+-- round-trips: `Param = empty` stores the Mendix value `empty` (a different
+-- document, which Studio Pro also writes), and leaving the argument out
+-- writes no mapping at all.
+--
+--   mxcli exec mdl-examples/bug-tests/describe-call-blank-argument.mdl -p app.mpr
+--   mxcli bson dump -p app.mpr -t microflow -o BlankArg.Caller --format ndsl
+--   mxcli -p app.mpr -c "describe microflow BlankArg.Caller"
+--
+-- Expected on disk: TraceId `Argument: ""`, Note `Argument: "empty"`.
+-- describe prints `TraceId = nothing` and `Note = empty`, and re-executing
+-- the description reports `Unchanged microflow`.
+--
+-- mx check (10.24.15) reports CE0127 "Missing argument for parameter
+-- 'TraceId'" on both calls. That is the stored state being described — the
+-- same error the Studio Pro original carries — not a defect of the round trip.
+
+create module BlankArg;
+
+create microflow BlankArg.Callee (
+  $SpanId: String,
+  $TraceId: String,
+  $Note: String
+)
+begin
+  log info node 'BlankArg' 'called';
+end;
+
+create nanoflow BlankArg.NanoCallee (
+  $TraceId: String
+)
+begin
+  log info node 'BlankArg' 'called';
+end;
+
+create microflow BlankArg.Caller ()
+begin
+  call microflow BlankArg.Callee(SpanId = 'span', TraceId = nothing, Note = empty);
+end;
+
+create nanoflow BlankArg.NanoCaller ()
+begin
+  call nanoflow BlankArg.NanoCallee(TraceId = nothing);
+end;
