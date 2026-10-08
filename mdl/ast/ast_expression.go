@@ -150,6 +150,6 @@ func (e *XPathPathExpr) isExpression() {}
 
 // XPathStep represents a single step in an XPath path expression.
 type XPathStep struct {
-	Expr      Expression // The step expression (IdentifierExpr, QualifiedNameExpr, VariableExpr, LiteralExpr, TokenExpr)
-	Predicate Expression // Optional nested predicate expression (the content inside [...])
+	Expr       Expression   // The step expression (IdentifierExpr, QualifiedNameExpr, VariableExpr, LiteralExpr, TokenExpr)
+	Predicates []Expression // Nested predicates in source order, the content of each [...] — `Entity[a][b]` has two
 }

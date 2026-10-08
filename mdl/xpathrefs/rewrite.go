@@ -219,10 +219,10 @@ func (w *walker) walkPath(steps []ast.XPathStep, cur string) {
 				next = qn
 			}
 		}
-		if st.Predicate != nil {
+		for _, pred := range st.Predicates {
 			// A predicate constrains what the step reached, so it is evaluated
 			// against that entity — not the one the step started from.
-			w.walk(st.Predicate, next)
+			w.walk(pred, next)
 		}
 		cur = next
 	}

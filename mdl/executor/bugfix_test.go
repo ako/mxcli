@@ -661,11 +661,11 @@ func TestExpressionToXPath_XPathPathExpr(t *testing.T) {
 					{Expr: &ast.QualifiedNameExpr{QualifiedName: ast.QualifiedName{Module: "Sys", Name: "roles"}}},
 					{
 						Expr: &ast.QualifiedNameExpr{QualifiedName: ast.QualifiedName{Module: "Sys", Name: "UserRole"}},
-						Predicate: &ast.BinaryExpr{
+						Predicates: []ast.Expression{&ast.BinaryExpr{
 							Left:     &ast.IdentifierExpr{Name: "Active"},
 							Operator: "=",
 							Right:    &ast.LiteralExpr{Value: true, Kind: ast.LiteralBoolean},
-						},
+						}},
 					},
 				},
 			},
@@ -676,8 +676,8 @@ func TestExpressionToXPath_XPathPathExpr(t *testing.T) {
 			expr: &ast.XPathPathExpr{
 				Steps: []ast.XPathStep{
 					{
-						Expr:      &ast.QualifiedNameExpr{QualifiedName: ast.QualifiedName{Module: "System", Name: "roles"}},
-						Predicate: &ast.FunctionCallExpr{Name: "reversed"},
+						Expr:       &ast.QualifiedNameExpr{QualifiedName: ast.QualifiedName{Module: "System", Name: "roles"}},
+						Predicates: []ast.Expression{&ast.FunctionCallExpr{Name: "reversed"}},
 					},
 					{Expr: &ast.QualifiedNameExpr{QualifiedName: ast.QualifiedName{Module: "System", Name: "UserRole"}}},
 				},

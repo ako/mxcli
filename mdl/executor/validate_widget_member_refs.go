@@ -377,8 +377,8 @@ func (v *xpathMemberVisitor) walkPath(steps []ast.XPathStep, cur string) {
 				v.noteQualified(qn, cur)
 			}
 		}
-		if st.Predicate != nil {
-			v.walk(st.Predicate, next)
+		for _, pred := range st.Predicates {
+			v.walk(pred, next)
 		}
 		cur = next
 	}
