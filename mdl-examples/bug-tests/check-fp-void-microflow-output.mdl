@@ -1,0 +1,59 @@
+-- ============================================================================
+-- MDL063 false positive: the output name of a call to a VOID microflow
+-- ============================================================================
+--
+-- Symptom (before fix): `mxcli check` reported "'$Variable_1' is created twice
+-- in this microflow … CE0111" for calls to a microflow that returns nothing.
+-- Studio Pro stores an output name on such a call (UseReturnVariable=true) and
+-- the name declares no variable — the same case ako/mxcli#953 fixed for void
+-- Java/JavaScript actions. Evora Factory Management (0 errors under mx check)
+-- has it in OIDC.webCallback, OIDC.SUB_HandleUserProvisioning and two
+-- Teamcenter microflows; exec refused their own describe output, and describe
+-- headed OIDC.webCallback with "duplicate output variable … model is invalid".
+--
+-- Measured (mxbuild 10.24.15 and 11.13.0):
+--   two void microflow calls, same output name      0 errors
+--   void microflow call, then declare of the name    0 errors
+--   two void nanoflow calls, same output name        0 errors
+--   void microflow call, then reading its output     CE0109  <- MDL093
+--   two String microflow calls, same output name     CE0111  <- MDL063 (control)
+--
+-- Usage (expected to PASS check):
+--   mxcli check mdl-examples/bug-tests/check-fp-void-microflow-output.mdl
+-- ============================================================================
+
+mdl 1;
+
+create module Probe;
+
+create microflow Probe.ShowError ($Message: String)
+begin
+  log error node 'Probe' $Message;
+end;
+
+create nanoflow Probe.Refresh ($Message: String)
+begin
+  log info node 'Probe' $Message;
+end;
+
+create microflow Probe.CallVoidTwice ($Ok: Boolean)
+begin
+  if $Ok then
+    $Variable_1 = call microflow Probe.ShowError(Message = 'first');
+  else
+    $Variable_1 = call microflow Probe.ShowError(Message = 'second');
+  end if;
+end;
+
+create microflow Probe.VoidCallThenDeclare ()
+begin
+  $W = call microflow Probe.ShowError(Message = 'x');
+  declare $W String = 'now a real variable';
+  log info node 'Probe' $W;
+end;
+
+create nanoflow Probe.CallVoidNanoflowTwice ()
+begin
+  $N = call nanoflow Probe.Refresh(Message = 'a');
+  $N = call nanoflow Probe.Refresh(Message = 'b');
+end;
