@@ -3,7 +3,7 @@ title: Rewrites That Drop What They Did Not Author
 category: bug-pattern
 last-synced: 038f810e
 sources:
-  - .claude/skills/fix-issue/findings/mdl-executor.jsonl
+  - .claude/skills/fix-issue/findings/mdl-executor/
   - docs/13-decisions/0005-semantic-model-interface-currency.md
   - docs/13-decisions/0008-identity-and-idempotence.md
   - mdl/executor/validate_workflow_rewrite.go

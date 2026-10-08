@@ -79,6 +79,12 @@ type RunOptions struct {
 	// and inherits ITS constants, and the Docker path configures the container.
 	ConstantOverrides map[string]string
 
+	// DBType is the database a --local run boots its scratch app against, in the
+	// canonical spelling docker.NormalizeDBType returns ("postgresql" or
+	// "hsqldb"; empty means PostgreSQL). Set it through ResolveTestDBType, which
+	// validates the --db-type flag — a raw flag value is not normalised here.
+	DBType string
+
 	// MxBuildPath overrides mxbuild resolution for a --local run, as
 	// `run --local --mxbuild-path` does. Empty means resolve: Studio Pro's
 	// bundled mxbuild on macOS/Windows, the cached CDN download on Linux.

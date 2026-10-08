@@ -136,6 +136,12 @@ func TestValidateMicroflow_AssociationObjectArg(t *testing.T) {
 		wantMDL bool
 	}{
 		{"association object path", "B = $E/M.Edit_Budget", true},
+		// Studio Pro's own spelling of the associated object names the target
+		// entity after the association. mxbuild 10.24.15 and 11.13.0 build it at
+		// 0 errors (measured); 42 Evora Factory Management microflows use it.
+		{"association then target entity is an object value", "B = $E/M.Edit_Budget/M.Budget", false},
+		{"two hops with entity steps", "C = $E/M.Edit_Budget/M.Budget/M.Budget_Cost/M.Cost", false},
+		{"entity step then association is accepted by mxbuild", "C = $E/M.Edit_Budget/M.Budget/M.Budget_Cost", false},
 		{"attribute over association is fine", "Name = $E/M.Edit_Budget/Label", false},
 		{"plain attribute is fine", "Name = $E/Note", false},
 		{"variable is fine", "B = $E", false},

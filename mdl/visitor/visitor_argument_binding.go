@@ -38,7 +38,29 @@ func (b *Builder) ExitCallArgument(ctx *parser.CallArgumentContext) {
 		b.recordColonArgument(ctx.ParameterName(), ctx.COLON(), ctx.Expression())
 		return
 	}
+	if n := ctx.NOTHING(); n != nil && !isFlowCallArgument(ctx) {
+		tok := n.GetSymbol()
+		b.addError(fmt.Errorf("line %d:%d `= nothing` (a blank argument) is only valid in call microflow and "+
+			"call nanoflow; bind the parameter to a value, or to `empty`",
+			tok.GetLine(), tok.GetColumn()))
+	}
 	b.recordDollarArgument(ctx.VARIABLE())
+}
+
+// isFlowCallArgument reports whether a call argument belongs to a call
+// microflow or call nanoflow — the two calls whose parameter mappings store a
+// bare expression, where a blank one (`Argument: ""`) is a state Studio Pro
+// writes when an argument field is left empty.
+func isFlowCallArgument(ctx *parser.CallArgumentContext) bool {
+	list := ctx.GetParent()
+	if list == nil {
+		return false
+	}
+	switch list.GetParent().(type) {
+	case *parser.CallMicroflowStatementContext, *parser.CallNanoflowStatementContext:
+		return true
+	}
+	return false
 }
 
 // ExitSendRestRequestParam records `$Param = e` in send rest request.

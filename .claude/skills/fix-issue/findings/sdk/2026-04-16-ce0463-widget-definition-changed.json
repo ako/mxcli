@@ -1,0 +1,1 @@
+{"area": "sdk/widgets", "date": "2026-04-16", "symptom": "CE0463 \"widget definition changed\"", "cause": "Object property structure doesn't match Type PropertyTypes", "file": "`sdk/widgets/templates/`", "insight": "Re-extract template from Studio Pro; see `sdk/widgets/templates/README.md`", "ce": ["CE0463"]}

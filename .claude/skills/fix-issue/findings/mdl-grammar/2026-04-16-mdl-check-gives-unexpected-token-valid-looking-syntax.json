@@ -1,0 +1,1 @@
+{"area": "mdl/grammar", "date": "2026-04-16", "symptom": "MDL check gives \"unexpected token\" on valid-looking syntax", "cause": "Grammar missing rule or token", "file": "`mdl/grammar/MDLParser.g4` + `MDLLexer.g4`", "insight": "Add rule/token, run `make grammar`"}
