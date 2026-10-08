@@ -59,7 +59,13 @@ grammar keyword properties, every key the builders consume, and every property
 rather than per-type, because a per-type list would produce false warnings, and
 the describe half is included so a describe → create round trip never warns about
 its own output. A manually maintained list is a maintenance risk, which is why it
-carries a drift test rather than a promise.
+carries a drift test rather than a promise — and **the drift test must read the
+source, not a second hand-typed list.** The first guard was a typed sample of the
+describe vocabulary; when #813 taught the dataview builder and `describe` a
+`ShowFooter`, neither list learned it, and `check` warned that a property it
+wrote would be dropped (mendixlabs/mxcli#1346). A `go/parser` scan of the
+builders' `Get*Prop` / `lookupPropCI` / `Properties["…"]` reads plus describe's
+`"Key: "` strings found four more keys in the same state on its first run.
 
 **Warn; do not reject.** Neither the pluggable nor the built-in vocabulary can be
 proven complete, so an error would trade silent drops for false refusals. The

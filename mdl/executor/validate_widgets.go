@@ -745,8 +745,10 @@ func objectListMappingSet(def *WidgetDefinition) map[string]*ObjectListMapping {
 // self-warns). A property outside this set on a core widget is not consumed by
 // any builder — i.e. it is silently dropped — so it earns an MDL-WIDGET07
 // warning. It is deliberately generous (a union across all widget types, not
-// per-type) to avoid false positives; TestStaticWidgetKnownPropsCoverDescribe
-// guards it against describe-vocabulary drift.
+// per-type) to avoid false positives. TestStaticWidgetKnownProps_CoverSourceVocabulary
+// derives the builder and describe vocabulary from the source and fails on any
+// key missing here — the hand-typed sample in TestStaticWidgetKnownPropsCoverDescribe
+// drifted with the list it guarded (mendixlabs/mxcli#1346).
 var staticWidgetKnownProps = func() map[string]bool {
 	names := []string{
 		// grammar keyword properties (widgetPropertyV3)
@@ -779,6 +781,11 @@ var staticWidgetKnownProps = func() map[string]bool {
 		// dynamicimage's fallback image, and the two display flags it shares
 		// with the pluggable image widget. Same reason: describe emits them.
 		"DefaultImage", "OnClickType",
+		// read by a builder and emitted by describe, but missing here until
+		// mendixlabs/mxcli#1346: a dataview's explicit footer flag (#813), the
+		// menu source and orientation of navigationtree / menubar /
+		// simplemenubar, and a scroll-container region's size mode.
+		"ShowFooter", "Menu", "Profile", "Orientation", "SizeMode",
 		// fragment / building-block sentinel-internal keys (USE_FRAGMENT /
 		// USE_BUILDING_BLOCK), consumed by the expander, never serialized
 		"Args", "DataSourceOverride", "ActionOverride",
@@ -809,7 +816,8 @@ var staticWidgetKnownPropList = func() []string {
 		"Attributes", "FilterType", "DesignProperties", "Width", "Height", "Visible",
 		"Editable", "Tooltip", "DynamicClasses", "WidthUnit", "HeightUnit",
 		"DesktopColumns", "TabletColumns", "PhoneColumns", "PageSize", "Pagination",
-		"Image", "DefaultImage", "DisplayAs", "OnClickType")
+		"Image", "DefaultImage", "DisplayAs", "OnClickType", "ShowFooter", "Menu",
+		"Profile", "Orientation", "SizeMode")
 	return list
 }()
 
