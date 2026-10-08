@@ -1,0 +1,33 @@
+-- ============================================================================
+-- XPath enumeration value with a leading underscore (`_True`) is stored as-is
+-- ============================================================================
+--
+-- Symptom (before fix): `mxcli check -p` refused the describe output of
+-- Evora's AgentCommons.DS_Agent_GetDeployedModels — "the constraint names
+-- GenAICommons.ENUM_ModelSupport._True, which is neither an attribute nor an
+-- association of it … CE0161". The check was right about what exec would
+-- write: the stored-form rewrite turned `Module.Enum.Value` into `'Value'`
+-- only when the value started with a letter, so `_True` was written verbatim
+-- and mxbuild 10.24.15 reported CE0161 (measured). Studio Pro names a
+-- True/False enumeration's values `_True` / `_False`, and stores the
+-- constraint as `[SupportsSystemPrompt = '_True']`.
+--
+-- After fix: stored as `[Supports = '_True']`; check passes, the project
+-- builds at 0 errors on mxbuild 10.24.15 and 11.13.0.
+--
+-- Usage (expected to PASS check):
+--   mxcli check mdl-examples/bug-tests/check-fp-xpath-underscore-enum-value.mdl
+-- ============================================================================
+
+mdl 1;
+
+create module Probe;
+create enumeration Probe.Support ( _True 'True', _False 'False', Unknown 'Unknown' );
+create persistent entity Probe.Model ( Supports: enum Probe.Support );
+
+create microflow Probe.GetSupported ()
+returns list of Probe.Model
+begin
+  retrieve $L from Probe.Model where [Supports = Probe.Support._True];
+  return $L;
+end;

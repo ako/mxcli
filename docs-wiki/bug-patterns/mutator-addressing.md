@@ -3,7 +3,7 @@ title: Addressing Things the Model Does Not Name
 category: bug-pattern
 last-synced: ced830e0
 sources:
-  - .claude/skills/fix-issue/findings/mdl-backend.jsonl
+  - .claude/skills/fix-issue/findings/mdl-backend/
   - mdl/backend/mpr/page_mutator.go
   - mdl/backend/modelsdk/page_write.go
 ---

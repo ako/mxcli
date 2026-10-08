@@ -3,9 +3,9 @@ title: Scripts That Cannot Be Re-Run
 category: bug-pattern
 last-synced: ced830e0
 sources:
-  - .claude/skills/fix-issue/findings/mdl-grammar.jsonl
-  - .claude/skills/fix-issue/findings/mdl-executor.jsonl
-  - .claude/skills/fix-issue/findings/mdl-backend.jsonl
+  - .claude/skills/fix-issue/findings/mdl-grammar/
+  - .claude/skills/fix-issue/findings/mdl-executor/
+  - .claude/skills/fix-issue/findings/mdl-backend/
   - mdl/grammar/domains/MDLDomainModel.g4
   - docs/13-decisions/0003-mdl-is-sql-shaped.md
 ---
