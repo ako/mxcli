@@ -384,6 +384,7 @@ func sharedHandlerEntries(
 ) map[model.ID]bool {
 	out := map[model.ID]bool{}
 	normalSucc := map[model.ID][]model.ID{}
+	flowsByOrigin := map[model.ID][]*microflows.SequenceFlow{}
 	var errorFlows []*microflows.SequenceFlow
 	var startID model.ID
 	for _, o := range col.Objects {
@@ -395,6 +396,7 @@ func sharedHandlerEntries(
 		if fl == nil {
 			continue
 		}
+		flowsByOrigin[fl.OriginID] = append(flowsByOrigin[fl.OriginID], fl)
 		if fl.IsErrorHandler {
 			errorFlows = append(errorFlows, fl)
 			continue
@@ -405,9 +407,10 @@ func sharedHandlerEntries(
 		return out
 	}
 	normal := reachableUntil(startID, "", normalSucc)
+	incoming := incomingCounts(flowsByOrigin)
 	handlers := map[model.ID]map[model.ID]bool{}
 	for _, ef := range errorFlows {
-		m := firstMergeFrom(ef.DestinationID, objects, normalSucc)
+		m := firstMergeFrom(ef.DestinationID, objects, normalSucc, incoming)
 		if m == "" || normal[m] {
 			continue
 		}

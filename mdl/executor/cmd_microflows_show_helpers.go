@@ -2604,7 +2604,8 @@ func collectErrorHandlerStatementSpans(
 	var statements []string
 	var spans []errorHandlerSpan
 	visited := make(map[model.ID]bool)
-	stopID := firstReachableErrorHandlerMerge(startID, activityMap, flowsByOrigin)
+	incoming := incomingCounts(flowsByOrigin)
+	stopID := firstReachableErrorHandlerMerge(startID, activityMap, flowsByOrigin, incoming)
 
 	// A handler-body activity's annotations are emitted here or nowhere: this
 	// traversal is a second, smaller describer and the main one never reaches
@@ -2650,6 +2651,15 @@ func collectErrorHandlerStatementSpans(
 			// silent rewrite Phase E is about.
 			if label, ok := labels.of(id); ok {
 				statements = append(statements, strings.Repeat("  ", indent)+"join "+label+";")
+				return
+			}
+			// A merge with one way in joins nothing: walk on, as
+			// firstReachableErrorHandlerMerge did to find where this ends.
+			if isNoOpMerge(id, activityMap, incoming) {
+				visited[id] = true
+				for _, flow := range findNormalFlows(flowsByOrigin[id]) {
+					traverse(flow.DestinationID, boundary, indent)
+				}
 			}
 			return
 		}
@@ -2731,6 +2741,7 @@ func firstReachableErrorHandlerMerge(
 	startID model.ID,
 	activityMap map[model.ID]microflows.MicroflowObject,
 	flowsByOrigin map[model.ID][]*microflows.SequenceFlow,
+	incoming map[model.ID]int,
 ) model.ID {
 	visited := make(map[model.ID]bool)
 	queue := []model.ID{startID}
@@ -2741,7 +2752,7 @@ func firstReachableErrorHandlerMerge(
 			continue
 		}
 		visited[id] = true
-		if _, isMerge := activityMap[id].(*microflows.ExclusiveMerge); isMerge {
+		if _, isMerge := activityMap[id].(*microflows.ExclusiveMerge); isMerge && !isNoOpMerge(id, activityMap, incoming) {
 			return id
 		}
 		for _, flow := range findNormalFlows(flowsByOrigin[id]) {
