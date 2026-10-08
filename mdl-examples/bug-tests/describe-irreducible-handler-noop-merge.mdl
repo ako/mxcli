@@ -1,0 +1,57 @@
+mdl 1;
+-- ============================================================================
+-- DESCRIBE MICROFLOW cut an error handler short at a merge with one way in
+-- (Evora Factory Management: SnowflakeRESTSQL.GET_v1_RetrievePartition)
+-- ============================================================================
+--
+-- The handler's path runs through a merge only it reaches, with a single
+-- incoming flow — a junction of nothing, which Studio Pro leaves behind when a
+-- flow is re-routed — and on to where it rejoins the main path. In Evora the
+-- rejoin is the loop header: on a 401 with $Retry set, the handler sets $Retry
+-- to false and goes back round to regenerate the token.
+--
+-- Symptom (before fix):
+--   The handler walk stopped at the first merge it met, the one-way-in merge,
+--   which had no label, so the handler ended there: here the 'recovering' log is
+--   missing; in Evora `set $Retry = false` and the way back round were gone, so
+--   re-executing turned a retry into a fall-through.
+--
+-- After fix:
+--   A merge with one way in is walked through, by the handler walk and by the
+--   searches that decide where a handler rejoins (and so which merges need a
+--   label). `mxcli check` also had to learn two things for the Evora shape: a
+--   REST call's `on error` body is a body (the label walk did not know it had
+--   one), and `while true` around a return is a merge and a back-edge in the
+--   enclosing graph, not a loop activity.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/describe-irreducible-handler-noop-merge.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe microflow BugIrrRetry.HandlerViaNoOpMerge" > d.mdl
+--   mxcli check d.mdl -p app.mpr --references   -- expect: Check passed!
+--   mxcli exec d.mdl -p app.mpr                  -- expect: Unchanged microflow
+-- ============================================================================
+
+create module BugIrrRetry;
+
+create or modify microflow BugIrrRetry.Sub ($In: Integer) returns Integer
+begin
+  return $In;
+end;
+
+create or modify microflow BugIrrRetry.HandlerViaNoOpMerge ($Retry: Boolean) returns Boolean
+begin
+  $R = call microflow BugIrrRetry.Sub(In = 1) on error without rollback begin
+    if $Retry then
+      join hop;
+    else
+      raise error;
+    end if;
+  end error;
+  join back;
+  merge hop;
+  log warning node 'Bug' 'recovering';
+  join back;
+  merge back;
+  log info node 'Bug' 'carry on';
+  return true;
+end;

@@ -130,6 +130,19 @@ to be loud. And do not take `create or modify`'s `Unchanged` on a describe outpu
 as proof — that is the splice verdict, "the script equals the stored flow's own
 description", which a wrong description that parses also earns.
 
+**A flow describer is several searches that have to agree.** Which merges get
+a label, where an error handler stops, which merge closes which split, and
+whether anything is printed after a branch are each decided by a separate walk
+over the same graph. A node class one walk looks past and another stops at
+silently drops what lies beyond it — a merge with a single way in, which joins
+nothing, was the stop for one walk and invisible to the labelling one, so the
+rest of a handler vanished. And a statement's spelling can depend on what is
+printed *after its enclosing branch*, not on the node: an activity with no way
+out ends a loop iteration, and needs `continue` exactly when the description
+goes on after the branch closes — at any level up to the loop body. When a
+sweep turns up a new shape, ask which two walks disagree about it before
+adding a case to one of them.
+
 Three further measurement rules, each of which hid a defect until it was applied:
 
 - **Compare identities, not counts.** A count cannot tell "preserved" from
