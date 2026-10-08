@@ -1226,7 +1226,10 @@ func traverseFlow(
 		isGuard := trueTerminates && flowLooksLikeGuardContinuation(falseFlow, obj, activityMap) && !hasExplicitFalseBranchAnchor(falseFlow)
 
 		if isGuard {
+			// A guard's THEN arm is followed by the false continuation.
+			restore := fallsOnBefore(ctx, falseFlow, activityMap, flowsByOrigin)
 			traverseFlowUntilMerge(ctx, trueFlow.DestinationID, mergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent+1, sourceMap, headerLineCount, annotationsByTarget, labels)
+			restore()
 			*lines = append(*lines, indentStr+"end if;")
 			recordSourceMap(sourceMap, currentID, startLine, len(*lines)+headerLineCount-1)
 
@@ -1338,6 +1341,14 @@ func traverseFlowUntilMerge(
 		return
 	}
 
+	// What follows this branch once it closes: the walk up to mergeID is the
+	// branch, and whatever mergeID leads to is printed after it — as is
+	// whatever followed the enclosing branch. Nested branches inherit it.
+	if ctx != nil && !ctx.describeFallsOn && joinGoesOn(mergeID, activityMap, flowsByOrigin) {
+		ctx.describeFallsOn = true
+		defer func() { ctx.describeFallsOn = false }()
+	}
+
 	// Handle intermediate merge points - traverse through them without outputting
 	// anything, UNLESS an error handler rejoins here: then the merge is named, and
 	// the name must be declared on the branch that owns it. An empty-handler
@@ -1436,7 +1447,10 @@ func traverseFlowUntilMerge(
 		isGuard := trueTerminates && flowLooksLikeGuardContinuation(falseFlow, obj, activityMap) && !hasExplicitFalseBranchAnchor(falseFlow)
 
 		if isGuard {
+			// A guard's THEN arm is followed by the false continuation.
+			restore := fallsOnBefore(ctx, falseFlow, activityMap, flowsByOrigin)
 			traverseFlowUntilMerge(ctx, trueFlow.DestinationID, nestedMergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent+1, sourceMap, headerLineCount, annotationsByTarget, labels)
+			restore()
 			*lines = append(*lines, indentStr+"end if;")
 			recordSourceMap(sourceMap, currentID, startLine, len(*lines)+headerLineCount-1)
 
@@ -1514,10 +1528,61 @@ func traverseFlowUntilMerge(
 	emitActivityStatement(ctx, obj, stmt, flowsByOrigin, flowsByDest, activityMap, entityNames, microflowNames, lines, indentStr, annotationsByTarget, labels, sourceMap, headerLineCount)
 	recordSourceMap(sourceMap, currentID, startLine, len(*lines)+headerLineCount-1)
 
+	// An activity with no way out ends the loop iteration (a loop body is the
+	// only place Studio Pro accepts one). When the description goes on after
+	// this branch closes — the join leads somewhere, or an enclosing branch's
+	// does — closing the branch would send this path into what follows, so it
+	// has to say where it ends (Evora: GenAICommons.Trace_GetModelSpanInput,
+	// whose collecting arm fell into its siblings' `break`). Events are not
+	// included: they end the path by definition.
+	if _, isAction := obj.(*microflows.ActionActivity); isAction && len(normalFlows) == 0 && ctx != nil && ctx.describeFallsOn {
+		*lines = append(*lines, indentStr+"continue;")
+	}
+
 	// Follow normal (non-error-handler) outgoing flows until merge
 	for _, flow := range normalFlows {
 		traverseFlowUntilMerge(ctx, flow.DestinationID, mergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
 	}
+}
+
+// fallsOnBefore marks what is about to be walked as followed by next's path,
+// when that path goes on, and returns the function that undoes it.
+func fallsOnBefore(ctx *ExecContext, next *microflows.SequenceFlow, activityMap map[model.ID]microflows.MicroflowObject, flowsByOrigin map[model.ID][]*microflows.SequenceFlow) func() {
+	if ctx == nil || ctx.describeFallsOn || next == nil || !joinGoesOn(next.DestinationID, activityMap, flowsByOrigin) {
+		return func() {}
+	}
+	ctx.describeFallsOn = true
+	return func() { ctx.describeFallsOn = false }
+}
+
+// joinGoesOn reports whether a path that reaches mergeID goes on to an object
+// — rather than ending the loop iteration there, as a merge with no way out (or
+// one leading only to more such merges, or to a ContinueEvent) does. A branch
+// that stops dead before such a join needs no `continue`: it and the join end
+// the iteration alike.
+func joinGoesOn(mergeID model.ID, activityMap map[model.ID]microflows.MicroflowObject, flowsByOrigin map[model.ID][]*microflows.SequenceFlow) bool {
+	seen := map[model.ID]bool{}
+	var goesOn func(id model.ID) bool
+	goesOn = func(id model.ID) bool {
+		if id == "" || seen[id] {
+			return false
+		}
+		seen[id] = true
+		switch activityMap[id].(type) {
+		case *microflows.ExclusiveMerge:
+		case *microflows.ContinueEvent, nil:
+			return false
+		default:
+			return true
+		}
+		for _, f := range findNormalFlows(flowsByOrigin[id]) {
+			if goesOn(f.DestinationID) {
+				return true
+			}
+		}
+		return false
+	}
+	return goesOn(mergeID)
 }
 
 func continueAfterSplitJoin(
@@ -1704,6 +1769,13 @@ func emitLoopBody(
 ) {
 	if loop.ObjectCollection == nil || len(loop.ObjectCollection.Objects) == 0 {
 		return
+	}
+
+	// A loop body is a fresh iteration: nothing outside it follows its end.
+	if ctx != nil {
+		prevFallsOn := ctx.describeFallsOn
+		ctx.describeFallsOn = false
+		defer func() { ctx.describeFallsOn = prevFallsOn }()
 	}
 
 	loopAnnotationsByTarget := annotationsByTarget.withOverlay(buildAnnotationsByTarget(loop.ObjectCollection))
