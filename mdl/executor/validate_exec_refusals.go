@@ -117,6 +117,18 @@ func cloneJarDependencies(ms *types.ModuleSettings) *types.ModuleSettings {
 // later plain CREATE of that language is decided by the script, not the
 // project — the prediction stops at both.
 func checkTranslationTargets(ctx *ExecContext, prog *ast.Program) []error {
+	// The project settings are read only for a script that writes
+	// translations; every other script would pay a settings read for nothing.
+	hasTranslations := false
+	for _, stmt := range prog.Statements {
+		if _, ok := stmt.(*ast.CreateTranslationsStmt); ok {
+			hasTranslations = true
+			break
+		}
+	}
+	if !hasTranslations {
+		return nil
+	}
 	src := sourceLanguage(ctx)
 	if src == "" {
 		return nil
