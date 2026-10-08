@@ -20,6 +20,7 @@ var topics = map[string][]string{
 	ConsumedRestService:         {"rest.consumed"},
 	ConsumedODataService:        {"odata.consume"},
 	PublishedODataService:       {"odata.publish"},
+	ODataAuthenticationClause:   {"odata.publish"},
 	TaskQueue:                   {"queue"},
 	AppSecurity:                 {"security.project-security"},
 	SettingsRuntime:             {"settings.alter"},

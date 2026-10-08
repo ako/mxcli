@@ -121,14 +121,14 @@ create published odata service ProductApi.ProductDataApi (
   ODataVersion: OData4,
   namespace: 'DefaultNamespace',
   ServiceName: 'ProductDataApi',
-  Summary: 'Product and customer data API'
+  Summary: 'Product and customer data API',
   -- PublishAssociations is left at its default (Yes = associations as links).
   -- Setting it to No means "associations as an associated object id", which
   -- Mendix only allows when the system ID is published as the key — publishing
   -- an ordinary attribute as the key then fails the build with CE7375, even
   -- when no associations are exposed at all.
+  Authentication: (basic)
 )
-authentication basic
 {
   publish entity ProductApi.ProductWithPriceVE as 'Product' (
     ReadMode: ReadFromDatabase,
@@ -347,9 +347,9 @@ create published odata service Api.LapApi (
   path: 'odata/laps/',
   version: '1.0.0',
   ODataVersion: OData4,
-  namespace: 'Api.Laps'
+  namespace: 'Api.Laps',
+  Authentication: (basic)
 )
-authentication basic
 {
   publish entity Api.Lap as 'Laps' (
     ReadMode: microflow Api.Read_Laps,
@@ -678,8 +678,7 @@ An entity set is a *read* surface. To let a client **invoke** something —
 Mendix exposes it in `$metadata` as an `ActionImport`.
 
 ```sql
-create published odata service ProductApi.Actions ( ... )
-authentication basic
+create published odata service ProductApi.Actions ( ..., Authentication: (basic) )
 {
   publish microflow ProductApi.RecordNote as 'RecordNote'
     expose ( Note as 'note', Amount as 'amount' (CanBeEmpty) );

@@ -188,9 +188,9 @@ create published odata service ProductApi.ProductDataApi_v2 (
   ODataVersion: OData4,
   ServiceName: 'ProductDataApi',
   Summary: 'Product API v2 - includes weight and tags',
+  Authentication: (basic),
   ...
 )
-authentication basic
 {
   publish entity ProductApi.ProductWithPriceAndTagsVE as 'Product' (
     ReadMode: ReadFromDatabase,
@@ -240,9 +240,9 @@ create published odata service ProductApi.ProductDataApi (
   path: 'odata/productdataapi/v1/',
   version: '1.0.0',
   ODataVersion: OData4,
-  folder: 'Integration/APIs'
+  folder: 'Integration/APIs',
+  Authentication: (basic)
 )
-authentication basic
 { ... };
 ```
 

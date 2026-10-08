@@ -193,10 +193,10 @@ CREATE TABLE activities_data (
     MicroflowQualifiedName  TEXT,
     ModuleName              TEXT,
     Folder                  TEXT,
-    EntityRef               TEXT,       -- create object / database retrieve entity
+    EntityRef               TEXT,       -- create object / database retrieve / delete entity
     ActionType              TEXT,       -- e.g. "RetrieveAction", "MicroflowCallAction"
     ServiceRef              TEXT,       -- called service (REST, web service, OData)
-    ActionRef               TEXT,       -- operation within it
+    ActionRef               TEXT,       -- operation within it, or the called microflow/nanoflow/Java/JavaScript action
     UseRequestTimeout       INTEGER,
     TimeoutExpression       TEXT,
     Description             TEXT,       -- documentation
@@ -212,6 +212,7 @@ CREATE TABLE activities_data (
     CommitType              TEXT,       -- Yes / YesWithoutEvents / No
     WithEvents              INTEGER,
     RetrieveSource          TEXT,       -- database / association
+    QueueRef                TEXT,       -- task queue a microflow/Java action call runs in
     ProjectId               TEXT,
     SnapshotId              TEXT
 );

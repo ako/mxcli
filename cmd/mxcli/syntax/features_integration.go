@@ -90,18 +90,23 @@ func init() {
 			"  namespace: 'Module.Customers',\n" +
 			"  ServiceName: 'CustomerApi',        -- optional; defaults to the document name\n" +
 			"  PublishAssociations: Yes,          -- optional; default Yes (associations as links)\n" +
-			"  SupportsGraphQL: Yes               -- optional; also answer GraphQL at the SAME\n" +
+			"  SupportsGraphQL: Yes,              -- optional; also answer GraphQL at the SAME\n" +
 			"                                     -- location (POST a query). Mendix 10.14+.\n" +
 			"                                     -- Exposed names must then be unique beyond\n" +
 			"                                     -- case (CE2881), and query fields are\n" +
 			"                                     -- camelCased: Period -> period\n" +
+			"  Authentication: (basic, session)   -- the methods, in order: basic, session,\n" +
+			"                                     -- guest, microflow Module.Authenticate;\n" +
+			"                                     -- `none` = no authentication. Left out,\n" +
+			"                                     -- CREATE OR MODIFY / ALTER keep the stored one.\n" +
 			")\n" +
-			"authentication basic, session\n" +
-			"-- or, for custom authentication (no per-request password hash):\n" +
-			"--   authentication microflow Module.Authenticate\n" +
+			"-- Custom authentication (no per-request password hash):\n" +
+			"--   Authentication: (microflow Module.Authenticate)\n" +
 			"-- The microflow takes a List of System.HttpHeader and returns a\n" +
 			"-- System.User; returning empty denies the request. Requires app\n" +
 			"-- security to be on (CE6600) and a microflow to be named (CE0333).\n" +
+			"-- The trailing `authentication basic, session` clause is the old spelling\n" +
+			"-- (MDL-DEPR139); `mxcli fmt --upgrade` moves it into the list.\n" +
 			"{\n" +
 			"  publish entity Module.Entity as 'EntitySet' (\n" +
 			"    ReadMode: source | microflow Module.Read_X,\n" +
@@ -163,9 +168,9 @@ func init() {
 			"  path: 'odata/customers/',\n" +
 			"  version: '1.0.0',\n" +
 			"  ODataVersion: OData4,\n" +
-			"  namespace: 'Shop.Customers'\n" +
+			"  namespace: 'Shop.Customers',\n" +
+			"  Authentication: (basic)\n" +
 			")\n" +
-			"authentication basic\n" +
 			"{\n" +
 			"  publish entity Shop.Customer as 'Customers' (\n" +
 			"    ReadMode: source\n" +

@@ -1409,8 +1409,10 @@ type Activity struct {
 	ModuleName             string
 	EntityRef              string
 	// ServiceRef is the called service document (REST/web service/OData
-	// client); ActionRef the operation or action within it. Both are stored
-	// by the catalog builder and are empty for activities that call neither.
+	// client); ActionRef the operation or action within it — or, for a
+	// microflow, nanoflow, Java or JavaScript action call, the called
+	// document itself (ServiceRef then empty). Both are empty for activities
+	// that call nothing.
 	ServiceRef string
 	ActionRef  string
 	// UseRequestTimeout mirrors "Use a timeout" on a Call REST service or
@@ -1438,6 +1440,11 @@ type Activity struct {
 	CommitType        string
 	WithEvents        bool
 	RetrieveSource    string
+	// QueueRef is the task queue a microflow or Java action call runs in
+	// ("" when it runs in the caller's transaction). A queued call runs
+	// asynchronously, so a loop-scoped rule should not follow it
+	// (mendixlabs/mxcli#1305).
+	QueueRef string
 }
 
 // ActivitiesFor returns an iterator over the top-level activities of a flow —
@@ -1466,7 +1473,8 @@ func (ctx *LintContext) ActivitiesIn(microflowQualifiedName string, nested bool)
 			       COALESCE(ConditionExpression, ''), COALESCE(ConditionRule, ''),
 			       COALESCE(ErrorHandlingType, ''),
 			       COALESCE(LogLevel, ''), COALESCE(LogNodeExpression, ''), COALESCE(LogMessage, ''),
-			       COALESCE(CommitType, ''), COALESCE(WithEvents, 0), COALESCE(RetrieveSource, '')
+			       COALESCE(CommitType, ''), COALESCE(WithEvents, 0), COALESCE(RetrieveSource, ''),
+			       COALESCE(QueueRef, '')
 			FROM activities
 			WHERE MicroflowQualifiedName = ?
 			  AND (? OR COALESCE(ParentLoopId, '') = '')
@@ -1492,7 +1500,8 @@ func (ctx *LintContext) ActivitiesIn(microflowQualifiedName string, nested bool)
 				&a.ConditionExpression, &a.ConditionRule,
 				&a.ErrorHandlingType,
 				&a.LogLevel, &a.LogNodeExpression, &a.LogMessage,
-				&a.CommitType, &withEvents, &a.RetrieveSource)
+				&a.CommitType, &withEvents, &a.RetrieveSource,
+				&a.QueueRef)
 			if err != nil {
 				ctx.recordQueryError("ActivitiesFor (row scan)", err)
 				continue

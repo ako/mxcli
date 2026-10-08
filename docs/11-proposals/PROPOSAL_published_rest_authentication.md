@@ -189,8 +189,9 @@ Both fields exist on every version mxcli supports (10.0+), so no version gate.
 
 ## Open Questions
 
-1. Migrate the published OData `authentication` clause to an `Authentication:`
-   property (with the clause as a deprecated alias) so the two siblings agree.
-   Separate change.
+1. ~~Migrate the published OData `authentication` clause to an `Authentication:`
+   property~~ — done as a separate change: the property, `none`, `alter … set
+   ( Authentication: … )`, and the clause as alias MDL-DEPR139 with an
+   `fmt --upgrade` rewrite. The two siblings now agree.
 2. ~~Whether a service with roles but no authentication is accepted~~ — it is
    (Validation table). The reverse, authentication with no role, is CE0338.

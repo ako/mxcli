@@ -42,9 +42,9 @@ create published odata service F1SVCNAME.DriverApi (
   path: 'odata/f1svcname/',
   version: '1.0.0',
   ODataVersion: OData4,
-  namespace: 'F1SVCNAME.Drivers'
+  namespace: 'F1SVCNAME.Drivers',
+  Authentication: (basic)
 )
-authentication basic
 {
   publish entity F1SVCNAME.Driver as 'Drivers' (
     ReadMode: source

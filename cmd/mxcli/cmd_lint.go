@@ -430,6 +430,7 @@ func builtinLintRules() []linter.Rule {
 		rules.NewExclusiveSplitCaptionRule(),
 		rules.NewErrorHandlingOnCallsRule(),
 		rules.NewNoContinueErrorHandlingRule(),
-		rules.NewIrreducibleFlowGraphRule(), // MDL-FLOW01 - graph structure vs MDL nesting
+		rules.NewIrreducibleFlowGraphRule(),     // MDL-FLOW01 - graph structure vs MDL nesting
+		rules.NewImportRangeObjectMappingRule(), // MDL-MAP04 - First over an object-rooted mapping in the model
 	}
 }
