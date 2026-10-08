@@ -339,12 +339,22 @@ type FlowAnchors struct {
 	To   AnchorSide // DestinationConnectionIndex on the outgoing SequenceFlow
 }
 
+// HasCaption reports whether the statement states a caption, empty or not.
+func (a *ActivityAnnotations) HasCaption() bool {
+	return a != nil && (a.CaptionSet || a.Caption != "")
+}
+
 // ActivityAnnotations holds metadata annotations for microflow activities.
 // These are emitted as @position, @caption, @color, @annotation, @excluded, @anchor lines in MDL.
 type ActivityAnnotations struct {
 	Position *Position // @position(x, y)
 	Caption  string    // @caption 'text'
 	Color    string    // @color Green
+	// CaptionSet records that @caption was written, so `@caption ''` is told
+	// apart from no @caption at all. A decision with no @caption is captioned
+	// with its condition; an empty one is what Studio Pro stores when the
+	// caption is cleared, and must survive describe -> exec (#1254).
+	CaptionSet bool
 	// Notes are the @annotation lines attached to this statement, in source
 	// order. A SLICE, not one string: see MicroflowAnnotation.
 	Notes []MicroflowAnnotation
