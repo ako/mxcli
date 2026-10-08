@@ -23,7 +23,7 @@ func TestUpgrade_R2NavigationMapsAndDatabaseConnection(t *testing.T) {
     );
   );
 CREATE MENU M.Side (MENU ITEM 'Plain';);
-create page M.P (Title: 'P', Layout: Atlas_Core.Atlas_Default, Params: { $Asset: M.Asset }, Variables: { $n: Integer = '1' }) {
+create page M.P (Title: 'P', Layout: Atlas_Core.Atlas_Default, Params: { $Asset: M.Asset }, Variables: { $n: Integer = 1 }) {
   dynamictext t (Content: 'Hi {1}', ContentParams: [{1} = Name])
   container c (DesignProperties: ['Spacing': ['margin-top': 'Large'], 'Full width': on])
   snippetcall s (Snippet: M.S, Params: {$Asset: $Asset})
@@ -59,7 +59,7 @@ end;
     }
   };
 CREATE MENU M.Side {MENU ITEM 'Plain'};
-create page M.P (Title: 'P', Layout: Atlas_Core.Atlas_Default, Params: ( $Asset: M.Asset ), Variables: ( $n: Integer = '1' )) {
+create page M.P (Title: 'P', Layout: Atlas_Core.Atlas_Default, Params: ( $Asset: M.Asset ), Variables: ( $n: Integer = 1 )) {
   dynamictext t (Content: 'Hi {1}', ContentParams: ({1} = Name))
   container c (DesignProperties: ('Spacing': ('margin-top': 'Large'), 'Full width': on))
   snippetcall s (Snippet: M.S, Params: (Asset = $Asset))
