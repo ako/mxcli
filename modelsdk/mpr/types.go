@@ -80,7 +80,7 @@ func (r *Reader) GetModuleByName(name string) (*ModuleInfo, error) {
 
 // ListUnits returns all units with their IDs and types.
 func (r *Reader) ListUnits() ([]*UnitInfo, error) {
-	units, err := r.listUnitsByType("")
+	units, err := r.listUnitTypes()
 	if err != nil {
 		return nil, err
 	}

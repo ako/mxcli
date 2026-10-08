@@ -1,0 +1,41 @@
+-- ============================================================================
+-- MDL-FLOW02 false positive: a `join` inside a REST call's error handler
+-- ============================================================================
+--
+-- Symptom (before fix): `mxcli check` reported "merge rejoin1: nothing joins
+-- it. [MDL-FLOW02]" when the only join to the merge sat inside the custom
+-- error handler of a `call rest service`. That is the retry loop Studio Pro-
+-- authored OIDC microflows use (OIDC.GET/POST/PUT/PATCH/DELETE in Evora
+-- Factory Management, 0 errors under mx check), so exec refused to re-apply
+-- their own describe output.
+--
+-- Cause: the label walk read handler bodies through getErrorHandlerBody, a
+-- hand-kept list of statement types that had no REST call (nor call workflow,
+-- the mapping statements, commit, delete, ...). It now reads the shared
+-- StatementErrorHandling table.
+--
+-- Usage (expected to PASS check):
+--   mxcli check mdl-examples/bug-tests/check-fp-rest-handler-join.mdl
+-- ============================================================================
+
+mdl 1;
+
+create module Probe;
+
+create microflow Probe.GetWithOneRetry ($Url: String)
+returns Boolean
+begin
+  declare $Retried Boolean = false;
+  merge rejoin1;
+  $Response = call rest service get '{1}' with ({1} = $Url) (
+    Timeout: 300,
+  ) returns response on error without rollback begin
+    if not($Retried) then
+      set $Retried = true;
+      join rejoin1;
+    else
+      return false;
+    end if;
+  end error;
+  return true;
+end;

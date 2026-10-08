@@ -609,10 +609,10 @@ func init() {
 		Summary: "Call microflows and Java actions with parameters",
 		Keywords: []string{
 			"call microflow", "call java action", "invoke", "in queue", "queued call", "background execution",
-			"sub-microflow", "java action", "parameter passing",
+			"sub-microflow", "java action", "parameter passing", "blank argument", "nothing",
 		},
 		Syntax:  "$Result = CALL MICROFLOW Module.Name (Param = value) [IN QUEUE Module.Queue];\n$Result = CALL JAVA ACTION Module.Name (Param = value) [IN QUEUE Module.Queue];",
-		Example: "$IsValid = CALL MICROFLOW MyModule.ValidateOrder (\n  Order = $NewOrder\n);\n\n$Token = CALL JAVA ACTION MyModule.GenerateToken (\n  UserId = $User/Id\n);\n\n-- Run the call on a task queue (background execution). The queue must\n-- exist; a queued CALL JAVA ACTION must return Nothing, or the build fails\n-- with CE7038.\nCALL MICROFLOW MyModule.ACT_Refresh () IN QUEUE MyModule.RefreshQueue;\nCALL JAVA ACTION MyModule.RefreshData (Url = $Url) IN QUEUE MyModule.RefreshQueue;",
+		Example: "$IsValid = CALL MICROFLOW MyModule.ValidateOrder (\n  Order = $NewOrder\n);\n\n$Token = CALL JAVA ACTION MyModule.GenerateToken (\n  UserId = $User/Id\n);\n\n-- Run the call on a task queue (background execution). The queue must\n-- exist; a queued CALL JAVA ACTION must return Nothing, or the build fails\n-- with CE7038.\nCALL MICROFLOW MyModule.ACT_Refresh () IN QUEUE MyModule.RefreshQueue;\nCALL JAVA ACTION MyModule.RefreshData (Url = $Url) IN QUEUE MyModule.RefreshQueue;\n\n-- A blank argument: the mapping is kept, its expression left empty, as\n-- Studio Pro stores an argument field left blank. Not the same as `empty`\n-- (a Mendix value); only CALL MICROFLOW and CALL NANOFLOW take it. Mendix\n-- reports it as CE0127 \"Missing argument\": it exists so DESCRIBE round-trips.\nCALL MICROFLOW MyModule.ACT_Log (Message = 'x', TraceId = nothing);",
 		SeeAlso: []string{"java-action", "microflow.create", "queue"},
 	})
 

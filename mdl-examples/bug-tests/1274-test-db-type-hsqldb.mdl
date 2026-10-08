@@ -1,0 +1,19 @@
+mdl 1;
+-- mendixlabs/mxcli#1274: setup for 1274-test-db-type-hsqldb.test.mdl.
+-- Run this against a project, then:
+--   mxcli test mdl-examples/bug-tests/1274-test-db-type-hsqldb.test.mdl -p app.mpr --local --db-type hsqldb
+-- on a machine with no PostgreSQL. Before the fix that stopped with "ensuring
+-- database: no local PostgreSQL superuser available to create the role/database".
+create module DbProbe;
+create persistent entity DbProbe.Item (
+  Label: string(50)
+);
+create microflow DbProbe.MF_InsertAndCount ()
+returns integer as $Count
+begin
+  $Item = create DbProbe.Item (Label = 'probe');
+  commit $Item without events;
+  retrieve $All from DbProbe.Item;
+  $Count = count $All;
+  return $Count;
+end;
