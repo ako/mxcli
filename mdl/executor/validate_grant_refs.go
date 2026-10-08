@@ -3,6 +3,7 @@
 package executor
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -21,9 +22,10 @@ import (
 // naming `NopeAttr` all printed "Check passed!" (measured on Evora Factory
 // Management, 10.24.15). exec refuses every grant shape and both entity-revoke
 // shapes — after the statements before it are written, since a script is not a
-// transaction. The user-role and demo-user statements are worse: exec does not
-// resolve their roles or user entity at all, and writes the dangling name into
-// project security for MxBuild to report as CE1613 a build later.
+// transaction. The user-role and demo-user statements were worse: exec did not
+// resolve their roles or user entity at all, and wrote the dangling name into
+// project security for MxBuild to report as CE1613 a build later. Their
+// executors now run this resolver themselves (refuseUnresolvedSecurityRefs).
 //
 // What check refuses is what exec refuses, plus the dangling writes; what exec
 // treats as a no-op — revoking a document's access from a role that does not
@@ -37,12 +39,8 @@ func validateGrantReferences(ctx *ExecContext, prog *ast.Program) []error {
 	if prog == nil || !ctx.Connected() {
 		return nil
 	}
-	g := &grantResolver{ctx: ctx, sc: newScriptContext(), whole: newScriptContext()}
+	g := newGrantResolver(ctx)
 	g.whole.collectDefinitions(prog)
-	g.scriptModuleRoles, g.scriptUserRoles = map[string]bool{}, map[string]bool{}
-	g.laterModuleRoles, g.laterUserRoles = map[string]bool{}, map[string]bool{}
-	g.scriptServices, g.laterServices = map[string]bool{}, map[string]bool{}
-	g.droppedModuleRoles, g.droppedUserRoles = map[string]bool{}, map[string]bool{}
 	for _, stmt := range prog.Statements {
 		g.recordLater(stmt)
 	}
@@ -57,6 +55,36 @@ func validateGrantReferences(ctx *ExecContext, prog *ast.Program) []error {
 		g.record(stmt)
 	}
 	return errs
+}
+
+// refuseUnresolvedSecurityRefs is exec's half of validateGrantReferences, for
+// the statements whose executors store names without resolving them: a user
+// role's module roles and manageable roles, and a demo user's user roles and
+// entity. exec wrote those names as given, so a script run without `check -p
+// --references` first left a dangling reference MxBuild reported as CE1613 a
+// build later.
+//
+// It runs the same resolver over the one statement, against the model as it
+// stands — which already holds what the statements above it created or
+// dropped, so the script-so-far sets check keeps are empty here by design —
+// and refuses with the same words check uses, before the statement writes
+// anything. What check lets through (a drop of a module role the user role
+// does not hold, System's module roles) passes here too.
+func refuseUnresolvedSecurityRefs(ctx *ExecContext, stmt ast.Statement) error {
+	if problems := newGrantResolver(ctx).check(stmt); len(problems) > 0 {
+		return mdlerrors.NewValidationf("%s: %s", grantStatementLabel(stmt), strings.Join(problems, "; "))
+	}
+	return nil
+}
+
+func newGrantResolver(ctx *ExecContext) *grantResolver {
+	return &grantResolver{
+		ctx: ctx, sc: newScriptContext(), whole: newScriptContext(),
+		scriptModuleRoles: map[string]bool{}, laterModuleRoles: map[string]bool{},
+		scriptUserRoles: map[string]bool{}, laterUserRoles: map[string]bool{},
+		scriptServices: map[string]bool{}, laterServices: map[string]bool{},
+		droppedModuleRoles: map[string]bool{}, droppedUserRoles: map[string]bool{},
+	}
 }
 
 // grantResolver holds the project's names, read lazily — a script without a
@@ -227,7 +255,8 @@ func (g *grantResolver) check(stmt ast.Statement) []string {
 		add(g.documentProblem("published REST service", s.Service))
 		roles(s.Roles, false)
 	case *ast.CreateUserRoleStmt:
-		// exec stores these names without resolving them (CE1613 at build).
+		// exec refuses these through refuseUnresolvedSecurityRefs; it used to
+		// store them unresolved (CE1613 at build).
 		roles(s.ModuleRoles, true)
 		for _, ur := range s.ManageableRoles {
 			if !strings.EqualFold(ur, s.Name) {
@@ -236,8 +265,8 @@ func (g *grantResolver) check(stmt ast.Statement) []string {
 		}
 	case *ast.AlterUserRoleStmt:
 		add(g.userRoleProblem(s.Name))
-		// ADD writes the names unresolved; DROP of a role the user role does
-		// not hold is reported as unchanged by exec.
+		// ADD resolves the names (exec used to write them unresolved); DROP of
+		// a role the user role does not hold is reported as unchanged by exec.
 		roles(s.ModuleRoles, s.Add)
 	case *ast.CreateDemoUserStmt:
 		for _, ur := range s.UserRoles {
@@ -466,7 +495,21 @@ func (g *grantResolver) rolesOfModule(module string) (roles map[string]bool, ans
 		return m, m != nil
 	}
 	roles = map[string]bool{}
-	if mod, err := findModule(g.ctx, module); err == nil {
+	mod, err := findModule(g.ctx, module)
+	var notFound *mdlerrors.NotFoundError
+	if err != nil && !errors.As(err, &notFound) {
+		// The module list could not be read: no evidence either way.
+		g.moduleRoles[module] = nil
+		return nil, false
+	}
+	if err != nil {
+		// Nor is a backend that lists no modules at all, as for entities.
+		if mods, lerr := getModulesFromCache(g.ctx); lerr != nil || len(mods) == 0 {
+			g.moduleRoles[module] = nil
+			return nil, false
+		}
+	}
+	if err == nil {
 		ms, err := g.ctx.Backend.GetModuleSecurity(mod.ID)
 		if err != nil {
 			roles = nil

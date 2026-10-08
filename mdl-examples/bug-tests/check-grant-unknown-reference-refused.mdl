@@ -14,8 +14,9 @@
 -- Measured on Evora Factory Management (Mendix 10.24.15). exec refuses every
 -- grant shape and both entity-revoke shapes — after the statements before it
 -- are written, since a script is not a transaction. The user-role, alter-user-
--- role ADD and demo-user shapes it does NOT refuse: it writes the dangling name
--- into project security, for MxBuild to report as CE1613.
+-- role ADD and demo-user shapes it did NOT refuse: it wrote the dangling name
+-- into project security, for MxBuild to report as CE1613. It now refuses them
+-- too, with the same message (exec-security-dangling-reference-refused.mdl).
 --
 -- Uses the module roles of the Administration module (in every blank app).
 -- Every statement below must be refused by
@@ -49,7 +50,7 @@ grant view on page Administration.NopePage to Administration.User;
 grant access on published odata service Administration.NopeService to Administration.User;
 grant access on published rest service Administration.NopeService to Administration.User;
 
--- Unknown roles that exec writes without resolving (CE1613 at build).
+-- Unknown roles that exec used to write without resolving (CE1613 at build).
 create user role BugGrantProbe ( ModuleRoles: (Administration.NopeRole, System.User) );
 alter user role User add module roles (Administration.NopeRole);
 create demo user 'bug_grant_probe' ( Password: 'Probe!23456789', UserRoles: (NopeUserRole) );

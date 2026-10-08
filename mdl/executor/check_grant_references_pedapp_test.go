@@ -198,6 +198,35 @@ func TestCheckGrantReferences_AgreesWithExec(t *testing.T) {
 		{"control: stored entity and role", "grant read * on entity Administration.Account to Administration.User;", ""},
 		{"control: auto-created document role", "create module AutoRoleYes;\ncreate microflow AutoRoleYes.F () begin end;\ngrant execute on microflow AutoRoleYes.F to AutoRoleYes.User;", ""},
 		{"control: script-created role", "create module role Administration.Auditor;\ngrant read * on entity Administration.Account to Administration.Auditor;", ""},
+
+		// The user-role and demo-user shapes, which exec used to write
+		// unresolved for MxBuild to report as CE1613.
+		{"user role, unknown module role",
+			"create user role Probe ( ModuleRoles: (Administration.NopeRole, System.User) );",
+			"module role Administration.NopeRole does not exist (module Administration has: Administrator, User)"},
+		{"user role, unknown manageable role",
+			"create user role Probe ( ModuleRoles: (Administration.User), ManageableRoles: (NopeUserRole) );",
+			"user role NopeUserRole does not exist"},
+		{"create or modify user role, unknown module role",
+			"create or modify user role User ( ModuleRoles: (Administration.NopeRole) );",
+			"module role Administration.NopeRole does not exist"},
+		{"alter user role add, unknown module role",
+			"alter user role User add module roles (Administration.NopeRole);",
+			"module role Administration.NopeRole does not exist (module Administration has: Administrator, User)"},
+		{"demo user, unknown user role",
+			"create demo user 'probe' ( Password: 'Probe!23456789', UserRoles: (NopeUserRole) );",
+			"user role NopeUserRole does not exist"},
+		{"demo user, unknown entity",
+			"create demo user 'probe' ( Password: 'Probe!23456789', Entity: Administration.Nope, UserRoles: (User) );",
+			"entity Administration.Nope does not exist"},
+		{"control: user role with System module roles",
+			"create user role Probe ( ModuleRoles: (Administration.User, System.User, System.Administrator) );", ""},
+		{"control: alter user role drop of a role it does not hold",
+			"alter user role User drop module roles (Administration.Gone);", ""},
+		{"control: user role and demo user over roles the script creates above",
+			"create module role MyFirstModule.Auditor;\ncreate user role Auditor ( ModuleRoles: (MyFirstModule.Auditor, System.User) );\n" +
+				"alter user role Auditor add module roles (Administration.User);\n" +
+				"create demo user 'auditor' ( Password: 'Probe!23456789', Entity: Administration.Account, UserRoles: (Auditor) );", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
