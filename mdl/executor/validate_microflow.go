@@ -1367,6 +1367,10 @@ func (v *microflowValidator) checkBranchScoping(body []ast.MicroflowStatement) {
 
 	for i, s := range body {
 		switch stmt := s.(type) {
+		case *ast.MergeStmt:
+			// See the break below: past a merge, branch-declared variables
+			// are the joins' business, not this linear check's.
+			branchVars = make(map[string]string)
 		case *ast.IfStmt:
 			// Collect vars declared in THEN branch
 			for varName := range collectDeclaredVars(stmt.ThenBody) {
@@ -1416,6 +1420,14 @@ func (v *microflowValidator) checkBranchScoping(body []ast.MicroflowStatement) {
 		// After processing this statement, check if subsequent statements reference branch vars
 		if len(branchVars) > 0 {
 			for _, subsequent := range body[i+1:] {
+				// Past a `merge`, what is in scope comes from the paths that
+				// join it, not from the text above it — a describe of an
+				// irreducible graph puts each shared region in a section after
+				// the branches that declare its variables. This linear check
+				// cannot see joins, so it stops rather than guess.
+				if _, isMerge := subsequent.(*ast.MergeStmt); isMerge {
+					break
+				}
 				for _, refVar := range referencedVars(subsequent) {
 					if scope, ok := branchVars[refVar]; ok {
 						v.addViolation("MDL005", linter.SeverityWarning,

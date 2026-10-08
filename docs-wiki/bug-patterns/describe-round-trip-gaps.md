@@ -8,6 +8,7 @@ sources:
   - mdl/executor/cmd_pages_describe_pluggable.go
   - mdl/executor/cmd_microflows_show_crossed.go
   - mdl/executor/cmd_microflows_normalize.go
+  - mdl/executor/describe_graph_invariant_test.go
   - mdl/microflowgraph/structure.go
   - docs/11-proposals/PROPOSAL_structured_microflow_description.md
 ---
@@ -115,6 +116,19 @@ corpus, so the corpus agrees with it by construction. The test that matters is o
 where the stored document means something *other* than the rule assumes, and you
 have to **construct** it: repoint one pointer in a copy and re-describe. The real
 microflow that motivated all of this round-tripped correctly by luck.
+
+**For a flow, the oracle exists: rebuild the description and compare graphs.**
+The *means something else* shape is invisible to every check that reads the
+text, but not to the builder. Parse the description, build it the way `exec`
+would, and compare the result with the stored graph modulo exclusive merges —
+every stored activity exactly once, every stored sequence flow present
+(`assertDescriptionRebuildsGraph`). A duplicated region shows up as two rebuilt
+activities on one stored position, a dropped back-edge as a missing flow. Run it
+over every flow of a real app, on the baseline and the branch, rather than over
+the flows someone reported: the reported ones are the ones whose symptom happened
+to be loud. And do not take `create or modify`'s `Unchanged` on a describe output
+as proof — that is the splice verdict, "the script equals the stored flow's own
+description", which a wrong description that parses also earns.
 
 Three further measurement rules, each of which hid a defect until it was applied:
 
