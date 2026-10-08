@@ -1776,52 +1776,17 @@ func (c *flowRefCollector) collectFromStatements(stmts []ast.MicroflowStatement)
 }
 
 // getErrorHandlerBody returns the custom error handler body if present, or nil.
+//
+// It reads the clause through stmtErrorHandling — the one table of which
+// statements carry an ON ERROR clause — rather than keeping its own list. Its
+// own list had drifted: it lacked the REST statements (and call workflow, the
+// mapping statements, commit, delete, …), so every walk built on it skipped
+// those handler bodies. The visible failure was MDL-FLOW02 reporting
+// "merge X: nothing joins it" when the only join sat in a REST call's error
+// handler — the retry loop Studio Pro-authored OIDC microflows use.
 func getErrorHandlerBody(stmt ast.MicroflowStatement) []ast.MicroflowStatement {
-	switch s := stmt.(type) {
-	case *ast.CreateObjectStmt:
-		if s.ErrorHandling != nil && s.ErrorHandling.Body != nil {
-			return s.ErrorHandling.Body
-		}
-	case *ast.RetrieveStmt:
-		if s.ErrorHandling != nil && s.ErrorHandling.Body != nil {
-			return s.ErrorHandling.Body
-		}
-	case *ast.CallMicroflowStmt:
-		if s.ErrorHandling != nil && s.ErrorHandling.Body != nil {
-			return s.ErrorHandling.Body
-		}
-	case *ast.CallNanoflowStmt:
-		if s.ErrorHandling != nil && s.ErrorHandling.Body != nil {
-			return s.ErrorHandling.Body
-		}
-	case *ast.CallJavaActionStmt:
-		if s.ErrorHandling != nil && s.ErrorHandling.Body != nil {
-			return s.ErrorHandling.Body
-		}
-	case *ast.DownloadFileStmt:
-		if s.ErrorHandling != nil && s.ErrorHandling.Body != nil {
-			return s.ErrorHandling.Body
-		}
-	case *ast.SynchronizeStmt:
-		if s.ErrorHandling != nil && s.ErrorHandling.Body != nil {
-			return s.ErrorHandling.Body
-		}
-	case *ast.SendEmailStmt:
-		if s.ErrorHandling != nil && s.ErrorHandling.Body != nil {
-			return s.ErrorHandling.Body
-		}
-	case *ast.CallJavaScriptActionStmt:
-		if s.ErrorHandling != nil && s.ErrorHandling.Body != nil {
-			return s.ErrorHandling.Body
-		}
-	case *ast.CallWebServiceStmt:
-		if s.ErrorHandling != nil && s.ErrorHandling.Body != nil {
-			return s.ErrorHandling.Body
-		}
-	case *ast.ExecuteDatabaseQueryStmt:
-		if s.ErrorHandling != nil && s.ErrorHandling.Body != nil {
-			return s.ErrorHandling.Body
-		}
+	if eh := stmtErrorHandling(stmt); eh != nil && eh.Body != nil {
+		return eh.Body
 	}
 	return nil
 }
