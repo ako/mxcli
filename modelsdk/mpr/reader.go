@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 
 	"github.com/mendixlabs/mxcli/modelsdk/mpr/version"
 
@@ -50,6 +52,18 @@ type Reader struct {
 	// within the same import file see buffered (uncommitted) writes.
 	// nil means no overlay is active — zero cost on the normal path.
 	overlay map[string][]byte
+
+	// v1Types is MPR v1's unit-type index (reader_units_v1.go): UnitID blob →
+	// $Type, with the blob length it was read at. It lets a typed listing
+	// skip the contents of every other unit. Revalidated on every listing, so
+	// it needs no invalidation from the writer.
+	v1TypesMu sync.Mutex
+	v1Types   map[string]v1TypeEntry
+
+	// blobReads counts full unit-content blobs read from the v1 Unit table by
+	// listings — the cost a typed listing must keep proportional to its
+	// result, not to the project. Read by tests.
+	blobReads atomic.Int64
 }
 
 // cachedUnit stores metadata about a unit for fast filtering.
