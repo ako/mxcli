@@ -7,7 +7,7 @@ sources:
   - modelsdk/mpr/parser.go
 ---
 
-> **Do not duplicate**: the per-field fix recipes live in the `fix-issue/findings/*.jsonl` records (issues #583, #585) and the `extractInt` helper signature lives in `modelsdk/mpr/parser.go`. This page describes the pattern only.
+> **Do not duplicate**: the per-field fix recipes live in the `fix-issue/findings/` records (issues #583, #585) and the `extractInt` helper signature lives in `modelsdk/mpr/parser.go`. This page describes the pattern only.
 
 ## What this is
 

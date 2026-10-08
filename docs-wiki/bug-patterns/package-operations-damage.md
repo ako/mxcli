@@ -3,7 +3,7 @@ title: Package Operations That Damage the Project
 category: bug-pattern
 last-synced: ced830e0
 sources:
-  - .claude/skills/fix-issue/findings/cmd-mxcli.jsonl
+  - .claude/skills/fix-issue/findings/cmd-mxcli/
   - cmd/mxcli/marketplace/update.go
 ---
 

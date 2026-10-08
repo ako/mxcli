@@ -22,7 +22,7 @@ Six page categories. Anything outside these belongs somewhere else.
    SDK, Mendix Studio Pro), what is intentionally not implemented.
 5. **Glossary / vocabulary bridge** — Mendix ↔ mxcli ↔ BSON terminology.
 6. **Bug-pattern taxonomy** — *categories* of recurring failure modes that
-   link out to findings in `.claude/skills/fix-issue/findings/*.jsonl`.
+   link out to findings in `.claude/skills/fix-issue/findings/<area>/*.json`.
 
 ## What the wiki is NOT for
 
@@ -35,7 +35,7 @@ home instead.
 | MDL syntax tables | `docs/01-project/MDL_QUICK_REFERENCE.md` |
 | What a function does | source code |
 | Step-by-step task procedure | `.claude/skills/<task>.md` |
-| Specific bug fix recipe | `.claude/skills/fix-issue/findings/*.jsonl` |
+| Specific bug fix recipe | `.claude/skills/fix-issue/findings/<area>/*.json` |
 | Proposal status, PR / issue numbers, roadmap | proposal frontmatter; GitHub |
 | Latest design proposal | `docs/11-proposals/` |
 | Architecture decision record | `docs/13-decisions/` (ADRs) |

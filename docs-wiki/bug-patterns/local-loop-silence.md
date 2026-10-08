@@ -3,7 +3,7 @@ title: The Warm Loop Fails Quietly
 category: bug-pattern
 last-synced: ced830e0
 sources:
-  - .claude/skills/fix-issue/findings/cmd-mxcli.jsonl
+  - .claude/skills/fix-issue/findings/cmd-mxcli/
   - cmd/mxcli/docker/localboot.go
   - cmd/mxcli/docker/runlocal.go
 ---
