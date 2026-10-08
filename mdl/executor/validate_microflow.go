@@ -1043,36 +1043,54 @@ func (v *microflowValidator) checkXPathIdConstraint(variable, xpath string) {
 	}
 }
 
-// checkAssociationObjectArgs flags a call argument bound to an association-object
-// path (`$obj/Module.Assoc`, which yields the associated OBJECT). Mendix rejects
-// an association path used as a value with CE0117 — it must be materialized first
-// (`retrieve $x from $obj/Module.Assoc;`). An attribute value over an association
+// checkAssociationObjectArgs flags a call argument bound to a bare association
+// path (`$obj/Module.Assoc`). Mendix rejects that as a value with CE0117 — the
+// object has to be named. An attribute value over an association
 // (`$obj/Module.Assoc/Attr`) is a legal value and is NOT flagged. (ledger #43/#44)
+//
+// Naming the object is what Studio Pro itself does: it writes the target entity
+// after the association, `$obj/Module.Assoc/Module.Target`, and that is an
+// object value mxbuild accepts. Measured on mxbuild 10.24.15 and 11.13.0, one
+// microflow per argument into a fresh project:
+//
+//	$A/M.A_B                    CE0117 "Error(s) in expression."
+//	$A/M.A_B/M.B                0 errors
+//	$A/M.A_Bs/M.B  (ref set)    0 errors into a List parameter
+//	$A/M.A_B/M.B/M.B_C/M.C      0 errors
+//	$A/M.A_B/M.B/M.B_C          0 errors
+//
+// The rule used to fire on any path ending in a qualified segment, so all of
+// those were refused — including 42 untouched microflows in Evora Factory
+// Management, whose describe output exec then refused to re-apply. Only the
+// one-segment shape is reported now. Paths that fail for a TYPE reason (a
+// reverse traversal, a reference set into an object parameter) are CE0117 too,
+// but telling them apart needs the domain model, which this check does not see.
 func (v *microflowValidator) checkAssociationObjectArgs(callee string, args []ast.CallArgument) {
 	for _, a := range args {
 		if exprIsAssociationObjectPath(a.Value) {
 			v.addViolation("MDL049", linter.SeverityError,
-				fmt.Sprintf("call %s: argument '%s' passes an association path (an object reached over an association), "+
-					"which Mendix rejects as a value (CE0117 \"Error(s) in expression\")", callee, a.Name),
-				fmt.Sprintf("Materialize the object first, then pass the variable: `retrieve $%s from %s;` then `%s = $%s`.",
-					a.Name, microflowExprSource(a.Value), a.Name, a.Name))
+				fmt.Sprintf("call %s: argument '%s' passes a bare association path, which Mendix rejects "+
+					"as a value (CE0117 \"Error(s) in expression\")", callee, a.Name),
+				fmt.Sprintf("Name the associated object's entity after the association — `%s/<Module.TargetEntity>`, "+
+					"the form Studio Pro writes — or retrieve it first: `retrieve $%s from %s;` then `%s = $%s`.",
+					microflowExprSource(a.Value), a.Name, microflowExprSource(a.Value), a.Name, a.Name))
 		}
 	}
 }
 
-// exprIsAssociationObjectPath reports whether an expression is an attribute path
-// whose FINAL segment is a module-qualified association (`$obj/Module.Assoc`) —
-// i.e. it resolves to an associated OBJECT, not an attribute value. A final bare
-// segment (`$obj/Module.Assoc/Attr` → `Attr`) is an attribute and returns false.
+// exprIsAssociationObjectPath reports whether an expression is a bare
+// association path: `$obj/Module.Assoc`, one module-qualified segment and
+// nothing after it. `$obj/Module.Assoc/Module.Target` (the entity step that
+// names the object) and `$obj/Module.Assoc/Attr` (an attribute value) are not.
 func exprIsAssociationObjectPath(expr ast.Expression) bool {
 	if se, ok := expr.(*ast.SourceExpr); ok {
 		expr = se.Expression
 	}
 	ap, ok := expr.(*ast.AttributePathExpr)
-	if !ok || len(ap.Path) == 0 {
+	if !ok || len(ap.Path) != 1 {
 		return false
 	}
-	return strings.Contains(ap.Path[len(ap.Path)-1], ".")
+	return strings.Contains(ap.Path[0], ".")
 }
 
 // dateTimeLiteralFuncs are the date-construction functions whose arguments
@@ -1213,8 +1231,7 @@ func (v *microflowValidator) checkReturn(stmt *ast.ReturnStmt) {
 				return
 			}
 		}
-		v.addViolation("MDL004", linter.SeverityError,
-			"return has a value but microflow does not declare a return type",
+		v.addViolation("MDL004", linter.SeverityError, voidReturnValueMessage,
 			"Remove the return value or add a return type to the microflow")
 		return
 	}

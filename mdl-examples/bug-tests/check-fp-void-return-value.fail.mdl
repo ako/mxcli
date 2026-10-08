@@ -1,0 +1,36 @@
+-- ============================================================================
+-- MDL004 on a void microflow's return value: error for new code, warning for
+-- a microflow the project already stores that way
+-- ============================================================================
+--
+-- Studio Pro keeps an end event's return value when a microflow's return type
+-- is changed to Nothing, and hides the field. Evora Factory Management
+-- (Mendix 10.24, 0 errors under mx check) stores five such microflows
+-- (OIDC.SUB_HandlePrivateKey, TcConnector.HandleSSOLoginMicroflow,
+-- TeamcenterToolkit.CreateRelation, .Configuration_Validate,
+-- .GetPropertiesForModelObjectList), and describe prints the value faithfully
+-- as `return <value>;` in a microflow with no `returns` clause. MDL004 refused
+-- that output, so exec would not re-apply an untouched microflow.
+--
+-- Measured: mxbuild 10.24.15 and 11.13.0 build the shape at 0 errors, also
+-- when exec writes it fresh. The value is still returned at runtime, and a
+-- workflow branching on such a microflow fails at instance start (see the
+-- write-workflows skill) — so this file, which is NEW code, stays an error.
+-- With `-p` against a project that already stores the microflow with that
+-- many valued end events, MDL004 is reported as a warning and exec proceeds.
+--
+-- Usage (expected to FAIL check — no project, so nothing is settled):
+--   mxcli check mdl-examples/bug-tests/check-fp-void-return-value.fail.mdl
+-- ============================================================================
+
+create module Probe;
+create enumeration Probe.Assertion ( PRIVATE_KEY 'Private key', SECRET 'Secret' );
+
+create or modify microflow Probe.HandlePrivateKey ($IsJwt: Boolean)
+begin
+  if $IsJwt then
+    return Probe.Assertion.PRIVATE_KEY;   -- MDL004: no `returns` clause
+  else
+    return;
+  end if;
+end;

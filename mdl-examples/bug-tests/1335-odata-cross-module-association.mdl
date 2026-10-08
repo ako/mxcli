@@ -1,0 +1,64 @@
+mdl 1;
+-- ============================================================================
+-- mendixlabs/mxcli#1335: a published OData entity exposing a CROSS-MODULE
+-- association wrote a PublishedAttribute instead of a PublishedAssociationEnd
+-- ============================================================================
+--
+-- Symptom (before fix): `mxcli check` and `exec` pass, then `mx check` reports
+-- one error per exposed cross-module association:
+--
+--   [error] [CE1613] "The selected attribute 'Od.Child.Child_Parent' no longer exists."
+--   at Published attribute Child_Parent from entity Od.Child
+--
+-- A cross-module association is stored as a DomainModels$CrossAssociation,
+-- which the member resolver never looked at, so the bare name fell through to
+-- the attribute fallback. Same-module associations were always fine.
+--
+-- After fix: both sides publish a PublishedAssociationEnd whose Association is
+-- 'Od.Child_Parent' — the association's own module, also from Op.Parent, whose
+-- module does not hold it. The service sits in a third module, as reported.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/1335-odata-cross-module-association.mdl -p app.mpr
+--   then a real build must report 0 errors:
+--   mxcli docker check -p app.mpr
+-- ============================================================================
+
+create module Op;
+create module Od;
+create module Sv;
+
+create persistent entity Op.Parent (
+  Code: string(20) unique error message 'Code must be unique'
+);
+
+create persistent entity Od.Child (
+  Code: string(20) unique error message 'Code must be unique'
+);
+
+create or modify association Od.Child_Parent from Od.Child to Op.Parent type Reference;
+
+create published odata service Sv.Api (
+  path: 'odata/x1335/',
+  version: '1.0.0',
+  ODataVersion: OData4,
+  namespace: 'Sv.Api',
+  Authentication: (basic)
+)
+{
+  publish entity Op.Parent as 'Parents' (
+    ReadMode: source
+  )
+  expose (
+    Code as 'code' (KEY, Filterable, Sortable),
+    Child_Parent as 'children'
+  );
+
+  publish entity Od.Child as 'Children' (
+    ReadMode: source
+  )
+  expose (
+    Code as 'code' (KEY, Filterable, Sortable),
+    Child_Parent as 'parent'
+  );
+};

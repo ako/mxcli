@@ -37,7 +37,7 @@ digested yet.
 | MDL syntax tables | `docs/01-project/MDL_QUICK_REFERENCE.md` |
 | What a function does | source code |
 | Step-by-step procedure | `.claude/skills/<task>.md` |
-| Specific bug recipe | `.claude/skills/fix-issue/findings/*.jsonl` |
+| Specific bug recipe | `.claude/skills/fix-issue/findings/<area>/*.json` |
 | Proposal status / PR # / roadmap | proposal frontmatter, GitHub |
 | Architectural decision history | `docs/13-decisions/` (ADRs) |
 | Latest design proposal | `docs/11-proposals/` |

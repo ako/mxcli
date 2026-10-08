@@ -1,0 +1,50 @@
+-- ============================================================================
+-- MDL049 false positive: `$obj/Module.Assoc/Module.Target` is an object value
+-- ============================================================================
+--
+-- Symptom (before fix): `mxcli check` refused a call argument written the way
+-- Studio Pro writes an associated object — the association followed by the
+-- target entity — with MDL049 "passes an association path … CE0117". 42
+-- untouched microflows in Evora Factory Management (Mendix 10.24) were refused,
+-- so `exec` would not re-apply their own `describe` output without --no-check,
+-- although `mx check` reports 0 errors on the project.
+--
+-- Measured (mxbuild 10.24.15 and 11.13.0, one microflow per argument):
+--   $A/Probe.A_B                          CE0117   <- still refused (MDL049)
+--   $A/Probe.A_B/Probe.B                  0 errors
+--   $A/Probe.A_Bs/Probe.B   (List param)  0 errors
+--   $A/Probe.A_B/Probe.B/Probe.B_C/Probe.C 0 errors
+--
+-- Usage (expected to PASS check):
+--   mxcli check mdl-examples/bug-tests/check-fp-assoc-entity-path.mdl
+-- The refused bare form stays in ledger-44-assoc-path-as-value.fail.mdl.
+-- ============================================================================
+
+mdl 1;
+
+create module Probe;
+create persistent entity Probe.A ( Name: String(100) );
+create persistent entity Probe.B ( Label: String(100) );
+create persistent entity Probe.C ( Code: String(100) );
+create association Probe.A_B from Probe.A to Probe.B;
+create association Probe.A_Bs from Probe.A to Probe.B type ReferenceSet;
+create association Probe.B_C from Probe.B to Probe.C;
+
+create microflow Probe.ConsumeB ($B: Probe.B) returns Boolean begin return true; end;
+create microflow Probe.ConsumeC ($C: Probe.C) returns Boolean begin return true; end;
+create microflow Probe.ConsumeBList ($Bs: list of Probe.B) returns Boolean begin return true; end;
+
+create microflow Probe.PassAssociatedObject ($A: Probe.A) returns Boolean begin
+  $R = call microflow Probe.ConsumeB(B = $A/Probe.A_B/Probe.B);
+  return $R;
+end;
+
+create microflow Probe.PassReferenceSetAsList ($A: Probe.A) returns Boolean begin
+  $R = call microflow Probe.ConsumeBList(Bs = $A/Probe.A_Bs/Probe.B);
+  return $R;
+end;
+
+create microflow Probe.PassTwoHops ($A: Probe.A) returns Boolean begin
+  $R = call microflow Probe.ConsumeC(C = $A/Probe.A_B/Probe.B/Probe.B_C/Probe.C);
+  return $R;
+end;

@@ -12,6 +12,19 @@ and **Docker is only needed for the first**:
   (8081/8091) and its own `<project>_test` database, so a `mxcli run --local`
   dev loop can keep serving the same project while tests run.
 
+`--local` provisions that scratch database on PostgreSQL by default. On a machine
+without PostgreSQL — where it would stop with *no local PostgreSQL superuser
+available to create the role/database* — pass `--db-type hsqldb` to boot on the
+runtime's built-in file database instead: no server and no provisioning. It
+takes the same values as `run --local --db-type` (`postgresql`, the default, or
+`hsqldb`), keeps the `<project>_test` scratch name so it never shares files with
+a `run --local --db-type hsqldb` dev loop, and is refused with `--attach` and on
+the Docker path, which do not boot a database of their own.
+
+```bash
+mxcli test tests/ -p app.mpr --local --db-type hsqldb
+```
+
 A `--local` run boots the app with the same **constant values** `mxcli run --local`
 uses — the project configuration's shared overrides layered over each constant's
 default — and prints what it applied. Use `--configuration <name>` to choose

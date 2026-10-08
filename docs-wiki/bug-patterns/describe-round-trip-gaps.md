@@ -3,7 +3,7 @@ title: DESCRIBE Round-Trip Gaps
 category: bug-pattern
 last-synced: 888e78cf
 sources:
-  - .claude/skills/fix-issue/findings/mdl-executor.jsonl
+  - .claude/skills/fix-issue/findings/mdl-executor/
   - mdl/executor/cmd_workflows.go
   - mdl/executor/cmd_pages_describe_pluggable.go
   - mdl/executor/cmd_microflows_show_crossed.go
@@ -13,7 +13,7 @@ sources:
 ---
 
 > **Do not duplicate**: the per-construct fix recipes live in the findings
-> (`grep -l describe .claude/skills/fix-issue/findings/*.jsonl`), the MDL syntax
+> (`grep -rl describe .claude/skills/fix-issue/findings/`), the MDL syntax
 > in `docs/01-project/MDL_QUICK_REFERENCE.md`, the round-trip requirement in
 > CLAUDE.md's PR checklist, and the irreducible-graph design in
 > [its proposal](../../docs/11-proposals/PROPOSAL_structured_microflow_description.md).
