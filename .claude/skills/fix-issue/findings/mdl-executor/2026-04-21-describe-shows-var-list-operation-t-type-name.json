@@ -1,0 +1,1 @@
+{"area": "mdl/executor", "date": "2026-04-21", "symptom": "`describe` shows `$var = list operation %T;` (with type name)", "cause": "Missing formatter case", "file": "`mdl/executor/cmd_microflows_format_action.go` → `formatListOperation()`", "insight": "Add `case *microflows.XxxOperation:` before the `default`"}
