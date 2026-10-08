@@ -1,0 +1,22 @@
+-- Control for check-grant-unknown-reference-refused.mdl: grants whose names all
+-- resolve — stored or created above the grant in the same script — must keep
+-- passing check --references, as must System module roles in a user role and
+-- the revokes exec treats as no-ops (a cleanup script stays re-runnable after
+-- the role itself is gone). Uses the Administration module (in every blank app).
+
+mdl 1;
+
+grant read (FullName), write (FullName) on entity Administration.Account to Administration.Administrator;
+
+create module role Administration.BugGrantAuditor;
+grant read * on entity Administration.Account to Administration.BugGrantAuditor;
+
+create persistent entity Administration.BugGrantThing (Name: String(10));
+grant read (Name), write (Name) on entity Administration.BugGrantThing to Administration.BugGrantAuditor;
+
+create microflow Administration.BugGrantFlow () begin end;
+grant execute on microflow Administration.BugGrantFlow to Administration.BugGrantAuditor;
+revoke execute on microflow Administration.BugGrantFlow from Administration.BugGrantGone;
+
+create user role BugGrantAuditor ( ModuleRoles: (Administration.BugGrantAuditor, System.User) );
+create demo user 'bug_grant_auditor' ( Password: 'Probe!23456789', Entity: Administration.Account, UserRoles: (BugGrantAuditor) );
