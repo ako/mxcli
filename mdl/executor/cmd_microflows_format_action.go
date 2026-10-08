@@ -118,6 +118,19 @@ func refreshModifier(refresh bool) string {
 //
 // Widget and workflow expressions are not microflow expressions: they are
 // stored as written in both languages, so their describers only trim.
+// describeCallArgument renders a call microflow / call nanoflow argument. A
+// blank stored argument — the mapping is present, its expression empty, which
+// is what Studio Pro writes for an argument field left empty — is `nothing`.
+// Printing it through describeExpr gave `Param = ,` / `Param = )`, which does
+// not parse; `empty` would re-store the Mendix value "empty" and omitting the
+// argument would drop the mapping, so neither round-trips.
+func describeCallArgument(ctx *ExecContext, v string) string {
+	if strings.TrimSpace(v) == "" {
+		return "nothing"
+	}
+	return describeExpr(ctx, v)
+}
+
 func describeExpr(ctx *ExecContext, v string) string {
 	return describeExprText(ctx, strings.TrimSpace(v))
 }
@@ -756,7 +769,7 @@ func formatAction(
 				if idx := strings.LastIndex(paramName, "."); idx != -1 {
 					paramName = paramName[idx+1:]
 				}
-				params = append(params, fmt.Sprintf("%s = %s", paramName, describeExpr(ctx, pm.Argument)))
+				params = append(params, fmt.Sprintf("%s = %s", paramName, describeCallArgument(ctx, pm.Argument)))
 			}
 		}
 
@@ -789,7 +802,7 @@ func formatAction(
 				if idx := strings.LastIndex(paramName, "."); idx != -1 {
 					paramName = paramName[idx+1:]
 				}
-				params = append(params, fmt.Sprintf("%s = %s", paramName, describeExpr(ctx, pm.Argument)))
+				params = append(params, fmt.Sprintf("%s = %s", paramName, describeCallArgument(ctx, pm.Argument)))
 			}
 		}
 
