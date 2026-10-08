@@ -1273,7 +1273,9 @@ func traverseFlow(
 			*lines = append(*lines, indentStr+"end if;")
 			recordSourceMap(sourceMap, currentID, startLine, len(*lines)+headerLineCount-1)
 
-			continueAfterSplitJoin(ctx, mergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
+			if armFallsInto(currentID, mergeID, flowsByOrigin, labels) {
+				continueAfterSplitJoin(ctx, mergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
+			}
 		}
 		return
 	}
@@ -1495,7 +1497,9 @@ func traverseFlowUntilMerge(
 			*lines = append(*lines, indentStr+"end if;")
 			recordSourceMap(sourceMap, currentID, startLine, len(*lines)+headerLineCount-1)
 
-			continueAfterNestedSplitJoin(ctx, nestedMergeID, mergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
+			if armFallsInto(currentID, nestedMergeID, flowsByOrigin, labels) {
+				continueAfterNestedSplitJoin(ctx, nestedMergeID, mergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
+			}
 		}
 		return
 	}
@@ -1673,6 +1677,38 @@ func continueAfterNestedSplitJoin(
 		return
 	}
 	traverseFlowUntilMerge(ctx, joinID, parentMergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
+}
+
+// armFallsInto reports whether some arm of splitID reaches joinID by falling
+// out of the `if` — rather than every arm returning, or ending in a `join` of
+// a crossed merge first. When none does, nothing arrives at the join after
+// `end if`, and a `join` of it there would be an edge out of nothing (a path
+// the builder then invents). Only a crossed join can be left unreached this
+// way; every other join is reported as reached.
+func armFallsInto(splitID, joinID model.ID, flowsByOrigin map[model.ID][]*microflows.SequenceFlow, labels mergeLabels) bool {
+	if !labels.isCrossed(joinID) {
+		return true
+	}
+	seen := map[model.ID]bool{splitID: true}
+	queue := []model.ID{}
+	for _, f := range findNormalFlows(flowsByOrigin[splitID]) {
+		queue = append(queue, f.DestinationID)
+	}
+	for len(queue) > 0 {
+		id := queue[0]
+		queue = queue[1:]
+		if id == joinID {
+			return true
+		}
+		if id == "" || seen[id] || labels.isCrossed(id) {
+			continue
+		}
+		seen[id] = true
+		for _, f := range findNormalFlows(flowsByOrigin[id]) {
+			queue = append(queue, f.DestinationID)
+		}
+	}
+	return false
 }
 
 // emitJoinAsLoopHeader writes a split's join as `while true` when it is also

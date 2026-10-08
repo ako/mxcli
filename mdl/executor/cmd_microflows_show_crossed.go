@@ -82,6 +82,9 @@ func labelCrossedMerges(col *microflows.MicroflowObjectCollection) mergeLabels {
 	for id := range sharedHandlerEntries(col, objects) {
 		needsLabel[id] = true
 	}
+	for id := range interleavedIfEntries(col, objects, findings) {
+		needsLabel[id] = true
+	}
 	for _, f := range findings {
 		if f.Class != microflowgraph.Recombinable || len(f.Entries) != 1 {
 			continue
@@ -356,6 +359,59 @@ func sharedArmEntries(
 			out[id] = true
 		}
 		out[join] = true
+	}
+	return out
+}
+
+// interleavedIfEntries labels every entry of an interleaved `if` whose entries
+// are all merges, and its join when that is a merge too.
+//
+// An `if` renders its arms with nothing shared between them but the visited
+// set, so a region two arms reach at different depths was written inline in
+// the first arm and as "fall out of the if" in the other — which lands on
+// whatever follows the `if`, not on the region (Evora: OIDC.GetLoginEndpoint,
+// whose inner arm skipped the authorization URL). Every entry being a merge is
+// what makes the crossed vocabulary enough: each arm that reaches one ends in
+// `join`, and each region is printed once, in its own section, ending in a
+// `join` of the next. An entry that is an activity would have to be split off a
+// merge that does not exist, so those keep MDL-FLOW01.
+//
+// Only `if`: a `case`/`split type` overlap is sharedArmEntries' business, which
+// carries its own conditions.
+func interleavedIfEntries(
+	col *microflows.MicroflowObjectCollection,
+	objects map[model.ID]microflows.MicroflowObject,
+	findings []microflowgraph.Finding,
+) map[model.ID]bool {
+	out := map[model.ID]bool{}
+	flowsByOrigin := map[model.ID][]*microflows.SequenceFlow{}
+	for _, fl := range col.Flows {
+		if fl != nil {
+			flowsByOrigin[fl.OriginID] = append(flowsByOrigin[fl.OriginID], fl)
+		}
+	}
+	for _, f := range findings {
+		if f.Class != microflowgraph.Interleaved {
+			continue
+		}
+		if _, ok := f.Split.(*microflows.ExclusiveSplit); !ok || hasEnumCaseFlows(findNormalFlows(flowsByOrigin[f.SplitID])) {
+			continue
+		}
+		allMerges := len(f.Entries) > 0
+		for _, id := range f.Entries {
+			if _, isMerge := objects[id].(*microflows.ExclusiveMerge); !isMerge {
+				allMerges = false
+			}
+		}
+		if !allMerges {
+			continue
+		}
+		for _, id := range f.Entries {
+			out[id] = true
+		}
+		if _, isMerge := objects[f.JoinID].(*microflows.ExclusiveMerge); isMerge {
+			out[f.JoinID] = true
+		}
 	}
 	return out
 }
