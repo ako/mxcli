@@ -9,6 +9,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/backend"
 	"github.com/mendixlabs/mxcli/mdl/linter"
+	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
 )
 
@@ -38,6 +39,16 @@ import (
 // Whatever that policy, only a call KNOWN to be void counts for the CE0109
 // rule (MDL093): "possibly void" must never turn a use of the output into an
 // error.
+//
+// Calls to a void MICROFLOW or NANOFLOW are the same case. Studio Pro stores
+// them with an output name and UseReturnVariable=true (Evora Factory
+// Management's OIDC.webCallback calls the void ACT_ShowCusomExceptionMessage
+// three times as `$Variable_1`), and mxbuild treats the name as inert. Measured
+// on mxbuild 10.24.15 and 11.13.0: two void microflow calls of one name, a void
+// call then a declare of it, and two void nanoflow calls are 0 errors; reading
+// a void microflow call's output is CE0109; two String microflow calls are
+// CE0111 (control). Without the flows in here, check refused those stored
+// microflows' own describe output with MDL063.
 type voidCodeActions struct {
 	// script holds the actions the script itself creates, keyed by
 	// codeActionKey, valued true when the action returns Void.
@@ -60,6 +71,20 @@ type voidness struct {
 	known bool // the action was found, so void is an answer and not a default
 }
 
+// flowKey keys a microflow or nanoflow in the same maps as the code actions.
+func flowKey(nanoflow bool, qn string) string {
+	if nanoflow {
+		return "nf:" + qn
+	}
+	return "mf:" + qn
+}
+
+// flowReturnsVoid reports whether a stored flow's return type is Void: no
+// return type at all, or an explicit VoidType.
+func flowReturnsVoid(rt microflows.DataType) bool {
+	return rt == nil || rt.GetTypeName() == "Void"
+}
+
 func codeActionKey(javaScript bool, qn string) string {
 	if javaScript {
 		return "js:" + qn
@@ -80,6 +105,10 @@ func newVoidCodeActions(prog *ast.Program, open func() backend.FullBackend) *voi
 			r.script[codeActionKey(false, s.Name.String())] = s.ReturnType.Kind == ast.TypeVoid
 		case *ast.CreateJavaScriptActionStmt:
 			r.script[codeActionKey(true, s.Name.String())] = s.ReturnType.Kind == ast.TypeVoid
+		case *ast.CreateMicroflowStmt:
+			r.script[flowKey(false, s.Name.String())] = s.ReturnType == nil || s.ReturnType.Type.Kind == ast.TypeVoid
+		case *ast.CreateNanoflowStmt:
+			r.script[flowKey(true, s.Name.String())] = s.ReturnType == nil || s.ReturnType.Type.Kind == ast.TypeVoid
 		}
 	}
 	return r
@@ -105,7 +134,48 @@ func (r *voidCodeActions) resolve(javaScript bool, qn string) voidness {
 	if r == nil || qn == "" {
 		return voidness{}
 	}
-	key := codeActionKey(javaScript, qn)
+	return r.lookup(codeActionKey(javaScript, qn), func(b backend.FullBackend) voidness {
+		if javaScript {
+			if a, err := b.ReadJavaScriptActionByName(qn); err == nil && a != nil && a.ReturnType != nil {
+				return voidness{void: a.ReturnType.TypeString() == "Void", known: true}
+			}
+			return voidness{}
+		}
+		// The Java action reader returns a nil ReturnType for Void
+		// (codeActionReturnTypeFromGen); the JavaScript one a VoidType.
+		if a, err := b.ReadJavaActionByName(qn); err == nil && a != nil {
+			return voidness{void: a.ReturnType == nil || a.ReturnType.TypeString() == "Void", known: true}
+		}
+		return voidness{}
+	})
+}
+
+// resolveFlow looks a called microflow or nanoflow up: in the script first,
+// then in the project.
+func (r *voidCodeActions) resolveFlow(nanoflow bool, qn string) voidness {
+	if r == nil || qn == "" {
+		return voidness{}
+	}
+	return r.lookup(flowKey(nanoflow, qn), func(b backend.FullBackend) voidness {
+		objectType := "microflow"
+		if nanoflow {
+			objectType = "nanoflow"
+		}
+		raw, err := b.GetRawUnitByName(objectType, qn)
+		if err != nil || raw == nil || len(raw.Contents) == 0 {
+			return voidness{}
+		}
+		mf, err := b.ParseMicroflowBSON(raw.Contents, model.ID(raw.ID), "")
+		if err != nil || mf == nil {
+			return voidness{}
+		}
+		return voidness{void: flowReturnsVoid(mf.ReturnType), known: true}
+	})
+}
+
+// lookup answers key from the script, the caches, and finally the project
+// through read.
+func (r *voidCodeActions) lookup(key string, read func(backend.FullBackend) voidness) voidness {
 	if v, ok := r.script[key]; ok {
 		return voidness{void: v, known: true}
 	}
@@ -118,17 +188,7 @@ func (r *voidCodeActions) resolve(javaScript bool, qn string) voidness {
 	}
 	var got voidness
 	if b := r.project(); b != nil {
-		if javaScript {
-			if a, err := b.ReadJavaScriptActionByName(qn); err == nil && a != nil && a.ReturnType != nil {
-				got = voidness{void: a.ReturnType.TypeString() == "Void", known: true}
-			}
-		} else {
-			// The Java action reader returns a nil ReturnType for Void
-			// (codeActionReturnTypeFromGen); the JavaScript one a VoidType.
-			if a, err := b.ReadJavaActionByName(qn); err == nil && a != nil {
-				got = voidness{void: a.ReturnType == nil || a.ReturnType.TypeString() == "Void", known: true}
-			}
-		}
+		got = read(b)
 	}
 	r.cache[key] = got
 	r.shared.put(key, got)
@@ -151,6 +211,10 @@ func (r *voidCodeActions) callResolution(s ast.MicroflowStatement) (v voidness, 
 		return r.resolve(false, st.ActionName.String()), true
 	case *ast.CallJavaScriptActionStmt:
 		return r.resolve(true, st.ActionName.String()), true
+	case *ast.CallMicroflowStmt:
+		return r.resolveFlow(false, st.MicroflowName.String()), true
+	case *ast.CallNanoflowStmt:
+		return r.resolveFlow(true, st.NanoflowName.String()), true
 	}
 	return voidness{}, false
 }
@@ -177,6 +241,14 @@ func (r *voidCodeActions) actionIsVoidCall(action any) bool {
 		return r.treatAsVoid(r.resolve(false, a.JavaAction))
 	case *microflows.JavaScriptActionCallAction:
 		return r.treatAsVoid(r.resolve(true, a.JavaScriptAction))
+	case *microflows.MicroflowCallAction:
+		if a.MicroflowCall != nil {
+			return r.treatAsVoid(r.resolveFlow(false, a.MicroflowCall.Microflow))
+		}
+	case *microflows.NanoflowCallAction:
+		if a.NanoflowCall != nil {
+			return r.treatAsVoid(r.resolveFlow(true, a.NanoflowCall.Nanoflow))
+		}
 	}
 	return false
 }
