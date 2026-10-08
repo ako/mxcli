@@ -711,8 +711,16 @@ callArgumentList
 // A bare expression — an argument by position — is never accepted: it parses
 // only so the visitor can refuse it AT the argument, naming `Param = …`, rather
 // than leave ANTLR to report a token error somewhere before it (#569).
+//
+// `Param = nothing` is a BLANK argument: the parameter mapping is present and
+// its expression is empty, which is what Studio Pro stores when a call's
+// argument field is left blank (`Argument: ""`). It is not `empty` — that is
+// a Mendix value, stored as the text `empty` — and not an omitted argument,
+// which writes no mapping at all. Only call microflow / call nanoflow take it
+// (the visitor refuses it elsewhere). NOTHING is listed before expression so
+// the keyword wins over reading `nothing` as a name.
 callArgument
-    : (VARIABLE /* @alias MDL-DEPR006 */ | parameterName) EQUALS expression
+    : (VARIABLE /* @alias MDL-DEPR006 */ | parameterName) EQUALS (NOTHING | expression)
     | parameterName COLON /* @alias MDL-DEPR007 */ expression
     | expression                                  // positional: refused by the visitor
     ;
