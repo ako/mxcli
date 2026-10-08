@@ -210,6 +210,10 @@ type AlterProjectSecurityStmt struct {
 	// A pointer, so "the statement said nothing about it" is distinguishable
 	// from "the statement asked for off".
 	StrictModeEnabled *bool
+	// AdminUserName renames the built-in administrator account (MxAdmin by
+	// default). Empty means "keep what is stored". Its password is deliberately
+	// not settable from MDL (mendixlabs/mxcli#624).
+	AdminUserName string
 }
 
 func (s *AlterProjectSecurityStmt) isStatement() {}

@@ -40,8 +40,8 @@ func TestDetachedDocComments(t *testing.T) {
 		src:  "/** e */\ncreate persistent entity M.E (Name: String(20));\n/** c */\ncreate constant M.C (Type: String, DefaultValue: 'x');\n",
 	}, {
 		name: "a create that stores no documentation",
-		src:  "/** m */\ncreate module Sales;\n/** e */\ncreate persistent entity Sales.E (Name: String(20));\n",
-		want: []ast.DetachedDocComment{{Line: 1, Statement: "create module Sales",
+		src:  "/** m */\ncreate module role Sales.User;\n/** e */\ncreate persistent entity Sales.E (Name: String(20));\n",
+		want: []ast.DetachedDocComment{{Line: 1, Statement: "create module role Sales.User",
 			Next: "create persistent entity Sales.E", NextLine: 4}},
 	}} {
 		t.Run(tc.name, func(t *testing.T) {

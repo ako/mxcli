@@ -211,6 +211,18 @@ func (b *Backend) SetProjectStrictMode(unitID model.ID, enabled bool) error {
 	return b.persistUnit(unitID, ps)
 }
 
+// SetProjectAdminUserName renames the built-in administrator account
+// (Security$ProjectSecurity.AdminUserName, MxAdmin by default). The password
+// is left as stored: MDL does not set it (mendixlabs/mxcli#624).
+func (b *Backend) SetProjectAdminUserName(unitID model.ID, name string) error {
+	ps, err := b.loadProjectSecurityGen(unitID)
+	if err != nil {
+		return err
+	}
+	ps.SetAdminUserName(name)
+	return b.persistUnit(unitID, ps)
+}
+
 // SetProjectGuestAccess toggles anonymous (guest) access. An empty
 // guestUserRole leaves the stored role alone, so turning access off and back on
 // does not lose it.

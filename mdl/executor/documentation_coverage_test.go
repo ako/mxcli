@@ -55,6 +55,7 @@ var docCarryDone = map[string]bool{
 	"CreateKnowledgeBaseStmt":        true,
 	"CreateConsumedMCPServiceStmt":   true,
 	"CreateAgentStmt":                true,
+	"CreateModuleStmt":               true,
 }
 
 // docCarryPending is empty: every statement type in scope is carried AND

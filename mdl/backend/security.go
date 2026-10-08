@@ -30,6 +30,10 @@ type ProjectSecurityBackend interface {
 	// READ (it is what lint rule SEC005 reports on) and could not write, so the
 	// rule had no remedy short of Studio Pro (ako/mxcli#526).
 	SetProjectStrictMode(unitID model.ID, enabled bool) error
+	// SetProjectAdminUserName renames the built-in administrator account
+	// (Security$ProjectSecurity.AdminUserName), which lint reads as
+	// project_security().admin_user_name (mendixlabs/mxcli#1314).
+	SetProjectAdminUserName(unitID model.ID, name string) error
 	// SetProjectGuestAccess toggles anonymous access. An empty guestUserRole
 	// leaves the stored role untouched — the caller is responsible for having
 	// established that a role exists, because Mendix raises CE0133 on guest

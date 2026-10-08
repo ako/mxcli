@@ -685,6 +685,22 @@ func (b *Backend) SetDomainModelAnnotations(domainModelID model.ID, annotations 
 	return b.persistDM(domainModelID, gdm)
 }
 
+// SetDomainModelDocumentation sets DomainModels$DomainModel.Documentation, the
+// domain model's own documentation and the only documentation a module has
+// (mendixlabs/mxcli#1314). It loads the stored unit and changes that one
+// property, so entities, associations and annotations pass through as stored.
+func (b *Backend) SetDomainModelDocumentation(domainModelID model.ID, documentation string) error {
+	if b.writer == nil {
+		return fmt.Errorf("SetDomainModelDocumentation: not connected for writing")
+	}
+	gdm, err := b.loadDomainModelGen(domainModelID)
+	if err != nil {
+		return err
+	}
+	gdm.SetDocumentation(documentation)
+	return b.persistDM(domainModelID, gdm)
+}
+
 // entityIsExternal reports whether a stored entity is an external (OData) one,
 // whose attributes carry mapped remote values rather than plain Mendix types.
 //
