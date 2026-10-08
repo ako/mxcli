@@ -1213,8 +1213,7 @@ func (v *microflowValidator) checkReturn(stmt *ast.ReturnStmt) {
 				return
 			}
 		}
-		v.addViolation("MDL004", linter.SeverityError,
-			"return has a value but microflow does not declare a return type",
+		v.addViolation("MDL004", linter.SeverityError, voidReturnValueMessage,
 			"Remove the return value or add a return type to the microflow")
 		return
 	}
