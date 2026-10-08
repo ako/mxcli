@@ -28,10 +28,10 @@ func (p *parserImpl) Parse(src string, ctx Context) (RobustExpr, []Hint) {
 	// Detect unconsumed trailing tokens (e.g. "emptyor" parsed as a variable,
 	// leaving "$X = ''" silently abandoned). This indicates a structural parse
 	// error — most commonly a keyword glued to an adjacent token without whitespace.
-	// TokError tokens (unrecognised characters such as ':') are excluded: the
-	// parser's E007 recovery already handles them inline; re-reporting them here
-	// would produce false positives for valid expressions that use characters
-	// the lexer does not model (e.g. "$Total : $Count" with Mendix ':' division).
+	// TokError tokens (unrecognised characters) are excluded: the parser's E007
+	// recovery already handles them inline. That exclusion is also why ':' had
+	// to become an operator rather than stay a TokError: as an error token it
+	// ended the parse silently, so `x : 4 < $Max` was checked as just `x`.
 	if t := s.Peek(); t.Kind != TokEOF && t.Kind != TokError {
 		// This hint used to carry no code, no document and no microflow: the
 		// location held only a line and column, which are the offsets WITHIN the
@@ -341,8 +341,10 @@ func parseMul(s *Stream, ctx Context) (RobustExpr, []Hint) {
 	left, hints := parseUnary(s, ctx)
 	for {
 		t := s.Peek()
+		// One left-associative level for every multiplicative operator: `*`,
+		// `div`, `:` (division, spelled after ÷) and `mod`.
 		isDivMod := t.Kind == TokIdent && (t.Text == "div" || t.Text == "mod")
-		if t.Kind != TokStar && !isDivMod {
+		if t.Kind != TokStar && t.Kind != TokColon && !isDivMod {
 			break
 		}
 		op := s.Consume().Text
@@ -751,7 +753,7 @@ func inferKind(e RobustExpr, ctx Context) TypeKind {
 		switch n.Op {
 		case "AND", "OR", "=", "!=", "<", "<=", ">", ">=":
 			return KindBoolean
-		case "div":
+		case "div", ":":
 			// Mendix division always yields a Decimal, even Integer div Integer.
 			// Assigning the result to an Integer/Long fails mx check with CE0117.
 			return KindDecimal
