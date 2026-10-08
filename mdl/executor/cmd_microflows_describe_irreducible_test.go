@@ -154,7 +154,37 @@ func TestDescribeIrreducible_SharedCaseArmsArePrintedOnce(t *testing.T) {
 	}
 }
 
-// The regression control: a properly nested graph describes
+// Shape 3 — a manual loop whose header is reached inside a branch. The top
+// level writes `while true` for such a merge; a branch walked through it as a
+// plain merge, so the way round came back to an activity already printed and
+// stopped in silence. The description had no back-edge and re-executed to a
+// flow that ENDS where the original goes round again (Evora:
+// AmazonBedrockConnector.AmazonBedrockAgent_Sync and _KnowledgeBase_Sync, the
+// pagination loop, MDL003). `while true` with a `return` inside is how such a
+// loop is authored: the builder writes a merge and a back-edge, not a loop
+// activity.
+const loopInsideBranchMDL = `create microflow M.LoopInsideBranch ($R: Boolean) returns Integer
+begin
+  if $R then
+    declare $N Integer = 0;
+    while true
+    begin
+      set $N = $N + 1;
+      if $N > 3 then
+        return $N;
+      end if;
+    end while;
+  else
+    return 0;
+  end if;
+end;`
+
+func TestDescribeIrreducible_LoopInsideBranchKeepsItsBackEdge(t *testing.T) {
+	out, oc := describeBuilt(t, loopInsideBranchMDL)
+	assertDescriptionRebuildsGraph(t, out, oc)
+}
+
+// The regression control for all three: a properly nested graph describes
 // exactly as before. Pinned as text, because "no labels and no warnings" is
 // the claim, and a graph check alone would accept a reshuffled description.
 func TestDescribeIrreducible_NestedGraphUnchanged(t *testing.T) {

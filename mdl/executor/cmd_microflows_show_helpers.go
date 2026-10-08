@@ -1355,6 +1355,27 @@ func traverseFlowUntilMerge(
 			visited[currentID] = true
 			*lines = append(*lines, mergeDeclarationLines(indent, label, obj, annotationsByTarget.layoutKeep())...)
 		}
+		// A manual loop's header reached inside a branch: the same `while true`
+		// traverseFlow writes at the top level, for the same reason. Walked
+		// through as a plain merge, the path round the loop came back to an
+		// activity already printed and stopped there in silence, so the
+		// description had no back-edge at all and re-executed to a flow that
+		// ENDS where the original goes round again (Evora's
+		// AmazonBedrockConnector.*_Sync pagination loops).
+		//
+		// Only a merge whose way round avoids what is already being described
+		// is a header. A merge on the path BACK to an enclosing header is on a
+		// cycle too, but it is that loop's back-edge, not a loop of its own.
+		if !visited[currentID] && mergeIsUndescribedLoopHeader(currentID, mergeID, flowsByOrigin, visited) {
+			visited[currentID] = true
+			*lines = append(*lines, strings.Repeat("  ", indent)+"while true")
+			*lines = append(*lines, strings.Repeat("  ", indent)+"begin")
+			for _, flow := range findNormalFlows(flowsByOrigin[currentID]) {
+				traverseFlowUntilMerge(ctx, flow.DestinationID, currentID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent+1, sourceMap, headerLineCount, annotationsByTarget, labels)
+			}
+			*lines = append(*lines, strings.Repeat("  ", indent)+"end while;")
+			return
+		}
 		flows := flowsByOrigin[currentID]
 		for _, flow := range flows {
 			traverseFlowUntilMerge(ctx, flow.DestinationID, mergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
@@ -1863,6 +1884,27 @@ func isMergePairedWithSplit(mergeID model.ID, splitMergeMap map[model.ID]model.I
 func mergeHasLoopBackEdge(mergeID model.ID, flowsByOrigin map[model.ID][]*microflows.SequenceFlow) bool {
 	for _, flow := range findNormalFlows(flowsByOrigin[mergeID]) {
 		if reachesObject(flow.DestinationID, mergeID, flowsByOrigin, map[model.ID]bool{}) {
+			return true
+		}
+	}
+	return false
+}
+
+// mergeIsUndescribedLoopHeader reports whether a merge heads a loop the
+// description has not entered yet: some path out of it comes back to it
+// without passing the enclosing stop or anything already printed.
+func mergeIsUndescribedLoopHeader(mergeID, stopID model.ID, flowsByOrigin map[model.ID][]*microflows.SequenceFlow, visited map[model.ID]bool) bool {
+	blocked := map[model.ID]bool{}
+	for id, v := range visited {
+		if v {
+			blocked[id] = true
+		}
+	}
+	if stopID != "" && stopID != mergeID {
+		blocked[stopID] = true
+	}
+	for _, flow := range findNormalFlows(flowsByOrigin[mergeID]) {
+		if reachesObject(flow.DestinationID, mergeID, flowsByOrigin, cloneVisited(blocked)) {
 			return true
 		}
 	}
