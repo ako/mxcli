@@ -1474,7 +1474,7 @@ MDL uses explicit property declarations for pages:
 | Pop-up close button | `PopupCloseAction: <widgetName>` | `(Layout: Atlas_Core.PopupLayout, PopupCloseAction: cancelButton1)` — names a widget on this page. Not carried from the stored document on a rewrite: the statement rebuilds the widget tree, so a carried name could dangle |
 | DataView read-only style | `ReadOnlyStyle: Inherit\|Control\|Text` | `dataview dv (datasource: $O, ReadOnlyStyle: Text)` — a DataView's own, distinct from a checkbox's. **Control** is Studio Pro's default here, not Inherit |
 | Page CSS class / style | `Class: 'css-class', Style: 'css: rule'` | `(Title: 'Home', Class: 'container-fluid bg-light', Style: 'min-height: 100vh')` — the page's Appearance |
-| Page variables | `variables: ( $name: type = 'expr' )` | `variables: ( $show: boolean = 'true' )` |
+| Page variables | `variables: ( $name: type = <expr> )` | `variables: ( $show: boolean = true )` |
 | Page parameters | `params: ( $name: type, … )` | `params: ( $Order: Shop.Order )` — a map, in `( )`; `params: { … }` is the deprecated spelling (MDL-DEPR123) |
 | Snippet call arguments | `snippetcall s (snippet: M.S, params: (Param = $var))` | Bound as at every call site, `Param = value` (R4). `params: {$Param: $var}` is deprecated (MDL-DEPR126) |
 | Text template parameters | `contentparams: ({1} = expr, …)` | Also `captionparams:` and a pluggable widget's `<Name>Params:`. `[…]` is deprecated (MDL-DEPR124) |
@@ -1717,7 +1717,7 @@ This is the generic ALTER — `alter <type> Module.Name { set (Key: value) on <t
 | Set column prop | `set (caption: 'New') on dgGrid column(Attr)` | A DataGrid 2 column by its attribute, or `column('Caption')`; `@n` when two columns match. The older `dgGrid.colName` (a derived name) still works |
 | Drop attribute | `drop dgGrid column(Attr)` | Remove a DataGrid column |
 | Insert column | `insert after dgGrid column(Attr) { column (…) }` | Add attribute to DataGrid; a column takes no name |
-| Add variable | `add variables $name: type = 'expr'` | Add a page variable |
+| Add variable | `add variables $name: type = <expr>` | Add a page variable |
 | Drop variable | `drop variables $name` | Remove a page variable |
 | Add parameter | `add parameters $name: type` | Add a page/snippet parameter (entity or primitive; snippet: entity only). A page with a `Url` needs a `{name}` segment — `set (Url: …)` in the same statement |
 | Drop parameter | `drop parameters $name` | Remove a parameter; refused while the page still uses it |

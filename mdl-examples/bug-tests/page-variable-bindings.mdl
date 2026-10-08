@@ -46,8 +46,8 @@ create or modify page PV.VarPage
     Layout: Atlas_Core.Atlas_Default,
     Params: ( $Thing: PV.Thing ),
     Variables: (
-      $Filter: Enumeration(PV.ENUM_Status) = 'PV.ENUM_Status.Open',
-      $Show: Boolean = 'true',
+      $Filter: Enumeration(PV.ENUM_Status) = PV.ENUM_Status.Open,
+      $Show: Boolean = true,
       $Label: String = '''hello'''
     )
   )

@@ -95,7 +95,7 @@ type pageBuilder struct {
 	// reference as a last line, ALTER included (canon.BareAttributeRefError).
 	tolerateDanglingRefs bool
 
-	// Local page/snippet variables (Variables: ( $name: Type = 'default' )).
+	// Local page/snippet variables (Variables: ( $name: Type = <default expression> )).
 	// Used to distinguish a $localVar reference from a page parameter when
 	// resolving TextTemplate parameters — local variables must be stored as
 	// Forms$PageVariable.LocalVariable in BSON, not as a literal Expression.

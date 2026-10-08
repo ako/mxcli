@@ -71,7 +71,7 @@ ALTER PAGE CRM.Customer_Edit {
 
 ```sql
 ALTER PAGE CRM.ProductOverview {
-  ADD Variables $showStockColumn: Boolean = 'if (3 < 4) then true else false'
+  ADD Variables $showStockColumn: Boolean = if (3 < 4) then true else false
 };
 ```
 
