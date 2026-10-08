@@ -110,6 +110,50 @@ func TestDescribeIrreducible_CrossedMergeInsideCaseArmIsPrintedOnce(t *testing.T
 	}
 }
 
+// Shape 1 — two arms of a `case` share an activity before the case's join,
+// and a third arm returns, which makes the overlap interleaved (it has two
+// entries) and so not something Mode 2 labelled. Every arm was walked with
+// its own visited set, so the shared activity was printed once per arm
+// (Evora: OIDC.handleAuthorizationCode — the token REST call twice, so the
+// description held an activity the model does not have, and MDL063).
+const sharedCaseArmsMDL = `create microflow M.SharedCaseArms ($E: M.Kind) returns Boolean
+begin
+  case $E
+    when One then
+      log info node 'T' 'one';
+      join shared_path;
+    when Two then
+      log info node 'T' 'two';
+      join shared_path;
+    when Three then
+      log info node 'T' 'three';
+      join rejoin_path;
+    when Four, (empty) then
+      return false;
+  end case;
+  merge shared_path;
+  log info node 'T' 'shared';
+  join rejoin_path;
+  merge rejoin_path;
+  log info node 'T' 'tail';
+  return true;
+end;`
+
+func TestDescribeIrreducible_SharedCaseArmsArePrintedOnce(t *testing.T) {
+	out, oc := describeBuilt(t, sharedCaseArmsMDL)
+	assertDescriptionRebuildsGraph(t, out, oc)
+	// Every arm now says where it goes, so the description IS the microflow
+	// and the MDL-FLOW01 refusal ("must not be re-executed") would be untrue.
+	if strings.Contains(out, "NOT equivalent") {
+		t.Errorf("a faithful description still carries the #923 refusal:\n%s", out)
+	}
+	for _, want := range []string{"'shared'", "'tail'"} {
+		if n := strings.Count(out, "node 'T' "+want); n != 1 {
+			t.Errorf("%s is printed %d times, want once:\n%s", want, n, out)
+		}
+	}
+}
+
 // The regression control: a properly nested graph describes
 // exactly as before. Pinned as text, because "no labels and no warnings" is
 // the claim, and a graph check alone would accept a reshuffled description.

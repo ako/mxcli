@@ -43,7 +43,10 @@ import (
 // entry, and per Böhm-Jacopini nesting them needs either a duplicated activity
 // or a boolean variable the user never wrote; `merge`/`join` can express the
 // graph, but the describer's branch structure cannot be built from one entry, so
-// they keep MDL-FLOW01 and are left alone rather than half-described.
+// they keep MDL-FLOW01 and are left alone rather than half-described. The one
+// exception is a multi-way split whose arms would each PRINT a shared activity
+// (sharedArmEntries): leaving that alone is not "half-described", it is a
+// description with an activity the model does not have.
 //
 // Labels are assigned in position order, for the same reason labelRejoinMerges
 // does it: map iteration order would make DESCRIBE unstable and turn every
@@ -72,7 +75,11 @@ func labelCrossedMerges(col *microflows.MicroflowObjectCollection) mergeLabels {
 	// is what the proposal's Mode 2 sketch does and why it wanted fall-through
 	// banned outright.
 	needsLabel := map[model.ID]bool{}
-	for _, f := range microflowgraph.Analyze(col.Objects, col.Flows) {
+	findings := microflowgraph.Analyze(col.Objects, col.Flows)
+	for id := range sharedArmEntries(col, objects, findings) {
+		needsLabel[id] = true
+	}
+	for _, f := range findings {
 		if f.Class != microflowgraph.Recombinable || len(f.Entries) != 1 {
 			continue
 		}
@@ -215,4 +222,170 @@ func emitCrossedMergeSections(
 		}
 	}
 	return declared
+}
+
+// sharedArmEntries finds the shared regions a multi-way split's arms would each
+// print, and returns the merges that must be labelled so they are printed once.
+//
+// A `case` or `split type` renders every arm with its own copy of the visited
+// set (emitEnumSplitStatement, emitInheritanceSplitStatement), walking each one
+// until the split's join. When two arms reach the same activity BEFORE that
+// join, both copies walk it, and the description prints it twice — the second
+// copy a different activity with the same output variable, which is what made
+// OIDC.handleAuthorizationCode fail check with MDL063 (Evora). The model has
+// one REST call where two of the four arms meet; the description had two.
+//
+// The fix is the crossed-merge vocabulary: every arm that reaches the shared
+// region `join`s it, and the region is printed once, in its own section. So the
+// entry of the region has to be a merge (there is nothing to name otherwise),
+// and the split's join is labelled too, because the section has to say where it
+// goes when it reaches the join — walking into it would print the rest of the
+// flow inline a second time.
+//
+// Deliberately narrow:
+//
+//   - only splits Analyze already flags, and only enumeration/type splits — the
+//     ones whose arms are walked independently. An if/else's ELSE copy already
+//     contains the THEN arm's objects, so it does not print a region twice;
+//   - only when the shared region holds a real activity. Arms that converge on
+//     a merge chain and nothing else print nothing twice, describe faithfully
+//     today, and must not change;
+//   - only when the join is the split's own describer merge and every entry is
+//     a merge. Anything else is left to the MDL-FLOW01 warning rather than half
+//     described.
+//
+// Nodes that can reach the split again are not part of a shared region: they
+// are a loop's way back round, which the arms share by construction.
+func sharedArmEntries(
+	col *microflows.MicroflowObjectCollection,
+	objects map[model.ID]microflows.MicroflowObject,
+	findings []microflowgraph.Finding,
+) map[model.ID]bool {
+	out := map[model.ID]bool{}
+	var candidates []model.ID
+	for _, f := range findings {
+		switch s := f.Split.(type) {
+		case *microflows.InheritanceSplit:
+			candidates = append(candidates, f.SplitID)
+		case *microflows.ExclusiveSplit:
+			if _, ok := enumSplitVariable(s); ok {
+				candidates = append(candidates, f.SplitID)
+			}
+		}
+	}
+	if len(candidates) == 0 {
+		return out
+	}
+
+	flowsByOrigin := map[model.ID][]*microflows.SequenceFlow{}
+	succ := map[model.ID][]model.ID{}
+	pred := map[model.ID][]model.ID{}
+	for _, fl := range col.Flows {
+		if fl == nil {
+			continue
+		}
+		flowsByOrigin[fl.OriginID] = append(flowsByOrigin[fl.OriginID], fl)
+		if fl.IsErrorHandler {
+			continue
+		}
+		succ[fl.OriginID] = append(succ[fl.OriginID], fl.DestinationID)
+		pred[fl.DestinationID] = append(pred[fl.DestinationID], fl.OriginID)
+	}
+	splitMerge := findSplitMergePointsForGraph(nil, objects, flowsByOrigin)
+
+	for _, splitID := range candidates {
+		flows := findNormalFlows(flowsByOrigin[splitID])
+		if _, ok := objects[splitID].(*microflows.ExclusiveSplit); ok && !hasEnumCaseFlows(flows) {
+			continue
+		}
+		join := splitMerge[splitID]
+		if _, isMerge := objects[join].(*microflows.ExclusiveMerge); !isMerge {
+			continue
+		}
+		reachesSplit := reachersOf(splitID, pred)
+
+		count := map[model.ID]int{}
+		seenArm := map[model.ID]bool{}
+		for _, fl := range flows {
+			if seenArm[fl.DestinationID] {
+				continue // two case values on one arm are one arm
+			}
+			seenArm[fl.DestinationID] = true
+			for id := range reachableUntil(fl.DestinationID, join, succ) {
+				if !reachesSplit[id] {
+					count[id]++
+				}
+			}
+		}
+		shared := map[model.ID]bool{}
+		holdsActivity := false
+		for id, n := range count {
+			if n < 2 {
+				continue
+			}
+			shared[id] = true
+			switch objects[id].(type) {
+			case *microflows.ExclusiveMerge, nil:
+			default:
+				holdsActivity = true
+			}
+		}
+		if !holdsActivity {
+			continue
+		}
+		var entries []model.ID
+		allMerges := true
+		for id := range shared {
+			for _, p := range pred[id] {
+				if !shared[p] {
+					entries = append(entries, id)
+					if _, isMerge := objects[id].(*microflows.ExclusiveMerge); !isMerge {
+						allMerges = false
+					}
+					break
+				}
+			}
+		}
+		if !allMerges || len(entries) == 0 {
+			continue
+		}
+		for _, id := range entries {
+			out[id] = true
+		}
+		out[join] = true
+	}
+	return out
+}
+
+// reachableUntil is every node reachable from start over normal flows without
+// passing through stop.
+func reachableUntil(start, stop model.ID, succ map[model.ID][]model.ID) map[model.ID]bool {
+	seen := map[model.ID]bool{}
+	queue := []model.ID{start}
+	for len(queue) > 0 {
+		id := queue[0]
+		queue = queue[1:]
+		if id == "" || id == stop || seen[id] {
+			continue
+		}
+		seen[id] = true
+		queue = append(queue, succ[id]...)
+	}
+	return seen
+}
+
+// reachersOf is every node from which target is reachable, target included.
+func reachersOf(target model.ID, pred map[model.ID][]model.ID) map[model.ID]bool {
+	seen := map[model.ID]bool{}
+	queue := []model.ID{target}
+	for len(queue) > 0 {
+		id := queue[0]
+		queue = queue[1:]
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		queue = append(queue, pred[id]...)
+	}
+	return seen
 }
