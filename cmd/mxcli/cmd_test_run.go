@@ -71,6 +71,13 @@ The first run pays the cold boot (~30s); each one after it is a warm rebuild
 whether it still passes is the loop this exists for. Ctrl-C stops watching and
 restores the project.
 
+--local boots against a scratch PostgreSQL database (<app>_test), provisioning it
+when missing, so a 'run --local' dev loop can keep serving the project while the
+tests run. --db-type hsqldb boots on the runtime's built-in file database instead:
+no database server and no provisioning, so it works where no PostgreSQL is
+available. It is a scratch database too, separate from the one
+'run --local --db-type hsqldb' uses. --db-type applies only to --local.
+
 --attach skips the boot entirely and runs against an app already started with
 'mxcli run --local --test-endpoint'. That app's runtime is already warm, so a run
 costs only the test-microflow injection, a warm rebuild, and the tests: about two
@@ -111,6 +118,9 @@ Examples:
   # Run without Docker, on mxcli's own local runtime
   mxcli test tests/ -p app.mpr --local
 
+  # ...on the built-in file database, with no PostgreSQL on the machine
+  mxcli test tests/ -p app.mpr --local --db-type hsqldb
+
   # Keep the runtime warm and re-run on every change
   mxcli test tests/ -p app.mpr --local --watch
 
@@ -141,6 +151,7 @@ Examples:
 		configuration, _ := cmd.Flags().GetString("configuration")
 		constantArgs, _ := cmd.Flags().GetStringArray("constant")
 		mxbuildPath, _ := cmd.Flags().GetString("mxbuild-path")
+		dbTypeArg, _ := cmd.Flags().GetString("db-type")
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		color, _ := cmd.Flags().GetBool("color")
 		timeoutStr, _ := cmd.Flags().GetString("timeout")
@@ -168,6 +179,14 @@ Examples:
 			os.Exit(1)
 		}
 
+		// Validated before the build: a typo or a --db-type the run would ignore
+		// fails here rather than after minutes of mxbuild.
+		dbType, err := testrunner.ResolveTestDBType(dbTypeArg, local, attach)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
 		opts := testrunner.RunOptions{
 			ProjectPath:       projectPath,
 			TestFiles:         resolveTestPaths(args, projectPath),
@@ -178,6 +197,7 @@ Examples:
 			Attach:            attach,
 			SkipAppStartup:    skipAppStartup,
 			MxBuildPath:       mxbuildPath,
+			DBType:            dbType,
 			Timeout:           timeout,
 			JUnitOutput:       junitOutput,
 			RequireAssertions: requireAssertions,

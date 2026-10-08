@@ -38,7 +38,7 @@ pattern (rule + `.fail.mdl` repro + `fix-issue.md` CE→rule row):
 | `MDL046` | `dateTime()`/`dateTimeUTC()` with a non-literal arg → CE0117 | syntax-only |
 | `MDL047` | association `= empty` in a retrieve **or** widget datasource → CE0161 | syntax-only |
 | `MDL048` | `[id = <value>]` retrieve (vs the valid `[id != $obj]`) → CE0161 | syntax-only (operand-typed) |
-| `MDL049` | association-object path passed as a call argument → CE0117 | syntax-only |
+| `MDL049` | bare association path (`$obj/Mod.Assoc`, no target-entity step) passed as a call argument → CE0117 | syntax-only |
 | `MDL-WIDGET13` | association traversal in a widget expression prop → CE0117 | syntax-only |
 | `MDL-WIDGET14` | a client expression in `contentparams`/`captionparams` → CE1613 | syntax-only |
 | `MDL-WIDGET15` | adjacent inline (Text/Paragraph) dynamictexts fuse | info (layout) |
