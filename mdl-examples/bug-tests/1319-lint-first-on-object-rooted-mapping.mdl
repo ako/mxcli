@@ -1,0 +1,70 @@
+mdl 1;
+-- ============================================================================
+-- Bug #1319: lint missed import activities stored as First on an
+-- object-rooted mapping
+-- ============================================================================
+--
+-- SYMPTOM (reported on 11.14.0): an activity already in the model that stores
+-- Studio Pro's First over an OBJECT-rooted import mapping —
+-- ImportMappingCall.ForceSingleOccurrence = true, Range.SingleObject = true —
+-- passed every gate: `mxcli lint` said "No issues found.", `mx check` said
+-- "The app contains: 0 errors." The first sign was the activity throwing
+--
+--   key not found: Path(QName(None,),None,)
+--
+-- when the microflow ran. check's MDL-MAP04 (#570) refuses
+-- `import from mapping … first` on such a mapping, but only in a SCRIPT; an
+-- activity written by v0.24.0 or earlier, or with `exec --no-check`, was
+-- found by nothing.
+--
+-- FIX: `mxcli lint` runs MDL-MAP04 against the model too. It keys on the
+-- MAPPING's root shape, not the flags: a LIST-rooted mapping stores the same
+-- pair for Studio Pro's legitimate First, and is not reported.
+--
+-- This script is the working shape: no range on the object-rooted mappings,
+-- `first` / `all` only on the list-rooted one. To see the rule fire, change
+-- MF_Order_Single's import to `… first;`, write it with
+-- `mxcli exec … --no-check`, and run
+--
+--   mxcli lint -p app.mpr -r MDL-MAP04
+--
+-- which reports MF_Order_Single and nothing else.
+-- ============================================================================
+
+create module G59;
+
+-- object-rooted JSON: {"number": ..., "lines": [ {"product": ...} ]}
+create or modify non-persistent entity G59.OrderDoc ( Number: String(50) );
+create or modify non-persistent entity G59.OrderLine ( Product: String(50) );
+create or modify association G59.OrderLine_OrderDoc from G59.OrderLine to G59.OrderDoc;
+
+create or modify json structure G59.JSON_Order sample '{"number":"A-1","lines":[{"product":"P-1"}]}';
+
+create or modify import mapping G59.IMM_Order with json structure G59.JSON_Order {
+  create G59.OrderDoc { Number = number,
+    create G59.OrderLine_OrderDoc/G59.OrderLine = lines { Product = product } }
+};
+
+-- list-rooted JSON (contrast): [ {"product": ...} ]
+create or modify json structure G59.JSON_Lines sample '[{"product":"P-1"}]';
+
+create or modify import mapping G59.IMM_Lines with json structure G59.JSON_Lines {
+  create G59.OrderLine { Product = product }
+};
+
+-- Object-rooted: no range. Stores both flags false, binds an object.
+create or modify microflow G59.MF_Order_Single ($Json: String)
+returns Boolean
+begin
+  $Order = import from mapping G59.IMM_Order($Json);
+  return $Order != empty;
+end;
+
+-- List-rooted: Studio Pro's legitimate First. Same stored flags as the
+-- failing shape; lint must leave it alone.
+create or modify microflow G59.MF_Lines_First ($Json: String)
+returns Boolean
+begin
+  $Line = import from mapping G59.IMM_Lines($Json) first;
+  return $Line != empty;
+end;

@@ -1,0 +1,56 @@
+mdl 1;
+-- mendixlabs/mxcli#1325 — a retrieve constraint comparing an attribute with a
+-- variable of another type passed `check --references` and exec, then mx check
+-- reported [CE0161] "Error(s) in XPath constraint." at the retrieve activity.
+--
+-- Measured on mxbuild 11.14.0, `=` and `>=` alike. These are rejected, and
+-- `mxcli check <script> -p app.mpr --references` now reports each one:
+--
+--   Kind = $Filter     Enumeration attribute, String variable
+--   Kind = $Other      Enumeration attribute, a DIFFERENT enumeration variable
+--   Email >= $Since    String attribute, DateTime variable
+--   Visits = $Text     Integer attribute, String variable
+--   Done = $Count      Boolean attribute, Integer variable
+--
+-- The reference check needs a project, which `make check-mdl` does not give it,
+-- so this script carries the controls: every pair below builds clean and must
+-- keep passing check. A String against a DateTime attribute is one of them —
+-- "the variable must have the attribute's type" would refuse a valid model.
+create module G53;
+create enumeration G53.Kind (A 'A', B 'B');
+create persistent entity G53.Item (
+  Kind: Enumeration(G53.Kind),
+  Email: String(200),
+  Visits: Integer,
+  Seen: DateTime,
+  Done: Boolean,
+  Amount: Decimal
+);
+
+create microflow G53.SUB_EnumVsEnum ($Filter: Enumeration(G53.Kind)) returns Integer as $N
+begin
+  retrieve $L from G53.Item where Kind = $Filter;
+  declare $N Integer = length($L);
+  return $N;
+end;
+
+create microflow G53.SUB_EnumVsLiteral () returns Integer as $N
+begin
+  retrieve $L from G53.Item where Kind = 'A';
+  declare $N Integer = length($L);
+  return $N;
+end;
+
+create microflow G53.SUB_DateTimeVsString ($Since: String) returns Integer as $N
+begin
+  retrieve $L from G53.Item where Seen >= $Since;
+  declare $N Integer = length($L);
+  return $N;
+end;
+
+create microflow G53.SUB_NumbersMix ($Count: Long, $Min: Integer) returns Integer as $N
+begin
+  retrieve $L from G53.Item where Visits = $Count and Amount >= $Min;
+  declare $N Integer = length($L);
+  return $N;
+end;
