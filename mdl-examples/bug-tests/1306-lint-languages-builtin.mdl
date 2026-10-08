@@ -1,0 +1,21 @@
+mdl 1;
+-- ============================================================================
+-- mendixlabs/mxcli#1306 — a Starlark lint rule could not read the enabled
+-- project languages
+-- ============================================================================
+--
+-- Reported: strings() returns rows for every stored translation, including
+-- languages that are not enabled (a fresh en_US-only app already carries nl_NL
+-- texts), so enabling nl_NL changed nothing a rule could see; a rule calling
+-- languages() was skipped with "undefined: languages".
+--
+-- The assertion is a Go test (mdl/linter/starlark_languages_test.go): the
+-- symptom is in the lint API, which `make check-mdl` does not exercise. This
+-- script is the model change from the report. To reproduce by hand on a fresh
+-- `mxcli new` app, run it, then lint a rule that returns
+--   [violation(message = l.code) for l in languages()]
+-- before it, languages() lists en_US only; after it, en_US and nl_NL, while
+-- strings() reports the same per-language counts both times.
+-- ============================================================================
+
+alter settings LANGUAGE add or modify 'nl_NL' (CheckCompleteness: true);
