@@ -33,6 +33,7 @@ type layoutCheckBackend struct {
 	rawUnit      map[[2]string]memoResult[*types.RawUnitInfo]
 	javaAction   map[string]memoResult[*javaactions.JavaAction]
 	jsAction     map[string]memoResult[*types.JavaScriptAction]
+	isRule       map[string]memoResult[bool]
 }
 
 type memoResult[T any] struct {
@@ -48,6 +49,7 @@ func newLayoutCheckBackend(b backend.FullBackend) *layoutCheckBackend {
 		rawUnit:      map[[2]string]memoResult[*types.RawUnitInfo]{},
 		javaAction:   map[string]memoResult[*javaactions.JavaAction]{},
 		jsAction:     map[string]memoResult[*types.JavaScriptAction]{},
+		isRule:       map[string]memoResult[bool]{},
 	}
 }
 
@@ -108,4 +110,10 @@ func (b *layoutCheckBackend) ReadJavaScriptActionByName(qualifiedName string) (*
 	return memoKeyed(b.jsAction, qualifiedName, func() (*types.JavaScriptAction, error) {
 		return b.FullBackend.ReadJavaScriptActionByName(qualifiedName)
 	})
+}
+
+// IsRule is asked once per `if Module.Name(...)` split in every build, and the
+// answer cannot change while nothing is written.
+func (b *layoutCheckBackend) IsRule(qualifiedName string) (bool, error) {
+	return memoKeyed(b.isRule, qualifiedName, func() (bool, error) { return b.FullBackend.IsRule(qualifiedName) })
 }

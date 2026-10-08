@@ -121,14 +121,20 @@ func (o *LocalAppOptions) applyDefaults() {
 	if o.DB.Type == "" {
 		o.DB.Type = "PostgreSQL"
 	}
-	if o.DB.Host == "" {
-		o.DB.Host = "127.0.0.1:5432"
-	}
-	if o.DB.User == "" {
-		o.DB.User = "mendix"
-	}
-	if o.DB.Password == "" {
-		o.DB.Password = "mendix"
+	// The built-in file database has no server, so PostgreSQL's host and
+	// credentials must not leak into it: the host is what the boot would then
+	// ping. Its name still matters — the runtime refuses to start without one
+	// ("DatabaseJdbcUrl or DatabaseName has no value").
+	if !o.DB.IsFileBased() {
+		if o.DB.Host == "" {
+			o.DB.Host = "127.0.0.1:5432"
+		}
+		if o.DB.User == "" {
+			o.DB.User = "mendix"
+		}
+		if o.DB.Password == "" {
+			o.DB.Password = "mendix"
+		}
 	}
 	if o.DB.Name == "" {
 		o.DB.Name = deriveDBName(o.ProjectPath)
@@ -139,6 +145,31 @@ func (o *LocalAppOptions) applyDefaults() {
 	if o.Stderr == nil {
 		o.Stderr = os.Stderr
 	}
+}
+
+// prepareLocalAppDatabase makes the configured database usable before the boot:
+// provisioning it with EnsureDB, otherwise checking that its server answers.
+// The built-in file database needs neither: the runtime creates its files.
+func prepareLocalAppDatabase(opts *LocalAppOptions, w io.Writer) error {
+	if opts.DB.IsFileBased() {
+		if opts.EnsureDB {
+			return fmt.Errorf("EnsureDB provisions PostgreSQL; the built-in file database " +
+				"needs no provisioning")
+		}
+		return nil
+	}
+	if opts.EnsureDB {
+		if err := EnsureDatabase(&opts.DB, w); err != nil {
+			return fmt.Errorf("ensuring database: %w", err)
+		}
+		return nil
+	}
+	if err := pingTCP(opts.DB.Host, 3*time.Second); err != nil {
+		return fmt.Errorf("database not reachable at %s: %w\n"+
+			"  Pass --ensure-db to provision it, or start Postgres and create the %q database (user %q).",
+			opts.DB.Host, err, opts.DB.Name, opts.DB.User)
+	}
+	return nil
 }
 
 // StartLocalApp builds the project with mxbuild and boots the standalone
@@ -183,14 +214,8 @@ func StartLocalApp(opts LocalAppOptions) (*LocalApp, error) {
 	}
 
 	// 3. Database.
-	if opts.EnsureDB {
-		if err := EnsureDatabase(&opts.DB, w); err != nil {
-			return nil, fmt.Errorf("ensuring database: %w", err)
-		}
-	} else if err := pingTCP(opts.DB.Host, 3*time.Second); err != nil {
-		return nil, fmt.Errorf("database not reachable at %s: %w\n"+
-			"  Pass --ensure-db to provision it, or start Postgres and create the %q database (user %q).",
-			opts.DB.Host, err, opts.DB.Name, opts.DB.User)
+	if err := prepareLocalAppDatabase(&opts, w); err != nil {
+		return nil, err
 	}
 
 	app := &LocalApp{Version: version, RuntimeLogPath: opts.RuntimeLogPath}
