@@ -159,6 +159,7 @@ func validateWidgetPropertiesOf(stmt ast.Statement, registry *WidgetRegistry) []
 				out = append(out, validateWidgetSubtree(o.NewWidgets, registry, "alter "+s.PageName.String())...)
 			case *ast.SetPropertyOp:
 				out = append(out, validateAlterSetLegacyExpressionText(o, "alter "+s.PageName.String())...)
+				out = append(out, validateAlterSetColumnVisibleScope(o, "alter "+s.PageName.String())...)
 			}
 		}
 		return out
@@ -232,6 +233,8 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		// …and the OLD spelling, a quoted string holding the expression's text,
 		// which now stores that text as a class name (MDL-WIDGET33).
 		out = append(out, validateLegacyExpressionText(w, locationPrefix)...)
+		// A column's Visible has no row object (MDL-WIDGET43, CE0117).
+		out = append(out, validateColumnVisibleScope(w, locationPrefix)...)
 		// #1062: an action slot holding something that is not an action, which
 		// used to check clean, exec clean, build clean and render dead. Runs for
 		// every widget kind and needs no definition, for the same reason as the

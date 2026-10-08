@@ -92,7 +92,11 @@ const defaultSlotContainer = "template"
 //	    to a value the widget hides, which mxbuild rejects with CE0463 and which
 //	    makes `mx create-module-package` refuse the module (upstream #931). Bump
 //	    forces existing projects to regenerate their defs with both.
-const WidgetDefGeneratorVersion = 17
+//	18 — DataGrid column `visible` ← `VisibleIf` alias. Every expression
+//	    spelling of a column's `Visible:` is lowered to VisibleIf, so without it
+//	    the column was written always visible. Bump forces existing projects to
+//	    regenerate so the alias reaches their datagrid def.
+const WidgetDefGeneratorVersion = 18
 
 // WidgetDefinition describes how to construct a pluggable widget from MDL syntax.
 // Loaded from embedded JSON definition files (*.def.json).

@@ -1183,7 +1183,15 @@ func outputDataGrid2ColumnV3(ctx *ExecContext, prefix string, col rawDataGridCol
 		props = append(props, fmt.Sprintf("Size: %s", col.Size))
 	}
 	if col.Visible != "" && col.Visible != "true" {
-		props = append(props, fmt.Sprintf("Visible: %s", mdlQuote(ctx, col.Visible)))
+		// The expression as written, as for a page widget's conditional
+		// visibility; `false` is the plain value, which a column reads as the
+		// expression false. The quoted text this printed before was the
+		// one spelling a column's Visible did not drop.
+		if strings.EqualFold(strings.TrimSpace(col.Visible), "false") {
+			props = append(props, "Visible: false")
+		} else {
+			props = append(props, widgetConditionMDL("Visible", col.Visible))
+		}
 	}
 	if col.DynamicCellClass != "" {
 		props = append(props, fmt.Sprintf("DynamicCellClass: %s", col.DynamicCellClass)) // an expression, printed as-is
