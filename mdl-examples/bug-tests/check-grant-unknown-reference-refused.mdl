@@ -1,0 +1,59 @@
+-- check --references did not resolve what a security statement names.
+--
+-- Reported as `grant … on entity System.Nope to Mod.Role` and a grant to a
+-- module role that does not exist both passing
+-- `mxcli check script.mdl -p app.mpr --references`. Measured across every
+-- GRANT / REVOKE form, the user-role statements and demo users: none of their
+-- references were resolved.
+--
+--   mxcli check this-file -p app.mpr --references
+--     before:  "Check passed!"
+--     after:   one reference error per statement below, naming the statement
+--              and the missing entity / document / member / role
+--
+-- Measured on Evora Factory Management (Mendix 10.24.15). exec refuses every
+-- grant shape and both entity-revoke shapes — after the statements before it
+-- are written, since a script is not a transaction. The user-role, alter-user-
+-- role ADD and demo-user shapes it does NOT refuse: it writes the dangling name
+-- into project security, for MxBuild to report as CE1613.
+--
+-- Uses the module roles of the Administration module (in every blank app).
+-- Every statement below must be refused by
+--   mxcli check this-file -p app.mpr --references
+-- The control script beside it, check-grant-unknown-reference.mdl, must pass.
+--
+-- Not a `.fail.mdl`: every refusal here needs the project, and `make check-mdl`
+-- runs without one — this file parses, and must keep parsing.
+
+mdl 1;
+
+-- Unknown entity, System and user module (exec: refused).
+grant read * on entity System.Nope to Administration.User;
+grant read * on entity Administration.Nope to Administration.User;
+revoke all on entity Administration.Nope from Administration.User;
+
+-- A real System entity: exec refuses every System entity, so check does too.
+grant read * on entity System.User to Administration.User;
+
+-- Unknown module role, and a role of a module that does not exist (exec: refused).
+grant read * on entity Administration.Account to Administration.NopeRole;
+grant read * on entity Administration.Account to NopeModule.User;
+
+-- Unknown member in a member list (exec: "has no member(s)").
+grant read (FullName, NopeAttr) on entity Administration.Account to Administration.User;
+
+-- Unknown documents (exec: refused).
+grant execute on microflow Administration.NopeFlow to Administration.User;
+grant execute on nanoflow Administration.NopeNanoflow to Administration.User;
+grant view on page Administration.NopePage to Administration.User;
+grant access on published odata service Administration.NopeService to Administration.User;
+grant access on published rest service Administration.NopeService to Administration.User;
+
+-- Unknown roles that exec writes without resolving (CE1613 at build).
+create user role BugGrantProbe ( ModuleRoles: (Administration.NopeRole, System.User) );
+alter user role User add module roles (Administration.NopeRole);
+create demo user 'bug_grant_probe' ( Password: 'Probe!23456789', UserRoles: (NopeUserRole) );
+
+-- A role the script creates BELOW the grant: exec resolves in statement order.
+grant read * on entity Administration.Account to Administration.BugGrantLater;
+create module role Administration.BugGrantLater;
