@@ -233,6 +233,9 @@ func String(expr ast.Expression) string {
 			return NormalizeOperatorCase(strings.TrimRight(e.Source, " \t\r\n\f\v"))
 		}
 		return String(e.Expression)
+	case *ast.BlankExpr:
+		// A blank argument (`Param = nothing`): stored as the empty string.
+		return ""
 	default:
 		return ""
 	}

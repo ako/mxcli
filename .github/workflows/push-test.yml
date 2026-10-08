@@ -167,6 +167,10 @@ jobs:
         # The table of contents must describe the wiki, both directions. It
         # drifted for three months before anyone noticed.
         run: make check-wiki-pages
+      - name: Check every go test sets -timeout
+        # Without one Go applies 10m per test binary, and a package that passes
+        # in seconds alone can exceed it under `./...` load (mendixlabs/mxcli#1291).
+        run: make check-test-timeouts
       - name: Check skill MDL blocks
         run: ./scripts/check-skill-mdl.sh ./bin/mxcli .claude/skills/mendix
       - name: Check docs-site MDL blocks
