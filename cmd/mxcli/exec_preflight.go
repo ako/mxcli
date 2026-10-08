@@ -37,6 +37,9 @@ func execPreflight(exec *executor.Executor, prog *ast.Program, projectPath, scri
 		if exec != nil {
 			if b := exec.Backend(); b != nil {
 				violations = executor.DropSettledCommitNotes(violations, prog, executor.NewStoredCommitEvents(b))
+				// MDL004 on a void microflow's end-event value is a warning for a flow
+				// already stored that way: re-applying it changes nothing.
+				violations = executor.SettleStoredVoidReturnValues(violations, prog, executor.NewStoredVoidReturns(b))
 				// A called microflow the script does not create is read from the
 				// project for MDL-WORKFLOW10 (ako/mxcli#943).
 				violations = append(violations, executor.StoredTaskClaimViolations(prog, b)...)
