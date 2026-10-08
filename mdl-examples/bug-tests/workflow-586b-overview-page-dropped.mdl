@@ -22,7 +22,7 @@ mdl 1;
 --   1. WRITE: the executor set the semantic `Workflow.OverviewPage`; the
 --      backend only ever wrote `Workflow.AdminPage`. Two fields for one
 --      concept, never joined — the same shape as the `create … comment 'text'`
---      bug (see findings/mdl-grammar.jsonl, 2026-08-25).
+--      bug (see findings/mdl-grammar/, 2026-08-25).
 --   2. READ: the reader took `g.OverviewPageQualifiedName()`, the pre-9.11
 --      property, so even the correctly-written ALTER read back empty.
 --

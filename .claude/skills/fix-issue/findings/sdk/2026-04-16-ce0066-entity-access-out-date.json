@@ -1,0 +1,1 @@
+{"area": "sdk/mpr", "date": "2026-04-16", "symptom": "CE0066 \"Entity access is out of date\"", "cause": "MemberAccess added to wrong entity", "file": "`sdk/mpr/writer_domainmodel.go`", "insight": "MemberAccess must only be on the FROM entity (`ParentPointer`), not the TO entity — see CLAUDE.md association semantics", "ce": ["CE0066"]}

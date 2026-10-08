@@ -21,7 +21,7 @@ is the order to do things in.
 
 2. **Match the failure class**, then the instance:
    - `docs-wiki/bug-patterns/` for the class (small, read it)
-   - `grep -il '<CE code or keyword>' .claude/skills/fix-issue/findings/*.jsonl`
+   - `grep -ril '<CE code or keyword>' .claude/skills/fix-issue/findings/`
      for the instance
 
    A pattern-page miss means "not yet digested", never "not seen before".
@@ -59,7 +59,7 @@ is the order to do things in.
 7. **Add the regression case**: `mdl-examples/bug-tests/<issue>-<description>.mdl`,
    and check it parses (`mxcli check`) and passes `make check-mdl`.
 
-8. **Append one finding** to `.claude/skills/fix-issue/findings/<area>.jsonl` and run
+8. **Add one finding file**, `.claude/skills/fix-issue/findings/<area>/<date>-<slug>.json` (one JSON object on one line; never append to an existing file), and run
    `make check-findings`. Write the insight — what would have made this cheaper to
    find, and which plausible wrong turn to skip — not the changelog.
 

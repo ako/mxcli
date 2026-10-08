@@ -3,7 +3,7 @@ title: The Keyword Set Leaks Into User Data
 category: bug-pattern
 last-synced: ced830e0
 sources:
-  - .claude/skills/fix-issue/findings/mdl-grammar.jsonl
+  - .claude/skills/fix-issue/findings/mdl-grammar/
   - mdl/grammar/MDLLexer.g4
   - mdl/executor/identifier_quoting.go
 ---

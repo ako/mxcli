@@ -3,7 +3,7 @@ title: The Expression Translation Loses Meaning
 category: bug-pattern
 last-synced: ced830e0
 sources:
-  - .claude/skills/fix-issue/findings/mdl-visitor.jsonl
+  - .claude/skills/fix-issue/findings/mdl-visitor/
   - mdl/visitor/visitor_microflow_expression.go
   - mdl/visitor/visitor_helpers.go
 ---

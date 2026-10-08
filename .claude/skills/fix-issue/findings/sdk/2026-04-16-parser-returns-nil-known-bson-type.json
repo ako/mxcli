@@ -1,0 +1,1 @@
+{"area": "sdk/mpr", "date": "2026-04-16", "symptom": "Parser returns `nil` for a known BSON type", "cause": "Unhandled `default` in a `parseXxx()` switch", "file": "`sdk/mpr/parser_microflow.go` or `parser_page.go`", "insight": "Find the switch by grepping for `default: return nil`; add the missing case"}
