@@ -3,7 +3,7 @@ title: Integration Documents and the Contract They Answer To
 category: bug-pattern
 last-synced: ced830e0
 sources:
-  - .claude/skills/fix-issue/findings/mdl-executor.jsonl
+  - .claude/skills/fix-issue/findings/mdl-executor/
   - mdl/executor/cmd_odata.go
 ---
 

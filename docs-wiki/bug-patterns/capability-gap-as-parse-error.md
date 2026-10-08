@@ -3,7 +3,7 @@ title: A Missing Capability Looks Like a Syntax Error
 category: bug-pattern
 last-synced: ced830e0
 sources:
-  - .claude/skills/fix-issue/findings/mdl-grammar.jsonl
+  - .claude/skills/fix-issue/findings/mdl-grammar/
   - mdl/grammar/MDLParser.g4
   - docs/13-decisions/0003-mdl-is-sql-shaped.md
 ---

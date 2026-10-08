@@ -3,7 +3,7 @@ title: When the CLI Is the Defect
 category: bug-pattern
 last-synced: ced830e0
 sources:
-  - .claude/skills/fix-issue/findings/cmd-mxcli.jsonl
+  - .claude/skills/fix-issue/findings/cmd-mxcli/
   - cmd/mxcli/syntax/
 ---
 
