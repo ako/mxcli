@@ -525,6 +525,9 @@ Two things the range does **not** do:
   mapping that already returns one object it builds clean (`mx check`: 0
   errors) and the activity **throws at runtime**. `mxcli check` refuses it,
   and `offset` on such a mapping, as **MDL-MAP04** — drop the range.
+  `check` only sees the script: an activity already in the model with this
+  shape (written by an older mxcli, or with `exec --no-check`) is reported by
+  `mxcli lint -p app.mpr -r MDL-MAP04`, under the same ID.
 
 ### Export to Mapping (entity → JSON)
 
