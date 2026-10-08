@@ -14,6 +14,8 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/mdl/visitor"
 	"github.com/mendixlabs/mxcli/model"
+	"github.com/mendixlabs/mxcli/modelsdk/meta"
+	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
 	"github.com/mendixlabs/mxcli/sdk/pages"
 	"github.com/mendixlabs/mxcli/sdk/widgets/mpk"
@@ -2301,7 +2303,11 @@ func (pb *pageBuilder) resolveAssociationAttributePath(attrRef string) (finalQN 
 		assocQN := pb.resolveAssociationPathIn(seg, current)
 		dest, ok := pb.associationDestination(assocQN, current)
 		if !ok {
-			return "", nil, false
+			// Not a modelled association — it may be System.changedBy /
+			// System.owner, which no domain model lists. (#1338)
+			if assocQN, dest, ok = pb.systemMemberAssociation(seg, current); !ok {
+				return "", nil, false
+			}
 		}
 		steps = append(steps, pages.AttributeRefStep{Association: assocQN, DestinationEntity: dest})
 		current = dest
@@ -2315,6 +2321,55 @@ func (pb *pageBuilder) resolveAssociationAttributePath(attrRef string) (finalQN 
 		return declaring + "." + stored, steps, true
 	}
 	return current + "." + stored, steps, true
+}
+
+// systemMemberAssociation resolves a path segment naming one of the two system
+// members that are ASSOCIATIONS — changedBy and owner, bare or System-qualified —
+// to System.changedBy / System.owner and the System.User it lands on.
+//
+// No domain model lists them: an entity carries them as its HasChangedBy /
+// HasOwner flags (AutoChangedBy / AutoOwner in MDL), kept on the generalization
+// root. So the ordinary lookup qualified `changedBy` with the context's module,
+// found nothing, and the caller fell back to a flat attribute path —
+// `MyFirstModule.Item.changedBy/Name`, which mxbuild rejects with CE1613
+// (mendixlabs/mxcli#1338). The association is stored with its case-sensitive
+// spelling whatever case the author wrote, as storedSystemMemberName does for
+// the attribute-typed members.
+//
+// ok is false when the segment names neither member or the entity does not
+// store it: inventing the hop would write a reference mxbuild rejects too.
+func (pb *pageBuilder) systemMemberAssociation(seg, entityQN string) (assocQN, dest string, ok bool) {
+	var member string
+	switch strings.ToLower(strings.TrimPrefix(strings.TrimPrefix(seg, "System."), "system.")) {
+	case strings.ToLower(meta.SystemMemberChangedBy):
+		member = meta.SystemMemberChangedBy
+	case strings.ToLower(meta.SystemMemberOwner):
+		member = meta.SystemMemberOwner
+	default:
+		return "", "", false
+	}
+	if pb.backend == nil && (pb.execCache == nil || pb.execCache.domainModels == nil) {
+		return "", "", false
+	}
+	dms, err := pb.getDomainModels()
+	if err != nil {
+		return "", "", false
+	}
+	h, err := pb.getHierarchy()
+	if err != nil {
+		return "", "", false
+	}
+	index := make(map[string]*domainmodel.Entity)
+	for _, dm := range dms {
+		mod := h.GetModuleName(dm.ContainerID)
+		for _, e := range dm.Entities {
+			index[mod+"."+e.Name] = e
+		}
+	}
+	if stores, _ := systemMemberStoredOnChain(index, entityQN, member); !stores {
+		return "", "", false
+	}
+	return "System." + member, "System.User", true
 }
 
 // associationDestination returns the entity reached by navigating assocQN from
