@@ -1,0 +1,27 @@
+mdl 1;
+-- Expressions with an unspaced minus: `$P/Offset-1`, `($A/X-$B/X)`.
+--
+-- A hyphen followed by a digit, a `$`, a space or nothing is subtraction, and
+-- the expression is stored exactly as written. Hyphenated names such as
+-- `starts-with` (a letter after every hyphen) are still one name.
+
+create module MinusEx;
+
+create persistent entity MinusEx.Scenario (
+  OEE: Decimal,
+  Offset: Integer,
+  PageSize: Integer,
+  Name: String(100)
+);
+
+create microflow MinusEx.Compare (
+  $Current: MinusEx.Scenario,
+  $Baseline: MinusEx.Scenario
+)
+returns Decimal as $Difference
+begin
+  declare $Skip Integer = $Current/PageSize*($Current/Offset-1);
+  declare $Difference Decimal = (($Current/OEE-$Baseline/OEE) div $Baseline/OEE)*100;
+  retrieve $Page from MinusEx.Scenario where starts-with(Name, 'A') limit $Current/PageSize offset $Current/PageSize*($Current/Offset-1);
+  return $Difference;
+end;

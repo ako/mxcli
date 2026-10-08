@@ -1,0 +1,40 @@
+mdl 1;
+-- describe output that did not parse: an expression with an unspaced minus.
+--
+-- Studio Pro stores an expression exactly as typed, so `$P/Offset-1` and
+-- `($I/OEE-$B/OEE)` are ordinary stored text (Evora Factory Management:
+-- Viewer3D.__GetMxModelDocumentList, FactoryManagement.ACT_Scenario_Compare).
+-- describe prints the stored text verbatim, and the lexer read `Offset-1`
+-- and `OEE-` as one hyphenated name (the token that exists for
+-- `starts-with`), so the description failed with `missing '('`.
+--
+--   mxcli check mdl-examples/bug-tests/describe-unspaced-minus-expression.mdl
+--   mxcli exec  mdl-examples/bug-tests/describe-unspaced-minus-expression.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe microflow MinusTest.Compare"
+--
+-- Expected: check parses; describe shows each expression byte-for-byte as
+-- written below (no spaces added around the minus), and re-executing the
+-- description reports `Unchanged microflow`.
+--
+-- CONTROL: `starts-with` in the XPath constraint must still lex as one name.
+
+create module MinusTest;
+
+create persistent entity MinusTest.Scenario (
+  OEE: Decimal,
+  Offset: Integer,
+  PageSize: Integer,
+  Name: String(100)
+);
+
+create microflow MinusTest.Compare (
+  $Current: MinusTest.Scenario,
+  $Baseline: MinusTest.Scenario
+)
+returns Decimal as $Difference
+begin
+  declare $Skip Integer = $Current/PageSize*($Current/Offset-1);
+  declare $Difference Decimal = (($Current/OEE-$Baseline/OEE) div $Baseline/OEE)*100;
+  retrieve $Page from MinusTest.Scenario where starts-with(Name, 'A') limit $Current/PageSize offset $Current/PageSize*($Current/Offset-1);
+  return $Difference;
+end;
