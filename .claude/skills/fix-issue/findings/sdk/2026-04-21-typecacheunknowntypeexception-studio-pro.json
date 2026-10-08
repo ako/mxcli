@@ -1,0 +1,1 @@
+{"area": "sdk/mpr", "date": "2026-04-21", "symptom": "`TypeCacheUnknownTypeException` in Studio Pro", "cause": "Wrong `$type` storage name in BSON write", "file": "`sdk/mpr/writer_microflow.go`", "insight": "Check the storage name table in CLAUDE.md; verify against `reference/mendixmodellib/reflection-data/`"}

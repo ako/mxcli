@@ -58,20 +58,14 @@ sdk/javaactions/testdata/mxbuild/* -text
 
 # Append-only knowledge files use git's union merge driver.
 #
-# Every bug fix appends one finding, so two concurrent fixes write to the same
-# place. "union" tells git to keep BOTH sides of a conflicting hunk instead of
-# raising a conflict, which is exactly right for a file of independent
-# line-oriented records where order carries no meaning.
-#
-# It sits on findings/*.jsonl, NOT on fix-issue.md. It used to cover the whole
-# skill file, back when the findings were a Markdown table inside it — and union
-# applies file-wide, so two branches editing the same PROSE line would have kept
-# both silently. The note that shipped with it said as much and named this fix.
-#
-# Note what union does NOT do: GitHub's server-side merge does not run merge
-# drivers, so a PR still shows the conflict and still has to merge main locally.
-# Sharding by area is what actually reduces collisions.
-.claude/skills/fix-issue/findings/*.jsonl merge=union
+# The bug findings USED to be here: one shared findings/<area>.jsonl per area,
+# appended to by every fix, with merge=union keeping both sides. That resolved
+# the conflict locally, but GitHub's server-side merge does not run merge
+# drivers, so every merged fix-PR put every other open fix-PR into conflict —
+# measured: eight PRs re-conflicting after each merge. The findings are now one
+# file per finding (findings/<area>/<date>-<slug>.json), so two fixes add two
+# different files and there is nothing to merge. See
+# .claude/skills/fix-issue/findings/README.md.
 
 # docs-wiki/SYNC_LOG.md is append-only by its own stated rule ("Append only.
 # Never edit historical rows."), so two syncs appending a row each is the same

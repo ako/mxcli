@@ -283,6 +283,9 @@ func runCheckFile(cmd *cobra.Command, filePath string) int {
 		exec = e
 		if b := exec.Backend(); b != nil {
 			violations = executor.DropSettledCommitNotes(violations, prog, executor.NewStoredCommitEvents(b))
+			// MDL004 on a void microflow's end-event value is a warning for a flow
+			// already stored that way: re-applying it changes nothing.
+			violations = executor.SettleStoredVoidReturnValues(violations, prog, executor.NewStoredVoidReturns(b))
 			violations = append(violations, executor.StoredTaskClaimViolations(prog, b)...)
 		}
 	}

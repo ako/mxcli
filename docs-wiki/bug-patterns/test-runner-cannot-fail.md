@@ -3,7 +3,7 @@ title: A Test Runner That Cannot Fail
 category: bug-pattern
 last-synced: ced830e0
 sources:
-  - .claude/skills/fix-issue/findings/cmd-mxcli.jsonl
+  - .claude/skills/fix-issue/findings/cmd-mxcli/
   - cmd/mxcli/testrunner/parser.go
   - cmd/mxcli/testrunner/generator_endpoint.go
 ---
