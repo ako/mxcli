@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/mendixlabs/mxcli/model"
+	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
 )
 
@@ -61,9 +62,10 @@ func TestActivitiesCarryTheRestCallTimeout(t *testing.T) {
 		hierarchy: &hierarchy{moduleIDs: map[model.ID]bool{modID: true}, moduleNames: map[model.ID]string{modID: "Sales"}},
 		fullMode:  true,
 		// Every cache is set so the builder never reaches for a reader.
-		microflowCache: []*microflows.Microflow{mf},
-		nanoflowCache:  []*microflows.Nanoflow{},
-		ruleCache:      []*microflows.Rule{},
+		microflowCache:   []*microflows.Microflow{mf},
+		nanoflowCache:    []*microflows.Nanoflow{},
+		ruleCache:        []*microflows.Rule{},
+		domainModelCache: []*domainmodel.DomainModel{},
 	}
 
 	tx, err := cat.CatalogDB().Begin()

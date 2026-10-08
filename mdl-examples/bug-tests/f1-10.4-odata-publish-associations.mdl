@@ -57,9 +57,9 @@ create published odata service F1PUBASSOC.LapApi (
   path: 'odata/f1laps/',
   version: '1.0.0',
   ODataVersion: OData4,
-  namespace: 'F1PUBASSOC.Laps'
+  namespace: 'F1PUBASSOC.Laps',
+  Authentication: (basic)
 )
-authentication basic
 {
   publish entity F1PUBASSOC.Lap as 'Laps' (
     ReadMode: microflow F1PUBASSOC.Read_Laps,

@@ -210,6 +210,16 @@ begin
   $R = call java action ModA.RunNamed(Target = 'ModA.SUB_Target');
   return $R;
 end;`, "")
+
+	// mendixlabs/mxcli#1282: a line break before `)` is not part of the name,
+	// so both accept it, as they accept the same-line control above.
+	exec3, _, dir3 := openPedAppCopy(t)
+	assertAgree(t, exec3, dir3, head+`create microflow ModA.SUB_LineBreak () returns Boolean as $R
+begin
+  $R = call java action ModA.RunNamed(Target = ModA.SUB_Target
+  );
+  return $R;
+end;`, "")
 }
 
 // ako/mxcli#563: `referenceselector` parses, so check passed it, and the page

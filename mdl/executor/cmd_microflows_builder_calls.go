@@ -371,22 +371,22 @@ func (fb *flowBuilder) addCallJavaActionAction(s *ast.CallJavaActionStmt) model.
 			}
 		} else {
 			// Regular parameter: expression-based value
-			valueExpr := fb.exprToString(arg.Value)
 			if microflowTypeParams[arg.Name] {
 				// A Microflow parameter takes a name, never an expression
 				// (mendixlabs/mxcli#1210); the same decision reference
-				// validation reports.
+				// validation reports. The name is read without the whitespace
+				// written after it (mendixlabs/mxcli#1282).
 				if msg := microflowParamArgRefusal(actionQN, arg.Name, arg.Value); msg != "" {
 					fb.addError("%s", msg)
 				}
 				value = &microflows.MicroflowParameterValue{
 					BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
-					Microflow:   strings.Trim(valueExpr, "'"),
+					Microflow:   strings.Trim(fb.exprToString(javaActionArgumentValue(arg.Value)), "'"),
 				}
 			} else {
 				value = &microflows.BasicCodeActionParameterValue{
 					BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
-					Argument:    valueExpr,
+					Argument:    fb.exprToString(arg.Value),
 				}
 			}
 		}
@@ -600,7 +600,7 @@ func (fb *flowBuilder) entityTypeArgument(expr ast.Expression) string {
 }
 
 func isEmptyJavaActionArgument(expr ast.Expression) bool {
-	lit, ok := expr.(*ast.LiteralExpr)
+	lit, ok := javaActionArgumentValue(expr).(*ast.LiteralExpr)
 	return ok && (lit.Kind == ast.LiteralEmpty || lit.Kind == ast.LiteralNull)
 }
 
@@ -1403,6 +1403,21 @@ func (fb *flowBuilder) declaringMemberRef(entityQN, memberName string) string {
 	return entityQN + "." + memberName
 }
 
+// bareFeedbackMember resolves a dotless validation-feedback member. An attribute
+// in the generalization chain wins; failing that, an association the entity (or
+// an ancestor) owns is stored as one. Neither keeps the old attribute spelling,
+// which mxbuild names.
+func (fb *flowBuilder) bareFeedbackMember(entityQN, memberName string) (attributeName, associationName string) {
+	if entityQN != "" && fb.backend != nil {
+		if _, ok := DeclaringMemberRef(fb.backend, entityQN, memberName); !ok {
+			if ref, ok := DeclaringAssociationRef(fb.backend, entityQN, memberName); ok {
+				return "", ref
+			}
+		}
+	}
+	return fb.declaringMemberRef(entityQN, memberName), ""
+}
+
 // addValidationFeedbackAction creates a VALIDATION FEEDBACK statement as a ValidationFeedbackAction.
 func (fb *flowBuilder) addValidationFeedbackAction(s *ast.ValidationFeedbackStmt) model.ID {
 	// Build the template text from the message expression.
@@ -1444,8 +1459,9 @@ func (fb *flowBuilder) addValidationFeedbackAction(s *ast.ValidationFeedbackStmt
 		if len(segs) == 1 {
 			switch strings.Count(segs[0].Name, ".") {
 			case 0:
-				// Single bare segment: direct attribute access.
-				attributeName = fb.declaringMemberRef(entityQName, segs[0].Name)
+				// Single bare segment: an attribute, or an association the
+				// entity owns (#1322) — the dot count cannot tell them apart.
+				attributeName, associationName = fb.bareFeedbackMember(entityQName, segs[0].Name)
 			case 1:
 				// Qualified association names use Module.Association.
 				associationName = segs[0].Name
@@ -1993,41 +2009,13 @@ func (fb *flowBuilder) mappingRootIsList(im *model.ImportMapping) bool {
 
 // jsonStructureLookup is the one backend call deciding a JSON mapping's root
 // shape needs.
-type jsonStructureLookup interface {
-	GetJsonStructureByQualifiedName(moduleName, name string) (*types.JsonStructure, error)
-}
+type jsonStructureLookup = types.JsonStructureLookup
 
-// jsonMappingRootIsList answers mappingRootIsList's question from the two
-// sources that are DEFINITE — the root element's JSON path, and the JSON
-// structure the mapping is built on — and reports known=false when neither
-// answers. The builder then falls back to the root element's occurrence bound;
-// a check-time rule (MDL-MAP04) stays silent instead, since a guess there
-// would be a refusal of something that may build.
+// jsonMappingRootIsList answers mappingRootIsList's question from the sources
+// that are definite; see types.JsonMappingRootIsList, shared with the lint
+// rules so both decide the shape the same way.
 func jsonMappingRootIsList(lookup jsonStructureLookup, im *model.ImportMapping) (list, known bool) {
-	if im == nil {
-		return false, false
-	}
-	// A mapping rooted BELOW an array yields one object per item, whatever the
-	// structure's own root is (#267). The structure check below answers from
-	// js.Elements[0], which for `root choices/message` is the document root —
-	// an Object — so it reported a single object and mxbuild rejected the
-	// activity with CE0243 "the mapping ... now returns a value of type
-	// 'List of X'". The mapping document itself is right: Studio Pro's own
-	// OpenAI_API.IM_OpenAI stores the same MaxOccurs 1 on that root, so
-	// list-ness cannot be read off the root element either — only off its path.
-	if len(im.Elements) > 0 && im.Elements[0] != nil &&
-		mappingRootPathCrossesArray(im.Elements[0].JsonPath) {
-		return true, true
-	}
-	if im.JsonStructure != "" && lookup != nil {
-		parts := strings.SplitN(im.JsonStructure, ".", 2)
-		if len(parts) == 2 {
-			if js, err := lookup.GetJsonStructureByQualifiedName(parts[0], parts[1]); err == nil && js != nil && len(js.Elements) > 0 {
-				return js.Elements[0].ElementType == "Array", true
-			}
-		}
-	}
-	return false, false
+	return types.JsonMappingRootIsList(lookup, im)
 }
 
 // addImportFromMappingAction adds an ImportXmlAction to the microflow.
@@ -2212,31 +2200,9 @@ func (fb *flowBuilder) addExportToMappingAction(s *ast.ExportToMappingStmt) mode
 }
 
 // mappingRootPathCrossesArray reports whether a mapping root's stored JsonPath
-// passes through an array on its way down.
-//
-// An array contributes a marker segment for its item — "(Object)" for objects,
-// "(Wrapper)" for primitives — so any marker AFTER the first segment means the
-// root sits inside an array and the mapping yields many objects:
-//
-//	(Object)                             one object
-//	(Object)|data                        one object, a nested root
-//	(Array)|(Object)                     many — an array-rooted structure (#248)
-//	(Object)|choices|(Object)|message    many — rooted below an array (#267)
-//
-// The first segment is skipped because it is always the document's own root
-// marker, which says nothing about arrays.
+// passes through an array; see types.MappingRootPathCrossesArray.
 func mappingRootPathCrossesArray(jsonPath string) bool {
-	segs := strings.Split(jsonPath, "|")
-	for i, seg := range segs {
-		if i == 0 {
-			continue
-		}
-		switch seg {
-		case "(Object)", "(Array)", "(Wrapper)":
-			return true
-		}
-	}
-	return false
+	return types.MappingRootPathCrossesArray(jsonPath)
 }
 
 // addSendEmailAction creates a SEND EMAIL activity (Microflows$SendEmailAction).

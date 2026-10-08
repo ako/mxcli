@@ -134,11 +134,12 @@ func (r rawUnitReader) ListMicroflows() ([]*microflows.Microflow, error)     { r
 func (r rawUnitReader) GetProjectSecurity() (*security.ProjectSecurity, error) {
 	return nil, nil
 }
-func (r rawUnitReader) GetNavigation() (*types.NavigationDocument, error) { return nil, nil }
-func (r rawUnitReader) ListPages() ([]*pages.Page, error)                 { return nil, nil }
-func (r rawUnitReader) ListModules() ([]*model.Module, error)             { return nil, nil }
-func (r rawUnitReader) ListFolders() ([]*types.FolderInfo, error)         { return nil, nil }
-func (r rawUnitReader) GetRawUnit(id model.ID) (map[string]any, error)    { return r.units[id], nil }
+func (r rawUnitReader) GetProjectSettings() (*model.ProjectSettings, error) { return nil, nil }
+func (r rawUnitReader) GetNavigation() (*types.NavigationDocument, error)   { return nil, nil }
+func (r rawUnitReader) ListPages() ([]*pages.Page, error)                   { return nil, nil }
+func (r rawUnitReader) ListModules() ([]*model.Module, error)               { return nil, nil }
+func (r rawUnitReader) ListFolders() ([]*types.FolderInfo, error)           { return nil, nil }
+func (r rawUnitReader) GetRawUnit(id model.ID) (map[string]any, error)      { return r.units[id], nil }
 func (r rawUnitReader) ListScheduledEvents() ([]*model.ScheduledEvent, error) {
 	return nil, nil
 }

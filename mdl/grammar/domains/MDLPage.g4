@@ -149,8 +149,10 @@ xpathPath
     : xpathStep (SLASH xpathStep)*
     ;
 
+// A step takes any number of predicates, `Entity[a][b]`, as XPath does. With
+// at most one, the second `[` was a parse error (mendixlabs/mxcli#1281).
 xpathStep
-    : xpathStepValue (LBRACKET xpathExpr RBRACKET)?
+    : xpathStepValue (LBRACKET xpathExpr RBRACKET)*
     ;
 
 xpathStepValue

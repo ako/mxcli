@@ -412,8 +412,8 @@ func xpathExprToMDLString(expr ast.Expression) string {
 		var parts []string
 		for _, step := range e.Steps {
 			s := xpathExprToMDLString(step.Expr)
-			if step.Predicate != nil {
-				s += "[" + xpathExprToMDLString(step.Predicate) + "]"
+			for _, pred := range step.Predicates {
+				s += "[" + xpathExprToMDLString(pred) + "]"
 			}
 			parts = append(parts, s)
 		}
@@ -434,8 +434,8 @@ func xpathPathOf(path *ast.XPathPathExpr, keepNames bool) string {
 	var parts []string
 	for _, step := range path.Steps {
 		s := xpathOf(step.Expr, keepNames)
-		if step.Predicate != nil {
-			s += "[" + xpathOf(step.Predicate, keepNames) + "]"
+		for _, pred := range step.Predicates {
+			s += "[" + xpathOf(pred, keepNames) + "]"
 		}
 		parts = append(parts, s)
 	}

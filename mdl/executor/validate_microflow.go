@@ -878,7 +878,9 @@ func xpathFunctionArgumentOperators(expr ast.Expression) (hits [][2]string) {
 		case *ast.XPathPathExpr:
 			for _, s := range n.Steps {
 				walk(s.Expr)
-				walk(s.Predicate)
+				for _, pred := range s.Predicates {
+					walk(pred)
+				}
 			}
 		}
 	}

@@ -158,3 +158,16 @@ func TestSetColumnPropertyErrorListsWhatIsSettable(t *testing.T) {
 		}
 	}
 }
+
+// `alter page … set (Visible: <expression>) on grid column(…)` arrives as
+// VisibleIf — the key the visitor lowers every expression spelling of Visible
+// to — and was refused as "column property VisibleIf not found" while the plain
+// `Visible: false` was accepted. The shared alias table resolves it, as on create.
+func TestSetColumnPropertyResolvesVisibleIf(t *testing.T) {
+	keys := map[string]string{"44444444-4444-4444-4444-444444444444": "visible"}
+	for _, name := range []string{"VisibleIf", "Visible"} {
+		if got := resolveColumnPropertyKey(name, keys); got != "visible" {
+			t.Errorf("resolveColumnPropertyKey(%q) = %q, want visible", name, got)
+		}
+	}
+}

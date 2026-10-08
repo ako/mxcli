@@ -1,0 +1,27 @@
+mdl 1;
+-- mendixlabs/mxcli#1322: validation feedback on an association written by its
+-- BARE name was stored as an attribute reference.
+--
+--   [CE1613] The selected attribute 'G45.Input.Input_Person' no longer exists.
+--
+-- The bare name must be stored as the association G45.Input_Person — the same
+-- BSON the qualified spelling ($Input/G45.Input_Person) produces. The attribute
+-- (Note) next to it stays an attribute.
+
+create module "G45";
+create persistent entity "G45"."Person" ("Name": String(50));
+create non-persistent entity "G45"."Input" ("Note": String(50));
+create association "G45"."Input_Person" from "G45"."Input" to "G45"."Person" type Reference;
+create microflow "G45"."VAL_Input" ($Input: "G45"."Input") returns Boolean as $Ok
+begin
+  declare $Ok Boolean = true;
+  if $Input/G45.Input_Person = empty then
+    validation feedback $Input/Input_Person message 'Pick a person.';
+    set $Ok = false;
+  end if;
+  if $Input/Note = empty then
+    validation feedback $Input/Note message 'Add a note.';
+    set $Ok = false;
+  end if;
+  return $Ok;
+end;

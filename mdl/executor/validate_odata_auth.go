@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Check-time validation of a published OData service's authentication clause.
+// Check-time validation of a published OData service's authentication.
 //
 // Custom authentication is the only method that names a target: a microflow
 // taking the request's HttpHeader list and returning a User. Mendix rejects the
@@ -26,20 +26,27 @@ func ValidateODataAuth(prog *ast.Program) []linter.Violation {
 	}
 	var out []linter.Violation
 	for _, stmt := range prog.Statements {
-		svc, ok := stmt.(*ast.CreateODataServiceStmt)
-		if !ok {
+		var name ast.QualifiedName
+		var types []string
+		var mf string
+		switch s := stmt.(type) {
+		case *ast.CreateODataServiceStmt:
+			name, types, mf = s.Name, s.AuthenticationTypes, s.AuthMicroflow
+		case *ast.AlterODataServiceStmt:
+			name, types, mf = s.Name, s.AuthenticationTypes, s.AuthMicroflow
+		default:
 			continue
 		}
-		if !namesMicroflowAuth(svc.AuthenticationTypes) || svc.AuthMicroflow != "" {
+		if !namesMicroflowAuth(types) || mf != "" {
 			continue
 		}
 		out = append(out, linter.Violation{
 			RuleID:   "MDL-ODATA04",
 			Severity: linter.SeverityError,
-			Message: fmt.Sprintf("odata service %s: `authentication microflow` names no microflow",
-				svc.Name.String()),
+			Message: fmt.Sprintf("odata service %s: the `microflow` authentication method names no microflow",
+				name.String()),
 			Suggestion: "Custom authentication is the only method that carries a target — write " +
-				"`authentication microflow Module.Authenticate`. Mendix refuses to build the " +
+				"`Authentication: (microflow Module.Authenticate)`. Mendix refuses to build the " +
 				"service otherwise (CE0333 \"Please select a microflow to use for authentication\"). " +
 				"The microflow takes the request's System.HttpHeader list and returns a " +
 				"System.User; returning empty denies the request.",
@@ -48,7 +55,7 @@ func ValidateODataAuth(prog *ast.Program) []linter.Violation {
 	return out
 }
 
-// namesMicroflowAuth reports whether the clause selected custom authentication.
+// namesMicroflowAuth reports whether the methods include custom authentication.
 func namesMicroflowAuth(types []string) bool {
 	for _, t := range types {
 		if strings.EqualFold(t, "Microflow") {

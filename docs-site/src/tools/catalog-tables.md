@@ -151,8 +151,9 @@ query written then that should keep its old result filters on
 | `Caption` | The stored caption: an activity's, a split's, or an annotation's text. Empty for events, merges and loops. With `AutoGenerateCaption` it holds Studio Pro's stored placeholder (often `Activity`) |
 | `AutoGenerateCaption` | 1 when Studio Pro generates the activity's caption |
 | `Description` | Documentation of an action activity, split or loop |
-| `EntityRef` | Entity of a create object or a database retrieve |
-| `ServiceRef`, `ActionRef` | Called service and operation: REST, web service, OData action |
+| `EntityRef` | Entity of a create object, a database retrieve, or a delete (the deleted variable's entity, when the flow types it) |
+| `ServiceRef`, `ActionRef` | Called service and operation: REST, web service, OData action. For a microflow, nanoflow, Java or JavaScript action call, `ActionRef` is the called document and `ServiceRef` is empty |
+| `QueueRef` | Task queue a microflow or Java action call runs in; empty when it runs in place |
 | `UseRequestTimeout`, `TimeoutExpression` | "Use a timeout" and its seconds, for a REST or web service call |
 | `ConditionExpression` | An exclusive split's expression |
 | `ConditionRule` | The rule a rule-based split calls |
@@ -167,6 +168,11 @@ query written then that should keep its old result filters on
 SELECT MicroflowQualifiedName, EntityRef, LoopDepth
 FROM CATALOG.ACTIVITIES
 WHERE ActionType = 'RetrieveAction' AND RetrieveSource = 'database' AND ParentLoopId <> '';
+
+-- Microflows called from inside a loop, synchronously (a queued call runs outside it)
+SELECT MicroflowQualifiedName, ActionRef
+FROM CATALOG.ACTIVITIES
+WHERE ActionType = 'MicroflowCallAction' AND ParentLoopId <> '' AND QueueRef = '';
 ```
 
 ### CATALOG.PAGES

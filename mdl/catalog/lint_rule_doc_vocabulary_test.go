@@ -426,7 +426,7 @@ func TestSkillDocumentsRealActivityPropertyVocabulary(t *testing.T) {
 		&microflows.DatabaseRetrieveSource{}:    RetrieveSourceDatabase,
 		&microflows.AssociationRetrieveSource{}: RetrieveSourceAssociation,
 	} {
-		r := describeFlowObject(&microflows.ActionActivity{Action: &microflows.RetrieveAction{Source: src}})
+		r := describeFlowObject(&microflows.ActionActivity{Action: &microflows.RetrieveAction{Source: src}}, nil)
 		if r.retrieveSource != want {
 			t.Errorf("builder writes retrieve_source %q for %T, want %q", r.retrieveSource, src, want)
 		}

@@ -369,32 +369,26 @@ func outputPublishedODataServiceMDL(ctx *ExecContext, svc *model.PublishedODataS
 	if svc.SupportsGraphQL {
 		props = append(props, "  SupportsGraphQL: Yes")
 	}
+	// Authentication is a property (R9; the trailing clause is MDL-DEPR139),
+	// with the custom-authentication microflow inside it: emitted as a comment
+	// the output looked complete but replayed into a service Mendix rejects with
+	// CE0333 (mxcli-formula1 §40).
+	authProp, authNote, hasAuth := odataAuthenticationProperty(svc)
+	if hasAuth {
+		props = append(props, "  "+authProp)
+	}
 	fmt.Fprintln(ctx.Output, strings.Join(props, ",\n"))
 
-	// The statement ends with `;` after whichever clause comes last: the
-	// property list, the authentication clause or the entity block (ADR-0010
-	// R11).
+	// The statement ends with `;` after the property list or the entity block
+	// (ADR-0010 R11).
 	hasBlock := len(svc.EntityTypes) > 0 || len(svc.EntitySets) > 0 || len(svc.Microflows) > 0
-	hasAuth := len(svc.AuthenticationTypes) > 0 || svc.AuthMicroflow != ""
-	if hasBlock || hasAuth {
+	if hasBlock {
 		fmt.Fprintln(ctx.Output, ")")
 	} else {
 		fmt.Fprintln(ctx.Output, ");")
 	}
-
-	// Authentication types. The custom-authentication microflow is part of the
-	// clause, not a comment beside it: emitted as a comment the output looked
-	// complete but replayed into a service Mendix rejects with CE0333
-	// (mxcli-formula1 §40).
-	authEnd := "\n"
-	if !hasBlock {
-		authEnd = ";\n"
-	}
-	if len(svc.AuthenticationTypes) > 0 {
-		fmt.Fprintf(ctx.Output, "authentication %s%s", odataAuthClause(svc), authEnd)
-	} else if svc.AuthMicroflow != "" {
-		// A microflow with no type recorded still has to survive the round trip.
-		fmt.Fprintf(ctx.Output, "authentication microflow %s%s", svc.AuthMicroflow, authEnd)
+	if authNote != "" {
+		fmt.Fprintf(ctx.Output, "-- Authentication is stored as %s, which MDL cannot state; executing this keeps it.\n", authNote)
 	}
 
 	// Published entities block
@@ -1561,10 +1555,11 @@ func createODataService(ctx *ExecContext, stmt *ast.CreateODataServiceStmt) erro
 						}
 						svc.Microflows = published
 					}
-					if len(stmt.AuthenticationTypes) > 0 {
+					if stmt.AuthenticationSet {
 						svc.AuthenticationTypes = stmt.AuthenticationTypes
 						// Restated auth replaces the microflow too, including
-						// clearing it when the new clause is not `microflow`.
+						// clearing it when the methods do not include
+						// `microflow`, and `none` clears both.
 						svc.AuthMicroflow = stmt.AuthMicroflow
 					}
 					// Published entities are replaced wholesale when the statement
@@ -1791,6 +1786,10 @@ func alterODataService(ctx *ExecContext, stmt *ast.AlterODataServiceStmt) error 
 				default:
 					return mdlerrors.NewUnsupported(fmt.Sprintf("unknown OData service property: %s", key))
 				}
+			}
+			if stmt.AuthenticationSet {
+				svc.AuthenticationTypes = stmt.AuthenticationTypes
+				svc.AuthMicroflow = stmt.AuthMicroflow
 			}
 			if err := ctx.Backend.UpdatePublishedODataService(svc); err != nil {
 				return mdlerrors.NewBackend("alter OData service", err)
@@ -2473,25 +2472,44 @@ func bareMemberName(name string) string {
 	return name
 }
 
-// odataAuthClause renders a service's authentication methods as MDL, attaching
-// the microflow to the `Microflow` method rather than trailing it as a comment.
-// Custom authentication is the only method that names a target.
-func odataAuthClause(svc *model.PublishedODataService) string {
+// odataAuthenticationProperty renders a published service's stored
+// authentication as the `Authentication:` property, in the stored order, with
+// the microflow attached to the Microflow method. ok is false when there is
+// nothing to print (no methods: the creation default) or when the stored value
+// has no MDL spelling: a method MDL has no keyword for, or a microflow without
+// the Microflow method or the reverse. note then says what is stored, for a
+// comment; leaving the property out keeps the stored value when the output is
+// executed. Printing `microflow M.F` for a microflow stored without the method
+// used to add the method on replay.
+func odataAuthenticationProperty(svc *model.PublishedODataService) (prop, note string, ok bool) {
+	if len(svc.AuthenticationTypes) == 0 && svc.AuthMicroflow == "" {
+		return "", "", false
+	}
 	parts := make([]string, 0, len(svc.AuthenticationTypes))
-	named := false
+	spellable, hasMicroflow := true, false
 	for _, t := range svc.AuthenticationTypes {
-		if strings.EqualFold(t, "Microflow") && svc.AuthMicroflow != "" {
-			parts = append(parts, t+" "+svc.AuthMicroflow)
-			named = true
-			continue
+		switch t {
+		case "Basic", "Session", "Guest":
+			parts = append(parts, strings.ToLower(t))
+		case "Microflow":
+			hasMicroflow = true
+			if svc.AuthMicroflow == "" {
+				spellable = false
+				continue
+			}
+			parts = append(parts, "microflow "+svc.AuthMicroflow)
+		default:
+			spellable = false
 		}
-		parts = append(parts, t)
 	}
-	// A stored microflow with no matching method would otherwise be dropped.
-	if !named && svc.AuthMicroflow != "" {
-		parts = append(parts, "Microflow "+svc.AuthMicroflow)
+	if spellable && hasMicroflow == (svc.AuthMicroflow != "") && len(parts) > 0 {
+		return "Authentication: (" + strings.Join(parts, ", ") + ")", "", true
 	}
-	return strings.Join(parts, ", ")
+	note = "methods [" + strings.Join(svc.AuthenticationTypes, ", ") + "]"
+	if svc.AuthMicroflow != "" {
+		note += ", microflow " + svc.AuthMicroflow
+	}
+	return "", note, false
 }
 
 // printPublishedMicroflowMDL writes a `publish microflow` block. Parameter data

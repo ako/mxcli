@@ -426,6 +426,11 @@ func validateProgramWithWarnings(ctx *ExecContext, prog *ast.Program) ([]error, 
 	// worse than the two above: a module-qualified role here makes the project
 	// unloadable rather than merely failing the build (mendixlabs/mxcli#1001).
 	errors = append(errors, validateNavigationRoles(ctx, prog)...)
+	// Resolve what a GRANT / REVOKE, a user role and a demo user name: the
+	// entity, document or member, and the module and user roles. exec refuses
+	// the grants after the statements before them are written, and writes the
+	// user-role and demo-user ones unresolved for MxBuild to report as CE1613.
+	errors = append(errors, validateGrantReferences(ctx, prog)...)
 	// Resolve CALL EXTERNAL ACTION against the consumed service's cached
 	// contract. MxBuild otherwise reports the drift as CE7252/CE7269 on the
 	// microflow — errors whose wording sends people to the entity import, which
@@ -697,6 +702,9 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 		validationErrors := validateFlowBody(s.Parameters, s.Body, true, checkAssociationShapes(ctx, sc))
 		// Validate references inside microflow body (pages, microflows, java actions, entities)
 		refErrors := validateFlowBodyReferences(ctx, s.Body, sc)
+		if ctx.Connected() {
+			refErrors = append(refErrors, validateRetrieveOperandTypes(ctx, s.Parameters, s.Body, sc)...)
+		}
 		if len(refErrors) > 0 && s.Excluded {
 			sc.warnExcluded("microflow", s.Name.String(), refErrors)
 			refErrors = nil
@@ -747,6 +755,9 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 		validationErrors := validateFlowBody(s.Parameters, s.Body, true, checkAssociationShapes(ctx, sc))
 		// Validate references inside nanoflow body (an excluded nanoflow's are warnings)
 		refErrors := validateFlowBodyReferences(ctx, s.Body, sc)
+		if ctx.Connected() {
+			refErrors = append(refErrors, validateRetrieveOperandTypes(ctx, s.Parameters, s.Body, sc)...)
+		}
 		if len(refErrors) > 0 && s.Excluded {
 			sc.warnExcluded("nanoflow", s.Name.String(), refErrors)
 			refErrors = nil

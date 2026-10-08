@@ -56,6 +56,7 @@ var builtinModes = map[string]builtinProbe{
 	"module_roles":              {CatalogFast, "module_roles()"},
 	"role_mappings":             {CatalogFast, "role_mappings()"},
 	"project_security":          {CatalogFast, "[project_security()]"},
+	"languages":                 {CatalogFast, "languages()"},
 	"attributes_for":            {CatalogFast, "[a for n in ENTITY_NAMES for a in attributes_for(n)]"},
 	"modules":                   {CatalogFast, "modules()"},
 	"associations":              {CatalogFast, "associations()"},

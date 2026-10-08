@@ -45,9 +45,9 @@ type reference owner default;
 
 create published odata service PubMeta.ShopAPI (
   path: 'odata/shop/', version: '1.0.0', ODataVersion: OData4,
-  namespace: 'PubMeta.Shop', ServiceName: 'Shop Service', PublishAssociations: Yes
+  namespace: 'PubMeta.Shop', ServiceName: 'Shop Service', PublishAssociations: Yes,
+                                                          Authentication: (basic, session)
 )
-authentication basic, session
 {
   publish entity PubMeta.Customer as 'Customers' (
     ReadMode: source, InsertMode: source, UpdateMode: source, DeleteMode: not_supported

@@ -37,6 +37,16 @@ var ItemPropertyAliases = map[string]map[string]map[string][]string{
 			// nothing, and writes an empty expression — the class is silently
 			// dropped. Bug 10a.
 			"columnClass": {"DynamicCellClass"},
+			// The visitor lowers every expression spelling of `Visible:` —
+			// `Visible: if … then … else …`, `Visible: $currentObject/Flag`, the
+			// deprecated `Visible: [cond]` — to the key `VisibleIf`, the form a
+			// page widget's conditional visibility reads. Only the plain
+			// `Visible: false` / `Visible: '<text>'` stays under `Visible`. Without
+			// the alias the engine found no `visible` and wrote the default "true":
+			// the column always visible, check clean, exec reporting success. On
+			// ALTER, `set (Visible: <expression>)` was refused as "column property
+			// VisibleIf not found".
+			"visible": {"VisibleIf"},
 		},
 	},
 	"com.mendix.widget.web.heatmap.HeatMap": {

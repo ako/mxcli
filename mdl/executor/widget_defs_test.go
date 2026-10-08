@@ -580,6 +580,7 @@ func TestObjectListItemAliases(t *testing.T) {
 					{Key: "attribute", Type: "attribute"},
 					{Key: "width", Type: "enumeration"},
 					{Key: "columnClass", Type: "expression"},
+					{Key: "visible", Type: "expression"},
 				},
 			},
 		},
@@ -613,6 +614,12 @@ func TestObjectListItemAliases(t *testing.T) {
 	// dynamic class was silently dropped without this alias).
 	if got := aliases["columnClass"]; len(got) != 1 || got[0] != "DynamicCellClass" {
 		t.Errorf("columnClass MdlAliases = %v, want [DynamicCellClass]", got)
+	}
+	// visible is filled by the visitor's VisibleIf — every expression spelling
+	// of `Visible:` (`if … then … else …`, `$currentObject/Flag`, `[cond]`) is
+	// lowered there; without the alias a column's visibility was dropped.
+	if got := aliases["visible"]; len(got) != 1 || got[0] != "VisibleIf" {
+		t.Errorf("visible MdlAliases = %v, want [VisibleIf]", got)
 	}
 	// tooltip and attribute have no aliases — schema name is the MDL keyword.
 	if got := aliases["tooltip"]; len(got) != 0 {

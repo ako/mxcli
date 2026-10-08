@@ -125,9 +125,9 @@ CREATE PUBLISHED ODATA SERVICE MyModule.CustomerAPI (
   Path: '/odata/customers',
   Version: '1.0.0',
   ODataVersion: OData4,
-  Namespace: 'MyModule.Customers'
+  Namespace: 'MyModule.Customers',
+  Authentication: (basic, session)
 )
-AUTHENTICATION Basic, Session
 {
   PUBLISH ENTITY MyModule.Customer AS 'Customers' (
     ReadMode: SOURCE,
@@ -385,8 +385,8 @@ MDL uses explicit property declarations for pages:
 | `Hidable` | `yes`, `hidden`, `no` | `yes` | `Hidable: no` |
 | `ColumnWidth` | `autoFill`, `autoFit`, `manual` | `autoFill` | `ColumnWidth: manual` |
 | `Size` | integer (px) | `1` | `Size: 200` |
-| `Visible` | expression string | `true` | `Visible: '$showColumn'` (page variable, not $currentObject) |
-| `DynamicCellClass` | expression string | (empty) | `DynamicCellClass: if(...) then ... else ...` |
+| `Visible` | expression | `true` | `Visible: $showColumn` — evaluated once for the grid: a page variable or parameter, never `$currentObject` (MDL-WIDGET43, CE0117) |
+| `DynamicCellClass` | expression | (empty) | `DynamicCellClass: if $currentObject/Stock < 10 then 'text-danger' else ''` |
 | `Tooltip` | text string | (empty) | `Tooltip: 'Price in USD'` |
 
 **Page Example:**

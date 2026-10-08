@@ -7,6 +7,12 @@ package catalog
 //
 // History:
 //
+//	23 (call and delete targets): activities_data gains QueueRef, the task
+//	    queue a call runs in, and its ActionRef / EntityRef now name a call's
+//	    target (microflow, nanoflow, Java or JavaScript action) and a delete's
+//	    entity (mendixlabs/mxcli#1305). Without the bump a cached catalog
+//	    fails every activities_for() with "no such column", and a cached
+//	    activities table keeps answering every call and delete with "".
 //	22 (11.15 message-definition source): an import/export mapping's schema
 //	    source on Mendix 11.15+ comes from MessageDefinition2 (Module.Message),
 //	    which replaced the MessageDefinition key (ako/mxcli#987).
@@ -117,7 +123,7 @@ package catalog
 //	    SnapshotSource / SourceId / SourceBranch / SourceRevision columns
 //	    from every row (issue #576).
 //	1 — initial flat schema with denormalized snapshot columns on every row.
-const CatalogSchemaVersion = "22"
+const CatalogSchemaVersion = "23"
 
 // MetaSchemaVersion is the catalog_meta key that records the schema version
 // the cache was built against.
@@ -667,6 +673,7 @@ func (c *Catalog) createTables() error {
 			CommitType TEXT DEFAULT '',
 			WithEvents INTEGER DEFAULT 0,
 			RetrieveSource TEXT DEFAULT '',
+			QueueRef TEXT DEFAULT '',
 			ProjectId TEXT,
 			SnapshotId TEXT
 		)`,

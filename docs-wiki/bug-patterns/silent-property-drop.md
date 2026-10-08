@@ -125,6 +125,16 @@ answer "this shape does not fit" (MDL-WIDGET42, and an error at build) instead o
 falling to `default: continue`. When a grammar alternative is chosen by the
 *first token*, audit which other meanings that token starts.
 
+**One property, two keys: a consumer that reads one drops the other.** The
+visitor lowers `Visible:` by value shape — an expression to `VisibleIf`, a plain
+value to `Visible` — and the two writers each read only one: page widgets read
+`VisibleIf` (and once dropped `Visible: false`), DataGrid 2 columns read
+`Visible` (and dropped every expression). Grep the consumers of the *key the
+visitor writes*, not of the property name. And expect persisting a value to
+surface a rule its absence hid: a column's visibility has no row object, so the
+`$currentObject` examples that had always "worked" became CE0117 the moment they
+were written, and the fix needed a check rule to go with it.
+
 **Children drop the same way properties do.** A widget's body is distributed by
 several passes that each skip what they do not recognise, so a child matching no
 container, no slot and no catch-all is built and discarded exactly as an
