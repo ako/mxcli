@@ -1618,6 +1618,9 @@ func continueAfterSplitJoin(
 		if label, ok := labels.of(joinID); ok && !visited[joinID] {
 			*lines = append(*lines, mergeDeclarationLines(indent, label, activityMap[joinID], annotationsByTarget.layoutKeep())...)
 		}
+		if emitJoinAsLoopHeader(ctx, joinID, "", activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels) {
+			return
+		}
 		visited[joinID] = true
 		for _, flow := range flowsByOrigin[joinID] {
 			traverseFlow(ctx, flow.DestinationID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
@@ -1660,6 +1663,9 @@ func continueAfterNestedSplitJoin(
 		if label, ok := labels.of(joinID); ok && !visited[joinID] {
 			*lines = append(*lines, mergeDeclarationLines(indent, label, activityMap[joinID], annotationsByTarget.layoutKeep())...)
 		}
+		if emitJoinAsLoopHeader(ctx, joinID, parentMergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels) {
+			return
+		}
 		visited[joinID] = true
 		for _, flow := range flowsByOrigin[joinID] {
 			traverseFlowUntilMerge(ctx, flow.DestinationID, parentMergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
@@ -1667,6 +1673,45 @@ func continueAfterNestedSplitJoin(
 		return
 	}
 	traverseFlowUntilMerge(ctx, joinID, parentMergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent, sourceMap, headerLineCount, annotationsByTarget, labels)
+}
+
+// emitJoinAsLoopHeader writes a split's join as `while true` when it is also
+// the header of a loop — when a path out of it comes back to it without passing
+// stopID or anything already printed. Studio Pro draws one merge for both jobs;
+// MDL spells them as two statements, the `if` closing and the loop opening.
+// Walked on as a plain join, the way round came back to an activity already
+// printed and stopped in silence, so the description had no back-edge (Evora:
+// SnowflakeRESTSQL.POST_v1_ExecuteStatement, a 202 poll). Reports whether it
+// wrote the loop.
+func emitJoinAsLoopHeader(
+	ctx *ExecContext,
+	joinID model.ID,
+	stopID model.ID,
+	activityMap map[model.ID]microflows.MicroflowObject,
+	flowsByOrigin map[model.ID][]*microflows.SequenceFlow,
+	flowsByDest map[model.ID][]*microflows.SequenceFlow,
+	splitMergeMap map[model.ID]model.ID,
+	visited map[model.ID]bool,
+	entityNames map[model.ID]string,
+	microflowNames map[model.ID]string,
+	lines *[]string,
+	indent int,
+	sourceMap map[string]elkSourceRange,
+	headerLineCount int,
+	annotationsByTarget *annotationEmitter,
+	labels mergeLabels,
+) bool {
+	if visited[joinID] || !mergeIsUndescribedLoopHeader(joinID, stopID, flowsByOrigin, visited) {
+		return false
+	}
+	visited[joinID] = true
+	*lines = append(*lines, strings.Repeat("  ", indent)+"while true")
+	*lines = append(*lines, strings.Repeat("  ", indent)+"begin")
+	for _, flow := range findNormalFlows(flowsByOrigin[joinID]) {
+		traverseFlowUntilMerge(ctx, flow.DestinationID, joinID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, lines, indent+1, sourceMap, headerLineCount, annotationsByTarget, labels)
+	}
+	*lines = append(*lines, strings.Repeat("  ", indent)+"end while;")
+	return true
 }
 
 func resolveNestedMergeID(
