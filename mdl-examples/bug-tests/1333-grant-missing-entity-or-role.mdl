@@ -1,0 +1,21 @@
+-- mendixlabs/mxcli#1333: check --references passed an entity grant whose
+-- entity or module role does not exist; exec then refused it after the earlier
+-- statements were written.
+--
+--   mxcli check this-file -p app.mpr --references
+--     before (v0.25.0):  "Check passed!", exit 0
+--     after:             statement 2 "entity Administration.NoSuchEntity does not exist"
+--                        statement 3 "module role Administration.NoSuchRole does not exist"
+--   mxcli exec this-file -p app.mpr
+--     before:  grant 1 written, then "Error: entity not found: ..." (half-applied)
+--     after:   "Refusing to execute: 2 unresolved reference(s) above. Nothing was written."
+--
+-- Uses Administration.Account / Administration.User (in every blank app).
+-- Not a `.fail.mdl`: both refusals need the project, and `make check-mdl` runs
+-- without one — this file parses, and must keep parsing.
+
+mdl 1;
+
+grant create, delete on entity Administration.Account to Administration.User;
+grant create on entity Administration.NoSuchEntity to Administration.User;
+grant create on entity Administration.Account to Administration.NoSuchRole;

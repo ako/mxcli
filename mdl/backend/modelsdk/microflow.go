@@ -70,6 +70,15 @@ func (b *Backend) IsRule(qualifiedName string) (bool, error) {
 		if name == "" {
 			continue
 		}
+		// Resolving a rule's module walks the whole project (moduleNameFor
+		// lists every unit), so do it only for a rule whose own name already
+		// fits. Doing it for every rule made one lookup cost a full project read
+		// per rule — 53 s for one call on a 29-rule app, repeated per split and
+		// per derived-layout round, which is how describe of a flow with a rule
+		// split ran past five minutes.
+		if name != qualifiedName && !strings.HasSuffix(qualifiedName, "."+name) {
+			continue
+		}
 		fullName := name
 		if mod := b.moduleNameFor(model.ID(u.Element.ID())); mod != "" {
 			fullName = mod + "." + name

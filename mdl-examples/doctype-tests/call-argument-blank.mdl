@@ -1,0 +1,39 @@
+mdl 1;
+-- Blank call arguments: `Param = nothing`.
+--
+-- A call microflow / call nanoflow keeps one parameter mapping per argument.
+-- `Param = nothing` keeps the mapping with an EMPTY expression — what Studio
+-- Pro stores for an argument field left blank. Compare:
+--   Param = nothing   mapping present, Argument ""
+--   Param = empty     mapping present, Argument "empty" (the Mendix value)
+--   (omitted)         no mapping
+-- Mendix reports a blank argument as CE0127 "Missing argument" (mx check
+-- 10.24.15): `nothing` exists so that DESCRIBE round-trips such a call.
+
+create module BlankArgEx;
+
+create microflow BlankArgEx.Callee (
+  $SpanId: String,
+  $TraceId: String,
+  $Note: String
+)
+begin
+  log info node 'BlankArg' 'called';
+end;
+
+create nanoflow BlankArgEx.NanoCallee (
+  $TraceId: String
+)
+begin
+  log info node 'BlankArg' 'called';
+end;
+
+create microflow BlankArgEx.Caller ()
+begin
+  call microflow BlankArgEx.Callee(SpanId = 'span', TraceId = nothing, Note = empty);
+end;
+
+create nanoflow BlankArgEx.NanoCaller ()
+begin
+  call nanoflow BlankArgEx.NanoCallee(TraceId = nothing);
+end;

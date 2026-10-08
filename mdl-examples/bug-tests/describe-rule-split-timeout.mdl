@@ -1,0 +1,52 @@
+mdl 1;
+-- ============================================================================
+-- DESCRIBE MICROFLOW of a flow with rule splits never finishes on a large
+-- MPR v1 project (Evora Factory Management, AgentCommons.PromptToUse_ApplyVariable)
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   `describe microflow` of a small flow (3 decisions, no loops) drawn in
+--   Studio Pro ran past a 5-minute timeout, while 1,700+ larger flows in the
+--   same app described in seconds. The flow's two decisions call a rule.
+--
+-- Cause:
+--   The canonical describe rebuilds the flow once per derived-layout round
+--   (9 rounds here), and every build asks the backend whether each
+--   `if Module.Name(...)` is a rule. IsRule resolved the module of every rule
+--   in the project before comparing names, each resolution listing the whole
+--   project once plus once per folder level. On MPR v1 a listing reads every
+--   unit's contents from SQLite, so one answer took 53 s with 29 rules.
+--
+-- After fix:
+--   IsRule resolves only a rule whose name already fits, the module walk lists
+--   the modules once, and the derivation asks once per rule name. The output
+--   is byte-identical; describe takes as long as any other flow.
+--
+-- Usage (the cost only shows on a project with many rules and units, but the
+-- round trip holds anywhere):
+--   mxcli exec mdl-examples/bug-tests/describe-rule-split-timeout.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe microflow BugTestRuleSplit.TwoRuleSplits" > d.mdl
+--   mxcli exec d.mdl -p app.mpr      -- expect: Unchanged microflow
+-- ============================================================================
+
+create module BugTestRuleSplit;
+
+create rule BugTestRuleSplit.IsLarge (Amount: Integer) returns Boolean
+begin
+  return $Amount > 10;
+end;
+
+create or modify microflow BugTestRuleSplit.TwoRuleSplits ($X: Integer)
+begin
+  @position(200, 100)
+  if BugTestRuleSplit.IsLarge(Amount = $X) then
+    @position(320, 260)
+    log info node 'T' 'first';
+  end if;
+  @position(560, 140)
+  if BugTestRuleSplit.IsLarge(Amount = $X + 1) then
+    @position(700, 300)
+    log info node 'T' 'second';
+  end if;
+  return;
+end;

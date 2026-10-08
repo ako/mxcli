@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync/atomic"
 
 	"github.com/mendixlabs/mxcli/generated/metamodel"
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
@@ -580,8 +581,14 @@ func textToGen(t *model.Text) *genTexts.Text {
 	return out
 }
 
+// moduleNameListings counts the project listings moduleNameFor makes. Each is
+// a full read of every unit on an MPR v1 project, so tests use it to bound how
+// often a caller pays for one.
+var moduleNameListings atomic.Int64
+
 // moduleNameFor returns the name of the module that contains the given unit.
 func (b *Backend) moduleNameFor(unitID model.ID) string {
+	moduleNameListings.Add(1)
 	units, err := b.reader.ListUnits()
 	if err != nil {
 		return ""
@@ -597,11 +604,25 @@ func (b *Backend) moduleNameFor(unitID model.ID) string {
 	// enclosing module rather than reading only the immediate container.
 	// The project root is its own container, so stop on a self-reference as
 	// well as on a missing entry.
+	//
+	// The modules are listed once, not once per ancestor: on an MPR v1 project
+	// every listing reads every unit's contents from SQLite.
+	moduleNameListings.Add(1)
+	modules, err := b.reader.ListModules()
+	if err != nil {
+		return ""
+	}
+	moduleName := make(map[string]string, len(modules))
+	for _, m := range modules {
+		if _, dup := moduleName[m.ID]; !dup {
+			moduleName[m.ID] = m.Name
+		}
+	}
 	seen := make(map[string]bool, 8)
 	for id := parentOf[string(unitID)]; id != "" && !seen[id]; id = parentOf[id] {
 		seen[id] = true
-		if mi, _ := b.reader.GetModule(id); mi != nil {
-			return mi.Name
+		if name, ok := moduleName[id]; ok {
+			return name
 		}
 	}
 	return ""
