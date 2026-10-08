@@ -147,3 +147,33 @@ func TestSetText_TargetsAuthoringLanguage(t *testing.T) {
 		}
 	})
 }
+
+// mendixlabs/mxcli#1182: "SET Caption wrote Dutch". A caption first authored in
+// a Dutch-default project and later translated stores nl_NL FIRST and en_US
+// second; once the default is en_US, `set Caption` must write the en_US entry.
+// Writing whichever translation is listed first put the English text into
+// nl_NL and left en_US as it was. The other tests here have the default
+// language either absent or listed first, so none of them could tell the two
+// rules apart.
+func TestSetCaption_DefaultLanguageListedSecond(t *testing.T) {
+	withAuthoringLanguage(t, "en_US")
+	btn := bson.D{
+		{Key: "$Type", Value: "Forms$ActionButton"},
+		{Key: "Name", Value: "btnSave"},
+		{Key: "CaptionTemplate", Value: bson.D{
+			{Key: "$Type", Value: "Forms$ClientTemplate"},
+			{Key: "Parameters", Value: bson.A{int32(2)}},
+			{Key: "Template", Value: textsText(translation("nl_NL", "Opslaan"), translation("en_US", "Save"))},
+		}},
+	}
+	raw := makeRawPage(btn)
+	m := &Mutator{rawData: raw, widgetFinder: findBsonWidget}
+	if err := m.SetWidgetProperty("btnSave", "Caption", "Save changes"); err != nil {
+		t.Fatal(err)
+	}
+	tmpl := bsonnav.DGetDoc(bsonnav.DGetDoc(findBsonWidget(raw, "btnSave").widget, "CaptionTemplate"), "Template")
+	got := translationsOf(t, tmpl)
+	if got["en_US"] != "Save changes" || got["nl_NL"] != "Opslaan" || len(got) != 2 {
+		t.Fatalf("translations = %v, want en_US=Save changes and the untouched nl_NL=Opslaan", got)
+	}
+}

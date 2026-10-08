@@ -191,3 +191,28 @@ func TestCarryTranslations_NamedElementPairingSkipsIndexedPaths(t *testing.T) {
 		}
 	}
 }
+
+// mendixlabs/mxcli#1182: "restating the snippet writes English correctly but
+// drops the other languages". The restatement changes the English AND the shape
+// (a widget is inserted ahead of the button), which rules out both older
+// pairings at once: the text paths moved, so positional pairing is off, and the
+// new source "Save all changes" matches no stored (language, text) pair, so
+// source pairing finds nothing. Only the owning button can carry nl_NL — and
+// the stored order (nl_NL listed before the default language) must not matter.
+func TestCarryTranslations_ChangedSourceAndShapeKeepTheOtherLanguages(t *testing.T) {
+	stored := pageOf(t,
+		button(10, "btnSave", widgetText(tr(12, "nl_NL", "Opslaan"), tr(13, "en_US", "Save"))),
+	)
+	rebuilt := pageOf(t,
+		button(30, "intro", widgetText(tr(32, "en_US", "Edit below"))),
+		button(40, "btnSave", widgetText(tr(42, "en_US", "Save all changes"))),
+	)
+
+	out := CarryTranslations(rebuilt, stored)
+	if got := captionOf(t, out, "btnSave"); got["en_US"] != "Save all changes" || got["nl_NL"] != "Opslaan" || len(got) != 2 {
+		t.Errorf("btnSave caption = %v, want the restated en_US plus the stored nl_NL Opslaan", got)
+	}
+	if got := captionOf(t, out, "intro"); len(got) != 1 || got["en_US"] != "Edit below" {
+		t.Errorf("a widget the stored snippet never had = %v, want only what the rebuild wrote", got)
+	}
+}
