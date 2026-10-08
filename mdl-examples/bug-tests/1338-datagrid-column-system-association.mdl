@@ -1,0 +1,36 @@
+-- ============================================================================
+-- Bug test: mendixlabs/mxcli#1338 — DataGrid 2 column over System.changedBy
+-- ============================================================================
+--
+-- A column bound to `changedBy/Name` passed check and exec, then mxbuild failed:
+--   [CE1613] "The selected attribute 'MyFirstModule.Item.changedBy/Name' no
+--   longer exists."
+-- changedBy and owner are the associations System.changedBy / System.owner to
+-- System.User, which no domain model lists; the resolver fell back to a flat
+-- attribute path. Fixed in pageBuilder.systemMemberAssociation.
+--
+-- To verify: exec against a project, then `mxcli docker check` reports 0
+-- errors, and `describe page Bug1338.Item_Overview` prints the same columns.
+-- ============================================================================
+
+mdl 1;
+
+create module Bug1338;
+
+create persistent entity Bug1338."Item" (
+  "Name": String(50),
+  "changedBy": AutoChangedBy,
+  "changedDate": AutoChangedDate,
+  "owner": AutoOwner
+);
+
+create page Bug1338."Item_Overview" (
+  Title: 'Items',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  datagrid g (DataSource: database from Bug1338."Item") {
+    column (Attribute: "Name", Caption: 'Name')
+    column (Attribute: changedBy/Name, Caption: 'Changed by')
+    column (Attribute: owner/Name, Caption: 'Owner')
+  }
+};
