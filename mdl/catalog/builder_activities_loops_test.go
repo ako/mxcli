@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/mendixlabs/mxcli/model"
+	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
 )
 
@@ -95,6 +96,8 @@ func buildFlowsForTest(t *testing.T, mfs []*microflows.Microflow, nfs []*microfl
 		microflowCache: mfs,
 		nanoflowCache:  nfs,
 		ruleCache:      rules,
+		// Set so the builder never reaches for a reader.
+		domainModelCache: []*domainmodel.DomainModel{},
 	}
 	tx, err := cat.CatalogDB().Begin()
 	if err != nil {

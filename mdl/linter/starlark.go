@@ -1198,6 +1198,7 @@ func activityToStarlark(a Activity) starlark.Value {
 		"commit_type":              starlark.String(a.CommitType),
 		"with_events":              starlark.Bool(a.WithEvents),
 		"retrieve_source":          starlark.String(a.RetrieveSource),
+		"queue_ref":                starlark.String(a.QueueRef),
 	})
 }
 
