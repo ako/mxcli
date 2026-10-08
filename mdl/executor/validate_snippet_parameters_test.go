@@ -111,3 +111,15 @@ func TestValidateSnippetParameters_IgnoresPages(t *testing.T) {
 		t.Errorf("page flagged by MDL087: %v", msgs)
 	}
 }
+
+// `alter snippet … add parameters` declares the same element, so `check` refuses
+// the same primitive (mendixlabs/mxcli#1234). The page form is the control.
+func TestValidateSnippetParameters_AlterAdd(t *testing.T) {
+	msgs := checkSnippetSource(t, `alter snippet M.S { add parameters $Label: String; add parameters $C: M.Customer; };`)
+	if len(msgs) != 1 || !strings.Contains(msgs[0], "$Label") {
+		t.Fatalf("want one MDL087 for $Label, got %v", msgs)
+	}
+	if msgs := checkSnippetSource(t, `alter page M.P { add parameters $Label: String; };`); len(msgs) != 0 {
+		t.Fatalf("a page parameter may be primitive, got %v", msgs)
+	}
+}

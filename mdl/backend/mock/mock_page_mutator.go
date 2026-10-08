@@ -38,6 +38,8 @@ type MockPageMutator struct {
 	FindWidgetFunc                 func(name string) bool
 	AddVariableFunc                func(name, dataType, defaultValue string) error
 	DropVariableFunc               func(name string) error
+	AddParameterFunc               func(param backend.PageParameterSpec) error
+	DropParameterFunc              func(name string) error
 	SetLayoutFunc                  func(newLayout string, paramMappings map[string]string) error
 	BoundPlaceholdersFunc          func() []string
 	SetPluggablePropertyFunc       func(widgetRef string, propKey string, op backend.PluggablePropertyOp, ctx backend.PluggablePropertyContext) error
@@ -185,6 +187,20 @@ func (m *MockPageMutator) AddVariable(name, dataType, defaultValue string) error
 func (m *MockPageMutator) DropVariable(name string) error {
 	if m.DropVariableFunc != nil {
 		return m.DropVariableFunc(name)
+	}
+	return nil
+}
+
+func (m *MockPageMutator) AddParameter(param backend.PageParameterSpec) error {
+	if m.AddParameterFunc != nil {
+		return m.AddParameterFunc(param)
+	}
+	return nil
+}
+
+func (m *MockPageMutator) DropParameter(name string) error {
+	if m.DropParameterFunc != nil {
+		return m.DropParameterFunc(name)
 	}
 	return nil
 }

@@ -179,6 +179,33 @@ ALTER PAGE Module.EditPage {
 };
 ```
 
+## Parameters
+
+Add or remove a page or snippet parameter without rewriting the page. A
+parameter is declared exactly as in `CREATE PAGE`'s `Params:` — an entity or a
+primitive (`String`, `Integer`, `Long`, `Decimal`, `Boolean`, `DateTime`). A
+snippet parameter must be an entity (MDL087; mxbuild reports CE0046).
+
+```sql
+mdl 1;
+-- A page with a Url needs a {Name} segment for every parameter (CE5601), so
+-- set the URL in the same statement. A page with no Url needs no SET.
+ALTER PAGE Module.Customer_Edit {
+  SET (Url: 'customer-edit/{Customer}/{Order}');
+  ADD Parameters $Order: Module.Order;
+};
+
+-- Remove a parameter. Refused while a data source or an expression on the
+-- page still uses it.
+ALTER PAGE Module.Customer_Edit {
+  DROP Parameters $Order;
+};
+```
+
+Callers are not updated: a page that opens this one, or a page that places
+this snippet, has to pass the new parameter, and `mxcli docker check` reports
+the ones that do not.
+
 ## Combining Operations
 
 Multiple operations can be combined in a single ALTER statement. They are applied in order:
