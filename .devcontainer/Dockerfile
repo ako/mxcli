@@ -1,5 +1,11 @@
 # Mendix Model SDK Go - Development Container
-FROM mcr.microsoft.com/devcontainers/go:dev-1.26-bookworm
+FROM mcr.microsoft.com/devcontainers/go:dev-1.27-bookworm
+
+# The base image sets GOTOOLCHAIN=local, which ignores go.mod's `toolchain`
+# line and builds with whatever Go the image ships. Its tags track minor
+# versions only (dev-1.27 was 1.27.1 when go.mod moved to 1.27.2 for security
+# fixes), so `auto` lets go.mod — the same pin CI uses — choose the toolchain.
+ENV GOTOOLCHAIN=auto
 
 RUN rm -f /etc/apt/sources.list.d/yarn.list
 
