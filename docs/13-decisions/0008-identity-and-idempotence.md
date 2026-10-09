@@ -224,7 +224,7 @@ in any future attempt's test plan.
 Freezing it was the last blocker, so "what breaks if we stop regenerating it?"
 had to be answered before decision 1 could be implemented. mxcli's own reference
 material is silent — the field appears nowhere in
-`reference/mendixmodellib/reflection-data/`, `reference/mendixmodelsdk/`, or
+the metamodel reflection data, `reference/mendixmodelsdk/`, or
 `generated/metamodel/`. That silence means only that mxcli never had a
 description of it, so the evidence below comes from Mendix's own binaries and
 from a build's output.
