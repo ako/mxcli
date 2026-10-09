@@ -5,6 +5,7 @@ package docker
 import (
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -180,6 +181,56 @@ func (s *bundlerSupervisor) AwaitRebuild(sinceGen int, settle, buildTimeout time
 		return false, fmt.Errorf("fresh bundler failed too (next attempt in %s): %w", bundlerRestartBackoff(s.failures), rerr)
 	}
 	return s.want, nil
+}
+
+// BuildReleasingWebDir runs a serve build, and when it fails because the
+// bundler holds deployment/web open, stops the bundler and builds again (#1342).
+//
+// Windows refuses to delete a directory that is any process's working
+// directory, and the bundler's is web/ — it has to be: mxbuild's pages plugin
+// resolves page paths against cwd. A page or microflow edit rewrites files
+// inside web/ and is unaffected, but a domain model change makes mxbuild
+// recreate web/ itself, and that failed on every attempt with "The process
+// cannot access the file '…\deployment\web' because it is being used by
+// another process". Killing the bundler by hand did not help either: the watch
+// loop's EnsureAlive restarted it just before the next build.
+//
+// After a successful retry a fresh bundler is started; its first build is a
+// full bundle of the recreated web/, so rebundled tells the caller there is no
+// incremental rebuild left to wait for. When the retry fails too, the bundler
+// is left down for EnsureAlive to restart on the next change. On POSIX the
+// directory is removed regardless and the retry never fires.
+func (s *bundlerSupervisor) BuildReleasingWebDir(build func() (*BuildResult, error)) (res *BuildResult, rebundled bool, err error) {
+	res, err = build()
+	if err != nil || !s.Wanted() || s.cur == nil || !webDirInUse(res) {
+		return res, false, err
+	}
+	fmt.Fprintln(s.out, "  deployment/web is held open by the web client bundler; stopping it and rebuilding...")
+	s.Stop()
+	res, err = build()
+	if err != nil || !res.OK() {
+		return res, false, err
+	}
+	if rerr := s.Restart(); rerr != nil {
+		fmt.Fprintf(s.out, "  restarting web client bundler failed (next attempt in %s): %v\n",
+			bundlerRestartBackoff(s.failures), rerr)
+		return res, false, nil
+	}
+	return res, s.want, nil
+}
+
+// webDirInUsePath matches a quoted path that is deployment/web or lies under
+// it, in either separator style and in JSON-escaped form.
+var webDirInUsePath = regexp.MustCompile(`[\\/]web([\\/][^'"]*)?['"]`)
+
+// webDirInUse reports whether a failed serve build failed on a sharing
+// violation for deployment/web or a file under it.
+func webDirInUse(res *BuildResult) bool {
+	if res == nil || res.OK() {
+		return false
+	}
+	text := res.Message + "\n" + string(res.Raw)
+	return strings.Contains(text, "being used by another process") && webDirInUsePath.MatchString(text)
 }
 
 // firstLine is s up to its first newline.

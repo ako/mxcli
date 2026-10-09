@@ -1,0 +1,25 @@
+mdl 1;
+-- ============================================================================
+-- Bug mendixlabs/mxcli#1345 — describe nanoflow omitted the grant line.
+--
+-- `describe microflow` ends with `grant execute on microflow ... to ...;`,
+-- but describe nanoflow had its own body renderer without that block. A
+-- describe -> exec round trip (or a renamed copy) left the nanoflow with no
+-- allowed roles, and nothing warned. `show access on nanoflow` listed both
+-- roles all along: the data was stored and read; only describe dropped it.
+--
+-- Verify: `describe nanoflow Issue1345.NF_Checkout;` after running this
+-- script ends with the grant statement below.
+-- ============================================================================
+
+create module Issue1345;
+create module role Issue1345.User;
+create module role Issue1345.Admin;
+
+create or modify nanoflow Issue1345.NF_Checkout ()
+begin
+end;
+
+grant execute on nanoflow Issue1345.NF_Checkout to Issue1345.User, Issue1345.Admin;
+
+describe nanoflow Issue1345.NF_Checkout;

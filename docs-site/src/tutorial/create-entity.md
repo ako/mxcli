@@ -108,7 +108,7 @@ CREATE PERSISTENT ENTITY MyModule.Product (
     Quantity: Integer,
     Weight: Long,
     IsActive: Boolean DEFAULT true,
-    CreatedDate: DateTime,
+    ReleaseDate: DateTime,
     Status: MyModule.ProductStatus
 );
 ```

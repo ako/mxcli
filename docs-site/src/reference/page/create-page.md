@@ -307,7 +307,9 @@ CREATE PAGE MyModule.Dashboard
             }
             COLUMN (Class: 'col-md-4') {
                 CONTAINER cntStats (Class: 'card') {
-                    DYNAMICTEXT txtCount (Attribute: TotalCount)
+                    DATAVIEW dvStats (DataSource: MICROFLOW MyModule.DS_DashboardStats) {
+                        DYNAMICTEXT txtCount (Attribute: TotalCount)
+                    }
                 }
             }
         }

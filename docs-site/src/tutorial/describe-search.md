@@ -33,7 +33,7 @@ DESCRIBE ENTITY MyFirstModule.Order;
 ```sql
 mdl 1;
 CREATE PERSISTENT ENTITY MyFirstModule.Order (
-  OrderNumber: AutoNumber,
+  OrderNumber: AutoNumber DEFAULT 1,
   OrderDate: DateTime,
   TotalAmount: Decimal,
   Status: MyFirstModule.OrderStatus

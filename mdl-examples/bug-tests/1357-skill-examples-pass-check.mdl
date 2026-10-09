@@ -1,0 +1,44 @@
+-- mendixlabs/mxcli#1357: three skill examples marked correct failed `mxcli check`.
+-- These are the corrected forms; each must check clean.
+mdl 1;
+
+-- write-microflows/reference/control-flow.md, "Robust External Call".
+-- Was: `$response = create …` inside the handler, after the call already
+-- created $response — MDL063 at check, CE0111 "Duplicate variable name" at build.
+create microflow Module.SafeExternalCall (
+  $RequestData: string
+)
+returns Module.Response as $response
+begin
+  $response = call microflow Module.CallExternalAPI(data = $RequestData)
+    on error without rollback begin
+      log error node 'ExternalAPI' 'API call failed for: ' + $RequestData;
+      $fallbackResponse = create Module.Response (
+        success = false,
+        message = 'External service unavailable');
+      return $fallbackResponse;
+    end error;
+
+  return $response;
+end;
+
+-- write-oql-queries/reference/patterns.md, Pattern 3, and
+-- odata-data-sharing/reference/walkthroughs.md, CustomerAddressVE.
+-- Was: String(400) / unlimited String over a concatenation — MDL031 at check,
+-- CE6770 at build. A derived string column is always String(200).
+create view entity Shop.OrderDetails (
+  OrderId: long,
+  CustomerName: string(200),
+  TotalItems: integer,
+  TotalPrice: decimal
+) as (
+  select
+    o.OrderId as OrderId,
+    c.FirstName + ' ' + c.LastName as CustomerName,
+    count(ol.OrderLineId) as TotalItems,
+    o.TotalPrice as TotalPrice
+  from Shop.CustomerOrder as o
+  inner join Shop.Order_Customer/Shop.Customer as c
+  left join Shop.OrderLine_Order/Shop.OrderLine as ol
+  group by o.OrderId, o.TotalPrice, c.FirstName, c.LastName
+);

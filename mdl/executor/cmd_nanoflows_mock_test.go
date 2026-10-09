@@ -3,11 +3,13 @@
 package executor
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/backend/mock"
 	"github.com/mendixlabs/mxcli/mdl/types"
+	"github.com/mendixlabs/mxcli/mdl/visitor"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
@@ -980,5 +982,52 @@ end;`)
 	}
 	if !built.Nanoflow.MarkAsUsed {
 		t.Error("MarkAsUsed = false — the stored true was cleared by the rewrite")
+	}
+}
+
+// mendixlabs/mxcli#1345: describe nanoflow printed no grant line, so a
+// describe -> exec round trip left the nanoflow with no allowed roles.
+// Parse the output rather than grep it: the round trip is what was lost.
+func TestDescribeNanoflow_Mock_EmitsGrantForAllowedRoles(t *testing.T) {
+	mod := mkModule("Shop")
+	nf := mkNanoflow(mod.ID, "NF_Checkout")
+	nf.AllowedModuleRoles = []model.ID{"Shop.User", "Shop.Admin"}
+
+	h := mkHierarchy(mod)
+	withContainer(h, nf.ContainerID, mod.ID)
+
+	mb := &mock.MockBackend{
+		IsConnectedFunc:      func() bool { return true },
+		ListNanoflowsFunc:    func() ([]*microflows.Nanoflow, error) { return []*microflows.Nanoflow{nf}, nil },
+		ListDomainModelsFunc: func() ([]*domainmodel.DomainModel, error) { return nil, nil },
+		ListModulesFunc:      func() ([]*model.Module, error) { return []*model.Module{mod}, nil },
+	}
+
+	ctx, buf := newMockCtx(t, withBackend(mb), withHierarchy(h))
+	assertNoError(t, describeNanoflow(ctx, ast.QualifiedName{Module: "Shop", Name: "NF_Checkout"}))
+
+	out := buf.String()
+	prog, errs := visitor.Build(out)
+	if len(errs) > 0 {
+		t.Fatalf("describe output does not parse: %v\n%s", errs, out)
+	}
+	var grant *ast.GrantNanoflowAccessStmt
+	for _, stmt := range prog.Statements {
+		if g, ok := stmt.(*ast.GrantNanoflowAccessStmt); ok {
+			grant = g
+		}
+	}
+	if grant == nil {
+		t.Fatalf("describe nanoflow emitted no grant execute statement:\n%s", out)
+	}
+	if grant.Nanoflow.String() != "Shop.NF_Checkout" {
+		t.Errorf("grant targets %s, want Shop.NF_Checkout", grant.Nanoflow.String())
+	}
+	var roles []string
+	for _, r := range grant.Roles {
+		roles = append(roles, r.String())
+	}
+	if got := strings.Join(roles, ", "); got != "Shop.User, Shop.Admin" {
+		t.Errorf("grant roles = %q, want %q", got, "Shop.User, Shop.Admin")
 	}
 }

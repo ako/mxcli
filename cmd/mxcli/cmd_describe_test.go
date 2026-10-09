@@ -4,7 +4,10 @@ package main
 
 import (
 	"slices"
+	"strings"
 	"testing"
+
+	"github.com/mendixlabs/mxcli/mdl/visitor"
 )
 
 func TestChooseDescribeType(t *testing.T) {
@@ -70,5 +73,54 @@ func TestTypeMaps_KnownEntries(t *testing.T) {
 				t.Errorf("empty describe keyword for %q", k)
 			}
 		}
+	}
+}
+
+// TestDescribeMDLCommand_AutoDetectKeywordsAccepted pins that every keyword the
+// auto-detect maps can produce is one the dispatch accepts and that the MDL it
+// builds parses. A keyword missing from the dispatch reaches the user as
+// "Unknown type" for a document the catalog lists (#1347).
+func TestDescribeMDLCommand_AutoDetectKeywordsAccepted(t *testing.T) {
+	for _, m := range []map[string]string{objectTypeToDescribe, unitTypeToDescribe} {
+		for k, kw := range m {
+			name := "Mod.X"
+			if kw == "module" {
+				name = "Mod" // a module's name is not qualified
+			}
+			mdl, ok := describeMDLCommand(strings.ToUpper(kw), name)
+			if !ok {
+				t.Errorf("auto-detect keyword %q (from %q) is not accepted by describe", kw, k)
+				continue
+			}
+			if _, errs := visitor.Build(mdl); len(errs) > 0 {
+				t.Errorf("keyword %q builds %q, which does not parse: %v", kw, mdl, errs)
+			}
+		}
+	}
+}
+
+// TestDescribeMDLCommand_PublishedRestService is the #1347 symptom: `mxcli
+// describe published rest service M.Api` printed "Unknown type" although the
+// MDL statement works under `-c`, and auto-detect could not resolve the name.
+func TestDescribeMDLCommand_PublishedRestService(t *testing.T) {
+	const want = "DESCRIBE PUBLISHED REST SERVICE M.Api"
+	for _, typ := range []string{"PUBLISHED REST SERVICE", "PUBLISHEDRESTSERVICE", "REST SERVICE", "RESTSERVICE"} {
+		got, ok := describeMDLCommand(typ, "M.Api")
+		if !ok {
+			t.Errorf("describe %q: Unknown type", strings.ToLower(typ))
+			continue
+		}
+		if got != want {
+			t.Errorf("describe %q = %q, want %q", strings.ToLower(typ), got, want)
+		}
+	}
+	if _, errs := visitor.Build(want); len(errs) > 0 {
+		t.Fatalf("%q does not parse: %v", want, errs)
+	}
+	if got := objectTypeToDescribe["PUBLISHED_REST_SERVICE"]; got == "" {
+		t.Error("catalog ObjectType PUBLISHED_REST_SERVICE has no auto-detect keyword")
+	}
+	if got := unitTypeToDescribe["Rest$PublishedRestService"]; got == "" {
+		t.Error("unit type Rest$PublishedRestService has no auto-detect keyword")
 	}
 }

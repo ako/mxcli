@@ -364,16 +364,7 @@ func describeMicroflowMode(ctx *ExecContext, name ast.QualifiedName, opts descri
 
 	lines = append(lines, "end;")
 
-	// Add GRANT EXECUTE if roles are assigned
-	if len(targetMf.AllowedModuleRoles) > 0 {
-		roles := make([]string, len(targetMf.AllowedModuleRoles))
-		for i, r := range targetMf.AllowedModuleRoles {
-			roles[i] = string(r)
-		}
-		lines = append(lines, "")
-		lines = append(lines, fmt.Sprintf("grant execute on microflow %s.%s to %s;",
-			name.Module, name.Name, strings.Join(roles, ", ")))
-	}
+	lines = append(lines, flowGrantLines("microflow", name, targetMf.AllowedModuleRoles)...)
 
 	// Output
 	fmt.Fprintln(ctx.Output, strings.Join(lines, "\n"))
@@ -516,6 +507,7 @@ func describeNanoflow(ctx *ExecContext, name ast.QualifiedName) error {
 	}
 
 	lines = append(lines, "end;")
+	lines = append(lines, flowGrantLines("nanoflow", name, targetNf.AllowedModuleRoles)...)
 
 	fmt.Fprintln(ctx.Output, strings.Join(lines, "\n"))
 	return nil
@@ -721,17 +713,26 @@ func renderMicroflowMDL(
 
 	lines = append(lines, "end;")
 
-	if len(mf.AllowedModuleRoles) > 0 {
-		roles := make([]string, len(mf.AllowedModuleRoles))
-		for i, r := range mf.AllowedModuleRoles {
-			roles[i] = string(r)
-		}
-		lines = append(lines, "")
-		lines = append(lines, fmt.Sprintf("grant execute on %s %s.%s to %s;",
-			flowType, name.Module, name.Name, strings.Join(roles, ", ")))
-	}
+	lines = append(lines, flowGrantLines(flowType, name, mf.AllowedModuleRoles)...)
 
 	return strings.Join(lines, "\n")
+}
+
+// flowGrantLines renders the `grant execute` statement that follows a
+// described microflow or nanoflow body, or nothing when no role is allowed.
+// The three describe renderers share it: describe nanoflow kept its own copy
+// of the body loop without this block, and a describe -> exec round trip
+// silently dropped the nanoflow's access rules (mendixlabs/mxcli#1345).
+func flowGrantLines(flowType string, name ast.QualifiedName, allowed []model.ID) []string {
+	if len(allowed) == 0 {
+		return nil
+	}
+	roles := make([]string, len(allowed))
+	for i, r := range allowed {
+		roles[i] = string(r)
+	}
+	return []string{"", fmt.Sprintf("grant execute on %s %s.%s to %s;",
+		flowType, name.Module, name.Name, strings.Join(roles, ", "))}
 }
 
 func microflowHasReturnValue(mf *microflows.Microflow) bool {

@@ -934,6 +934,12 @@ func assignID(elem element.Element) {
 // box be left empty, so an empty text is the closest thing to "no message" that
 // still boots.
 //
+// The translation is keyed by db.ErrorMessageLanguage — the project's default
+// language, set by the executor — and falls back to model.AuthoringLanguage
+// (en_US until a project's settings are read) only when no language was given. Hardcoding en_US left a nl_NL app with no message in its own
+// language when a delete was refused, with mx check reporting nothing
+// (mendixlabs/mxcli#1344, the delete-message instance of #970).
+//
 // NOTE: the empty case is INFERRED, not measured. The reference document
 // (ako/TestApp) captures a message that was filled in; nobody has yet saved a
 // restrict association with the box cleared, so what Studio Pro writes then is
@@ -943,7 +949,7 @@ func deleteErrorText(db *domainmodel.DeleteBehavior) *model.Text {
 	if db != nil {
 		msg = db.ErrorMessage
 	}
-	return &model.Text{Translations: map[string]string{"en_US": msg}}
+	return &model.Text{Translations: map[string]string{deleteErrorLanguage(db): msg}}
 }
 
 // copyAssignedIDs writes the identities minted on a gen entity back onto the

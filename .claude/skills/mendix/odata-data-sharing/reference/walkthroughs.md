@@ -81,7 +81,7 @@ mdl 1;
  */
 create view entity ProductApi.CustomerAddressVE (
   CustomerId: long,
-  CustomerName: string,
+  CustomerName: string(200),  -- a derived string column is always String(200)
   Email: string,
   BillingStreet: string,
   BillingCity: string,

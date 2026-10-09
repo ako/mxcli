@@ -456,6 +456,16 @@ type DeleteBehavior struct {
 	// null message stops the RUNTIME STARTING, which is a worse failure than a
 	// build error and names nothing about the model (CapTrackV2 §1).
 	ErrorMessage string `json:"errorMessage,omitempty"`
+	// ErrorMessageLanguage is the LanguageCode a write stores ErrorMessage
+	// under. The executor sets the project's default language, as for every
+	// other text it authors (mendixlabs/mxcli#970, #1344); empty means
+	// model.AuthoringLanguage, which is en_US until a project's settings are read.
+	ErrorMessageLanguage string `json:"errorMessageLanguage,omitempty"`
+	// ErrorMessageTranslations holds every translation the stored message
+	// carries, keyed by LanguageCode. Read side only: ErrorMessage alone cannot
+	// say which language it came from, so DESCRIBE could not pick the project's
+	// default language out of a text that has several.
+	ErrorMessageTranslations map[string]string `json:"-"`
 }
 
 // DeleteBehaviorType represents the type of delete behavior.

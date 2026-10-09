@@ -36,6 +36,18 @@ func (b *Backend) GetRawUnitByName(objectType, qualifiedName string) (*types.Raw
 	return b.reader.GetRawUnitByName(objectType, qualifiedName)
 }
 
+// ListRawUnits returns every unit of an object type alias ("" for all units)
+// with its qualified name and raw contents.
+//
+// Recorded in unimplemented_reachability_test.go as a bypass — "the describe
+// command holds a concrete reader" — which stopped being true when the root
+// package's Open began returning a backend value. describe's no-catalog
+// auto-detect (resolveViaReader) then hit this stub and found no document of
+// any type. The reader already had it; same gap as the two methods above.
+func (b *Backend) ListRawUnits(objectType string) ([]*types.RawUnitInfo, error) {
+	return b.reader.ListRawUnits(objectType)
+}
+
 // GetRawMicroflowByName returns a microflow unit's raw BSON by qualified name.
 //
 // Unreachable through the interface today — the reachability probe found no

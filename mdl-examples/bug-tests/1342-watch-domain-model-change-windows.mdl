@@ -1,0 +1,35 @@
+-- ============================================================================
+-- Bug test: mendixlabs/mxcli#1342 — `run --local --watch` cannot apply a
+-- domain model change on Windows
+-- ============================================================================
+--
+-- Page and microflow edits hot-reloaded, but adding a persistent entity or an
+-- attribute failed the rebuild every time with:
+--   "The process cannot access the file '...\deployment\web' because it is
+--    being used by another process"
+-- and the app then returned 404. A domain model change makes mxbuild recreate
+-- deployment/web, and the incremental web client bundler runs with web/ as its
+-- working directory, which Windows will not let anyone delete. Fixed in
+-- bundlerSupervisor.BuildReleasingWebDir: on that failure the bundler is
+-- stopped, the build retried, and a fresh bundler started on the new web/.
+--
+-- To verify (Windows, a Mendix whose deployment has web/rollup.config.mjs, so
+-- mxcli runs the bundler: reported on 11.12.4, reproduced on 11.13.0; 11.12.6
+-- and 11.14+ bundle the client in mxbuild and never hit this):
+--   mxcli run --local --watch --db-type hsqldb -p App.mpr
+--   mxcli exec mdl-examples/bug-tests/1342-watch-domain-model-change-windows.mdl -p App.mpr
+-- The watch log shows "deployment/web is held open by the web client bundler;
+-- stopping it and rebuilding..." followed by "build #N applied", and the app
+-- serves its pages again. Executing the script a second time adds nothing, so
+-- to repeat, add another attribute.
+-- ============================================================================
+
+mdl 1;
+
+create module Bug1342;
+
+create persistent entity Bug1342."Order" (
+  "Code": String(20)
+);
+
+alter entity Bug1342."Order" add attribute if not exists "Label": String(100);
