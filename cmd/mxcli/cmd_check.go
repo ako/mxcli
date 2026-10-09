@@ -5,11 +5,15 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/cmd/mxcli/testrunner"
+	"github.com/mendixlabs/mxcli/mdl/backend"
+	modelsdkbackend "github.com/mendixlabs/mxcli/mdl/backend/modelsdk"
 	"github.com/mendixlabs/mxcli/mdl/executor"
 	"github.com/mendixlabs/mxcli/mdl/linter"
+	"github.com/mendixlabs/mxcli/mdl/scriptdiff"
 	"github.com/mendixlabs/mxcli/mdl/visitor"
 	"github.com/spf13/cobra"
 )
@@ -73,9 +77,13 @@ This is the verdict "mxcli diff" reports as "Refused:", computed by the same
 code. A statement on a flow an earlier statement of the script changes, or
 whose flow does not build until an earlier statement has run, is not predicted.
 
-Several files are checked as one script set, run in the order given: each
-file is checked as it would be alone, and the set is first read as a whole for
-two "create or modify" statements declaring the same flow — a placeholder
+Several files are checked as one script set, run in the order given, as
+"mxcli exec" would run them one after the other. With a project, each file is
+resolved against a scratch copy of it that the files before it have been
+applied to, so a name an earlier file creates resolves in a later one; a file
+that does not pass is left out of the copy, as exec's pre-flight would refuse
+it and write nothing. The project itself is not changed. The set is also first
+read as a whole for two "create or modify" statements declaring the same flow — a placeholder
 ("stub") followed by the real flow. That is reported as an MDL-STUB01 warning
 naming both statements: run in order, the stub replaces the real flow before
 the real statement restores it, on every run, and with the two under different
@@ -126,7 +134,19 @@ Examples:
 
 // runCheckFile checks one script and returns the exit code: 0 when it passed.
 func runCheckFile(cmd *cobra.Command, filePath string) int {
+	return runCheckFileAgainst(cmd, filePath, "")
+}
+
+// runCheckFileAgainst is runCheckFile resolving against the project at
+// against instead of --project — a script set's scratch copy, holding what
+// the files before this one write — while still naming --project in its
+// report. "" means --project itself.
+func runCheckFileAgainst(cmd *cobra.Command, filePath, against string) int {
 	projectPath, _ := cmd.Flags().GetString("project")
+	shownProject := projectPath
+	if against != "" && projectPath != "" {
+		projectPath = against
+	}
 	// A project makes reference resolution possible, so it runs. It used to
 	// need --references as well, which meant `mxcli check script.mdl -p
 	// app.mpr` printed an unqualified "Check passed!" having resolved
@@ -317,7 +337,7 @@ func runCheckFile(cmd *cobra.Command, filePath string) int {
 		}
 
 		if !isStructured {
-			fmt.Printf("\nValidating references against: %s\n", projectPath)
+			fmt.Printf("\nValidating references against: %s\n", shownProject)
 			fmt.Printf("(Note: References to objects created within the script are skipped)\n")
 		}
 		// exec was connected above, before the semantic report.
@@ -448,7 +468,7 @@ func runCheckFile(cmd *cobra.Command, filePath string) int {
 			return 1
 		}
 		if !isStructured {
-			fmt.Printf("\nScanning project for legacy native widgets: %s\n", projectPath)
+			fmt.Printf("\nScanning project for legacy native widgets: %s\n", shownProject)
 		}
 		legacyViolations, err := scanLegacyWidgets(projectPath)
 		if err != nil {
@@ -513,16 +533,84 @@ func runCheckFiles(cmd *cobra.Command, files []string) int {
 		linter.GetFormatter(linter.OutputFormat("text"), true).Format(v, os.Stderr)
 		fmt.Fprintln(os.Stderr)
 	}
+	// Against a project, each file is resolved against a scratch copy that the
+	// files before it have been applied to — what exec, run file by file in
+	// this order, leaves for it (mendixlabs/mxcli#1355). Checked against the
+	// project itself, every reference to an earlier file's entity, page or
+	// module was reported as missing, so a valid set failed its pre-flight.
+	var scratch *scriptdiff.Scratch
+	if projectPath, _ := cmd.Flags().GetString("project"); projectPath != "" {
+		sc, err := scriptdiff.NewScratch(projectPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: copy the project to check the script set against: %v\n", err)
+			return 1
+		}
+		defer sc.Close()
+		scratch = sc
+	}
 	worst := 0
+	var notApplied []string
 	for i, f := range files {
 		if i > 0 {
 			fmt.Println()
 		}
-		if code := runCheckFile(cmd, f); code > worst {
+		against := ""
+		if scratch != nil {
+			against = scratch.Mpr
+			if i > 0 {
+				fmt.Printf("Checking %s against a scratch copy of the project holding what the %d file(s) before it write (the project itself is not changed)\n", f, i)
+				for _, n := range notApplied {
+					fmt.Printf("  (without %s)\n", n)
+				}
+			}
+		}
+		code := runCheckFileAgainst(cmd, f, against)
+		if code > worst {
 			worst = code
+		}
+		if scratch != nil && i < len(files)-1 {
+			if why := applyToScratch(scratch, f, code); why != "" {
+				notApplied = append(notApplied, why)
+			}
 		}
 	}
 	return worst
+}
+
+// applyToScratch runs one checked file of a script set against the scratch
+// copy, so the files after it resolve against what it writes. It returns ""
+// when the whole file was applied, and otherwise what was left out and why.
+//
+// A file that did not pass is not applied: exec's pre-flight would refuse it
+// and write nothing, so the files after it are checked as exec would run them
+// — without it. A test file is not applied either: running it runs its tests.
+func applyToScratch(scratch *scriptdiff.Scratch, file string, checkCode int) string {
+	if checkCode != 0 {
+		return file + ", which did not pass: exec would refuse it and write nothing"
+	}
+	if testrunner.IsTestFile(file) {
+		return file + ", a test file: it creates nothing for the files after it"
+	}
+	data, err := readMDLSource(file)
+	if err != nil {
+		return fmt.Sprintf("%s: %v", file, err)
+	}
+	prog, errs := visitor.Build(string(data))
+	if len(errs) > 0 {
+		return fmt.Sprintf("%s: %v", file, errs[0])
+	}
+	opts := scriptdiff.Options{
+		// The file engine whatever --mcp says: the file is executed for real,
+		// and only the scratch copy may receive it.
+		NewBackend: func() backend.FullBackend { return modelsdkbackend.New() },
+	}
+	if abs, err := filepath.Abs(file); err == nil {
+		opts.ScriptDir = filepath.Dir(abs)
+	}
+	if _, err := scratch.Apply(prog, opts); err != nil {
+		return fmt.Sprintf("what %s writes after: %v", file, err)
+	}
+	return ""
 }
 
 // parseScriptSet reads and parses each file for the set-level checks. A file

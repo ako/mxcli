@@ -1,0 +1,19 @@
+-- mendixlabs/mxcli#1354: check -p passed a module role created in a module
+-- that does not exist; exec then wrote the statements above it and stopped.
+--
+--   mxcli check this-file -p app.mpr
+--     before (v0.25.0):  "Check passed!", exit 0
+--     after:             statement 2 "module not found: NoSuchModule", exit 1
+--   mxcli exec this-file -p app.mpr
+--     before:  "Created module role: Administration.Writer", then
+--              "Error: module not found: NoSuchModule" (half-applied)
+--     after:   refused by the pre-flight; nothing was written
+--
+-- Uses Administration (in every blank app). Not a `.fail.mdl`: the refusal
+-- needs the project, and `make check-mdl` runs without one — this file parses,
+-- and must keep parsing.
+
+mdl 1;
+
+create module role Administration.Writer;
+create module role NoSuchModule.Reader;
