@@ -101,7 +101,7 @@ func describeJsonStructure(ctx *ExecContext, name ast.QualifiedName) error {
 	// Re-executable CREATE OR MODIFY statement
 	fmt.Fprintf(ctx.Output, "create or modify json structure %s", qualifiedName)
 	if folderPath := h.BuildFolderPath(js.ContainerID); folderPath != "" {
-		fmt.Fprintf(ctx.Output, "\n  folder '%s'", folderPath)
+		fmt.Fprintf(ctx.Output, "\n  folder %s", mdlQuote(ctx, folderPath))
 	}
 	if docClause {
 		fmt.Fprintf(ctx.Output, "\n  comment '%s'", strings.ReplaceAll(js.Documentation, "'", "''"))

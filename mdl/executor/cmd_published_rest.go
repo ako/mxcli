@@ -103,7 +103,7 @@ func describePublishedRestService(ctx *ExecContext, name ast.QualifiedName) erro
 		// The folder is a clause after the name (R9); `Folder:` is its alias.
 		folder := ""
 		if folderPath := h.BuildFolderPath(svc.ContainerID); folderPath != "" {
-			folder = " folder " + mdlQuoted(folderPath)
+			folder = " folder " + mdlQuote(ctx, folderPath)
 		}
 		fmt.Fprintf(ctx.Output, "create or modify published rest service %s%s (\n", qualifiedName, folder)
 		fmt.Fprintf(ctx.Output, "  Path: %s", mdlQuoted(svc.Path))

@@ -10,6 +10,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
+	"github.com/mendixlabs/mxcli/mdl/folderpath"
 	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
@@ -778,10 +779,7 @@ func lookupFolder(ctx *ExecContext, moduleID model.ID, folderPath string) (model
 		return "", false
 	}
 	current := moduleID
-	for _, part := range strings.Split(folderPath, "/") {
-		if part == "" {
-			continue
-		}
+	for _, part := range folderpath.Split(folderPath) {
 		found := false
 		for _, f := range folders {
 			if f.ContainerID == current && f.Name == part {

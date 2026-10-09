@@ -1,0 +1,38 @@
+mdl 1;
+-- ============================================================================
+-- A folder name containing '/' split into nested folders  (mendixlabs/mxcli#1367)
+-- ============================================================================
+--
+-- Symptom (before fix): "marketplace update --save-edits + exec corrupts
+-- constant folder paths containing a literal '/' in the folder name".
+-- The Encryption module keeps EncryptionKey in the Studio Pro folder
+-- `Private - String en/de-cryption` > `Apis`. DESCRIBE (which --save-edits
+-- writes) joined the folder names with a bare '/':
+--
+--   create or modify constant Encryption.EncryptionKey folder 'Private - String en/de-cryption/Apis' (
+--
+-- and replaying it filed the constant in `Private - String en` >
+-- `de-cryption` > `Apis`. exec exited 0.
+--
+-- Fix: inside a folder-path segment a '/' is written `\/` (a backslash `\\`);
+-- the path walkers read it back as part of the name (mdl/folderpath).
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/1367-folder-name-containing-slash.mdl -p app.mpr
+--   mxcli -p app.mpr -c "list folders in BugTest1367"
+-- Expect two folders: `Private - String en\/de-cryption` and
+-- `Private - String en\/de-cryption/Apis` (holding EncryptionKey), not three.
+-- ============================================================================
+
+create module BugTest1367;
+
+create or modify constant BugTest1367.EncryptionKey folder 'Private - String en\/de-cryption/Apis' (
+  Type: String,
+  DefaultValue: ''
+);
+
+-- Re-running the statement must find the same folder, not create a sibling.
+create or modify constant BugTest1367.EncryptionKey folder 'Private - String en\/de-cryption/Apis' (
+  Type: String,
+  DefaultValue: ''
+);

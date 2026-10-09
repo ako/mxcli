@@ -3,9 +3,8 @@
 package executor
 
 import (
-	"strings"
-
 	"github.com/mendixlabs/mxcli/mdl/backend"
+	"github.com/mendixlabs/mxcli/mdl/folderpath"
 	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 )
@@ -95,7 +94,9 @@ func (h *ContainerHierarchy) IsModule(id model.ID) bool {
 	return h.moduleIDs[id]
 }
 
-// BuildFolderPath builds a folder path string from container to module.
+// BuildFolderPath builds a folder path string from container to module, each
+// folder name escaped so a name holding '/' stays one segment
+// (folderpath.Join, mendixlabs/mxcli#1367).
 func (h *ContainerHierarchy) BuildFolderPath(containerID model.ID) string {
 	var parts []string
 	current := containerID
@@ -115,7 +116,7 @@ func (h *ContainerHierarchy) BuildFolderPath(containerID model.ID) string {
 	if len(parts) == 0 {
 		return ""
 	}
-	return strings.Join(parts, "/")
+	return folderpath.Join(parts)
 }
 
 // GetQualifiedName returns the fully qualified name for a document.

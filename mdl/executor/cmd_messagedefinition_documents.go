@@ -230,7 +230,7 @@ func describeMessageDefinitionDocument(ctx *ExecContext, d *model.MessageDefinit
 	fmt.Fprintf(ctx.Output, "create or modify message definition %s\n", messageDocumentQN(ctx, d))
 	if h, err := getHierarchy(ctx); err == nil {
 		if folder := h.BuildFolderPath(d.ContainerID); folder != "" {
-			fmt.Fprintf(ctx.Output, "  folder '%s'\n", folder)
+			fmt.Fprintf(ctx.Output, "  folder %s\n", mdlQuote(ctx, folder))
 		}
 	}
 	if d.Root == nil {

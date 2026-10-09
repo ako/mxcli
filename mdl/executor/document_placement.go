@@ -16,8 +16,6 @@
 package executor
 
 import (
-	"strings"
-
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/model"
 )
@@ -62,7 +60,7 @@ func describeFolderClause(ctx *ExecContext, containerID model.ID) string {
 	if path == "" {
 		return ""
 	}
-	return " folder '" + strings.ReplaceAll(path, "'", "''") + "'"
+	return " folder " + mdlQuote(ctx, path)
 }
 
 // containerForDocument picks the container a CREATE OR MODIFY should use, in

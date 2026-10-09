@@ -591,7 +591,7 @@ func execDescribeMessageDefinitionCollection(ctx *ExecContext, name ast.Qualifie
 	fmt.Fprintf(ctx.Output, "create or modify message definition collection %s\n", name.String())
 	if h, err := getHierarchy(ctx); err == nil {
 		if folder := h.BuildFolderPath(c.ContainerID); folder != "" {
-			fmt.Fprintf(ctx.Output, "  folder '%s'\n", folder)
+			fmt.Fprintf(ctx.Output, "  folder %s\n", mdlQuote(ctx, folder))
 		}
 	}
 	fmt.Fprintln(ctx.Output, "{")

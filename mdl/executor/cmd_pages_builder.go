@@ -12,6 +12,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/backend"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
+	"github.com/mendixlabs/mxcli/mdl/folderpath"
 	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
@@ -350,14 +351,9 @@ func (pb *pageBuilder) resolveFolder(folderPath string) (model.ID, error) {
 		return "", mdlerrors.NewBackend("list folders", err)
 	}
 
-	// Split path into parts
-	parts := strings.Split(folderPath, "/")
 	currentContainerID := pb.moduleID
 
-	for _, part := range parts {
-		if part == "" {
-			continue
-		}
+	for _, part := range folderpath.Split(folderPath) {
 
 		// Find folder with this name under current container
 		var foundFolder *types.FolderInfo

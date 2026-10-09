@@ -125,7 +125,7 @@ func outputConsumedRestServiceMDL(ctx *ExecContext, svc *model.ConsumedRestServi
 	folder := ""
 	if h, err := getHierarchy(ctx); err == nil && h != nil {
 		if folderPath := h.BuildFolderPath(svc.ContainerID); folderPath != "" {
-			folder = " folder " + mdlQuoted(folderPath)
+			folder = " folder " + mdlQuote(ctx, folderPath)
 		}
 	}
 	fmt.Fprintf(w, "create or modify consumed rest service %s.%s%s (\n", moduleName, svc.Name, folder)

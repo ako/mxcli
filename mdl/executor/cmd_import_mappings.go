@@ -115,7 +115,7 @@ func describeImportMapping(ctx *ExecContext, name ast.QualifiedName) error {
 	// Without this the description round-trips to the module root: replaying
 	// it in a fresh project would recreate the mapping unfiled (#932).
 	if folderPath := h.BuildFolderPath(im.ContainerID); folderPath != "" {
-		fmt.Fprintf(ctx.Output, "  folder '%s'\n", folderPath)
+		fmt.Fprintf(ctx.Output, "  folder %s\n", mdlQuote(ctx, folderPath))
 	}
 
 	if im.JsonStructure != "" {
