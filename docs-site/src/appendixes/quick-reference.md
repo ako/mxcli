@@ -137,8 +137,8 @@ CREATE PUBLISHED ODATA SERVICE MyModule.CustomerAPI (
     UsePaging: Yes,
     PageSize: 100
   )
-  -- The KEY attribute must be required and unique on the entity
-  -- (Email: String(200) NOT NULL UNIQUE), or mxbuild reports CE6624/CE0309.
+  -- The KEY attribute must be unique on the entity
+  -- (Email: String(200) UNIQUE), or mxbuild reports CE6624.
   EXPOSE (Email (KEY), Name, Phone);
 };
 ```
