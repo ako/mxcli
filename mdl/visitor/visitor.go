@@ -136,6 +136,17 @@ func enhanceErrorMessage(msg, offendingLine string) string {
 			"    drop microflow if exists M.F;    (correct)\n"+
 			"    drop microflow M.F if exists;    (SQL order, not MDL)", msg)
 	}
+	// An icon name with a hyphen (`add-circle`): it is not an identifier, so
+	// the last segment is quoted — and only that segment, since an icon is a
+	// qualified name, not a string. Unquoted the error points at a dot; quoted
+	// whole it reads as a stray string. Neither says what to write.
+	if m := hyphenatedIconRe.FindStringSubmatch(offendingLine); m != nil {
+		return fmt.Sprintf("%s\n\n  An icon name with a hyphen is not an identifier: quote the icon name's last\n"+
+			"  segment, and only that segment — the icon is a qualified name, not a string:\n"+
+			"    Icon: %s.\"%s\"    (correct)\n"+
+			"    Icon: %s.%s      (not an identifier)\n"+
+			"    Icon: '%s.%s'    (a string, not a reference)", msg, m[1], m[2], m[1], m[2], m[1], m[2])
+	}
 	// Grammar removed as dead (ako/mxcli#756): it parsed, and could never
 	// succeed. The parse error is where the explanation now has to live.
 	if workflowAccessRe.MatchString(offendingLine) {
@@ -364,6 +375,11 @@ func enhanceErrorMessage(msg, offendingLine string) string {
 // dropIfExistsAfterNameRe matches `drop <type> <qualified name> if exists` —
 // the clause after the name rather than before it.
 var dropIfExistsAfterNameRe = regexp.MustCompile(`(?i)^\s*drop\s+[a-z][a-z ]*?\s+[\w."]+\.[\w."]+\s+if\s+exists\b`)
+
+// hyphenatedIconRe matches an icon reference whose last segment has a hyphen,
+// unquoted or quoted as one string: `Icon: Mod.Coll.add-circle` or
+// `Icon: 'Mod.Coll.add-circle'`. Group 1 is the collection, group 2 the name.
+var hyphenatedIconRe = regexp.MustCompile(`(?i)\bicon\s*:?\s*'?([A-Za-z_]\w*\.[A-Za-z_]\w*)\.([A-Za-z_]\w*(?:-\w+)+)'?`)
 
 var workflowAccessRe = regexp.MustCompile(`(?i)^\s*(grant|revoke)\s+execute\s+on\s+workflow\b`)
 
