@@ -1701,7 +1701,8 @@ func createODataService(ctx *ExecContext, stmt *ast.CreateODataServiceStmt) erro
 //     PageSize only with UsePaging, and Studio Pro stores 10000 either way);
 //   - the stored order of the entity sets, which describe prints in entity-type
 //     order; sets the stored service did not have follow, in statement order;
-//   - each member's CanBeEmpty, matched by entity and member name.
+//   - each member's CanBeEmpty, matched by entity and member name, while the
+//     member's key status is unchanged.
 func carryPublishedEntityState(storedTypes []*model.PublishedEntityType, storedSets []*model.PublishedEntitySet, svc *model.PublishedODataService) {
 	setIndex := make(map[string]int, len(storedSets))
 	setByEntity := make(map[string]*model.PublishedEntitySet, len(storedSets))
@@ -1733,7 +1734,11 @@ func carryPublishedEntityState(storedTypes []*model.PublishedEntityType, storedS
 	}
 	for _, et := range svc.EntityTypes {
 		for _, m := range et.Members {
-			if old, ok := members[et.Entity+"/"+bareMemberName(m.Name)]; ok && old.CanBeEmpty != nil {
+			// Only while the key status is the one it was stored with: a member
+			// that becomes a key would otherwise carry CanBeEmpty true onto a
+			// key, which mxbuild refuses (CE0309). On a change, the derived
+			// value (!IsPartOfKey) applies.
+			if old, ok := members[et.Entity+"/"+bareMemberName(m.Name)]; ok && old.CanBeEmpty != nil && old.IsPartOfKey == m.IsPartOfKey {
 				v := *old.CanBeEmpty
 				m.CanBeEmpty = &v
 			}

@@ -25,7 +25,7 @@ mdl 1;
 CREATE MODULE OrderManagement;
 
 CREATE PERSISTENT ENTITY Sales.Order (
-  OrderId: AutoNumber NOT NULL UNIQUE,
+  OrderId: AutoNumber NOT NULL UNIQUE DEFAULT 1,
   OrderDate: DateTime NOT NULL,
 )
 INDEX (OrderDate DESC);

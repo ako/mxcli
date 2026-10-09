@@ -122,7 +122,7 @@ CREATE CONSUMED ODATA SERVICE MyModule.ExternalAPI (
 **OData Service Example:**
 ```sql
 CREATE PUBLISHED ODATA SERVICE MyModule.CustomerAPI (
-  Path: '/odata/customers',
+  Path: 'odata/customers/',
   Version: '1.0.0',
   ODataVersion: OData4,
   Namespace: 'MyModule.Customers',
@@ -137,7 +137,9 @@ CREATE PUBLISHED ODATA SERVICE MyModule.CustomerAPI (
     UsePaging: Yes,
     PageSize: 100
   )
-  EXPOSE (Name, Email, Phone);
+  -- The KEY attribute must be unique on the entity
+  -- (Email: String(200) UNIQUE), or mxbuild reports CE6624.
+  EXPOSE (Email (KEY), Name, Phone);
 };
 ```
 

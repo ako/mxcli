@@ -158,8 +158,8 @@ CREATE MODULE ROLE Shop.Viewer DESCRIPTION 'Read-only access';
 
 -- User roles
 CREATE USER ROLE Administrator ( ModuleRoles: (Shop.Admin, System.Administrator), ManageAllRoles: true );
-CREATE USER ROLE Employee ( ModuleRoles: (Shop.User) );
-CREATE USER ROLE Guest ( ModuleRoles: (Shop.Viewer) );
+CREATE USER ROLE Employee ( ModuleRoles: (Shop.User, System.User) );
+CREATE USER ROLE Guest ( ModuleRoles: (Shop.Viewer, System.User) );
 
 -- Entity access
 GRANT CREATE, DELETE, READ *, WRITE * ON ENTITY Shop.Customer TO Shop.Admin;

@@ -609,9 +609,9 @@ Declaration order that avoids most forward references:
 enumerations → entities → snippets (placeholder) → pages → snippets (fill-in) → microflows → navigation
 ```
 
-> **Never use `CREATE OR REPLACE` for the placeholder fill-in step.** OR REPLACE deletes
-> the placeholder and creates a new document with a different UUID, silently breaking
-> every page or snippet that references it.
+> **Write the fill-in as `CREATE OR MODIFY`.** `CREATE OR REPLACE` is its deprecated
+> spelling (`MDL-DEPR001`, keeps the ID too). Only `create or replace view entity`
+> without an `mdl 1;` header deletes and recreates (`MDL-V1-REPLACE01`).
 
 ### Error: "mismatched input 'X'"
 

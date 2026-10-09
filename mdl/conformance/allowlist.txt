@@ -69,7 +69,6 @@
 7	syntax	docs-site/src/appendixes/common-mistakes.md
 1	syntax	docs-site/src/appendixes/quick-reference.md
 3	syntax	docs-site/src/appendixes/version-compatibility.md
-5	syntax	docs-site/src/examples/crm-module.md
 1	syntax	docs-site/src/examples/data-import.md
 1	syntax	docs-site/src/examples/rest-integration.md
 4	syntax	docs-site/src/ide/customizing-skills.md
