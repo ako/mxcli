@@ -16,12 +16,11 @@ This document provides a comprehensive analysis of the original Mendix Model SDK
 
 ## Overview
 
-The goal is to create a 100% functional equivalent of the Mendix Model SDK for local Mendix projects in Go. The original SDK consists of two main components:
+The goal is to create a 100% functional equivalent of the Mendix Model SDK for local Mendix projects in Go.
 
 | Component | Purpose | Go Equivalent |
 |-----------|---------|---------------|
 | **mendixmodelsdk** | High-level OO API for model manipulation | `modelsdk-go` packages |
-| **mendixmodellib** | Low-level format handling, metamodel definitions | `mpr/` package + generated types |
 
 ### Key Differences
 
@@ -58,19 +57,14 @@ The high-level SDK providing:
 | `expressions` | Expression language | ~100 |
 | ... | 42 more domains | ... |
 
-### mendixmodellib (v1.76.1)
+### Metamodel Reflection Data
 
-The low-level library providing:
-
-- **MPR file format handling** (SQLite + BSON)
-- **Metamodel reflection data** for 88 Mendix versions (6.0.0 - 11.6.0)
-- **Delta processing** for model transformations
-- **GUID utilities** for binary encoding
-- **Version compatibility** checking
+`cmd/codegen` reads metamodel reflection data: per-version JSON type
+definitions. This data is not publicly distributed, so it is not in the
+repository and cannot be redistributed with it; see
+[PROPOSAL_codegen_ownership.md](../11-proposals/PROPOSAL_codegen_ownership.md) §4.
 
 #### Reflection Data Structure
-
-Located in `libs/mendixmodellib/reflection-data/`:
 
 ```
 reflection-data/
@@ -236,7 +230,7 @@ Even in implemented domains, many subtypes are missing:
 
 ### Recommended Approach: Generate from Reflection Data
 
-The `mendixmodellib/reflection-data/` contains complete metamodel definitions in JSON format. We can generate Go code automatically from these definitions.
+The reflection data contains complete metamodel definitions in JSON format. We can generate Go code automatically from these definitions.
 
 ### Benefits
 
@@ -432,7 +426,7 @@ When a new Mendix version is released:
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │  1. Obtain new reflection data                               │
-│     └─▶ get {version}-structures.json from mendixmodellib   │
+│     └─▶ {version}-structures.json for the new version        │
 │                                                              │
 │  2. run generator                                            │
 │     └─▶ go run cmd/generate/main.go -version=11.7.0         │
@@ -456,16 +450,9 @@ When a new Mendix version is released:
 
 #### 1. Obtain Reflection Data
 
-```bash
-# Option A: from npm package
-npm pack mendixmodellib@latest
-tar -xzf mendixmodellib-*.tgz
-cp package/reflection-data/*.json libs/mendixmodellib/reflection-data/
-
-# Option B: from existing installation
-cp ~/Projects/mcpmxsdk/node_modules/mendixmodellib/reflection-data/*.json \
-   libs/mendixmodellib/reflection-data/
-```
+The reflection data is not publicly distributed; see
+[PROPOSAL_codegen_ownership.md](../11-proposals/PROPOSAL_codegen_ownership.md)
+§4 and §4A for the licence-clean replacement.
 
 #### 2. Run Generator
 
@@ -504,54 +491,6 @@ var SupportedVersions = []string{
 }
 
 var LatestVersion = "11.7.0"
-```
-
-### Automation with CI/CD
-
-```yaml
-# .github/workflows/update-metamodel.yml
-name: update Metamodel
-
-on:
-  schedule:
-    - cron: '0 0 * * 0'  # Weekly
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Mendix version to add'
-        required: true
-
-jobs:
-  update:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.24'
-
-      - name: Setup node
-        uses: actions/setup-node@v4
-
-      - name: get latest mendixmodellib
-        run: |
-          npm pack mendixmodellib@latest
-          tar -xzf mendixmodellib-*.tgz
-          cp package/reflection-data/*.json libs/mendixmodellib/reflection-data/
-
-      - name: generate types
-        run: go run cmd/generate/main.go -latest -output=generated/
-
-      - name: run tests
-        run: go test ./...
-
-      - name: create PR
-        uses: peter-evans/create-pull-request@v6
-        with:
-          title: "update metamodel to latest version"
-          branch: update-metamodel
 ```
 
 ---
@@ -634,5 +573,4 @@ Total: 88 versions supported
 
 - [Mendix Model SDK Documentation](https://docs.mendix.com/apidocs-mxsdk/mxsdk/)
 - [mendixmodelsdk npm package](https://www.npmjs.com/package/mendixmodelsdk)
-- [mendixmodellib npm package](https://www.npmjs.com/package/mendixmodellib)
 - [Mendix MPR File Format](https://docs.mendix.com/refguide/mpr-format/)

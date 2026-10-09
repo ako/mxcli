@@ -237,9 +237,8 @@ The principle: for each `$type`, ALL instances must have the **exact same set of
 ### Version-Specific Properties
 
 Some properties only exist in certain Mendix versions. Before adding a property to a BSON writer:
-1. Check `reference/mendixmodellib/reflection-data/` for the property definition
-2. Check `min_version` if present
-3. Test with `mx diff` self-diff on the target version
+1. Check a Studio Pro-authored document **of the target version** for the property
+2. Test with `mx diff` self-diff on the target version
 
 **Example**: `IsReusableComponent` exists in `Projects$ModuleImpl` in newer Mendix but NOT in 11.6.4. Writing it → crash.
 

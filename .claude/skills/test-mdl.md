@@ -118,7 +118,7 @@ The type cache does not contain a type with qualified name DomainModels$index
 
 **Cause**: Using `qualifiedName` instead of `storageName` for `$type` field.
 
-**Fix**: Check `reference/mendixmodellib/reflection-data/<version>-structures.json` for the correct `storageName`.
+**Fix**: Use the `$Type` from the `SetTypeName(...)` call in `modelsdk/gen/<domain>/types.go`, or from a Studio Pro-authored document.
 
 ### System.ArgumentNullException
 
@@ -128,9 +128,9 @@ System.ArgumentNullException: value cannot be null. (parameter 'AttributeId')
 
 **Cause**: Wrong reference format. Using UUID for BY_NAME_REFERENCE or vice versa.
 
-**Fix**: Check metamodel `typeInfo.kind` for the property:
-- `BY_NAME_REFERENCE` → qualified name string (e.g., "Module.Entity.Attr")
-- `BY_ID_REFERENCE` → binary UUID
+**Fix**: Check the property's reference kind in `modelsdk/gen/<domain>/refs.go`:
+- `RefByName` → qualified name string (e.g., "Module.Entity.Attr")
+- `RefById` → binary UUID
 
 ### Enumeration Not Displayed
 
@@ -158,11 +158,11 @@ go run ./examples/debug_bson/main.go mx-test-projects/test1-go-app/test1-go.mpr 
 ### Check Metamodel
 
 ```bash
-# find type definition
-grep -A 30 '"DomainModels\$Index"' reference/mendixmodellib/reflection-data/11.6.0-structures.json
+# find type definition (storage name and BSON field names)
+grep -n -A 12 'SetTypeName("DomainModels\$EntityIndex")' modelsdk/gen/domainmodels/types.go
 
-# find property reference kind
-grep -B 5 -A 10 '"storageName" : "Attribute"' reference/mendixmodellib/reflection-data/11.6.0-structures.json
+# find property reference kinds
+grep -n -A 6 '"DomainModels\$IndexedAttribute"' modelsdk/gen/domainmodels/refs.go
 ```
 
 ## Test Project

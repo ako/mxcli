@@ -54,28 +54,15 @@ Page client actions also have storage name differences:
 When adding new types, always verify the storage name by:
 
 1. **Examining existing MPR files** with the `mx` tool or an SQLite browser
-2. **Checking the reflection data** in `reference/mendixmodellib/reflection-data/`
+2. **Checking the vendored types** in `modelsdk/gen/<domain>/types.go`
 3. **Looking at the read cases** in `mdl/backend/modelsdk/microflow_read_actions.go`
 
-### Querying Reflection Data
+### Looking Up a Storage Name
 
-Use this Python snippet to check widget default settings:
+Each generated type registers its BSON `$Type` with `SetTypeName`:
 
-```python
-import json
-
-with open('reference/mendixmodellib/reflection-data/11.0.0-structures.json') as f:
-    data = json.load(f)
-
-# Find widget by API name
-widget = data.get('Pages$DivContainer', {})
-print('Storage name:', widget.get('storageName'))
-print('Defaults:', json.dumps(widget.get('defaultSettings', {}), indent=2))
-
-# Search by storage name
-for key, val in data.items():
-    if val.get('storageName') == 'Forms$NoAction':
-        print(f'{key}: {val.get("defaultSettings")}')
+```bash
+grep -rn 'SetTypeName("Forms\$DivContainer")' modelsdk/gen/
 ```
 
 ## Association Parent/Child Pointer Semantics
@@ -95,4 +82,4 @@ This affects **entity access rules**: MemberAccess entries for associations must
 
 ## Key Takeaway
 
-When unsure about the correct BSON structure for a new feature, create a working example in Mendix Studio Pro and compare the generated BSON against a known-good reference. The reflection data at `reference/mendixmodellib/reflection-data/` is the definitive source for storage names and default values.
+When unsure about the correct BSON structure for a new feature, create a working example in Mendix Studio Pro and compare the generated BSON against a known-good reference. A Studio Pro-authored document is the definitive source for storage names and default values.

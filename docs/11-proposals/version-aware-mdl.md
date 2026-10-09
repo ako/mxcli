@@ -7,7 +7,7 @@ status: proposed
 
 ## Problem Statement
 
-The Mendix metamodel evolves across versions. The reflection data in `reference/mendixmodellib/reflection-data/` demonstrates that BSON document structures can change between Mendix versions:
+The Mendix metamodel evolves across versions. The metamodel reflection data demonstrates that BSON document structures can change between Mendix versions:
 
 - **Field names** may change (storageName evolution)
 - **New properties** are added in newer versions
@@ -315,7 +315,7 @@ sdk/mpr/
     ├── checker.go
     └── warnings.go
 
-reference/mendixmodellib/reflection-data/
+reflection-data/
 ├── *.json                    # Existing reflection data
 └── README.md                 # documentation of schema format
 
@@ -354,6 +354,6 @@ docs/05-mdl-specification/
 
 ## References
 
-- `reference/mendixmodellib/reflection-data/` - Metamodel definitions per version
+- `modelsdk/gen/` - Vendored metamodel types
 - `docs/05-mdl-specification/10-bson-mapping.md` - Current BSON mapping docs
 - TypeScript Model SDK - Reference implementation for version handling
