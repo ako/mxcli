@@ -50,7 +50,7 @@ create view entity Finance.CategorySummary (
 mdl 1;
 create view entity Shop.OrderDetails (
   OrderId: long,
-  CustomerName: string(400),
+  CustomerName: string(200),  -- a derived string column is always String(200)
   TotalItems: integer,
   TotalPrice: decimal
 ) as (

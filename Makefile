@@ -275,6 +275,11 @@ check-skill-mdl: build
 		echo "  ok $$f"; \
 	done
 	@./scripts/check-skill-mdl.sh ./$(BUILD_DIR)/$(BINARY_NAME) docs-site/src
+	@# The syntax pass above splits blocks into statements and ignores semantic
+	@# errors. Run each whole example through the full `mxcli check` as well:
+	@# examples marked correct that check rejects shipped until a user ran
+	@# the pack through check themselves (mendixlabs/mxcli#1357).
+	@./scripts/check-skill-mdl-semantics.sh ./$(BUILD_DIR)/$(BINARY_NAME) .claude/skills/mendix .claude/skills/packs docs/01-project/MDL_QUICK_REFERENCE.md
 
 # Canonical-form conformance gate (ako/mxcli#756, plan item 1.4 of
 # PROPOSAL_mdl_beta_syntax_freeze.md). Parses every MDL block in `mxcli syntax`,
