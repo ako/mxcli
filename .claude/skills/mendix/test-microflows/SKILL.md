@@ -427,8 +427,11 @@ range to get a list, or use the variable as the object it is.
 
 `mxcli fmt --upgrade -w suite.test.mdl` reads the file the same way: it rewrites
 deprecated spellings in the blocks and keeps every doc comment, `--` comment and
-`/` separator byte for byte. A test file takes **no `mdl 1;` header** yet — check
-and the runner read its blocks as mdl 0 — so `--header` adds none to it and says so.
+`/` separator byte for byte. Like a script, a test file **gets the `mdl 1;`
+header by default** — check and the runner read every block behind it as mdl 1 —
+and constructs whose meaning the header changes are rewritten to keep it
+(`limit 1` becomes `first`, a bare `$x = …` becomes `set $x = …`).
+`--header=false` upgrades the spellings and leaves the file headerless (mdl 0).
 
 ---
 

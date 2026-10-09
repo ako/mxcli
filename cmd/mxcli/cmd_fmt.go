@@ -99,8 +99,10 @@ Upgrading (--upgrade):
 
   A test file (.test.mdl, .test.md) is upgraded the way check reads it: the
   statements in its blocks are rewritten, and its doc comments (@test,
-  @expect, …), separators and prose are kept byte for byte. It takes no
-  language header yet, so --header adds none to it and says so.
+  @expect, …), separators and prose are kept byte for byte. The header is
+  added as for a script — before the first line of a .test.mdl, as the first
+  line of each mdl-test block of a .test.md — since check and the runner read
+  a test file's header; --header=false upgrades the spellings without it.
 
   # Upgrade in place
   mxcli fmt --upgrade -w script.mdl
