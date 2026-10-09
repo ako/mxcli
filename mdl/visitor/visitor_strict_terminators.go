@@ -47,7 +47,11 @@ func (b *Builder) ExitStatement(ctx *parser.StatementContext) {
 	if last[0].GetTokenType() == parser.MDLParserSLASH {
 		slash, last = last[0], last[1:]
 	}
-	if len(last) > 0 && last[0].GetTokenType() != parser.MDLParserSEMICOLON && !(b.session && isLastStatement(ctx)) {
+	// A line that already has a syntax error was cut short by error recovery:
+	// `drop microflow M.F if exists;` ends the statement at `F` and drops
+	// `if exists;`, so "no terminating `;`" would blame a `;` that is there.
+	if len(last) > 0 && last[0].GetTokenType() != parser.MDLParserSEMICOLON && !(b.session && isLastStatement(ctx)) &&
+		!b.syntaxErrorLines[last[0].GetLine()] {
 		if b.gate(semicolonRequired, ctx) {
 			b.addError(fmt.Errorf("line %d: the statement ending at %q has no terminating `;`: "+
 				"under %s every statement ends with `;`", last[0].GetLine(), last[0].GetText(), b.langVersion))
