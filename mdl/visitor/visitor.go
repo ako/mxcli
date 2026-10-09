@@ -24,6 +24,9 @@ type errorListener struct {
 	// hinted records the (line, hint) pairs already reported, so one mistake
 	// that cascades into several ANTLR errors carries its explanation once.
 	hinted map[string]bool
+	// lines holds every line a syntax error was reported on, so a builder
+	// check does not add a second, recovery-made error on the same line.
+	lines map[int]bool
 }
 
 func newErrorListener() *errorListener {
@@ -31,6 +34,7 @@ func newErrorListener() *errorListener {
 		DefaultErrorListener: antlr.NewDefaultErrorListener(),
 		errors:               make([]error, 0),
 		hinted:               make(map[string]bool),
+		lines:                make(map[int]bool),
 	}
 }
 
@@ -45,6 +49,7 @@ func (l *errorListener) SyntaxError(rec antlr.Recognizer, sym any, line, column 
 	}
 	enhancedMsg := l.deduplicateHint(enhanceErrorMessage(msg, offending), line)
 	l.errors = append(l.errors, fmt.Errorf("line %d:%d %s", line, column, enhancedMsg))
+	l.lines[line] = true
 }
 
 // deduplicateHint strips the explanatory block from an enhanced message when the
@@ -123,6 +128,24 @@ func enhanceErrorMessage(msg, offendingLine string) string {
 			"  it declares the language version the whole script is written in.\n"+
 			"    mdl 1;\n"+
 			"    create entity Shop.Customer ( Name: String(200) );   (correct)", msg)
+	}
+	// `drop microflow M.F if exists;` — the SQL order. The grammar takes the
+	// clause before the name, and ANTLR reports only an extraneous `if`.
+	if dropIfExistsAfterNameRe.MatchString(offendingLine) {
+		return fmt.Sprintf("%s\n\n  `if exists` goes before the name, not after it:\n"+
+			"    drop microflow if exists M.F;    (correct)\n"+
+			"    drop microflow M.F if exists;    (SQL order, not MDL)", msg)
+	}
+	// An icon name with a hyphen (`add-circle`): it is not an identifier, so
+	// the last segment is quoted — and only that segment, since an icon is a
+	// qualified name, not a string. Unquoted the error points at a dot; quoted
+	// whole it reads as a stray string. Neither says what to write.
+	if m := hyphenatedIconRe.FindStringSubmatch(offendingLine); m != nil {
+		return fmt.Sprintf("%s\n\n  An icon name with a hyphen is not an identifier: quote the icon name's last\n"+
+			"  segment, and only that segment — the icon is a qualified name, not a string:\n"+
+			"    Icon: %s.\"%s\"    (correct)\n"+
+			"    Icon: %s.%s      (not an identifier)\n"+
+			"    Icon: '%s.%s'    (a string, not a reference)", msg, m[1], m[2], m[1], m[2], m[1], m[2])
 	}
 	// Grammar removed as dead (ako/mxcli#756): it parsed, and could never
 	// succeed. The parse error is where the explanation now has to live.
@@ -349,6 +372,15 @@ func enhanceErrorMessage(msg, offendingLine string) string {
 }
 
 // workflowAccessRe matches the removed `grant|revoke execute on workflow`.
+// dropIfExistsAfterNameRe matches `drop <type> <qualified name> if exists` —
+// the clause after the name rather than before it.
+var dropIfExistsAfterNameRe = regexp.MustCompile(`(?i)^\s*drop\s+[a-z][a-z ]*?\s+[\w."]+\.[\w."]+\s+if\s+exists\b`)
+
+// hyphenatedIconRe matches an icon reference whose last segment has a hyphen,
+// unquoted or quoted as one string: `Icon: Mod.Coll.add-circle` or
+// `Icon: 'Mod.Coll.add-circle'`. Group 1 is the collection, group 2 the name.
+var hyphenatedIconRe = regexp.MustCompile(`(?i)\bicon\s*:?\s*'?([A-Za-z_]\w*\.[A-Za-z_]\w*)\.([A-Za-z_]\w*(?:-\w+)+)'?`)
+
 var workflowAccessRe = regexp.MustCompile(`(?i)^\s*(grant|revoke)\s+execute\s+on\s+workflow\b`)
 
 // addMissingAttributeRe matches `add <name>:` on a source line — the shape of an
@@ -550,6 +582,9 @@ type Builder struct {
 	deprecations []ast.DeprecatedSpelling
 	// flowCommits are the commits in create-or-modify flows (visitor_flow_commits.go).
 	flowCommits []ast.FlowCommit
+	// syntaxErrorLines are the lines the parser already reported a syntax error
+	// on; ExitStatement does not add a terminator error there (see below).
+	syntaxErrorLines map[int]bool
 	// detachedDocs are the doc comments on statements that do not store them,
 	// and docsAwaitingNext the first of them still waiting for the next
 	// statement that would; docStmtStart is where the current statement's
@@ -684,6 +719,7 @@ func build(input string, opts buildOptions, listen func(*Builder) antlr.ParseTre
 	// Create builder and walk the tree
 	builder := NewBuilder()
 	builder.session = opts.session
+	builder.syntaxErrorLines = errListener.lines
 	tree := p.Program()
 	antlr.ParseTreeWalkerDefault.Walk(listen(builder), tree)
 	builder.noteBackslashEscapes(stream.GetAllTokens())

@@ -998,18 +998,20 @@ func navListItemToGen(item *pages.NavigationListItem) (element.Element, error) {
 	return g, nil
 }
 
-// layoutGridRowToGen converts a LayoutGridRow (alignment defaults match the
-// legacy serializer; not a full widget, so no name/tabindex).
+// layoutGridRowToGen converts a LayoutGridRow (not a full widget, so no
+// name/tabindex). Its appearance and alignment are carried: hardcoding them
+// dropped every row's design properties and reset a centred row on each
+// describe → exec. Unset values write the defaults the legacy serializer did.
 func layoutGridRowToGen(row *pages.LayoutGridRow) (element.Element, error) {
 	g := genPg.NewLayoutGridRow()
 	if row.ID != "" {
 		g.SetID(element.ID(row.ID))
 	}
 	assignID(g)
-	g.SetAppearance(newAppearance("", "", "", nil))
-	g.SetHorizontalAlignment("None")
-	g.SetSpacingBetweenColumns(true)
-	g.SetVerticalAlignment("None")
+	g.SetAppearance(newAppearance(row.Class, row.Style, row.DynamicClasses, row.DesignProperties))
+	g.SetHorizontalAlignment(alignmentOrNone(row.HorizontalAlignment))
+	g.SetSpacingBetweenColumns(!row.NoSpacingBetweenColumns)
+	g.SetVerticalAlignment(alignmentOrNone(row.VerticalAlignment))
 	for _, col := range row.Columns {
 		cg, err := layoutGridColumnToGen(col)
 		if err != nil {
@@ -1028,12 +1030,12 @@ func layoutGridColumnToGen(col *pages.LayoutGridColumn) (element.Element, error)
 		g.SetID(element.ID(col.ID))
 	}
 	assignID(g)
-	g.SetAppearance(newAppearance("", "", "", nil))
+	g.SetAppearance(newAppearance(col.Class, col.Style, col.DynamicClasses, col.DesignProperties))
 	g.SetWeight(int32(columnWeight(col.Weight)))
 	g.SetTabletWeight(int32(columnWeight(col.TabletWeight)))
 	g.SetPhoneWeight(int32(columnWeight(col.PhoneWeight)))
 	g.SetPreviewWidth(-1)
-	g.SetVerticalAlignment("None")
+	g.SetVerticalAlignment(alignmentOrNone(col.VerticalAlignment))
 	for _, w := range col.Widgets {
 		wg, err := widgetToGen(w)
 		if err != nil {
@@ -1042,6 +1044,14 @@ func layoutGridColumnToGen(col *pages.LayoutGridColumn) (element.Element, error)
 		g.AddWidgets(wg)
 	}
 	return g, nil
+}
+
+// alignmentOrNone maps an unset layout-grid alignment to Mendix's default.
+func alignmentOrNone(a string) string {
+	if a == "" {
+		return "None"
+	}
+	return a
 }
 
 // columnWeight maps an unset weight (0) to -1 (auto-fill), matching the legacy

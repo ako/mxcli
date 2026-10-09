@@ -15,18 +15,37 @@ type LayoutGrid struct {
 }
 
 // LayoutGridRow represents a row in a layout grid.
+//
+// A row is not a widget — it has no name — but it carries a Forms$Appearance
+// (class, style, design properties) and its own alignment, exactly like one.
+// Empty values mean Mendix's defaults: no appearance, alignments "None", and
+// SpacingBetweenColumns true (NoSpacingBetweenColumns is its negation, so the
+// zero value is the default).
 type LayoutGridRow struct {
 	model.BaseElement
-	Columns []*LayoutGridColumn `json:"columns,omitempty"`
+	Columns                 []*LayoutGridColumn   `json:"columns,omitempty"`
+	Class                   string                `json:"class,omitempty"`
+	Style                   string                `json:"style,omitempty"`
+	DynamicClasses          string                `json:"dynamicClasses,omitempty"`
+	DesignProperties        []DesignPropertyValue `json:"designProperties,omitempty"`
+	VerticalAlignment       string                `json:"verticalAlignment,omitempty"`   // "None" (default), "Start", "Center", "End"
+	HorizontalAlignment     string                `json:"horizontalAlignment,omitempty"` // "None" (default), "Start", "Center", "End"
+	NoSpacingBetweenColumns bool                  `json:"noSpacingBetweenColumns,omitempty"`
 }
 
-// LayoutGridColumn represents a column in a layout grid.
+// LayoutGridColumn represents a column in a layout grid. Like a row it has an
+// appearance and a vertical alignment; empty means Mendix's default.
 type LayoutGridColumn struct {
 	model.BaseElement
-	Weight       int      `json:"weight"`
-	TabletWeight int      `json:"tabletWeight"`
-	PhoneWeight  int      `json:"phoneWeight"`
-	Widgets      []Widget `json:"widgets,omitempty"`
+	Weight            int                   `json:"weight"`
+	TabletWeight      int                   `json:"tabletWeight"`
+	PhoneWeight       int                   `json:"phoneWeight"`
+	Widgets           []Widget              `json:"widgets,omitempty"`
+	Class             string                `json:"class,omitempty"`
+	Style             string                `json:"style,omitempty"`
+	DynamicClasses    string                `json:"dynamicClasses,omitempty"`
+	DesignProperties  []DesignPropertyValue `json:"designProperties,omitempty"`
+	VerticalAlignment string                `json:"verticalAlignment,omitempty"` // "None" (default), "Start", "Center", "End"
 }
 
 // Container represents a generic container widget.

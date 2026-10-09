@@ -453,7 +453,19 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			// Mendix stores no name on a row or a column (R12, #749), so
 			// describe writes none: an invented `row1` / `col3` churned when a
 			// row or column was inserted, and meant nothing on re-execution.
-			fmt.Fprintf(ctx.Output, "%s  row {\n", prefix)
+			// Alignment and appearance only when set, so a plain row stays `row {`.
+			var rowProps []string
+			if a := layoutGridAlignmentMDL(row.VerticalAlignment); a != "" {
+				rowProps = append(rowProps, "VerticalAlignment: "+a)
+			}
+			if a := layoutGridAlignmentMDL(row.HorizontalAlignment); a != "" {
+				rowProps = append(rowProps, "HorizontalAlignment: "+a)
+			}
+			if !row.SpacingBetweenColumns {
+				rowProps = append(rowProps, "SpacingBetweenColumns: false")
+			}
+			rowProps = appendAppearanceProps(ctx, rowProps, row.Appearance)
+			formatWidgetProps(ctx.Output, prefix+"  ", "row", rowProps, " {\n")
 			for _, col := range row.Columns {
 				// The desktop width is always printed. A tablet or phone width
 				// is printed unless it is auto-fill, which is what the builder
@@ -465,7 +477,11 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 				if w := layoutGridWidthMDL(col.PhoneWidth); w != "AutoFill" {
 					colProps = append(colProps, "PhoneWidth: "+w)
 				}
-				fmt.Fprintf(ctx.Output, "%s    column (%s) {\n", prefix, strings.Join(colProps, ", "))
+				if a := layoutGridAlignmentMDL(col.VerticalAlignment); a != "" {
+					colProps = append(colProps, "VerticalAlignment: "+a)
+				}
+				colProps = appendAppearanceProps(ctx, colProps, col.Appearance)
+				formatWidgetProps(ctx.Output, prefix+"    ", "column", colProps, " {\n")
 				for _, cw := range col.Widgets {
 					outputWidgetMDLV3(ctx, cw, indent+3)
 				}
@@ -2126,4 +2142,13 @@ func layoutGridWidthMDL(weight int) string {
 		return "AutoFit"
 	}
 	return "AutoFill"
+}
+
+// layoutGridAlignmentMDL spells a stored layout-grid row or column alignment,
+// or "" for Mendix's default ("None", or absent on an older model).
+func layoutGridAlignmentMDL(a string) string {
+	if a == "" || a == "None" {
+		return ""
+	}
+	return a
 }

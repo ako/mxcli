@@ -637,40 +637,51 @@ func applyWidgetAppearance(widget pages.Widget, w *ast.WidgetV3, theme *ThemeReg
 	}
 
 	// Apply design properties
-	astProps := w.GetDesignProperties()
-	if len(astProps) > 0 {
-		// Resolve the widget's design-property definitions from the theme registry
-		// (when loaded) so each value's BSON type is taken from metadata
-		// (ColorPicker/ToggleButtonGroup → custom) rather than guessed. Nil/empty
-		// when no project/themesource — the converter then falls back to option.
-		var themeProps []ThemeProperty
-		if theme != nil {
-			themeProps = theme.GetPropertiesForWidget(resolveDesignPropsKey(w.Type))
+	dpValues, err := designPropertyValuesV3(w, resolveDesignPropsKey(w.Type), theme)
+	if err != nil {
+		return fmt.Errorf("widget %q: %w", w.Name, err)
+	}
+	if len(dpValues) > 0 {
+		type designPropSetter interface {
+			SetDesignProperties(props []pages.DesignPropertyValue)
 		}
-		var dpValues []pages.DesignPropertyValue
-		for _, p := range astProps {
-			// Refuse rather than write, when the theme proves the shape wrong —
-			// a flat value on a multi-select property (ako/mxcli#511). Silently
-			// writing it produced a document mxbuild rejects with CE6084, whose
-			// wording names a type mismatch and not the spelling that fixes it.
-			dp, ok, err := astDesignPropToValueChecked(p, themeProps)
-			if err != nil {
-				return fmt.Errorf("widget %q: %w", w.Name, err)
-			}
-			if ok {
-				dpValues = append(dpValues, dp)
-			}
-		}
-		if len(dpValues) > 0 {
-			type designPropSetter interface {
-				SetDesignProperties(props []pages.DesignPropertyValue)
-			}
-			if setter, ok := widget.(designPropSetter); ok {
-				setter.SetDesignProperties(dpValues)
-			}
+		if setter, ok := widget.(designPropSetter); ok {
+			setter.SetDesignProperties(dpValues)
 		}
 	}
 	return nil
+}
+
+// designPropertyValuesV3 converts w's DesignProperties entries, typed against
+// the theme's definitions for themeKey (a design-properties.json group).
+func designPropertyValuesV3(w *ast.WidgetV3, themeKey string, theme *ThemeRegistry) ([]pages.DesignPropertyValue, error) {
+	astProps := w.GetDesignProperties()
+	if len(astProps) == 0 {
+		return nil, nil
+	}
+	// Resolve the widget's design-property definitions from the theme registry
+	// (when loaded) so each value's BSON type is taken from metadata
+	// (ColorPicker/ToggleButtonGroup → custom) rather than guessed. Nil/empty
+	// when no project/themesource — the converter then falls back to option.
+	var themeProps []ThemeProperty
+	if theme != nil {
+		themeProps = theme.GetPropertiesForWidget(themeKey)
+	}
+	var dpValues []pages.DesignPropertyValue
+	for _, p := range astProps {
+		// Refuse rather than write, when the theme proves the shape wrong —
+		// a flat value on a multi-select property (ako/mxcli#511). Silently
+		// writing it produced a document mxbuild rejects with CE6084, whose
+		// wording names a type mismatch and not the spelling that fixes it.
+		dp, ok, err := astDesignPropToValueChecked(p, themeProps)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			dpValues = append(dpValues, dp)
+		}
+	}
+	return dpValues, nil
 }
 
 // astDesignPropToValue converts one MDL design-property entry to a

@@ -28,7 +28,7 @@ Built-in rules check for:
   - Empty validation feedback (MPR004) - validation feedback with empty message
   - Unconfigured images (MPR005) - IMAGE widgets with no source configured
   - Empty containers (MPR006) - layout containers with no children
-  - Navigation page security (MPR007) - pages in navigation need allowed roles
+  - Navigation page security (MPR007) - pages in navigation need allowed roles, and every user role must be able to open its home page
   - Gallery selection listener (MPR009) - DataView 'DataSource: selection X' needs gallery 'ItemSelectionMode: toggle' (Studio Pro CE3637)
   - Entity access rules (SEC001) - persistent entities need access rules
   - Password policy (SEC002) - password minimum length should be 8+

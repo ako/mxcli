@@ -859,13 +859,21 @@ type rawDesignProp struct {
 
 type rawWidgetRow struct {
 	Columns []rawWidgetColumn
+	// Appearance holds only Class, Style, DynamicClasses and DesignProperties —
+	// a row is not a widget, but its Forms$Appearance is a widget's.
+	Appearance            rawWidget
+	VerticalAlignment     string // "" or "None" is the default
+	HorizontalAlignment   string
+	SpacingBetweenColumns bool
 }
 
 type rawWidgetColumn struct {
-	Width       int
-	TabletWidth int
-	PhoneWidth  int
-	Widgets     []rawWidget
+	Width             int
+	TabletWidth       int
+	PhoneWidth        int
+	Widgets           []rawWidget
+	Appearance        rawWidget // Class, Style, DynamicClasses, DesignProperties
+	VerticalAlignment string
 }
 
 // toBsonArray converts various BSON array types to []interface{}.

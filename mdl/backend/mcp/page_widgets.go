@@ -158,21 +158,21 @@ func (b *Backend) mapPageWidgetBody(w pages.Widget) (map[string]any, error) {
 				}
 				cols = append(cols, map[string]any{
 					"$Type":             "Pages$LayoutGridColumn",
-					"appearance":        pageAppearance("", ""),
+					"appearance":        pageAppearance(c.Class, c.Style),
 					"weight":            weight,
 					"tabletWeight":      tablet,
 					"phoneWeight":       phone,
 					"previewWidth":      -1,
-					"verticalAlignment": "None",
+					"verticalAlignment": alignmentOrNone(c.VerticalAlignment),
 					"widgets":           kids,
 				})
 			}
 			rows = append(rows, map[string]any{
 				"$Type":                 "Pages$LayoutGridRow",
-				"appearance":            pageAppearance("", ""),
-				"verticalAlignment":     "None",
-				"horizontalAlignment":   "None",
-				"spacingBetweenColumns": true,
+				"appearance":            pageAppearance(r.Class, r.Style),
+				"verticalAlignment":     alignmentOrNone(r.VerticalAlignment),
+				"horizontalAlignment":   alignmentOrNone(r.HorizontalAlignment),
+				"spacingBetweenColumns": !r.NoSpacingBetweenColumns,
 				"columns":               cols,
 			})
 		}
@@ -602,4 +602,13 @@ func clientTemplateParam(p *pages.ClientTemplateParameter) map[string]any {
 		param["sourceVariable"] = map[string]any{"$Type": "Pages$PageVariable", "pageParameter": p.SourceVariable, "useAllPages": false}
 	}
 	return param
+}
+
+// alignmentOrNone maps an unset layout-grid row/column alignment to Mendix's
+// default.
+func alignmentOrNone(a string) string {
+	if a == "" {
+		return "None"
+	}
+	return a
 }

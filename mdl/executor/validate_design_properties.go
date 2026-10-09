@@ -92,6 +92,10 @@ func validateDesignPropsSubtree(parent *ast.WidgetV3, widgets []*ast.WidgetV3, r
 		switch designPropsSlotOf(parent, w) {
 		case slotDropped:
 			out = append(out, droppedSlotDesignProps(parent, w, locationPrefix)...)
+		case slotLayoutGridRow:
+			out = append(out, validateDesignPropsAs(w, "LayoutGridRow", reg, locationPrefix)...)
+		case slotLayoutGridColumn:
+			out = append(out, validateDesignPropsAs(w, "LayoutGridColumn", reg, locationPrefix)...)
 		case slotOfPluggable:
 			// Built by the pluggable engine from the parent's object lists; the
 			// keyword names no native widget here, so there is nothing to resolve.
@@ -113,6 +117,11 @@ const (
 	// assembles itself, never through buildWidgetV3, so applyWidgetAppearance
 	// never sees its design properties.
 	slotDropped
+	// slotLayoutGridRow / slotLayoutGridColumn: a layout grid's row and a row's
+	// column. Not widgets either, but the builder writes their appearance, and
+	// the theme defines their design properties under their own class names.
+	slotLayoutGridRow
+	slotLayoutGridColumn
 	// slotOfPluggable: a keyword that is a native widget elsewhere, used as a
 	// child of a pluggable widget — one of its object-list entries or slots.
 	slotOfPluggable
@@ -136,9 +145,11 @@ func designPropsSlotOf(parent, child *ast.WidgetV3) designPropsSlot {
 	}
 	p, c := strings.ToLower(parent.Type), strings.ToLower(child.Type)
 	switch {
-	case p == "layoutgrid" && c == "row", // buildLayoutGridRowV3
-		p == "row" && c == "column",      // buildLayoutGridColumnV3
-		p == "dataview" && c == "footer": // children moved into FooterWidgets
+	case p == "layoutgrid" && c == "row": // buildLayoutGridRowV3
+		return slotLayoutGridRow
+	case p == "row" && c == "column": // buildLayoutGridColumnV3
+		return slotLayoutGridColumn
+	case p == "dataview" && c == "footer": // children moved into FooterWidgets
 		return slotDropped
 	}
 	if !slotKeywords[c] {
@@ -178,11 +189,16 @@ func elementLabel(w *ast.WidgetV3) string {
 }
 
 func validateWidgetDesignProps(w *ast.WidgetV3, reg *ThemeRegistry, locationPrefix string) []linter.Violation {
+	return validateDesignPropsAs(w, resolveDesignPropsKey(w.Type), reg, locationPrefix)
+}
+
+// validateDesignPropsAs validates w's design properties against the theme's
+// definitions for key (a design-properties.json group).
+func validateDesignPropsAs(w *ast.WidgetV3, key string, reg *ThemeRegistry, locationPrefix string) []linter.Violation {
 	astProps := w.GetDesignProperties()
 	if len(astProps) == 0 {
 		return nil
 	}
-	key := resolveDesignPropsKey(w.Type)
 	// Only validate widgets we have type-specific metadata for. For an unknown
 	// widget type (e.g. a pluggable widget not in the theme registry) we don't
 	// know the full property set, so we must not flag its keys as unknown.
