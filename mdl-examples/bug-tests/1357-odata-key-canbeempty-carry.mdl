@@ -1,0 +1,38 @@
+-- A published member that becomes part of the key must not keep the
+-- CanBeEmpty it was stored with as a non-key member. Running the second
+-- statement over the first used to carry CanBeEmpty true onto the key, and
+-- mxbuild refused it: CE0309 "Exposed attribute 'Email' of entity 'Customer'
+-- that is part of the key cannot be marked as 'Can be empty'".
+mdl 1;
+create module MyModule;
+
+create persistent entity MyModule.Customer (
+  Name: String(200),
+  Email: String(200) not null unique,
+  Phone: String(50)
+);
+
+create published odata service MyModule.CustomerAPI (
+  Path: 'odata/customers/',
+  Version: '1.0.0',
+  ODataVersion: OData4,
+  Namespace: 'MyModule.Customers'
+)
+{
+  publish entity MyModule.Customer as 'Customers' ( ReadMode: SOURCE )
+  expose (Name, Email, Phone);
+};
+
+-- Re-run with Email as the key. Email was stored with CanBeEmpty true as a
+-- non-key member; as a key it must be written false. (The first statement
+-- alone has no key and is CE6585 — it is the stored state, not the target.)
+create or modify published odata service MyModule.CustomerAPI (
+  Path: 'odata/customers/',
+  Version: '1.0.0',
+  ODataVersion: OData4,
+  Namespace: 'MyModule.Customers'
+)
+{
+  publish entity MyModule.Customer as 'Customers' ( ReadMode: SOURCE )
+  expose (Email (KEY), Name, Phone);
+};
