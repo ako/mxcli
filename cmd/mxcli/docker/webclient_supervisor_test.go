@@ -4,6 +4,7 @@ package docker
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -408,5 +409,115 @@ func TestBundlerSupervisor_AwaitRebuildHealthyNoRestart(t *testing.T) {
 	}
 	if pool.started != 1 {
 		t.Fatalf("a healthy rebuild restarted the bundler (%d starts)", pool.started)
+	}
+}
+
+// webDirLockedMessage is the serve build failure reported in #1342, verbatim
+// but for the elided user path.
+const webDirLockedMessage = `The process cannot access the file 'C:\Users\me\App\deployment\web' because it is being used by another process.`
+
+// lockingServeBuild models Windows for a build that recreates deployment/web:
+// while any bundler is alive — its working directory is web/ — the delete
+// fails with the #1342 message; with none alive the build succeeds.
+func lockingServeBuild(pool *bundlerPool, calls *int) func() (*BuildResult, error) {
+	return func() (*BuildResult, error) {
+		*calls++
+		if pool.liveCount() > 0 {
+			raw, _ := json.Marshal(map[string]string{"status": "Failure", "message": webDirLockedMessage})
+			return &BuildResult{Status: "Failure", Message: webDirLockedMessage, Raw: raw}, nil
+		}
+		return &BuildResult{Status: "Success"}, nil
+	}
+}
+
+// The reported symptom: a domain model change under `run --local --watch` on
+// Windows failed with "being used by another process" on deployment\web, every
+// time. The build must succeed, with the bundler stopped before the retry and a
+// fresh one running afterwards.
+func TestBundlerSupervisor_BuildReleasingWebDir_RetriesWithBundlerStopped(t *testing.T) {
+	pool := &bundlerPool{}
+	var out bytes.Buffer
+	sup, first := newFakeSupervisor(pool, &out)
+	calls := 0
+
+	res, rebundled, err := sup.BuildReleasingWebDir(lockingServeBuild(pool, &calls))
+	if err != nil || !res.OK() {
+		t.Fatalf("build = (%+v, %v), want success once the bundler let go of web/", res, err)
+	}
+	if calls != 2 {
+		t.Fatalf("serve build ran %d time(s), want the failed one and one retry", calls)
+	}
+	if !first.stopped {
+		t.Fatal("the bundler holding web/ was not stopped before the retry")
+	}
+	if !rebundled || pool.started != 2 || pool.liveCount() != 1 || sup.cur == clientBundler(first) {
+		t.Fatalf("rebundled=%v started=%d live=%d, want a fresh bundler running on the new web/",
+			rebundled, pool.started, pool.liveCount())
+	}
+	if !strings.Contains(out.String(), "held open by the web client bundler") {
+		t.Fatalf("the retry is not reported:\n%s", out.String())
+	}
+}
+
+// Every other failure is the user's model and must reach them unchanged, with
+// the incremental bundler left alone.
+func TestBundlerSupervisor_BuildReleasingWebDir_OtherFailureNoRetry(t *testing.T) {
+	pool := &bundlerPool{}
+	sup, first := newFakeSupervisor(pool, io.Discard)
+	calls := 0
+	res, rebundled, err := sup.BuildReleasingWebDir(func() (*BuildResult, error) {
+		calls++
+		return &BuildResult{Status: "Failure", Message: "The app contains: 1 error."}, nil
+	})
+	if err != nil || res.OK() || rebundled {
+		t.Fatalf("build = (%+v, %v, %v), want the failure passed through", res, rebundled, err)
+	}
+	if calls != 1 || first.stopped || pool.started != 1 {
+		t.Fatalf("calls=%d stopped=%v started=%d, want no retry and the bundler untouched", calls, first.stopped, pool.started)
+	}
+}
+
+// When the retry fails as well, the bundler stays down rather than being
+// restarted onto a half-built web/; EnsureAlive brings it back on the next
+// change.
+func TestBundlerSupervisor_BuildReleasingWebDir_RetryFails(t *testing.T) {
+	pool := &bundlerPool{}
+	sup, _ := newFakeSupervisor(pool, io.Discard)
+	res, rebundled, err := sup.BuildReleasingWebDir(func() (*BuildResult, error) {
+		return &BuildResult{Status: "Failure", Message: webDirLockedMessage}, nil
+	})
+	if err != nil || res.OK() || rebundled {
+		t.Fatalf("build = (%+v, %v, %v), want the retry's failure", res, rebundled, err)
+	}
+	if pool.started != 1 || sup.cur != nil || !sup.Wanted() {
+		t.Fatalf("started=%d cur=%v wanted=%v, want the bundler down but still wanted", pool.started, sup.cur, sup.Wanted())
+	}
+	if restarted, err := sup.EnsureAlive(); err != nil || !restarted {
+		t.Fatalf("EnsureAlive = (%v, %v), want the bundler back", restarted, err)
+	}
+}
+
+func TestWebDirInUse(t *testing.T) {
+	cases := map[string]struct {
+		res  *BuildResult
+		want bool
+	}{
+		"reported message": {&BuildResult{Status: "Failure", Message: webDirLockedMessage}, true},
+		"JSON-escaped raw only": {&BuildResult{Status: "Failure",
+			Raw: json.RawMessage(`{"message":"The process cannot access the file 'C:\\App\\deployment\\web' because it is being used by another process."}`)}, true},
+		"file under web/": {&BuildResult{Status: "Failure",
+			Message: `The process cannot access the file 'C:\App\deployment\web\dist\index.js' because it is being used by another process.`}, true},
+		"other locked path": {&BuildResult{Status: "Failure",
+			Message: `The process cannot access the file 'C:\App\deployment\model\model.mdp' because it is being used by another process.`}, false},
+		"webapp sibling": {&BuildResult{Status: "Failure",
+			Message: `The process cannot access the file 'C:\App\deployment\webapp' because it is being used by another process.`}, false},
+		"model error":  {&BuildResult{Status: "Failure", Message: "The app contains: 1 error."}, false},
+		"success":      {&BuildResult{Status: "Success", Message: webDirLockedMessage}, false},
+		"nil response": {nil, false},
+	}
+	for name, c := range cases {
+		if got := webDirInUse(c.res); got != c.want {
+			t.Errorf("%s: webDirInUse = %v, want %v", name, got, c.want)
+		}
 	}
 }
