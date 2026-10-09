@@ -10,6 +10,7 @@ import (
 
 	modelsdkbackend "github.com/mendixlabs/mxcli/mdl/backend/modelsdk"
 	"github.com/mendixlabs/mxcli/mdl/executor"
+	"github.com/mendixlabs/mxcli/mdl/folderpath"
 	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/spf13/cobra"
@@ -820,7 +821,7 @@ func getOrCreateFolder(root *TreeNode, cache map[string]*TreeNode, path string) 
 		if builtPath != "" {
 			builtPath += "/"
 		}
-		builtPath += part
+		builtPath += folderpath.Escape(part)
 
 		if node, ok := cache[builtPath]; ok {
 			current = node
@@ -1057,23 +1058,8 @@ func buildMenuTreeNodes(parent *TreeNode, items []*types.NavMenuItem) {
 	}
 }
 
-// splitFolderPath splits a folder path like "Parent/Child" into parts.
+// splitFolderPath splits a folder path like "Parent/Child" into folder names,
+// reading a `\/` inside a name as part of it (mendixlabs/mxcli#1367).
 func splitFolderPath(path string) []string {
-	if path == "" {
-		return nil
-	}
-	var parts []string
-	start := 0
-	for i := 0; i < len(path); i++ {
-		if path[i] == '/' {
-			if i > start {
-				parts = append(parts, path[start:i])
-			}
-			start = i + 1
-		}
-	}
-	if start < len(path) {
-		parts = append(parts, path[start:])
-	}
-	return parts
+	return folderpath.Split(path)
 }

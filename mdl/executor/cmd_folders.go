@@ -10,20 +10,18 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
+	"github.com/mendixlabs/mxcli/mdl/folderpath"
 	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 )
 
 // findFolderByPath walks a folder path under a module and returns the folder ID.
 func findFolderByPath(ctx *ExecContext, moduleID model.ID, folderPath string, folders []*types.FolderInfo) (model.ID, error) {
-	parts := strings.Split(folderPath, "/")
+	parts := folderpath.Split(folderPath)
 	currentContainerID := moduleID
 
 	var targetFolderID model.ID
 	for i, part := range parts {
-		if part == "" {
-			continue
-		}
 
 		var found bool
 		for _, f := range folders {

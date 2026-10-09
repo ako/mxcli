@@ -338,7 +338,7 @@ func outputPublishedODataServiceMDL(ctx *ExecContext, svc *model.PublishedODataS
 	// The folder is a clause after the name (R9); `Folder:` is its alias.
 	folder := ""
 	if folderPath != "" {
-		folder = " folder " + mdlQuoted(folderPath)
+		folder = " folder " + mdlQuote(ctx, folderPath)
 	}
 	fmt.Fprintf(ctx.Output, "create or modify published odata service %s.%s%s (\n", moduleName, svc.Name, folder)
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
+	"github.com/mendixlabs/mxcli/mdl/folderpath"
 	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
@@ -113,14 +114,9 @@ func resolveFolder(ctx *ExecContext, moduleID model.ID, folderPath string) (mode
 		return "", mdlerrors.NewBackend("list folders", err)
 	}
 
-	// Split path into parts
-	parts := strings.Split(folderPath, "/")
 	currentContainerID := moduleID
 
-	for _, part := range parts {
-		if part == "" {
-			continue
-		}
+	for _, part := range folderpath.Split(folderPath) {
 
 		// Find folder with this name under current container
 		var foundFolder *types.FolderInfo
