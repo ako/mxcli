@@ -1,0 +1,42 @@
+mdl 1;
+-- ============================================================================
+-- mendixlabs/mxcli#1341: a sub-menu does not keep a same-caption item's action
+-- ============================================================================
+--
+-- Turning the page item 'Work' into a sub-menu 'Work' paired the two by caption
+-- and carried the page item's Forms$FormAction onto the sub-menu (v0.25.0):
+--
+--   kept the stored action of menu item 'Work' (Forms$FormAction): MDL cannot
+--   express it, and the item states none
+--
+-- exec and describe reported success; mx check then failed with CE0548 "Items
+-- with subitems cannot have an action themselves." The sub-menu must be written
+-- with Forms$NoAction, and `mxcli docker check` must report 0 errors after the
+-- second statement.
+
+create module NavSubmenu1341;
+
+create page NavSubmenu1341.Accounts ( Title: 'Accounts', Layout: Atlas_Core.Atlas_Default ) {
+  dynamictext t (Content: 'Accounts')
+};
+
+create page NavSubmenu1341.Sessions ( Title: 'Sessions', Layout: Atlas_Core.Atlas_Default ) {
+  dynamictext t (Content: 'Sessions')
+};
+
+-- Step 1: 'Work' is a page item.
+create or modify navigation Responsive
+  home page NavSubmenu1341.Accounts
+  {
+    menu item 'Work' ( OnClick: show page NavSubmenu1341.Accounts )
+  };
+
+-- Step 2: 'Work' becomes a sub-menu under the same caption.
+create or modify navigation Responsive
+  home page NavSubmenu1341.Accounts
+  {
+    menu 'Work' {
+      menu item 'Accounts' ( OnClick: show page NavSubmenu1341.Accounts )
+      menu item 'Sessions' ( OnClick: show page NavSubmenu1341.Sessions )
+    }
+  };
