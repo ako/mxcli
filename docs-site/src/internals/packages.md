@@ -153,7 +153,6 @@ github.com/mendixlabs/mxcli/
 │   └── package.json         # Extension manifest
 │
 └── reference/               # Reference materials (not Go code)
-    ├── mendixmodellib/      # TypeScript library + reflection data
     ├── mendixmodelsdk/      # TypeScript SDK reference
     └── mdl-grammar/         # Comprehensive MDL grammar reference
 ```

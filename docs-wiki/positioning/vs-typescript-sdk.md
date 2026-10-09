@@ -11,7 +11,7 @@ sources:
 
 ## What this is
 
-mxcli is a local-first, pure-Go reimplementation of the capability behind Mendix's official TypeScript Model SDK (`mendixmodelsdk` + `mendixmodellib`): reading and modifying the model that lives inside a Mendix `.mpr` project. It targets the same metamodel and the same on-disk format, but reaches it from a different direction.
+mxcli is a local-first, pure-Go reimplementation of the capability behind Mendix's official TypeScript Model SDK (`mendixmodelsdk`): reading and modifying the model that lives inside a Mendix `.mpr` project. It targets the same metamodel and the same on-disk format, but reaches it from a different direction.
 
 ## How it fits
 

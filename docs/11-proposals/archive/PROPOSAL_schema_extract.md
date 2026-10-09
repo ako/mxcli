@@ -21,7 +21,7 @@ The BSON Schema Registry proposal (see `BSON_SCHEMA_REGISTRY_PROPOSAL.md`) requi
 per-version type metadata to drive serialization, validation, and default-value filling. That
 metadata currently comes from two sources, both with reliability problems:
 
-1. **Reflection data** (`reference/mendixmodellib/reflection-data/`) — extracted from the
+1. **Reflection data** — extracted from the
    TypeScript `mendixmodelsdk` npm package. Stale at Mendix 11.6. Requires manual update each
    release. Uses TypeScript SDK names that differ from BSON storage names (e.g. SDK says
    `CreateObjectAction`, BSON stores `CreateChangeAction`).
@@ -66,7 +66,7 @@ JSON file.
 
 ```bash
 # Extract schema for whatever Studio Pro version is currently open
-mxcli schema extract --output reference/mendixmodellib/reflection-data/
+mxcli schema extract --output reference/reflection-data/
 
 # Extract only microflow and domain model domains
 mxcli schema extract --domains microflows,domainmodels --output ./schemas/
@@ -204,7 +204,7 @@ different Mendix version") acts as a version guard — the right `mx` binary mus
 The extractor writes one JSON file per Mendix version:
 
 ```
-reference/mendixmodellib/reflection-data/
+reference/reflection-data/
   11.9.0-extracted.json    ← new format, one file replaces -structures + -storageNames pair
   11.8.0-extracted.json
   ...

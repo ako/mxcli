@@ -702,7 +702,7 @@ revoke access on odata service MyModule.CustomerAPI from MyModule.Guest;
 
 ## References
 
-- `reference/mendixmodellib/reflection-data/11.6.0-structures.json` - Type definitions
+- `modelsdk/gen/` - Type definitions
 - `mx-test-projects/QueryDemoApp-main/QueryDemoApp.mpr` - Working examples
 - Types: `rest$ConsumedODataService`, `ODataPublish$PublishedODataService2`, `ODataPublish$EntitySet`, `ODataPublish$EntityType`
 

@@ -606,7 +606,7 @@
 * f613a108 - (6 weeks ago) Fix VALIDATION FEEDBACK association path serialization (CE1613) - Andrej Koelewijn
 * 5b83d674 - (6 weeks ago) Fix duplicate ViewEntitySourceDocuments and batch view entity creation - Andrej Koelewijn
 * 77ad3fb6 - (6 weeks ago) Fix DROP VIEW ENTITY to also delete orphaned OQL source documents - Andrej Koelewijn
-* ec168e24 - (6 weeks ago) Remove unused mendixmodellib tarball and fix script file modes - Andrej Koelewijn
+* ec168e24 - (6 weeks ago) Remove unused reflection-data tarball and fix script file modes - Andrej Koelewijn
 * d51eef33 - (6 weeks ago) Update skills and MDL examples - Andrej Koelewijn
 * ce646d00 - (6 weeks ago) Simplify devcontainer: native Claude Code install, remove Node.js dependency - Andrej Koelewijn
 * 7bc95d61 - (6 weeks ago) Add CustomWithoutRollBack error handling type - Andrej Koelewijn
