@@ -277,18 +277,7 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 	extractConditionalSettings(ctx, &widget, w)
 
 	// Extract CSS class, style, and design properties from Appearance
-	if appearance, ok := w["Appearance"].(map[string]any); ok {
-		if class, ok := appearance["Class"].(string); ok && class != "" {
-			widget.Class = class
-		}
-		if style, ok := appearance["Style"].(string); ok && style != "" {
-			widget.Style = style
-		}
-		if dc, ok := appearance["DynamicClasses"].(string); ok && dc != "" {
-			widget.DynamicClasses = dc
-		}
-		widget.DesignProperties = extractDesignProperties(appearance)
-	}
+	extractAppearance(&widget, w)
 
 	switch typeName {
 	case "Forms$LayoutGrid", "Pages$LayoutGrid":
@@ -785,7 +774,16 @@ func parseLayoutGridRows(ctx *ExecContext, w map[string]any, entityContext ...st
 		if !ok {
 			continue
 		}
-		row := rawWidgetRow{}
+		row := rawWidgetRow{SpacingBetweenColumns: true}
+		// A row's and a column's appearance and alignment were never read, so a
+		// describe → exec reset every one of them (the Atlas "Flex container" /
+		// "Column gap" / "Cards style" a Studio Pro page sets on its grid).
+		extractAppearance(&row.Appearance, rMap)
+		row.VerticalAlignment, _ = rMap["VerticalAlignment"].(string)
+		row.HorizontalAlignment, _ = rMap["HorizontalAlignment"].(string)
+		if v, ok := rMap["SpacingBetweenColumns"].(bool); ok {
+			row.SpacingBetweenColumns = v
+		}
 		cols := getBsonArrayElements(rMap["Columns"])
 		for _, c := range cols {
 			cMap, ok := c.(map[string]any)
@@ -793,6 +791,8 @@ func parseLayoutGridRows(ctx *ExecContext, w map[string]any, entityContext ...st
 				continue
 			}
 			col := rawWidgetColumn{}
+			extractAppearance(&col.Appearance, cMap)
+			col.VerticalAlignment, _ = cMap["VerticalAlignment"].(string)
 			// Widths: 1..12, -1 auto-fill, -2 auto-fit content. Studio Pro
 			// stores them as int64, so read them width-agnostically — an
 			// `.(int32)` here missed every stored width and describe printed
@@ -816,6 +816,25 @@ func parseLayoutGridRows(ctx *ExecContext, w map[string]any, entityContext ...st
 		result = append(result, row)
 	}
 	return result
+}
+
+// extractAppearance copies the CSS class, inline style, dynamic classes and
+// design properties of an element's Forms$Appearance onto dst.
+func extractAppearance(dst *rawWidget, w map[string]any) {
+	appearance, ok := w["Appearance"].(map[string]any)
+	if !ok {
+		return
+	}
+	if class, ok := appearance["Class"].(string); ok && class != "" {
+		dst.Class = class
+	}
+	if style, ok := appearance["Style"].(string); ok && style != "" {
+		dst.Style = style
+	}
+	if dc, ok := appearance["DynamicClasses"].(string); ok && dc != "" {
+		dst.DynamicClasses = dc
+	}
+	dst.DesignProperties = extractDesignProperties(appearance)
 }
 
 // parseNavigationListItems extracts items from a NavigationList widget.

@@ -3,9 +3,11 @@
 package executor
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
+	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/pages"
@@ -42,6 +44,26 @@ func (pb *pageBuilder) buildLayoutGridRowV3(w *ast.WidgetV3) (*pages.LayoutGridR
 			ID:       model.ID(types.GenerateID()),
 			TypeName: "Forms$LayoutGridRow",
 		},
+		Class:          w.GetClass(),
+		Style:          w.GetStyle(),
+		DynamicClasses: w.GetDynamicClasses(),
+	}
+	var err error
+	if row.DesignProperties, err = designPropertyValuesV3(w, "LayoutGridRow", pb.themeRegistry); err != nil {
+		return nil, fmt.Errorf("layout grid row: %w", err)
+	}
+	if row.VerticalAlignment, err = layoutGridAlignment(w, "VerticalAlignment"); err != nil {
+		return nil, err
+	}
+	if row.HorizontalAlignment, err = layoutGridAlignment(w, "HorizontalAlignment"); err != nil {
+		return nil, err
+	}
+	if raw, ok := lookupPropCI(w, "SpacingBetweenColumns"); ok {
+		v, err := propBool(raw)
+		if err != nil {
+			return nil, fmt.Errorf("layout grid row SpacingBetweenColumns: %w", err)
+		}
+		row.NoSpacingBetweenColumns = !v
 	}
 
 	// Build columns from children
@@ -64,7 +86,17 @@ func (pb *pageBuilder) buildLayoutGridColumnV3(w *ast.WidgetV3) (*pages.LayoutGr
 			ID:       model.ID(types.GenerateID()),
 			TypeName: "Forms$LayoutGridColumn",
 		},
-		Weight: 1,
+		Weight:         1,
+		Class:          w.GetClass(),
+		Style:          w.GetStyle(),
+		DynamicClasses: w.GetDynamicClasses(),
+	}
+	var err error
+	if col.DesignProperties, err = designPropertyValuesV3(w, "LayoutGridColumn", pb.themeRegistry); err != nil {
+		return nil, fmt.Errorf("layout grid column: %w", err)
+	}
+	if col.VerticalAlignment, err = layoutGridAlignment(w, "VerticalAlignment"); err != nil {
+		return nil, err
 	}
 
 	if dw := w.GetDesktopWidth(); dw != nil {
@@ -87,6 +119,25 @@ func (pb *pageBuilder) buildLayoutGridColumnV3(w *ast.WidgetV3) (*pages.LayoutGr
 	}
 
 	return col, nil
+}
+
+// layoutGridAlignment reads a row's or column's VerticalAlignment /
+// HorizontalAlignment: Start, Center or End (any case), "" when unset — which
+// the writer stores as Mendix's default, None.
+func layoutGridAlignment(w *ast.WidgetV3, key string) (string, error) {
+	raw, ok := lookupPropCI(w, key)
+	if !ok {
+		return "", nil
+	}
+	if s, ok := raw.(string); ok {
+		for _, a := range []string{"None", "Start", "Center", "End"} {
+			if strings.EqualFold(s, a) {
+				return a, nil
+			}
+		}
+	}
+	return "", mdlerrors.NewValidationf("layout grid %s %s: invalid value %v (expected Start, Center or End)",
+		strings.ToLower(w.Type), key, raw)
 }
 
 // Stored layout-grid column weights besides 1..12.
@@ -139,6 +190,10 @@ func (pb *pageBuilder) buildContainerWithRowV3(w *ast.WidgetV3) (*pages.Containe
 	if err != nil {
 		return nil, err
 	}
+	// The appearance written on a top-level `row` is the container's
+	// (applyWidgetAppearance sets it there); writing it on the row too would
+	// apply every class and design property twice.
+	row.Class, row.Style, row.DynamicClasses, row.DesignProperties = "", "", "", nil
 	lg.Rows = append(lg.Rows, row)
 	container.Widgets = append(container.Widgets, lg)
 
@@ -178,6 +233,8 @@ func (pb *pageBuilder) buildContainerWithColumnV3(w *ast.WidgetV3) (*pages.Conta
 	if err != nil {
 		return nil, err
 	}
+	// The container carries a top-level `column`'s appearance, as for `row`.
+	col.Class, col.Style, col.DynamicClasses, col.DesignProperties = "", "", "", nil
 	row.Columns = append(row.Columns, col)
 	lg.Rows = append(lg.Rows, row)
 	container.Widgets = append(container.Widgets, lg)

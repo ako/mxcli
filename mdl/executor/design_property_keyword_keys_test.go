@@ -140,12 +140,16 @@ func TestBuildWidget_OwnGroupColourIsCustom(t *testing.T) {
 	}
 }
 
-// A row inside a layoutgrid, a column inside a row, and a dataview's footer are
-// SLOTS, not widgets: buildLayoutGridRowV3 / buildLayoutGridColumnV3 and the
-// dataview footer split never call applyWidgetAppearance, so their design
-// properties are dropped on write. Resolving the keyword as a DivContainer there
-// would validate against a group the value never reaches; staying silent reads
-// as approval of a value that is thrown away.
+// A dataview's footer is a SLOT, not a widget: the dataview footer split never
+// calls applyWidgetAppearance, so its design properties are dropped on write.
+// Resolving the keyword as a DivContainer there would validate against a group
+// the value never reaches; staying silent reads as approval of a value that is
+// thrown away.
+//
+// A layout grid's row and a row's column were the same until their appearance
+// was written: they are validated against the theme's LayoutGridRow /
+// LayoutGridColumn groups now (never as a DivContainer), and are not reported
+// dropped.
 func TestValidateDesignProperties_SlotDesignPropsAreReportedDropped(t *testing.T) {
 	reg := ownGroupThemeRegistry(t)
 	vs := allDesignPropViolations(t, `create page M.P (layout: Atlas_Core.Atlas_Default) {
@@ -164,22 +168,41 @@ func TestValidateDesignProperties_SlotDesignPropsAreReportedDropped(t *testing.T
 	// A layout grid's rows and columns, and a data view's footer, have no
 	// stored name, so the visitor drops the one written here (MDL-DEPR005,
 	// #749, ako/mxcli#528); the message names them by kind and parent instead.
-	for _, name := range []string{`row inside layoutgrid "lg"`, `column inside row sets`, `column inside row "topRow"`, `footer inside dataview "dv"`} {
-		var found bool
-		for _, v := range vs {
-			if v.RuleID == "MDL-WIDGET07" && strings.Contains(v.Message, name) &&
-				strings.Contains(v.Message, "dropped") {
-				found = true
-			}
-		}
-		if !found {
-			t.Errorf("slot %q: design properties dropped on write but not reported (%d violations)", name, len(vs))
+	var found bool
+	for _, v := range vs {
+		if v.RuleID == "MDL-WIDGET07" && strings.Contains(v.Message, `footer inside dataview "dv"`) &&
+			strings.Contains(v.Message, "dropped") {
+			found = true
 		}
 	}
+	if !found {
+		t.Errorf("footer: design properties dropped on write but not reported (%d violations)", len(vs))
+	}
 	for _, v := range vs {
-		if v.RuleID != "MDL-WIDGET07" {
-			t.Errorf("a slot must not be validated as a widget, got %s: %s", v.RuleID, v.Message)
+		if v.RuleID != "MDL-WIDGET07" || !strings.Contains(v.Message, "footer") {
+			t.Errorf("only the footer may be reported, got %s: %s", v.RuleID, v.Message)
 		}
+	}
+}
+
+// A layout grid's row and column are validated against their own theme groups:
+// a key the LayoutGridColumn group does not define is flagged, one it defines
+// is not — and DivContainer's "Card style" is not borrowed for them.
+func TestValidateDesignProperties_LayoutGridRowColumnUseOwnGroups(t *testing.T) {
+	reg := ownGroupThemeRegistry(t)
+	reg.WidgetProperties["LayoutGridRow"] = []ThemeProperty{{Name: "Cards style", Type: "Toggle"}}
+	reg.WidgetProperties["LayoutGridColumn"] = []ThemeProperty{{Name: "Flex container", Type: "ToggleButtonGroup",
+		Options: []ThemeOption{{Name: "Horizontal (row)"}, {Name: "Vertical (column)"}}}}
+	vs := allDesignPropViolations(t, `create page M.P (layout: Atlas_Core.Atlas_Default) {
+  layoutgrid lg {
+    row (DesignProperties: ['Cards style': on]) {
+      column (DesignProperties: ['Flex container': 'Vertical (column)']) { }
+      column (DesignProperties: ['Card style': on]) { }
+    }
+  }
+}`, reg)
+	if len(vs) != 1 || vs[0].RuleID != "MDL-WIDGET11" || !strings.Contains(vs[0].Message, `"Card style"`) {
+		t.Errorf("want one MDL-WIDGET11 for the column's \"Card style\", got %v", vs)
 	}
 }
 

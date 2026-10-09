@@ -790,6 +790,9 @@ var staticWidgetKnownProps = func() map[string]bool {
 		// menu source and orientation of navigationtree / menubar /
 		// simplemenubar, and a scroll-container region's size mode.
 		"ShowFooter", "Menu", "Profile", "Orientation", "SizeMode",
+		// a layout-grid row's and column's alignment, read by
+		// buildLayoutGridRowV3 / buildLayoutGridColumnV3 and emitted by describe.
+		"VerticalAlignment", "HorizontalAlignment", "SpacingBetweenColumns",
 		// fragment / building-block sentinel-internal keys (USE_FRAGMENT /
 		// USE_BUILDING_BLOCK), consumed by the expander, never serialized
 		"Args", "DataSourceOverride", "ActionOverride",
