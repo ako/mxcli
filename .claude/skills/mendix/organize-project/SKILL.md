@@ -335,7 +335,7 @@ drop folder 'Processing' in MyModule;
 ## Validation Checklist
 
 - [ ] Folder paths use `/` separator (not `\`)
-- [ ] FOLDER keyword placement is correct (before BEGIN for microflows, inside properties for pages)
+- [ ] FOLDER is a clause after the document name — before BEGIN for microflows, before the `(…)` properties for pages and snippets; a `Folder:` property is deprecated (`MDL-DEPR105`)
 - [ ] Cross-module moves: checked impact with `list impact of` first
 - [ ] Folder naming is consistent across modules
 - [ ] DROP FOLDER: verify folder is empty before dropping

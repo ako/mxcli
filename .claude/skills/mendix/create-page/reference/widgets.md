@@ -1115,14 +1115,17 @@ Notes:
   PieChart use the same `series` shape.
 - **CE0463 at `mx check`**: charts can report "widget definition changed" from
   widget-version drift (embedded template vs the installed `Charts.mpk`), even for a
-  chart with no series. Clear it with **`mxcli docker check`/`build`**, which normalize
-  the widgets and preserve your storage format.
+  chart with no series. Clear it with **`mxcli fix widgets -p app.mpr`**, which applies
+  the widget normalization to the project and keeps your storage format.
+  `mxcli docker check`/`build` normalize only a **temporary copy**: the check then
+  passes while the stored project still fails MxBuild and `mxcli run --local` with
+  CE0463. `docker check --no-update-widgets` checks the project as stored.
   **Do NOT run bare `mx update-widgets` on an MPRv2 project** (one with an
   `mprcontents/` folder — everything `mxcli new` creates). `mx update-widgets` rewrites
   the project into the single-file v1 format and **deletes `mprcontents/`**, which
   corrupts a git working tree, breaks a running `mxcli run --local` loop, and can leave
-  Studio Pro unable to open the project. `mxcli docker check`/`build` snapshot and
-  restore the v2 files around the normalization, so they are safe; raw
+  Studio Pro unable to open the project. `mxcli fix widgets` restores the v2 storage
+  around the normalization, so it is safe; raw
   `mx update-widgets` is only safe on a v1 project (or on a throwaway copy used purely
   for diagnosis).
 - LineChart/BubbleChart/HeatMap/TimeSeries are **also MDL-authorable** (via the
