@@ -343,9 +343,31 @@ func ensureCatalog(ctx *ExecContext, full bool) error {
 		isSource = true
 	}
 
+	// An implicit rebuild is a bounded build that happens to run inside some
+	// other statement, so the statement's wall-clock guard does not count it —
+	// as it does not count REFRESH CATALOG (#651). Counted, the default 5m
+	// fired mid-build on a 3,000-document app, the unfinished build was never
+	// saved, and every later SHOW REFERENCES / SEARCH started it over
+	// (mendixlabs/mxcli#1329).
+	mode := "fast"
+	if isSource {
+		mode = "source"
+	} else if full {
+		mode = "full"
+	}
+	defer beginUntimed(ctx.Context, mode+" mode")()
+	if implicitCatalogBuildHook != nil {
+		defer implicitCatalogBuildHook()()
+	}
+
 	// Build fresh catalog
 	return buildCatalog(ctx, full, isSource, false, 0)
 }
+
+// implicitCatalogBuildHook, when set, runs at the start of every implicit
+// catalog rebuild, and the function it returns at the end. Tests use it to
+// make a build outlast a short timeout and to wait for an abandoned one.
+var implicitCatalogBuildHook func() (done func())
 
 // getCachePath returns the path to the catalog cache file for the current project.
 func getCachePath(ctx *ExecContext) string {
