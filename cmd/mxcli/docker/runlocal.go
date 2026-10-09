@@ -410,7 +410,9 @@ func deriveDBName(projectPath string) string {
 // runtime/ sibling of the mxbuild cache's modeler/ dir. mxbuild's Deploy/serve
 // javac step resolves the Mendix API from there; without it compilation fails
 // with "package com.mendix.* does not exist". It is a no-op if the sibling
-// already exists (symlink or real dir). Mirrors ensurePADFiles' link pattern.
+// already exists (link or real dir). Mirrors ensurePADFiles' link pattern. The
+// link is a symlink, or a directory junction when Windows refuses a symlink
+// (see linkDir, mendixlabs/mxcli#1286).
 func ensureMxBuildRuntimeSibling(version string, w io.Writer) error {
 	mxbuildDir, err := MxBuildCacheDir(version)
 	if err != nil {
@@ -431,7 +433,7 @@ func ensureMxBuildRuntimeSibling(version string, w io.Writer) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
-	if err := os.Symlink(src, dst); err != nil {
+	if err := linkDir(src, dst); err != nil {
 		return fmt.Errorf("linking runtime into mxbuild cache: %w", err)
 	}
 	fmt.Fprintf(w, "  Linked runtime into mxbuild cache: %s -> %s\n", dst, src)
@@ -1386,12 +1388,19 @@ func watchAndApply(opts LocalRunOptions, serve *ServeServer, rt *LocalRuntime, b
 			genBefore := bundler.Generation()
 			webBefore := webClientSourceMTime(opts.DeployDir)
 
-			build, err := serve.Build(BuildRequest{Target: TargetDeploy, ProjectFilePath: opts.ProjectPath})
+			// On Windows the bundler's working directory pins deployment/web, so a
+			// change that makes mxbuild recreate web/ (a domain model change) fails
+			// until the bundler lets go; the supervisor stops it, rebuilds, and
+			// starts a fresh one on the new web/ (#1342).
+			build, freshBundle, err := bundler.BuildReleasingWebDir(func() (*BuildResult, error) {
+				return serve.Build(BuildRequest{Target: TargetDeploy, ProjectFilePath: opts.ProjectPath})
+			})
 			if err != nil {
 				fmt.Fprintf(opts.Stderr, "  build error: %v\n", err)
 				fail("build", err.Error(), nil)
 				continue
 			}
+			bundled = bundled || freshBundle
 			if !build.OK() {
 				// Surface the full serve response, not just the generic message —
 				// it carries the real detail (e.g. the SCSS compiler's
@@ -1414,8 +1423,9 @@ func watchAndApply(opts LocalRunOptions, serve *ServeServer, rt *LocalRuntime, b
 			// incremental bundler to re-bundle. WaitForRebuild settles out cleanly if
 			// no rebuild materializes (the touched file isn't a rollup input — e.g. a
 			// microflow edit that rewrites a web metadata file but no page/widget), so
-			// this never hangs. A pure model change skips the wait entirely.
-			if webClientSourceMTime(opts.DeployDir).After(webBefore) {
+			// this never hangs. A pure model change skips the wait entirely, and so
+			// does a build after which a fresh bundler already bundled everything.
+			if !freshBundle && webClientSourceMTime(opts.DeployDir).After(webBefore) {
 				// Detection is a reliable ~1s with polling, so a 2.5s settle is ample
 				// margin to catch a rebuild that's going to start, while keeping the
 				// no-rebuild case (a model edit that only grazed web/) snappy.

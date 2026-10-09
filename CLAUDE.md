@@ -41,7 +41,7 @@ go run ./examples/read_project/main.go /path/to/project.mpr
 go run ./examples/modify_project/main.go /path/to/project.mpr
 
 # run the code generator
-go run ./cmd/codegen/main.go -reflection-dir ./reference/mendixmodellib/reflection-data -version 10.0.0 -output ./generated/metamodel
+go run ./cmd/codegen/main.go -input <reflection-data-dir> -version 10.0.0 -output ./generated/metamodel
 ```
 
 **Note**: This project uses `modernc.org/sqlite` (pure Go) and does **not** require CGO. No C compiler is needed.
@@ -118,8 +118,7 @@ that is not obvious from the layout:
 
 When adding new types, always verify the storage name by:
 1. Examining existing MPR files with the `mx` tool or SQLite browser
-2. Checking the reflection data in `reference/mendixmodellib/reflection-data/`
-3. Looking at the decoder in `modelsdk/codec/` and the types in `modelsdk/gen/microflows/`
+2. Looking at the decoder in `modelsdk/codec/` and the types in `modelsdk/gen/microflows/`
 
 **IMPORTANT**: When unsure about the correct BSON structure for a new feature, **ask the user to create a working example in Mendix Studio Pro** so you can compare the generated BSON against a known-good reference.
 

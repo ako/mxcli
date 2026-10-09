@@ -509,7 +509,7 @@ The schema registry is a **complement**, not a replacement. It handles the mecha
 
 ## Reflection Data Version Count
 
-The `reference/mendixmodellib/reflection-data/` directory contains two JSON files per Mendix minor release — `{version}-structures.json` and `{version}-storageNames.json`. The metamodel schema changes at the **minor release** level (e.g. 10.5 → 10.6), not at patch level (10.5.0 → 10.5.1), so there is one schema per minor. The approximate breakdown:
+The reflection data contains two JSON files per Mendix minor release — `{version}-structures.json` and `{version}-storageNames.json`. The metamodel schema changes at the **minor release** level (e.g. 10.5 → 10.6), not at patch level (10.5.0 → 10.5.1), so there is one schema per minor. The approximate breakdown:
 
 | Major | Minor versions | Range |
 |-------|---------------|-------|

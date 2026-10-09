@@ -217,7 +217,7 @@ TypeCacheUnknownTypeException: The type cache does not contain a type with quali
 | `DomainModels$index` | `DomainModels$EntityIndex` |
 | `DomainModels$entity` | `DomainModels$EntityImpl` |
 
-When adding support for new document types, always check the metamodel reflection data in `reference/mendixmodellib/reflection-data/<version>-structures.json` to find the correct `storageName`.
+When adding support for new document types, always check the `SetTypeName(...)` call in `modelsdk/gen/<domain>/types.go`, or a Studio Pro-authored document, to find the correct storage name.
 
 ### Metamodel Reference Definition
 
@@ -929,11 +929,11 @@ When adding support for new Mendix metamodel types (microflows, pages, workflows
 
 ### 1. Find the Metamodel Definition
 
-Locate the type in `reference/mendixmodellib/reflection-data/<version>-structures.json`:
+Locate the type in the vendored metamodel, `modelsdk/gen/<domain>/types.go`:
 
 ```bash
 # search for a type
-grep -A 20 '"Microflows\$Microflow"' reference/mendixmodellib/reflection-data/11.6.0-structures.json
+grep -n -A 20 'SetTypeName("Microflows\$Microflow")' modelsdk/gen/microflows/types.go
 ```
 
 ### 2. Check storageName vs qualifiedName

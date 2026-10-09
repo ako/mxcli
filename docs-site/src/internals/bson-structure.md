@@ -4,17 +4,16 @@ How Mendix project documents are serialized in BSON format, including the role o
 
 ## Source of Truth
 
-The authoritative reference for BSON serialization is the **reflection-data** at:
+The authoritative reference for BSON serialization is a document **authored by
+Studio Pro** for the target Mendix version: dump it with `mxcli bson dump` and
+compare.
 
-```
-reference/mendixmodellib/reflection-data/{version}-structures.json
-```
+The vendored metamodel types in `modelsdk/gen/<domain>/` are the reference in
+the tree:
+- `types.go`: each type's BSON `$Type` (the `SetTypeName(...)` call, e.g. `Forms$DivContainer`) and its BSON field names
+- `refs.go`: the reference kind of each pointer property (by name or by ID)
 
-Each structure entry contains:
-- `qualifiedName`: The API name (e.g., `Pages$DivContainer`)
-- `storageName`: The BSON `$Type` value (e.g., `Forms$DivContainer`)
-- `defaultSettings`: Required default property values
-- `properties`: Property definitions with types and requirements
+When `modelsdk/gen` and a Studio Pro document disagree, the document wins.
 
 ## Type Name Mapping
 
@@ -273,10 +272,10 @@ There is no deduplication within a page. A page with 4 ComboBox widgets requires
 
 | Error | Cause | Solution |
 |-------|-------|----------|
-| "The type cache does not contain a type with qualified name X" | Incorrect `$Type` value | Check reflection-data for correct storage name |
+| "The type cache does not contain a type with qualified name X" | Incorrect `$Type` value | Check `modelsdk/gen` or a Studio Pro document for the correct storage name |
 | "No entity configured for the data source" | Missing or incorrect DataView DataSource | Configure `Forms$DataViewSource` with proper EntityRef |
 | CE0463 "widget definition has changed" | Object properties don't match Type PropertyTypes | Use template Object as base, only modify needed properties |
-| "Project uses features that are no longer supported" | Missing widget default properties | Include all required defaults from reflection-data |
+| "Project uses features that are no longer supported" | Missing widget default properties | Include all defaults Studio Pro writes for the widget |
 
 ## Files Reference
 
@@ -290,4 +289,4 @@ There is no deduplication within a page. A page with 4 ComboBox widgets requires
 | `modelsdk/codec/decoder.go` | BSON → document (polymorphic types) |
 | `sdk/widgets/loader.go` | Embedded template loading |
 | `sdk/widgets/templates/mendix-11.6/*.json` | Embedded widget templates |
-| `reference/mendixmodellib/reflection-data/*.json` | Type definitions |
+| `modelsdk/gen/*/types.go` | Type definitions and storage names |
