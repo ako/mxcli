@@ -1,0 +1,18 @@
+mdl 1;
+-- Found while fixing mendixlabs/mxcli#1347: with no .mxcli/catalog.db,
+-- `mxcli describe -p app.mpr Mod.Name` (type auto-detected) reported
+--   Error: no describable document named "Mod.Name" found in the project
+-- for every document type. The live-project fallback called ListRawUnits on
+-- the model engine, which left it to the "not implemented" stub.
+--
+-- After running this script, delete .mxcli/catalog.db if present; then
+--   mxcli describe -p app.mpr BugTest1347NoCat.MF_Hello
+-- must print the microflow.
+
+create module BugTest1347NoCat;
+
+create microflow BugTest1347NoCat.MF_Hello ()
+begin
+end;
+
+describe microflow BugTest1347NoCat.MF_Hello;
