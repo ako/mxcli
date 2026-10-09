@@ -1,0 +1,21 @@
+-- mendixlabs/mxcli#1307: a `Tooltip:` on an action button passed check and exec
+-- and was silently dropped; `alter page … set (Tooltip: …)` was refused with
+-- `property "Tooltip" is not a property of this built-in widget`.
+-- After the fix the tooltip is stored in the default language, `describe page`
+-- prints it, and ALTER sets it on a button that had none.
+mdl 1;
+
+create module BugTest1307;
+
+create page BugTest1307.TipPage (Title: 'Tips', Layout: Atlas_Core.Atlas_Default) {
+  actionbutton btnEdit (Caption: 'Edit', Tooltip: 'Edit this record', Action: close page)
+  linkbutton btnOpen (Caption: 'Open', Tooltip: 'Open this record', Action: close page)
+  actionbutton btnDelete (Caption: 'Delete', Action: close page)
+};
+
+alter page BugTest1307.TipPage {
+  set (Tooltip: 'Delete this record') on btnDelete
+};
+
+-- Expect: all three buttons show a Tooltip.
+describe page BugTest1307.TipPage;

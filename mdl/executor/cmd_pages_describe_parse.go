@@ -325,6 +325,7 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 	case "Forms$ActionButton", "Pages$ActionButton":
 		widget.Caption = extractButtonCaption(ctx, w)
 		widget.Parameters = extractButtonCaptionParameters(ctx, w)
+		widget.Tooltip = extractTextsText(ctx, w, "Tooltip")
 		widget.ButtonStyle = extractButtonStyle(ctx, w)
 		widget.Action = extractButtonAction(ctx, w)
 		// RenderType "Link" is a linkbutton; the emitter uses this to choose the

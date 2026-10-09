@@ -504,6 +504,9 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		if len(w.Parameters) > 0 {
 			props = append(props, fmt.Sprintf("CaptionParams: (%s)", strings.Join(formatParametersV3(w.Parameters), ", ")))
 		}
+		if w.Tooltip != "" {
+			props = append(props, fmt.Sprintf("Tooltip: %s", mdlQuote(ctx, w.Tooltip)))
+		}
 		if w.Action != "" {
 			props = append(props, actionProp("Action", w.Action))
 		}
@@ -1809,11 +1812,17 @@ func extractNanoflowParameters(ctx *ExecContext, action map[string]any) string {
 }
 
 func extractTextCaption(ctx *ExecContext, w map[string]any) string {
-	caption, ok := w["Caption"].(map[string]any)
+	return extractTextsText(ctx, w, "Caption")
+}
+
+// extractTextsText reads the default-language translation of the Texts$Text
+// stored under field — a widget's Caption, or an action button's Tooltip.
+func extractTextsText(ctx *ExecContext, w map[string]any, field string) string {
+	text, ok := w[field].(map[string]any)
 	if !ok {
 		return ""
 	}
-	items := getBsonArrayElements(caption["Items"])
+	items := getBsonArrayElements(text["Items"])
 	return selectTranslationText(items, describeDefaultLanguage(ctx))
 }
 
