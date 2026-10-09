@@ -190,6 +190,11 @@ const (
 	defaultExecuteTimeout = 5 * time.Minute
 )
 
+// executeTimeoutDefault is the limit effectiveExecuteTimeout applies when no
+// MXCLI_EXEC_TIMEOUT is set. A variable so a test can bring it below the
+// duration of a catalog build.
+var executeTimeoutDefault = defaultExecuteTimeout
+
 // configuredExecuteTimeout returns the per-statement wall-clock timeout. The
 // value is read from the MXCLI_EXEC_TIMEOUT environment variable on every call
 // so long-running audits can opt into a higher ceiling without recompiling.
@@ -225,7 +230,7 @@ func effectiveExecuteTimeout(stmt ast.Statement) time.Duration {
 	if isExemptFromExecuteTimeout(stmt) {
 		return 0
 	}
-	return defaultExecuteTimeout
+	return executeTimeoutDefault
 }
 
 // isExemptFromExecuteTimeout reports whether a statement is a known long-running
@@ -267,6 +272,8 @@ type Executor struct {
 	themeRegistry  *ThemeRegistry                     // cached theme design property definitions (lazy init)
 	registry       *Registry                          // statement dispatch registry
 	catalogMu      sync.RWMutex                       // protects catalog field from background goroutine writes
+	untimedMu      sync.Mutex                         // protects untimed
+	untimed        *untimedWork                       // the running statement's untimed-work tracker (see untimed_work.go)
 	catalogGen     uint64                             // monotonic generation counter for catalog swaps
 }
 
@@ -359,31 +366,54 @@ func (e *Executor) Execute(stmt ast.Statement) error {
 		e.guard.reset()
 	}
 
-	// Enforce wall-clock timeout via context.WithTimeout.
+	// Enforce the wall-clock timeout with a timer that skips untimed work.
 	// The goroutine pattern is retained because handlers are not yet
 	// context-aware; threading context through handlers is a follow-up.
 	executeTimeout := effectiveExecuteTimeout(stmt)
+
+	// Time spent rebuilding the catalog implicitly is not counted against the
+	// default limit, for the reason REFRESH CATALOG is exempt from it
+	// (mendixlabs/mxcli#1329). An explicit MXCLI_EXEC_TIMEOUT caps it, as it
+	// caps REFRESH CATALOG.
+	untimed := e.pushUntimed(os.Getenv("MXCLI_EXEC_TIMEOUT") == "")
+	defer e.popUntimed(untimed)
+	baseCtx := withUntimedWork(context.Background(), untimed)
 
 	var err error
 	if executeTimeout <= 0 {
 		// No wall-clock guard for exempt statements (e.g. REFRESH CATALOG on a
 		// large project). The output-line guard still bounds runaway output.
-		err = e.executeInner(context.Background(), stmt)
+		err = e.executeInner(baseCtx, stmt)
 	} else {
-		ctx, cancel := context.WithTimeout(context.Background(), executeTimeout)
+		ctx, cancel := context.WithCancel(baseCtx)
 		defer cancel()
 
 		type result struct{ err error }
 		ch := make(chan result, 1)
+		begun := time.Now()
 		go func() {
 			ch <- result{e.executeInner(ctx, stmt)}
 		}()
 
-		select {
-		case r := <-ch:
-			err = r.err
-		case <-ctx.Done():
-			err = mdlerrors.NewValidationf("statement timed out after %v (raise the limit with MXCLI_EXEC_TIMEOUT, e.g. MXCLI_EXEC_TIMEOUT=30m)", executeTimeout)
+		timer := time.NewTimer(executeTimeout)
+		defer timer.Stop()
+	wait:
+		for {
+			select {
+			case r := <-ch:
+				err = r.err
+				break wait
+			case <-timer.C:
+				now := time.Now()
+				counted := now.Sub(begun) - untimed.excluded(now)
+				if remaining := executeTimeout - counted; remaining > 0 {
+					timer.Reset(remaining)
+					continue
+				}
+				cancel()
+				err = executeTimeoutError(executeTimeout, untimed.inProgress())
+				break wait
+			}
 		}
 	}
 
@@ -391,6 +421,38 @@ func (e *Executor) Execute(stmt ast.Statement) error {
 		e.logger.Command(stmtTypeName(stmt), stmtSummary(stmt), time.Since(start), err)
 	}
 	return err
+}
+
+// executeTimeoutError is the error for a statement the wall-clock guard
+// stopped. When it stopped an implicit catalog rebuild it says so: the build
+// is only saved once it finishes, so the next statement that needs the catalog
+// starts the same rebuild over — without the hint, every retry looks like a new
+// failure (mendixlabs/mxcli#1329).
+func executeTimeoutError(limit time.Duration, building string) error {
+	if building == "" {
+		return mdlerrors.NewValidationf("statement timed out after %v (raise the limit with MXCLI_EXEC_TIMEOUT, e.g. MXCLI_EXEC_TIMEOUT=30m)", limit)
+	}
+	return mdlerrors.NewValidationf("statement timed out after %v while rebuilding the catalog (%s); the catalog cache was not updated, so the next statement that needs it rebuilds again. Rebuild it once with REFRESH CATALOG FULL SOURCE (with MXCLI_EXEC_TIMEOUT unset, so the default limit does not apply), or raise the limit with MXCLI_EXEC_TIMEOUT, e.g. MXCLI_EXEC_TIMEOUT=30m", limit, building)
+}
+
+// pushUntimed installs a fresh untimed-work tracker for the statement about to
+// run, chained to the enclosing statement's when Execute is re-entered by
+// EXECUTE SCRIPT.
+func (e *Executor) pushUntimed(exclude bool) *untimedWork {
+	e.untimedMu.Lock()
+	defer e.untimedMu.Unlock()
+	w := newUntimedWork(e.untimed, exclude)
+	e.untimed = w
+	return w
+}
+
+// popUntimed restores the enclosing statement's tracker.
+func (e *Executor) popUntimed(w *untimedWork) {
+	e.untimedMu.Lock()
+	defer e.untimedMu.Unlock()
+	if e.untimed == w {
+		e.untimed = w.parent
+	}
 }
 
 // ExecuteProgram runs all statements in a program.
