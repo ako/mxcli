@@ -261,11 +261,11 @@ func keepStoredMenuAction(ctx *ExecContext, def ast.NavMenuItemDef, match *types
 	if menuItemStatesAction(def) || len(match.StoredAction) == 0 {
 		return false, ""
 	}
-	// A sub-menu takes no OnClick, so a stored action on one is never stated.
+	// A sub-menu cannot have an action at all — mx check CE0548 "Items with
+	// subitems cannot have an action themselves" — so nothing stored is kept on
+	// it, least of all a page item's action paired by caption
+	// (mendixlabs/mxcli#1341).
 	if len(def.Items) > 0 {
-		if t := menuActionTypeName(match); !isNoMenuAction(t) && t != "NoAction" {
-			return true, t
-		}
 		return false, ""
 	}
 	if _, note := menuItemActionMDL(ctx, match); note != "" {
