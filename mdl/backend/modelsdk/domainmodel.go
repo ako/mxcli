@@ -4,6 +4,7 @@ package modelsdkbackend
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -599,14 +600,16 @@ func assocFromGen(a *genDm.Association) *domainmodel.Association {
 			// (assocToGen writes only the child side's, the side MDL's `on delete`
 			// sets), so a statement that changes the parent behaviour drops it --
 			// exactly as before it was read.
-			ErrorMessage: deleteErrorMessageFromGen(db.ParentErrorMessage()),
+			ErrorMessage:             deleteErrorMessageFromGen(db.ParentErrorMessage(), ""),
+			ErrorMessageTranslations: deleteErrorTranslationsFromGen(db.ParentErrorMessage()),
 		}
 		out.ChildDeleteBehavior = &domainmodel.DeleteBehavior{
 			Type: domainmodel.DeleteBehaviorType(db.ChildDeleteBehavior()),
 			// Read the refusal message back too, or DESCRIBE cannot emit it and a
 			// describe -> exec round trip writes an association whose runtime will
 			// not start (CapTrackV2 §1).
-			ErrorMessage: deleteErrorMessageFromGen(db.ChildErrorMessage()),
+			ErrorMessage:             deleteErrorMessageFromGen(db.ChildErrorMessage(), ""),
+			ErrorMessageTranslations: deleteErrorTranslationsFromGen(db.ChildErrorMessage()),
 		}
 	}
 
@@ -659,14 +662,16 @@ func crossAssocFromGen(ca *genDm.CrossAssociation) *domainmodel.CrossModuleAssoc
 			// (assocToGen writes only the child side's, the side MDL's `on delete`
 			// sets), so a statement that changes the parent behaviour drops it --
 			// exactly as before it was read.
-			ErrorMessage: deleteErrorMessageFromGen(db.ParentErrorMessage()),
+			ErrorMessage:             deleteErrorMessageFromGen(db.ParentErrorMessage(), ""),
+			ErrorMessageTranslations: deleteErrorTranslationsFromGen(db.ParentErrorMessage()),
 		}
 		out.ChildDeleteBehavior = &domainmodel.DeleteBehavior{
 			Type: domainmodel.DeleteBehaviorType(db.ChildDeleteBehavior()),
 			// Read the refusal message back too, or DESCRIBE cannot emit it and a
 			// describe -> exec round trip writes an association whose runtime will
 			// not start (CapTrackV2 §1).
-			ErrorMessage: deleteErrorMessageFromGen(db.ChildErrorMessage()),
+			ErrorMessage:             deleteErrorMessageFromGen(db.ChildErrorMessage(), ""),
+			ErrorMessageTranslations: deleteErrorTranslationsFromGen(db.ChildErrorMessage()),
 		}
 	}
 	if src, ok := ca.Source().(*genDm.OqlViewAssociationSource); ok && src != nil {
@@ -676,24 +681,44 @@ func crossAssocFromGen(ca *genDm.CrossAssociation) *domainmodel.CrossModuleAssoc
 	return out
 }
 
-// deleteErrorMessageFromGen reads the en_US text out of a delete behaviour's
-// error message, or "" when there is none. The message is a Texts$Text like any
-// caption; MDL carries one string, and CarryTranslations puts the other
-// languages back on a rewrite.
-func deleteErrorMessageFromGen(el element.Element) string {
-	txt, ok := el.(*genTexts.Text)
-	if !ok || txt == nil {
-		return ""
-	}
-	t := textFromGen(txt)
-	if t == nil {
-		return ""
-	}
-	if v, ok := t.Translations["en_US"]; ok {
+// deleteErrorMessageFromGen reads one string out of a delete behaviour's error
+// message, or "" when there is none: the translation in lang, else en_US, else
+// the first by sorted language code (map order would make the read vary run to
+// run). The message is a Texts$Text like any caption; MDL carries one string,
+// and CarryTranslations puts the other languages back on a rewrite.
+//
+// lang is the language the caller is about to write. Reading en_US first
+// regardless was half of mendixlabs/mxcli#1344: on a project holding both, the
+// alter path compared the new nl_NL message against the stale en_US one.
+func deleteErrorMessageFromGen(el element.Element, lang string) string {
+	tr := deleteErrorTranslationsFromGen(el)
+	if v, ok := tr[lang]; ok && lang != "" {
 		return v
 	}
-	for _, v := range t.Translations {
+	if v, ok := tr["en_US"]; ok {
 		return v
+	}
+	langs := make([]string, 0, len(tr))
+	for l := range tr {
+		langs = append(langs, l)
+	}
+	sort.Strings(langs)
+	for _, l := range langs {
+		return tr[l]
 	}
 	return ""
+}
+
+// deleteErrorTranslationsFromGen is every translation of a delete behaviour's
+// error message, keyed by LanguageCode, or nil when there is no message.
+func deleteErrorTranslationsFromGen(el element.Element) map[string]string {
+	txt, ok := el.(*genTexts.Text)
+	if !ok || txt == nil {
+		return nil
+	}
+	t := textFromGen(txt)
+	if t == nil || len(t.Translations) == 0 {
+		return nil
+	}
+	return t.Translations
 }

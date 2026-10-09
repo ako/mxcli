@@ -511,15 +511,35 @@ func patchCrossDeleteErrorMessage(db *genDm.AssociationDeleteBehavior, child *do
 	if child == nil || child.Type != domainmodel.DeleteBehaviorTypeDeleteMeIfNoReferences {
 		return
 	}
-	if db.ChildErrorMessage() != nil && deleteErrorMessageFromGen(db.ChildErrorMessage()) == child.ErrorMessage {
+	if db.ChildErrorMessage() != nil && deleteErrorMessageFromGen(db.ChildErrorMessage(), deleteErrorLanguage(child)) == child.ErrorMessage {
 		return
 	}
-	txt := textToGen(deleteErrorText(child))
+	// Edit the translation in the written language and keep every other
+	// language's, as ALTER PAGE does for a caption — replacing the whole text
+	// would drop the Dutch the moment an English message was re-set, or the
+	// reverse.
+	sem := deleteErrorText(child)
+	for l, v := range deleteErrorTranslationsFromGen(db.ChildErrorMessage()) {
+		if _, ok := sem.Translations[l]; !ok {
+			sem.Translations[l] = v
+		}
+	}
+	txt := textToGen(sem)
 	assignID(txt)
 	for _, tr := range txt.TranslationsItems() {
 		assignID(tr)
 	}
 	db.SetChildErrorMessage(txt)
+}
+
+// deleteErrorLanguage is the language deleteErrorText stores db's message under:
+// the one the executor named, else the process's authoring language (see
+// model.AuthoringLanguage), which is en_US until a project's settings are read.
+func deleteErrorLanguage(db *domainmodel.DeleteBehavior) string {
+	if db == nil || db.ErrorMessageLanguage == "" {
+		return model.AuthoringLanguage()
+	}
+	return db.ErrorMessageLanguage
 }
 
 // DeleteAssociation removes an association from a domain model by ID. Used by

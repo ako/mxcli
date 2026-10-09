@@ -93,7 +93,7 @@ func TestIssue803_CreateCrossAssociationWritesRestrictMessage(t *testing.T) {
 			if msg == nil {
 				t.Fatal("ChildErrorMessage is null on a restrict cross-module association — the runtime will not start (#803)")
 			}
-			if got := deleteErrorMessageFromGen(msg); got != tc.msg {
+			if got := deleteErrorMessageFromGen(msg, ""); got != tc.msg {
 				t.Errorf("ChildErrorMessage = %q, want %q", got, tc.msg)
 			}
 			if db.ParentErrorMessage() != nil {
