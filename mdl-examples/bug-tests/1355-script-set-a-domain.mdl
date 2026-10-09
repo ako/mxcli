@@ -1,0 +1,22 @@
+-- mendixlabs/mxcli#1355 (file 1 of 2): check -p over a script set resolved
+-- every file against the project as it stands, so a later file's reference
+-- to anything an earlier file creates was reported as missing — although
+-- exec, run on each file in order, succeeds.
+--
+--   mxcli check 1355-script-set-a-domain.mdl 1355-script-set-b-page.mdl -p app.mpr
+--     before (v0.25.0):  file 2 "entity not found: MyFirstModule.ShopCustomer"
+--                        (the combobox datasource); on later builds the page
+--                        parameter's entity is reported first
+--     after:             both files "Check passed!", exit 0
+--   Controls: the two files in the other order still fail (the page comes
+--   before its entities), and the project is not changed by the check.
+--
+-- Uses MyFirstModule (in every blank app). The pair is checked together; on
+-- its own, without a project, each file only parses.
+
+mdl 1;
+
+create persistent entity MyFirstModule.ShopCustomer ( Name: String(100) );
+create persistent entity MyFirstModule.ShopOrder ( Number: String(50) );
+create association MyFirstModule.ShopOrder_ShopCustomer
+  from MyFirstModule.ShopOrder to MyFirstModule.ShopCustomer;

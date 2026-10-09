@@ -83,23 +83,12 @@ func Run(mprPath string, prog *ast.Program, opts Options) (*Report, error) {
 	if opts.NewBackend == nil {
 		return nil, errors.New("scriptdiff: no backend to open the scratch copy with")
 	}
-	src, err := filepath.Abs(mprPath)
+	scratch, err := NewScratch(mprPath)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := os.Stat(src); err != nil {
-		return nil, err
-	}
-	scratch, err := os.MkdirTemp("", "mxcli-diff-")
-	if err != nil {
-		return nil, fmt.Errorf("create scratch folder: %w", err)
-	}
-	defer os.RemoveAll(scratch)
-	copyDir := filepath.Join(scratch, "project")
-	if err := copyProject(filepath.Dir(src), copyDir); err != nil {
-		return nil, fmt.Errorf("copy the project to %s: %w", copyDir, err)
-	}
-	copyMpr := filepath.Join(copyDir, filepath.Base(src))
+	defer scratch.Close()
+	src, copyMpr := scratch.src, scratch.Mpr
 
 	before, err := TakeSnapshot(copyMpr)
 	if err != nil {
@@ -153,6 +142,68 @@ func Run(mprPath string, prog *ast.Program, opts Options) (*Report, error) {
 		r.close()
 	}
 	return rep, nil
+}
+
+// Scratch is a scratch copy of a project that scripts can be executed against
+// in turn, each seeing what the ones before it wrote — the state exec leaves
+// for the next file of a script set. The project it was copied from is only
+// read.
+type Scratch struct {
+	dir string // the scratch folder, removed by Close
+	src string // the project's .mpr, absolute
+	// Mpr is the copy's .mpr.
+	Mpr string
+}
+
+// NewScratch copies the project at mprPath into a new scratch folder.
+func NewScratch(mprPath string) (*Scratch, error) {
+	src, err := filepath.Abs(mprPath)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(src); err != nil {
+		return nil, err
+	}
+	dir, err := os.MkdirTemp("", "mxcli-diff-")
+	if err != nil {
+		return nil, fmt.Errorf("create scratch folder: %w", err)
+	}
+	copyDir := filepath.Join(dir, "project")
+	if err := copyProject(filepath.Dir(src), copyDir); err != nil {
+		os.RemoveAll(dir)
+		return nil, fmt.Errorf("copy the project to %s: %w", copyDir, err)
+	}
+	return &Scratch{dir: dir, src: src, Mpr: filepath.Join(copyDir, filepath.Base(src))}, nil
+}
+
+// Close removes the scratch folder.
+func (s *Scratch) Close() error { return os.RemoveAll(s.dir) }
+
+// Apply executes prog against the copy as exec would — stopping at the first
+// error — and returns what exec printed. A statement that would act outside
+// the copy (a CONNECT elsewhere, SQL, IMPORT) is refused, and the refusal
+// returned, as in Run. Options.Preflight and ContinueOnError are not used.
+func (s *Scratch) Apply(prog *ast.Program, opts Options) (string, error) {
+	if opts.NewBackend == nil {
+		return "", errors.New("scriptdiff: no backend to open the scratch copy with")
+	}
+	var out bytes.Buffer
+	x := newExecutor(&out, opts)
+	defer x.Close()
+	if err := x.Execute(&ast.ConnectStmt{Path: s.Mpr}); err != nil {
+		return out.String(), fmt.Errorf("connect to the scratch copy: %w", err)
+	}
+	g := &outsideGuard{project: s.src, copyMpr: s.Mpr}
+	x.SetStatementGuard(g.check)
+	err := x.ExecuteProgram(prog)
+	_ = x.Execute(&ast.DisconnectStmt{})
+	if g.refused != nil {
+		return out.String(), g.refused
+	}
+	if errors.Is(err, executor.ErrExit) {
+		err = nil
+	}
+	return out.String(), err
 }
 
 func newExecutor(w io.Writer, opts Options) *executor.Executor {
