@@ -5,10 +5,9 @@
 package docker
 
 import (
-	"os"
-	"runtime"
-	"syscall"
 	"time"
+
+	"github.com/mendixlabs/mxcli/internal/procalive"
 )
 
 // SessionMembers is Linux-only (it reads /proc). Elsewhere `run stop` relies on
@@ -19,17 +18,9 @@ func SessionMembers(sid int, notBefore time.Time) []int { return nil }
 func ProcessCmdline(pid int) string { return "" }
 
 // PidAlive reports whether pid is a live process.
-func PidAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	p, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	if runtime.GOOS == "windows" {
-		// FindProcess opens a handle there, which fails for a pid that is gone.
-		return true
-	}
-	return p.Signal(syscall.Signal(0)) == nil
-}
+//
+// On Windows this used to be "os.FindProcess can open it", but an exited
+// process stays openable while anyone holds a handle to it (its parent,
+// typically), so `run stop` kept reporting a run that had shut down as still
+// alive. procalive.Alive asks whether the process has terminated instead.
+func PidAlive(pid int) bool { return procalive.Alive(pid) }
