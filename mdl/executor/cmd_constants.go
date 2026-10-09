@@ -124,12 +124,7 @@ func outputConstantMDL(ctx *ExecContext, c *model.Constant, moduleName string) e
 		}
 	}
 	// The folder is a clause right after the name (R9).
-	folder := ""
-	if h, _ := getHierarchy(ctx); h != nil {
-		if folderPath := h.BuildFolderPath(c.ContainerID); folderPath != "" {
-			folder = fmt.Sprintf(" folder '%s'", strings.ReplaceAll(folderPath, "'", "''"))
-		}
-	}
+	folder := describeFolderClause(ctx, c.ContainerID)
 	// The properties are a ( Key: value ) list with Studio Pro's names
 	// (phase 3.6, ako/mxcli#755); ExposedToClient is omitted at its default.
 	fmt.Fprintf(ctx.Output, "create or modify constant %s.%s%s (\n", moduleName, c.Name, folder)
