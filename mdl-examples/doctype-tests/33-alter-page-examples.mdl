@@ -313,7 +313,7 @@ alter page AlterPg.Product_Overview {
 -- ============================================================================
 
 alter page AlterPg.Product_Overview {
-  add variables $showPrice: boolean = 'true'
+  add variables $showPrice: boolean = true
 };
 
 alter page AlterPg.Product_Overview {
@@ -322,7 +322,7 @@ alter page AlterPg.Product_Overview {
 
 -- Both add and drop in a single ALTER block.
 alter page AlterPg.Product_Overview {
-  add variables $pageSize: integer = '20';
+  add variables $pageSize: integer = 20;
   drop variables $filterMode
 };
 

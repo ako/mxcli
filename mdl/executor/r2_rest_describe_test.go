@@ -168,5 +168,5 @@ func TestDescribePageHeaderMaps_InParens(t *testing.T) {
 	}
 	ctx, buf := newMockCtx(t, withBackend(mb), withHierarchy(h))
 	assertNoError(t, describePage(ctx, ast.QualifiedName{Module: "M", Name: "Edit"}))
-	assertCanonicalDescribe(t, buf.String(), "Params: ( $Order: M.Order )", "Variables: ( $show: Boolean = 'true' )")
+	assertCanonicalDescribe(t, buf.String(), "Params: ( $Order: M.Order )", "Variables: ( $show: Boolean = true )")
 }

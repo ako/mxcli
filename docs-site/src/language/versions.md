@@ -255,7 +255,7 @@ refuse the spelling; until then it only warns.
 
 ### Deprecated spellings (`MDL-DEPR*`)
 
-87 old spellings mean exactly what their new form means. They warn with their code under every version before the one in the last column, which refuses them.
+88 old spellings mean exactly what their new form means. They warn with their code under every version before the one in the last column, which refuses them.
 
 | Code | Old form | New form | Rewritten by `fmt --upgrade` | Refused from |
 |---|---|---|---|---|
@@ -292,6 +292,7 @@ refuse the spelling; until then it only warns.
 | `MDL-DEPR083` | `Username: $Const` | `Username: @Module.Const` | yes: `$Const` becomes `@<the service's module>.Const` | mdl 2 |
 | `MDL-DEPR084` | `Key: Module.Const` | `Key: @Module.Const` | yes: `@` before the constant's name | mdl 2 |
 | `MDL-DEPR085` | `alter settings constant 'Module.Const' …` | `alter settings constant @Module.Const …` | yes: constant's name out of its string, with `@`: `constant 'M.ApiUrl'` becomes `constant @M.ApiUrl` | mdl 2 |
+| `MDL-DEPR086` | `Variables: ( $name: Type = '<expression>' ) / add variables $name: Type = '<expression>'` | `Variables: ( $name: Type = <expression> ) / add variables $name: Type = <expression>` | yes: default out of its string: `$show: boolean = 'true'` becomes `$show: boolean = true` | mdl 2 |
 | `MDL-DEPR090` | `show page\|project security\|security matrix\|structure\|context of …` | `describe page\|app security\|security matrix\|structure\|context of …` | yes: verb as `describe`: `show page X` -> `describe page X`, `show project security` -> `describe app security`; the same for `list` on these forms | mdl 2 |
 | `MDL-DEPR091` | `alter user role R remove module roles (…)` | `alter user role R drop module roles (…)` | yes: `remove` → `drop` | mdl 2 |
 | `MDL-DEPR092` | `alter settings language remove '…' / alter settings workflows remove group '…'` | `alter settings language drop '…' / alter settings workflows drop group '…'` | yes: `remove` → `drop` | mdl 2 |

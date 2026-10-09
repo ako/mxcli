@@ -102,7 +102,7 @@ func (b *Builder) parsePageHeaderV3(ctx parser.IPageHeaderV3Context, stmt *ast.C
 				stmt.Parameters = buildPageParameters(paramList)
 			}
 		} else if prop.VARIABLES_KW() != nil {
-			// Variables: ( $showStock: Boolean = 'true', ... )
+			// Variables: ( $showStock: Boolean = true, ... )
 			if varList := prop.VariableDeclarationList(); varList != nil {
 				stmt.Variables = buildVariableDeclarations(varList)
 			}
@@ -277,7 +277,7 @@ func (b *Builder) parseSnippetHeaderV3(ctx parser.ISnippetHeaderV3Context, stmt 
 				stmt.Parameters = buildPageParameters(paramList)
 			}
 		} else if prop.VARIABLES_KW() != nil {
-			// Variables: ( $showStock: Boolean = 'true', ... )
+			// Variables: ( $showStock: Boolean = true, ... )
 			if varList := prop.VariableDeclarationList(); varList != nil {
 				stmt.Variables = buildVariableDeclarations(varList)
 			}
@@ -332,8 +332,12 @@ func buildSingleVariableDeclaration(vdCtx *parser.VariableDeclarationContext) as
 		v.DataType = dt.GetText()
 	}
 
+	// The default is an expression: bare, or — the old spelling, MDL-DEPR086
+	// — a string whose content is the expression (visitor_variable_default.go).
 	if str := vdCtx.STRING_LITERAL(); str != nil {
 		v.DefaultValue = unquoteStringLit(str)
+	} else if e := vdCtx.Expression(); e != nil {
+		v.DefaultValue = bareArgumentText(e)
 	}
 
 	return v

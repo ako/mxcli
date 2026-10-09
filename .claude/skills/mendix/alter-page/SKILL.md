@@ -370,7 +370,7 @@ The older dotted form `gridName.columnName` still works; it matches a name mxcli
 ### ADD Variables - Add a Page Variable
 
 ```sql
-add variables $showStockColumn: boolean = 'true'
+add variables $showStockColumn: boolean = true
 ```
 
 Adds a new page variable (`Forms$LocalVariable`) to the page/snippet. DataType can be `boolean`, `string`, `integer`, `decimal`, `datetime`, or an entity type. Default value is a Mendix expression in single quotes.
@@ -451,7 +451,7 @@ alter page MyModule.Customer_Edit {
 ```sql
 mdl 1;
 alter page MyModule.ProductOverview {
-  add variables $showStockColumn: boolean = 'if (3 < 4) then true else false'
+  add variables $showStockColumn: boolean = if (3 < 4) then true else false
 };
 ```
 

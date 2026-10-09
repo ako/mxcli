@@ -8,7 +8,7 @@ CREATE [ OR REPLACE ] PAGE module.Name [ FOLDER 'path' ]
     [ Params: ( $param : Module.Entity | Type [, ...] ), ]
     Title: 'title',
     Layout: Module.LayoutName
-    [, Variables: ( $name : type = 'expression' [, ...] ) ]
+    [, Variables: ( $name : type = <expression> [, ...] ) ]
 )
 {
     widget_tree
@@ -371,7 +371,7 @@ CREATE PAGE MyModule.AdvancedForm
     Params: ( $Item: MyModule.Item ),
     Title: 'Advanced Form',
     Layout: Atlas_Core.Atlas_Default,
-    Variables: ( $showAdvanced: Boolean = 'false' )
+    Variables: ( $showAdvanced: Boolean = false )
 )
 {
     DATAVIEW dvItem (DataSource: $Item) {

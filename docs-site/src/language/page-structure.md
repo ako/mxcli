@@ -10,7 +10,7 @@ CREATE [OR REPLACE] PAGE <Module>.<Name> [FOLDER '<path>']
   [Params: ( $Param: Module.Entity | Type [, ...] ),]
   Title: '<title>',
   Layout: <Module.LayoutName>
-  [, Variables: ( $name: Type = 'expression' [, ...] )]
+  [, Variables: ( $name: Type = <expression> [, ...] )]
 )
 {
   <widget-tree>
@@ -86,7 +86,7 @@ Page variables store local state (booleans, strings, etc.) that can control widg
 (
   Title: 'Product Detail',
   Layout: Atlas_Core.Atlas_Default,
-  Variables: ( $showDetails: Boolean = 'true' )
+  Variables: ( $showDetails: Boolean = true )
 )
 ```
 

@@ -568,7 +568,7 @@ alterPageDropTemplate
     ;
 
 alterPageAddVariable
-    : ADD VARIABLES_KW variableDeclaration    // ADD Variables $show: Boolean = 'true'
+    : ADD VARIABLES_KW variableDeclaration    // ADD Variables $show: Boolean = true
     ;
 
 alterPageDropVariable

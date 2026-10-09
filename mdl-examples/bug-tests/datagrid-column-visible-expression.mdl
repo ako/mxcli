@@ -35,7 +35,7 @@ create entity MyFirstModule.ColVisItem ( Name: String(100), Price: Decimal );
 
 create or modify page MyFirstModule.P_ColumnVisible
 ( Title: 'Column visible', Layout: Atlas_Core.Atlas_Default,
-  Variables: ( $showPrices: boolean = 'true' ) )
+  Variables: ( $showPrices: boolean = true ) )
 {
   datagrid dg (datasource: database MyFirstModule.ColVisItem) {
     column (attribute: Name, caption: 'Var', Visible: $showPrices)
