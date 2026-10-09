@@ -1,0 +1,24 @@
+mdl 1;
+-- ============================================================================
+-- Upstream #1358 (the refusal): retrieve by association over System.owner
+-- ============================================================================
+--
+-- owner / changedBy are not modelled associations: an entity carries them as
+-- the HasOwner / HasChangedBy flags. mxbuild resolves the name in a
+-- retrieve-by-association but derives no entity from it, and reports
+-- [CE0136] "Retrieve object must specify the 'Entity' property." — with or
+-- without `owner: AutoOwner` (measured on 11.12.2). `mxcli check` must refuse
+-- it as MDL-RETRIEVE02. See the companion
+-- 1358-retrieve-system-owner-association.mdl for the form that builds.
+--
+-- This file is expected to FAIL `mxcli check`.
+-- ============================================================================
+
+create module F1358F;
+create persistent entity F1358F.Task ("Title": String(200), "owner": AutoOwner);
+
+create or modify microflow F1358F.T_OwnerPath ($task: F1358F.Task)
+returns System.User as $u
+begin
+  retrieve $u from $task/System.owner;
+end;

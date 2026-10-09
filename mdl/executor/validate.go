@@ -1861,6 +1861,9 @@ var execEnforcedMicroflowRules = map[string]bool{
 	// measured on 11.14.0 (mendixlabs/mxcli#1323). The builder refuses an
 	// object itself; a primitive parameter it would write.
 	"MDL-SET01": true,
+	// MDL-RETRIEVE02: a retrieve by association over System.owner /
+	// System.changedBy is CE0136, measured on 11.12.2 (mendixlabs/mxcli#1358).
+	"MDL-RETRIEVE02": true,
 }
 
 // validateMicroflowRules runs the MDL0xx microflow rule set (ValidateMicroflow)

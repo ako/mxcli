@@ -1,0 +1,28 @@
+mdl 1;
+-- ============================================================================
+-- Upstream #1358 (the form that builds): the owner / last editor of an object
+-- ============================================================================
+--
+-- `retrieve $u from $task/System.owner;` is CE0136 (MDL-RETRIEVE02, see the
+-- .fail.mdl companion). Retrieving System.User from the database by id builds
+-- clean — measured with mx check on 11.12.2, for owner and changedBy alike.
+-- ============================================================================
+
+create module B1358;
+create persistent entity B1358.Task (
+  "Title": String(200),
+  "owner": AutoOwner,
+  "changedBy": AutoChangedBy
+);
+
+create or modify microflow B1358.T_Owner ($task: B1358.Task)
+returns System.User as $u
+begin
+  retrieve $u from System.User where [id = $task/System.owner] first;
+end;
+
+create or modify microflow B1358.T_LastEditor ($task: B1358.Task)
+returns System.User as $u
+begin
+  retrieve $u from System.User where [id = $task/System.changedBy] first;
+end;
