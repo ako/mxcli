@@ -1,0 +1,17 @@
+/**
+ * mendixlabs/mxcli#1284: on Windows, `mxcli test --attach` refused a live app
+ * with "the app that published .mxcli/test-endpoint.json (pid N) is no longer
+ * running": the handshake checked the pid with Signal(0), which Windows does
+ * not support, so every pid read as dead.
+ *
+ * Setup: `mxcli run --local --db-type hsqldb --test-endpoint -p App.mpr`, then
+ * from another terminal `mxcli test <this file> -p App.mpr --attach`. Needs no
+ * project content: the test only has to reach the running app and run there.
+ * `mxcli run stop -p App.mpr` afterwards reports "stopped: pid N" (it said
+ * "failed: 1 process(es) … are still alive" on Windows before the PidAlive fix).
+ *
+ * @test the attached app runs a test
+ * @expect $Two = 2
+ */
+declare $Two Integer = 1 + 1;
+/
