@@ -1,0 +1,38 @@
+mdl 1;
+-- ============================================================================
+-- Bug #1329: an implicit catalog rebuild is cut off by the statement timeout
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   After the project file changed, `show references` / `search` /
+--   `show callers` / `show impact` rebuilt the stale catalog at its cached
+--   source mode inside the statement's 5-minute wall-clock guard. On a
+--   3,032-document app the build reached document 1,110 and stopped:
+--     "statement timed out after 5m0s"
+--   The unfinished build was never saved, so every later call started the
+--   same rebuild over. `refresh catalog` was exempt from the guard (#651); an
+--   implicit rebuild of the same catalog was not.
+--
+-- After fix:
+--   The guard does not count time spent in an implicit rebuild, so the
+--   statement finishes and the cache is current for the next one. Under an
+--   explicit MXCLI_EXEC_TIMEOUT (which caps REFRESH CATALOG too) the rebuild
+--   is still capped, and the error says a rebuild was cut off and to run
+--   REFRESH CATALOG FULL SOURCE.
+--
+-- The timing needs a large app; on a small one this script shows the shape:
+-- the CREATE below changes the project file, so SHOW REFERENCES rebuilds.
+--
+-- Usage:
+--   mxcli -p app.mpr -c "refresh catalog full source"
+--   mxcli exec mdl-examples/bug-tests/1329-implicit-catalog-rebuild-timeout.mdl -p app.mpr
+--   mxcli -p app.mpr -c "show catalog status"     -- Status: current, source mode
+-- ============================================================================
+
+create module BugTest1329;
+
+create persistent entity BugTest1329.Ticket (
+  Title: String(100)
+);
+
+list references to BugTest1329.Ticket;

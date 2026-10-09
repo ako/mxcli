@@ -65,63 +65,51 @@ Use `dump-mpr` to answer:
 
 ### Find Type Definition
 
+The vendored metamodel types in `modelsdk/gen/<domain>/` carry the storage names.
+`types.go` holds each type's `$Type` and its BSON field names; `refs.go` holds
+the reference kind of each pointer property.
+
 ```bash
-# Search for a type in reflection data
-grep -A 50 '"Microflows\$Microflow"' reference/mendixmodellib/reflection-data/11.6.0-structures.json | head -60
+# $Type storage name and BSON field names of a type
+grep -n -A 12 'SetTypeName("Microflows\$Microflow")' modelsdk/gen/microflows/types.go
 ```
 
-### Key Metamodel Fields
+The `init<Type>()` constructor lists one property per BSON field, with the
+storage name as the first argument:
 
-```json
-{
-  "Microflows$Microflow": {
-    "qualifiedName": "Microflows$Microflow",
-    "storageName": "Microflows$Microflow",    // ← Use for $Type in BSON
-    "properties": {
-      "objectCollection": {
-        "name": "objectCollection",
-        "storageName": "ObjectCollection",    // ← Use for BSON field name
-        "typeInfo": {
-          "type": "ELEMENT",
-          "elementType": "Microflows$MicroflowObjectCollection",
-          "kind": "PART"                       // ← Determines reference format
-        }
-      }
-    }
-  }
-}
+```go
+o.SetTypeName("DataTypes$ListType")                                         // ← $Type in BSON
+o.entity = property.NewByNameRef[element.Element]("Entity", "DomainModels$Entity") // ← BSON field "Entity"
 ```
+
+`modelsdk/gen` is pinned to a Mendix release and does not know about anything
+added after it. For anything newer, or whenever gen and a document disagree,
+dump a Studio Pro-authored document; **the document wins**.
 
 ### Reference Kinds
 
-| Kind | BSON Format | Go Type |
+| Kind (`codec.RefKind`) | BSON Format | Go Type |
 |------|-------------|---------|
-| `PART` | Embedded document | Struct pointer |
-| `BY_ID_REFERENCE` | Binary UUID | `model.ID` (serialize as BSON Binary) |
-| `BY_NAME_REFERENCE` | String | `string` (qualified name like "Module.Entity") |
-| `LOOKUP` | String | `string` |
+| embedded part | Embedded document | Struct pointer |
+| `RefById` | Binary UUID | `model.ID` (serialize as BSON Binary) |
+| `RefByName` | String | `string` (qualified name like "Module.Entity") |
+| `RefByNameList` | Array of strings | `[]string` |
 
-### Looking Up Reference Kind in Metamodel
+### Looking Up Reference Kind
 
-**Critical:** Always check the `kind` field in the metamodel before implementing references.
+**Critical:** Always check the reference kind before implementing references.
 Getting this wrong causes "Value cannot be null" or similar errors in `mx check`.
 
 ```bash
-# Search for property definition
-grep -A 20 '"entity"' reference/mendixmodellib/reflection-data/11.6.0-structures.json | grep -A 10 'DataTypes\$ListType'
+# Reference properties of a type
+grep -n -A 4 '"DataTypes\$ListType"' modelsdk/gen/datatypes/refs.go
 ```
 
-Example discovery - `DataTypes$ListType.entity`:
-```json
-"entity" : {
-  "name" : "entity",
-  "storageName" : "Entity",
-  "typeInfo" : {
-    "type" : "ELEMENT",
-    "elementType" : "DomainModels$Entity",
-    "kind" : "BY_NAME_REFERENCE"    // ← This is the critical field!
-  }
-}
+Example discovery - `DataTypes$ListType.Entity`:
+```go
+codec.DefaultRefRegistry.RegisterRefs("DataTypes$ListType", []codec.RefMeta{
+	{Prop: "Entity", Kind: codec.RefByName, Target: "DomainModels$Entity"}, // ← the critical field
+})
 ```
 
 This means `Entity` must be serialized as `"MyModule.MyEntity"` (string), NOT as a binary UUID.
@@ -131,24 +119,17 @@ This means `Entity` must be serialized as `"MyModule.MyEntity"` (string), NOT as
 - `mx check` error: `"Value cannot be null. (Parameter 'value') at Mendix.Modeler.DataTypes.EntityType.set_EntityId"`
 - Fix: Changed to string qualified name format
 
-You can also check `reference/mendixmodellib/src/mpr/mprJsonConversion.js` for the TypeScript implementation:
-```javascript
-case "BY_NAME_REFERENCE":
-case "LOCAL_BY_NAME_REFERENCE":
-    return value || "";  // Just passes string through, not binary
-```
-
 ### Audit Similar Types
 
-When you fix a BY_NAME_REFERENCE bug in one type, **immediately audit all similar types**.
+When you fix a by-name reference bug in one type, **immediately audit all similar types**.
 
 Example: When we fixed `DataTypes$ListType.entity`, we should have checked:
-- `DataTypes$ObjectType.entity` - Same bug! Also BY_NAME_REFERENCE
-- `DataTypes$EnumerationType.enumeration` - Same pattern! Also BY_NAME_REFERENCE
+- `DataTypes$ObjectType.entity` - Same bug! Also `RefByName`
+- `DataTypes$EnumerationType.enumeration` - Same pattern! Also `RefByName`
 
 ```bash
-# Find all entity references that might be BY_NAME_REFERENCE
-grep -B 5 '"BY_NAME_REFERENCE"' reference/mendixmodellib/reflection-data/11.6.0-structures.json | grep -E '"(name|storageName)"'
+# Find all by-name references to entities
+grep -rn 'RefByName, Target: "DomainModels\$Entity"' modelsdk/gen/*/refs.go
 ```
 
 ### Context-Specific Type Interpretation
@@ -682,8 +663,7 @@ MxCheck tests only fail if errors are **related to newly created artifacts**:
 
 ## Reference Files
 
-- Metamodel structures: `reference/mendixmodellib/reflection-data/11.6.0-structures.json`
-- BSON conversion logic: `reference/mendixmodellib/src/mpr/mprJsonConversion.js`
+- Metamodel types: `modelsdk/gen/<domain>/types.go` (storage names) and `refs.go` (reference kinds)
 - BSON mapping docs: `docs/05-mdl-specification/10-bson-mapping.md`
 - Existing implementations: `sdk/domainmodel/`, `sdk/mpr/writer.go`
 - mx tools: `reference/mxbuild/modeler/mx` (check, create-project, build)

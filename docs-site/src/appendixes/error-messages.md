@@ -15,14 +15,14 @@ with qualified name DomainModels$Index
 
 **Cause:** The BSON `$Type` field uses the **qualifiedName** instead of the **storageName**. These are often identical, but not always.
 
-**Solution:** Check the metamodel reflection data for the correct storage name:
+**Solution:** Use the correct storage name:
 
 | qualifiedName (wrong) | storageName (correct) |
 |-----------------------|----------------------|
 | `DomainModels$Entity` | `DomainModels$EntityImpl` |
 | `DomainModels$Index` | `DomainModels$EntityIndex` |
 
-Look up the type in `reference/mendixmodellib/reflection-data/<version>-structures.json` and use the `storageName` field value.
+Look up the type's `SetTypeName(...)` call in `modelsdk/gen/<domain>/types.go`, or dump a Studio Pro-authored document.
 
 ### CE0463: Widget definition changed
 
@@ -310,6 +310,27 @@ mxbuild rejects it with CE7247 "Parameter 'N' cannot be changed". [MDL-SET01]
 Copy the parameter into a variable and change that (`declare $Value Integer = $N;`). A list
 parameter is not refused — `set $L = $M` on one is a Change list Replace, which builds — and
 neither is a member change, `set $Param/Attr = …`.
+
+### MDL-RETRIEVE02: Retrieve by association over `System.owner` / `System.changedBy`
+
+```
+retrieve $u from $task/System.owner: System.owner is not a modelled association, and a
+retrieve by association over it has no entity — mxbuild rejects it with CE0136 "Retrieve
+object must specify the 'Entity' property." [MDL-RETRIEVE02]
+```
+
+**Cause:** `owner` and `changedBy` are not associations in any domain model — an entity
+carries them as the *Store owner* / *Store changedBy* flags (`AutoOwner`, `AutoChangedBy`).
+XPath constraints and page paths resolve them, but a retrieve by association does not:
+mxbuild finds the name and derives no entity from it, whether or not the entity stores the
+member (measured on 11.12.2, mendixlabs/mxcli#1358). `check` and `exec` both refuse it.
+
+**Solution:** Retrieve the user from the database by id:
+
+```mdl
+retrieve $u from System.User where [id = $task/System.owner] first;
+retrieve $u from System.User where [id = $task/System.changedBy] first;
+```
 
 ### MDL-EMAIL02 / 03: A `send email` setting Studio Pro would not allow
 

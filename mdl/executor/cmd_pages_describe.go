@@ -651,6 +651,7 @@ type rawWidget struct {
 	// `Params: ( … )` (ako/mxcli#826).
 	SnippetParams string
 	Caption       string
+	Tooltip       string // an action button's Tooltip (mendixlabs/mxcli#1307)
 	RenderMode    string
 	Action        string
 	ButtonStyle   string

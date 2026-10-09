@@ -4,16 +4,16 @@ This document describes the BSON serialization format for Mendix pages, includin
 
 ## Source of Truth
 
-The authoritative reference for BSON serialization is the **reflection-data** at:
-```
-reference/mendixmodellib/reflection-data/{version}-structures.json
-```
+The authoritative reference for BSON serialization is a page **authored by
+Studio Pro** for the target Mendix version: dump it with `mxcli bson dump` and
+compare.
 
-Each structure entry contains:
-- `qualifiedName`: The API name (e.g., `pages$DivContainer`)
-- `storageName`: The BSON `$type` value (e.g., `Forms$DivContainer`)
-- `defaultSettings`: Required default property values
-- `properties`: Property definitions with types and requirements
+The vendored metamodel types in `modelsdk/gen/pages/` are the reference in the
+tree:
+- `types.go`: each widget's BSON `$Type` (the `SetTypeName(...)` call, e.g. `Forms$DivContainer`) and its BSON field names
+- `refs.go`: the reference kind of each pointer property
+
+When `modelsdk/gen` and a Studio Pro document disagree, the document wins.
 
 ## Type Name Mapping
 
@@ -492,28 +492,17 @@ The DataView's `datasource` property is missing or incorrectly configured. A Dat
 
 ### "Project uses features that are no longer supported"
 
-Widget properties are missing or have incorrect values. Check that all required default properties from the reflection-data are included.
+Widget properties are missing or have incorrect values. Check that all default properties Studio Pro writes for the widget are included.
 
-## Querying Reflection Data
+## Looking Up a Widget Type
 
-Use this Python snippet to check widget default settings:
+Each generated widget type registers its BSON `$Type` with `SetTypeName`, followed by its properties:
 
-```python
-import json
-
-with open('reference/mendixmodellib/reflection-data/11.0.0-structures.json') as f:
-    data = json.load(f)
-
-# find widget by api name
-widget = data.get('Pages$DivContainer', {})
-print('Storage name:', widget.get('storageName'))
-print('Defaults:', json.dumps(widget.get('defaultSettings', {}), indent=2))
-
-# search by storage name
-for key, val in data.items():
-    if val.get('storageName') == 'Forms$NoAction':
-        print(f'{key}: {val.get("defaultSettings")}')
+```bash
+grep -n -A 20 'SetTypeName("Forms\$DivContainer")' modelsdk/gen/pages/types.go
 ```
+
+For default values, dump the same widget from a page Studio Pro authored.
 
 ## Files Reference
 
@@ -529,7 +518,7 @@ for key, val in data.items():
 | `sdk/widgets/templates/mendix-11.6/*.json` | Embedded widget templates |
 | `sdk/pages/pages_widgets_advanced.go` | CustomWidget Go types |
 | `mdl/executor/cmd_pages_builder_input.go` | Widget creation from MDL |
-| `reference/mendixmodellib/reflection-data/*.json` | Type definitions |
+| `modelsdk/gen/pages/types.go` | Widget type definitions and storage names |
 
 ## Pluggable Widgets (CustomWidgets)
 

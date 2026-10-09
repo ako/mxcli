@@ -38,7 +38,7 @@ read from MPR (BSON) → Parse to Go struct → modify struct → Serialize back
 
 ### How the reflection data solves this
 
-The reflection data (`reference/mendixmodellib/reflection-data/{version}-structures.json`) already contains exact property metadata for every built-in widget type. For example, `pages$layoutgrid`:
+The reflection data (`{version}-structures.json`) already contains exact property metadata for every built-in widget type. For example, `pages$layoutgrid`:
 
 ```json
 {

@@ -4,12 +4,12 @@
 //
 // Usage:
 //
-//	go run cmd/codegen/main.go -version 10.0.0 -output ./generated
+//	go run cmd/codegen/main.go -input <reflection-data-dir> -version 10.0.0 -output ./generated
 //
 // Flags:
 //
 //	-version    Mendix version to generate for (default: "10.0.0")
-//	-input      Path to reflection data directory (default: "libs/mendixmodellib/reflection-data")
+//	-input      Path to reflection data directory (required)
 //	-output     Output directory for generated Go files (default: "generated")
 //	-namespace  Generate only specific namespace (comma-separated, or empty for all)
 //	-single     Generate all types in a single 'metamodel' package (avoids import cycles)
@@ -29,11 +29,17 @@ import (
 
 func main() {
 	version := flag.String("version", "10.0.0", "Mendix version to generate for")
-	inputDir := flag.String("input", "libs/mendixmodellib/reflection-data", "Path to reflection data directory")
+	inputDir := flag.String("input", "", "Path to reflection data directory (required)")
 	outputDir := flag.String("output", "generated", "Output directory for generated Go files")
 	namespace := flag.String("namespace", "", "Generate only specific namespace (comma-separated, or empty for all)")
 	singlePkg := flag.Bool("single", true, "Generate all types in a single 'metamodel' package")
 	flag.Parse()
+
+	if *inputDir == "" {
+		fmt.Fprintln(os.Stderr, "Error: -input is required")
+		flag.Usage()
+		os.Exit(2)
+	}
 
 	if err := run(*version, *inputDir, *outputDir, *namespace, *singlePkg); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

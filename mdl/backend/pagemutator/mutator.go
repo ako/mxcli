@@ -2927,6 +2927,8 @@ func setRawWidgetPropertyMut(widget bson.D, propName string, value any) error {
 		return setWidgetContentMut(widget, value)
 	case "label":
 		return setWidgetLabelMut(widget, value)
+	case "tooltip":
+		return setWidgetTooltipMut(widget, value)
 	case "buttonstyle":
 		if s, ok := value.(string); ok {
 			bsonnav.DSet(widget, "ButtonStyle", s)
@@ -3231,6 +3233,31 @@ func setWidgetCaptionMut(widget bson.D, value any) error {
 		return setTranslatableText(tmpl, "CaptionTemplate", value)
 	}
 	return mdlerrors.NewValidation("widget has no Caption property")
+}
+
+// setWidgetTooltipMut sets a button's tooltip, a Texts$Text under `Tooltip`
+// (empty Items when unset). It used to fall through to the pluggable setter,
+// which refused it as "not a property of this built-in widget"
+// (mendixlabs/mxcli#1307). A null Tooltip gets a fresh Texts$Text; a widget
+// with no Tooltip key at all has no tooltip to set.
+func setWidgetTooltipMut(widget bson.D, value any) error {
+	if tip := bsonnav.DGetDoc(widget, "Tooltip"); tip != nil {
+		return setTranslatableText(tip, "Tooltip", value)
+	}
+	if !hasKey(widget, "Tooltip") {
+		return fmt.Errorf("a %s has no Tooltip property",
+			widgetTypeLabel(bsonnav.DGetString(widget, "$Type")))
+	}
+	tip := bson.D{
+		{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
+		{Key: "$Type", Value: "Texts$Text"},
+		{Key: "Items", Value: bson.A{int32(3)}},
+	}
+	if err := setTranslatableText(tip, "Tooltip", value); err != nil {
+		return err
+	}
+	bsonnav.DSet(widget, "Tooltip", tip)
+	return nil
 }
 
 func setWidgetContentMut(widget bson.D, value any) error {

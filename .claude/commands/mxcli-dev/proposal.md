@@ -24,7 +24,7 @@ Ask the user:
 5. **Does this touch BSON serialization?** (reading or writing Mendix documents)
 
 If the user isn't sure about version or BSON, help them find out:
-- Version: check `reference/mendixmodellib/reflection-data/` or Mendix release notes
+- Version: check the Mendix release notes
 - BSON: check if similar features exist in `mdl/backend/modelsdk/*_read.go` or `*_write.go`
 
 ### Phase 2: BSON Investigation (if applicable)
@@ -51,7 +51,7 @@ in Studio Pro that are painful to debug.
    ```
 
 3. **Document the BSON structure** in the proposal:
-   - Storage name (`$Type` field) — verify against `reference/mendixmodellib/reflection-data/`
+   - Storage name (`$Type` field) — verify against `modelsdk/gen/<domain>/types.go` and the dumped document
    - All fields with types and observed values
    - Any fields that use Mendix-internal IDs (pointers to other documents)
    - Note any counter-intuitive naming (like Parent/Child pointer inversion)

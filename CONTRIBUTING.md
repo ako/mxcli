@@ -462,7 +462,7 @@ If you're contributing from a fork, this is the full cycle:
 
 ### BSON Storage Names
 
-**Critical**: Mendix uses different storage names in BSON `$type` fields than the qualified names in SDK documentation. Always verify against `reference/mendixmodellib/reflection-data/` or existing MPR files. See the table in `CLAUDE.md` for common mismatches.
+**Critical**: Mendix uses different storage names in BSON `$type` fields than the qualified names in SDK documentation. Always verify against the vendored types in `modelsdk/gen/` or existing MPR files. See the table in `CLAUDE.md` for common mismatches.
 
 ### BSON Tooling
 
