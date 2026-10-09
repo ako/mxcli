@@ -1131,6 +1131,19 @@ func (pb *pageBuilder) buildButtonV3(w *ast.WidgetV3) (*pages.ActionButton, erro
 		btn.CaptionTemplate.Parameters = pb.buildClientTemplateParams(params)
 	}
 
+	// Tooltip is a plain Texts$Text in the authoring language. The grammar and
+	// MDL-WIDGET07 both accepted it while nothing here read it, so it was
+	// dropped without a word (mendixlabs/mxcli#1307).
+	if tooltip := w.GetStringProp("Tooltip"); tooltip != "" {
+		btn.Tooltip = &model.Text{
+			BaseElement: model.BaseElement{
+				ID:       model.ID(types.GenerateID()),
+				TypeName: "Texts$Text",
+			},
+			Translations: map[string]string{pb.textLang(): tooltip},
+		}
+	}
+
 	// Handle ButtonStyle. Normalize case (so `primary` becomes `Primary`) and
 	// reject unknown values up front — an unrecognized style is silently
 	// degraded to btn-default by MxBuild, which is a quiet authoring footgun.
