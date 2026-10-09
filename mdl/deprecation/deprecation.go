@@ -928,9 +928,12 @@ var r5Entries = []Entry{
 			"decision $WorkflowContext/Total > 1000 outcomes true -> { } false -> { }; end workflow;",
 	},
 	{
-		Code:      BracketedWidgetCondition,
-		Old:       "Visible: [<expression>] / Editable: [<expression>]",
-		Canonical: "Visible: <expression> / Editable: <expression>",
+		Code: BracketedWidgetCondition,
+		Old:  "Visible: [<expression>] / Editable: [<expression>]",
+		// The bare form alone is not the same meaning: inside the brackets a bare
+		// attribute is rooted in $currentObject, so the canonical form names it
+		// (sudoku FINDINGS #63 migrated from this text by hand and rebound them).
+		Canonical: "Visible: <expression> / Editable: <expression>, each attribute as $currentObject/Attr",
 		Rewrite: Rewrite{Structural: "brackets into the expression they store: `Visible: [Active]` becomes " +
 			"`Visible: $currentObject/Active`"},
 		RemovedIn: 2,

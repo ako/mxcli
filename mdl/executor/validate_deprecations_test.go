@@ -105,3 +105,23 @@ func TestDeprecationWarningsEndWithHelpPointer(t *testing.T) {
 		}
 	}
 }
+
+// MDL-DEPR081's message says "same meaning", so the form it tells you to write
+// must be the one the brackets stored. Dropping the brackets alone rebinds a
+// bare attribute: `Visible: [Active]` roots Active in $currentObject, while
+// `Visible: Active` does not — a hand migration from the old text changed every
+// such condition (sudoku FINDINGS #63). fmt --upgrade was already right.
+func TestBracketedWidgetConditionMessageNamesCurrentObject(t *testing.T) {
+	src := "create page M.P (Title: 'P', Layout: Atlas_Core.Atlas_Default) { dataview dv (DataSource: $E) { " +
+		"textbox t (Attribute: Name, Visible: [Active]) } };"
+	got := deprecationViolations(t, src, deprecation.Warn)
+	if len(got) != 1 || got[0].RuleID != deprecation.BracketedWidgetCondition {
+		t.Fatalf("got %+v, want one %s", got, deprecation.BracketedWidgetCondition)
+	}
+	msg := got[0].Message
+	write := msg[strings.Index(msg, "write `"):]
+	write = write[:strings.Index(write, "— same meaning")]
+	if !strings.Contains(write, "$currentObject/") {
+		t.Errorf("the form the message says to write drops the $currentObject binding: %q", msg)
+	}
+}
