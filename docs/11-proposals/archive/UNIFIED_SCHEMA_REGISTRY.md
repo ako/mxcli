@@ -47,7 +47,7 @@ Three separate systems, none self-updating, overlapping responsibilities, diverg
 
 | System | Source | Update mechanism | Failure mode |
 |---|---|---|---|
-| `reference/mendixmodellib/reflection-data/` | TS SDK extraction | Manual per release | Stale at 11.6, missing storage names / list encodings / ref kinds |
+| Reflection data | TS SDK extraction | Manual per release | Stale at 11.6, missing storage names / list encodings / ref kinds |
 | `supplements.json` | Hand-curated overrides | Per-release human review | Gaps discovered at runtime when Studio Pro rejects output |
 | `sdk/widgets/templates/mendix-11.6/` + augmentation | Manual extraction | One-off per Mendix version | Frozen at 11.6; structural BSON shifts not handled — see [WIDGET_BSON_VERSION_COMPATIBILITY.md](../03-development/WIDGET_BSON_VERSION_COMPATIBILITY.md) for the five-fix patch sequence that was needed to support 11.9 |
 | `.mxcli/widgets/*.def.json` (per-project) | `mxcli widget init` parses MPK XML | User-triggered | Lossy: ignores object-list properties (Accordion `groups`, etc.); no integration with init/refresh |
@@ -153,7 +153,7 @@ enough to ship separately, which is what the phasing reflects.
 
 What we drop:
 
-- **TypeScript reflection data** (`reference/mendixmodellib/reflection-data/`) — lossy
+- **TypeScript reflection data** — lossy
   intermediate, manually updated. `mx dump-mpr` provides the same data with no gaps.
 - **`supplements.json`** — exists only because TS reflection lacks storage names / list
   encodings / ref kinds. `mx dump-mpr` has all of these directly.
@@ -510,7 +510,7 @@ validation, and skills. Migrated projects get a visible to-do list of legacy wid
 **Goal**: Replace TS reflection data with `mx dump-mpr` output, via build-time codegen.
 
 The existing `cmd/codegen/main.go` already generates Go types from a JSON-shaped reflection
-input. This phase swaps its data source from `reference/mendixmodellib/reflection-data/`
+input. This phase swaps its data source from the reflection data
 to `mx dump-mpr` output, and extends the generator to emit storage names, list encodings,
 and ref kinds (the fields TS reflection drops).
 
@@ -529,7 +529,7 @@ or invalidate. `mxcli schema show entity` reads from generated Go types.
 **Goal**: Retire legacy data sources; ship cross-version inspection and migration commands.
 
 - Validate Phase 4 codegen has full coverage of properties currently in `supplements.json`
-- Drop `supplements.json` and `reference/mendixmodellib/reflection-data/`
+- Drop `supplements.json` and the reflection data
 - Implement `mxcli schema list/show/diff` reading from generated platform schemas + runtime
   widget schemas
 - Implement `mxcli check --post-migration`, `mxcli widget upgrade` with tier-based drift

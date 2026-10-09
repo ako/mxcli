@@ -153,11 +153,10 @@ it is a reason to fix provenance (§4) rather than lean on the snapshot forever.
 
 Both generators are unrunnable here today.
 
-- `/reference/` is gitignored (`.gitignore:37`, plus `reference/mendixmodellib/`
-  explicitly at line 34), so `reference/mendixmodellib/reflection-data/` — named
-  by `BSON_TOOLING_GUIDE.md` §"Reflection data reference" and
-  `PAGE_BSON_SERIALIZATION.md` as *the* authoritative source — is absent.
-- `npm registry mendixmodellib` → **404**. A registry search for Mendix model
+- `/reference/` is gitignored, so the reflection data — then named by
+  `BSON_TOOLING_GUIDE.md` and `PAGE_BSON_SERIALIZATION.md` as *the*
+  authoritative source — is absent.
+- The npm registry does not publish it (**404**). A registry search for Mendix model
   packages returns the TypeScript SDK, the Platform SDK, widget tooling and
   third-party wrappers; **nothing publishes reflection/structures JSON**.
 - It is not in the mxbuild distribution we already download per version, at
@@ -172,7 +171,7 @@ Pulling it on every Mendix release would keep gen current and keep it wrong.
 
 ### 4.1 Reflection data is disqualified on licence, not availability
 
-`reference/mendixmodellib/` is an **internal, closed-source Mendix library**. Even
+The reflection data comes from an **internal, closed-source Mendix library**. Even
 where a copy exists, building mxcli's correctness on it would mean the project
 could only be developed by people holding that artefact — which is
 disqualifying for an open-source community regardless of the technical fit.

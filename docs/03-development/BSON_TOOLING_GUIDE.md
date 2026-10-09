@@ -236,16 +236,15 @@ What are you trying to do?
 |     --> mx check app.mpr
 ```
 
-## Reflection data reference
+## Metamodel type reference
 
-The Mendix type definitions live in `reference/mendixmodellib/reflection-data/`. Each JSON file defines one metamodel domain with:
-- Type names and their storage names (`$type` values)
-- Properties with types, defaults, and whether they're required
-- Inheritance hierarchy
+The vendored metamodel types live in `modelsdk/gen/<domain>/`:
+- `types.go`: each type's storage name (`$Type`, from `SetTypeName`) and its BSON field names
+- `refs.go`: the reference kind of each pointer property
 
-Check these when you're unsure whether a field belongs on a type. For example, `DomainModels.json` shows that `ParentConnection` exists on `DomainModels$association` but not on `DomainModels$CrossAssociation`.
+Check these when you're unsure whether a field belongs on a type. For example, `modelsdk/gen/domainmodels/types.go` shows that `ParentConnection` exists on `DomainModels$Association` but not on `DomainModels$CrossAssociation`.
 
-The generated Go metamodel in `generated/metamodel/types.go` mirrors these definitions and is used by `bson discover` for field coverage analysis.
+The generated Go metamodel in `generated/metamodel/types.go` is used by `bson discover` for field coverage analysis. Both are pinned to a Mendix release; for anything newer, a Studio Pro-authored document is the reference.
 
 ## Related documentation
 

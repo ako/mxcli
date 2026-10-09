@@ -15,14 +15,14 @@ with qualified name DomainModels$Index
 
 **Cause:** The BSON `$Type` field uses the **qualifiedName** instead of the **storageName**. These are often identical, but not always.
 
-**Solution:** Check the metamodel reflection data for the correct storage name:
+**Solution:** Use the correct storage name:
 
 | qualifiedName (wrong) | storageName (correct) |
 |-----------------------|----------------------|
 | `DomainModels$Entity` | `DomainModels$EntityImpl` |
 | `DomainModels$Index` | `DomainModels$EntityIndex` |
 
-Look up the type in `reference/mendixmodellib/reflection-data/<version>-structures.json` and use the `storageName` field value.
+Look up the type's `SetTypeName(...)` call in `modelsdk/gen/<domain>/types.go`, or dump a Studio Pro-authored document.
 
 ### CE0463: Widget definition changed
 
