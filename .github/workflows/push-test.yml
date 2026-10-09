@@ -175,11 +175,11 @@ jobs:
         run: ./scripts/check-skill-mdl.sh ./bin/mxcli .claude/skills/mendix
       - name: Check docs-site MDL blocks
         run: ./scripts/check-skill-mdl.sh ./bin/mxcli docs-site/src
-      - name: Check complete skill MDL examples pass mxcli check
+      - name: Check complete MDL examples (skills, docs-site) pass mxcli check
         # The step above fails only on syntax. A whole example that parses and
         # that `mxcli check` still rejects (MDL031, MDL063) shipped as correct
         # until a user ran the pack through check (mendixlabs/mxcli#1357).
-        run: ./scripts/check-skill-mdl-semantics.sh ./bin/mxcli .claude/skills/mendix .claude/skills/packs docs/01-project/MDL_QUICK_REFERENCE.md
+        run: ./scripts/check-skill-mdl-semantics.sh ./bin/mxcli .claude/skills/mendix .claude/skills/packs docs/01-project/MDL_QUICK_REFERENCE.md docs-site/src
       - name: Check MDL conformance
         # Every MDL block in `mxcli syntax`, the skills, docs-site, the quick
         # reference and mdl-examples, parsed as mdl 1, with deprecated

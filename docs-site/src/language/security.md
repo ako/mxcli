@@ -78,8 +78,9 @@ CREATE USER ROLE Anonymous ( ModuleRoles: (Shop.Viewer, System.User) );
 
 ALTER APP SECURITY ( EnableGuestAccess: TRUE, GuestUserRole: Anonymous );
 
--- Grant exactly what should be public, and nothing else.
-GRANT read * ON ENTITY Shop.Product TO Anonymous;
+-- Grant exactly what should be public, and nothing else. Access is granted
+-- to a module role (Shop.Viewer), never to the user role itself.
+GRANT read * ON ENTITY Shop.Product TO Shop.Viewer;
 ```
 
 Turning it off keeps the stored role, so switching it back on needs no `ROLE`

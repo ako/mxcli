@@ -26,7 +26,7 @@ Snippets can optionally declare parameters. When a snippet has parameters, the `
 
 ### Folder Placement
 
-The optional `Folder` property places the snippet in a subfolder within the module.
+The optional `FOLDER 'path'` clause, after the name, places the snippet in a subfolder within the module.
 
 ## Parameters
 
@@ -58,8 +58,10 @@ CREATE SNIPPET MyModule.CustomerHeader
 )
 {
     CONTAINER cntHeader (Class: 'card-header') {
-        DYNAMICTEXT txtName (Attribute: Name)
-        DYNAMICTEXT txtEmail (Attribute: Email)
+        DATAVIEW dvCustomer (DataSource: $Customer) {
+            DYNAMICTEXT txtName (Attribute: Name)
+            DYNAMICTEXT txtEmail (Attribute: Email)
+        }
     }
 };
 ```
@@ -72,10 +74,12 @@ CREATE SNIPPET MyModule.AddressFields
     Params: ( $Address: MyModule.Address )
 )
 {
-    TEXTBOX txtStreet (Label: 'Street', Attribute: Street)
-    TEXTBOX txtCity (Label: 'City', Attribute: City)
-    TEXTBOX txtZip (Label: 'Zip Code', Attribute: ZipCode)
-    TEXTBOX txtCountry (Label: 'Country', Attribute: Country)
+    DATAVIEW dvAddress (DataSource: $Address) {
+        TEXTBOX txtStreet (Label: 'Street', Attribute: Street)
+        TEXTBOX txtCity (Label: 'City', Attribute: City)
+        TEXTBOX txtZip (Label: 'Zip Code', Attribute: ZipCode)
+        TEXTBOX txtCountry (Label: 'Country', Attribute: Country)
+    }
 };
 ```
 
@@ -85,7 +89,7 @@ Snippet without parameters:
 CREATE SNIPPET MyModule.AppFooter
 {
     CONTAINER cntFooter (Class: 'app-footer') {
-        DYNAMICTEXT txtVersion (Attribute: Version)
+        DYNAMICTEXT txtVersion (Content: 'Version 1.0')
     }
 };
 ```
