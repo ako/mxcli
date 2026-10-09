@@ -41,9 +41,12 @@ The standard workaround is a three-step sequence:
 3. **Fill in the placeholder** using `CREATE OR MODIFY` or `ALTER` — both preserve the
    original ID so existing bindings remain valid.
 
-> **Critical:** Never use `CREATE OR REPLACE` for the fill-in step. `OR REPLACE` deletes
-> the placeholder and creates a new document with a different ID. Every page or snippet
-> that references the placeholder immediately becomes a dangling reference.
+> **Write `CREATE OR MODIFY`, not `CREATE OR REPLACE`.** `OR REPLACE` is the deprecated
+> spelling of `OR MODIFY` (`MDL-DEPR001`, refused from `mdl 2`): it means the same and
+> also keeps the ID, so it does not break the bindings — but it is not the spelling to
+> teach. The one `OR REPLACE` that does delete and recreate is `create or replace view
+> entity` in a script without an `mdl 1;` header (`MDL-V1-REPLACE01`); that is not a
+> page or snippet.
 
 ---
 

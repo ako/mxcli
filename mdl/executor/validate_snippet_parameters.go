@@ -4,6 +4,7 @@ package executor
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/linter"
@@ -35,13 +36,29 @@ import (
 // Reported per parameter, so a clause with several bad ones names them all
 // rather than one per run.
 func validateSnippetParameters(stmt ast.Statement) []linter.Violation {
-	snippet, ok := stmt.(*ast.CreateSnippetStmtV3)
-	if !ok {
+	var name ast.QualifiedName
+	var params []ast.PageParameter
+	switch s := stmt.(type) {
+	case *ast.CreateSnippetStmtV3:
+		name, params = s.Name, s.Parameters
+	case *ast.AlterPageStmt:
+		// `alter snippet … { add parameters … }` declares the same element and
+		// meets the same CE0046 (mendixlabs/mxcli#1234).
+		if !strings.EqualFold(s.ContainerType, "snippet") {
+			return nil
+		}
+		name = s.PageName
+		for _, op := range s.Operations {
+			if add, ok := op.(*ast.AddParameterOp); ok {
+				params = append(params, add.Parameter)
+			}
+		}
+	default:
 		return nil
 	}
 
 	var out []linter.Violation
-	for _, p := range snippet.Parameters {
+	for _, p := range params {
 		caption := types.SnippetParameterTypeRule(pageParamBSONType(p.Type))
 		if caption == "" {
 			continue
@@ -50,16 +67,16 @@ func validateSnippetParameters(stmt ast.Statement) []linter.Violation {
 			RuleID:   "MDL087",
 			Severity: linter.SeverityError,
 			Location: linter.Location{
-				Module:       snippet.Name.Module,
+				Module:       name.Module,
 				DocumentType: "snippet",
-				DocumentName: snippet.Name.Name,
+				DocumentName: name.Name,
 			},
 			Message: fmt.Sprintf(
 				"snippet '%s' declares parameter $%s with the primitive type %s. "+
 					"A snippet parameter must be an entity — mxbuild rejects a primitive one "+
 					"with CE0046 (\"Invalid data type '%s'.\"). A page parameter may be primitive; "+
 					"a snippet parameter may not.",
-				snippet.Name.String(), p.Name, paramTypeSourceName(p.Type), caption),
+				name.String(), p.Name, paramTypeSourceName(p.Type), caption),
 			Suggestion: fmt.Sprintf(
 				"pass the value on an object: declare `$%s: <Module>.<Entity>` and read the "+
 					"member inside the snippet, or move the primitive to the calling PAGE's "+

@@ -27,6 +27,12 @@ type DomainModelBackend interface {
 	// deleted in the first place.
 	SetDomainModelAnnotations(domainModelID model.ID, annotations []*domainmodel.Annotation) error
 
+	// SetDomainModelDocumentation sets the domain model's own documentation —
+	// the only documentation a module has (mendixlabs/mxcli#1314). Separate
+	// from UpdateDomainModel for the same reason as annotations: that one
+	// carries the stored value through untouched.
+	SetDomainModelDocumentation(domainModelID model.ID, documentation string) error
+
 	// Entities
 	CreateEntity(domainModelID model.ID, entity *domainmodel.Entity) error
 	UpdateEntity(domainModelID model.ID, entity *domainmodel.Entity) error

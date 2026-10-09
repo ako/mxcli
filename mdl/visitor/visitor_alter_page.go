@@ -50,6 +50,10 @@ func (b *Builder) exitAlterDocumentStatement(ctx *parser.AlterStatementContext) 
 			stmt.Operations = append(stmt.Operations, b.buildAlterPageAddVariable(addVarCtx.(*parser.AlterPageAddVariableContext)))
 		} else if dropVarCtx := op.AlterPageDropVariable(); dropVarCtx != nil {
 			stmt.Operations = append(stmt.Operations, b.buildAlterPageDropVariable(dropVarCtx.(*parser.AlterPageDropVariableContext)))
+		} else if addParamCtx := op.AlterPageAddParameter(); addParamCtx != nil {
+			stmt.Operations = append(stmt.Operations, b.buildAlterPageAddParameter(addParamCtx.(*parser.AlterPageAddParameterContext)))
+		} else if dropParamCtx := op.AlterPageDropParameter(); dropParamCtx != nil {
+			stmt.Operations = append(stmt.Operations, b.buildAlterPageDropParameter(dropParamCtx.(*parser.AlterPageDropParameterContext)))
 		}
 	}
 
@@ -310,6 +314,26 @@ func (b *Builder) buildAlterPageDropVariable(ctx *parser.AlterPageDropVariableCo
 	op := &ast.DropVariableOp{}
 	if varTok := ctx.VARIABLE(); varTok != nil {
 		op.VariableName = strings.TrimPrefix(varTok.GetText(), "$")
+	}
+	return op
+}
+
+// buildAlterPageAddParameter builds an AddParameterOp from the parse tree. The
+// declaration goes through buildPageParameter, CREATE's own conversion, so a
+// parameter means the same thing whichever statement declares it.
+func (b *Builder) buildAlterPageAddParameter(ctx *parser.AlterPageAddParameterContext) *ast.AddParameterOp {
+	op := &ast.AddParameterOp{}
+	if p := ctx.PageParameter(); p != nil {
+		op.Parameter = buildPageParameter(p.(*parser.PageParameterContext))
+	}
+	return op
+}
+
+// buildAlterPageDropParameter builds a DropParameterOp from the parse tree.
+func (b *Builder) buildAlterPageDropParameter(ctx *parser.AlterPageDropParameterContext) *ast.DropParameterOp {
+	op := &ast.DropParameterOp{}
+	if varTok := ctx.VARIABLE(); varTok != nil {
+		op.ParameterName = strings.TrimPrefix(varTok.GetText(), "$")
 	}
 	return op
 }

@@ -1,0 +1,15 @@
+mdl 1;
+-- mendixlabs/mxcli#1356 — a .test.mdl takes the `mdl 1;` header.
+--
+-- This is the reporter's file after `mxcli fmt --upgrade`, which adds the
+-- header to a test file by default (ako/mxcli#847) and rewrites the constructs
+-- whose meaning it changes: `limit 1` became `first`, `$Found = …` became
+-- `set $Found = …`. `fmt --help` and the test-microflows skill still said a test
+-- file takes no header; check and the runner read every block below as mdl 1.
+
+/**
+ * @test Finds a customer
+ * @expect $Found = true
+ */
+retrieve $Customer from MyModule.Customer where Name = 'Ann' first;
+set $Found = $Customer != empty;

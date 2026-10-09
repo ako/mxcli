@@ -1226,6 +1226,13 @@ func execAlterProjectSecurity(ctx *ExecContext, s *ast.AlterProjectSecurityStmt)
 		}
 	}
 
+	if s.AdminUserName != "" {
+		if err := ctx.Backend.SetProjectAdminUserName(ps.ID, s.AdminUserName); err != nil {
+			return mdlerrors.NewBackend("set admin user name", err)
+		}
+		ctx.reportWrite("admin user name: "+s.AdminUserName, "Admin user name set to %s", s.AdminUserName)
+	}
+
 	if s.StrictModeEnabled != nil {
 		if err := ctx.Backend.SetProjectStrictMode(ps.ID, *s.StrictModeEnabled); err != nil {
 			return mdlerrors.NewBackend("set strict mode", err)

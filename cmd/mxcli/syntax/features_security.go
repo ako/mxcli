@@ -142,25 +142,28 @@ func init() {
 
 	Register(SyntaxFeature{
 		Path:    "security.project-security",
-		Summary: "Set project security level, strict mode, demo user and guest access toggles",
+		Summary: "Set project security level, strict mode, demo user and guest access toggles, admin user name",
 		Keywords: []string{
 			"project security", "app security", "alter app security", "security level", "prototype",
-			"production", "off", "strict mode", "SEC005",
+			"production", "off", "strict mode", "SEC005", "admin user", "AdminUserName", "MxAdmin",
 		},
 		Syntax: "ALTER APP SECURITY (\n" +
 			"  [SecurityLevel: OFF|PROTOTYPE|PRODUCTION,]\n" +
 			"  [EnableDemoUsers: TRUE|FALSE,]\n" +
 			"  [EnableGuestAccess: TRUE|FALSE,]\n" +
 			"  [GuestUserRole: <UserRole>,]\n" +
-			"  [StrictMode: TRUE|FALSE]          -- clears lint rule SEC005\n" +
+			"  [StrictMode: TRUE|FALSE,]         -- clears lint rule SEC005\n" +
+			"  [AdminUserName: '<name>']         -- the built-in administrator (default MxAdmin)\n" +
 			");\n\n" +
 			"-- Set any subset of the properties, in create's ( Key: value ) list. The\n" +
 			"-- clause forms (LEVEL …, DEMO USERS ON|OFF, GUEST ACCESS ON [ROLE r]|OFF,\n" +
-			"-- STRICT MODE ON|OFF) still run and warn MDL-DEPR133.",
+			"-- STRICT MODE ON|OFF) still run and warn MDL-DEPR133. The administrator's\n" +
+			"-- password is not settable from MDL.",
 		Example: "mdl 1;\n" +
 			"ALTER APP SECURITY ( SecurityLevel: PRODUCTION );\n" +
 			"ALTER APP SECURITY ( EnableDemoUsers: FALSE );\n" +
-			"ALTER APP SECURITY ( StrictMode: TRUE );",
+			"ALTER APP SECURITY ( StrictMode: TRUE );\n" +
+			"ALTER APP SECURITY ( AdminUserName: 'appadmin' );",
 		SeeAlso: []string{"security.demo-user", "security.guest-access"},
 	})
 

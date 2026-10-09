@@ -1,0 +1,34 @@
+mdl 1;
+-- ============================================================================
+-- mendixlabs/mxcli#1343: a menu caption with an apostrophe round-trips
+-- ============================================================================
+--
+-- `describe navigation` (and `describe menu`, the same renderer) wrote a caption
+-- as it was stored, apostrophe and all:
+--
+--   menu item 'Customer's orders' ( OnClick: show page … )
+--
+-- which does not re-parse — `line 7:20 extraneous input 's' expecting
+-- {MENU_KW, '}'}` — so a describe -> exec round trip lost the navigation
+-- statement for any app with an ordinary possessive in its menu.
+--
+-- Describing the profile after running this must print the doubled spelling
+-- below, and that output must exec unchanged.
+
+create module NavCaptionQuote;
+
+create page NavCaptionQuote.Orders ( Title: 'Orders', Layout: Atlas_Core.Atlas_Default ) {
+  dynamictext t (Content: 'Orders')
+};
+
+create or modify navigation Responsive
+  home page NavCaptionQuote.Orders
+  {
+    menu 'Customer''s menu' {
+      menu item 'Customer''s orders' ( OnClick: show page NavCaptionQuote.Orders )
+    }
+  };
+
+create or modify menu NavCaptionQuote.Main_Menu {
+  menu item 'Customer''s orders' ( OnClick: show page NavCaptionQuote.Orders )
+};

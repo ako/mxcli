@@ -149,3 +149,46 @@ func TestFastPathReturnTypeMatchesTheSlowPath(t *testing.T) {
 		t.Fatal("compared nothing")
 	}
 }
+
+// ListRawUnits is reached through a backend value by describe's auto-detect
+// fallback (resolveViaReader in cmd/mxcli/cmd_describe.go), which runs whenever
+// the project has no catalog. Left to the stub it answered "not implemented"
+// and an empty list, so `mxcli describe Mod.Doc` found no document of any type.
+func TestListRawUnits(t *testing.T) {
+	b := connectedBackend(t)
+
+	// "" is every unit — the form the describe fallback uses.
+	all, err := b.ListRawUnits("")
+	if err != nil {
+		t.Fatalf("ListRawUnits(\"\"): %v", err)
+	}
+	var found bool
+	for _, u := range all {
+		if u.QualifiedName == "FeedbackModule.ConvertBase64String" {
+			found = true
+			if u.Type != "Microflows$Microflow" {
+				t.Errorf("Type = %q, want Microflows$Microflow", u.Type)
+			}
+			if u.ModuleName != "FeedbackModule" {
+				t.Errorf("ModuleName = %q, want FeedbackModule", u.ModuleName)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("ListRawUnits(\"\") returned %d units, none named FeedbackModule.ConvertBase64String", len(all))
+	}
+
+	// A type alias narrows the list to that type and nothing else.
+	mfs, err := b.ListRawUnits("microflow")
+	if err != nil {
+		t.Fatalf("ListRawUnits(\"microflow\"): %v", err)
+	}
+	if len(mfs) == 0 || len(mfs) >= len(all) {
+		t.Fatalf("microflow filter returned %d of %d units", len(mfs), len(all))
+	}
+	for _, u := range mfs {
+		if u.Type != "Microflows$Microflow" {
+			t.Errorf("microflow filter returned %s (%s)", u.QualifiedName, u.Type)
+		}
+	}
+}

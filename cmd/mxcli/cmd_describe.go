@@ -51,6 +51,7 @@ Types:
   restclient       Describe a consumed REST service (also: "rest client")
   odataclient      Describe a consumed OData service
   odataservice     Describe a published OData service
+  publishedrestservice  Describe a published REST service (also: "published rest service", "rest service")
   imagecollection  Describe an image collection (also: "image collection")
   menu             Describe a standalone menu document
   queue            Describe a task queue
@@ -124,92 +125,11 @@ Example:
 		name := args[len(args)-1]
 		objectType := strings.ToUpper(strings.Join(args[:len(args)-1], " "))
 
-		var mdlCmd string
-		switch objectType {
-		case "MODULE":
-			mdlCmd = fmt.Sprintf("DESCRIBE MODULE %s", name)
-		case "ENTITY":
-			mdlCmd = fmt.Sprintf("DESCRIBE ENTITY %s", name)
-		case "ASSOCIATION":
-			mdlCmd = fmt.Sprintf("DESCRIBE ASSOCIATION %s", name)
-		case "ENUMERATION":
-			mdlCmd = fmt.Sprintf("DESCRIBE ENUMERATION %s", name)
-		case "MICROFLOW":
-			mdlCmd = fmt.Sprintf("DESCRIBE MICROFLOW %s", name)
-		case "NANOFLOW":
-			mdlCmd = fmt.Sprintf("DESCRIBE NANOFLOW %s", name)
-		case "WORKFLOW":
-			mdlCmd = fmt.Sprintf("DESCRIBE WORKFLOW %s", name)
-		case "PAGE":
-			mdlCmd = fmt.Sprintf("DESCRIBE PAGE %s", name)
-		case "SNIPPET":
-			mdlCmd = fmt.Sprintf("DESCRIBE SNIPPET %s", name)
-		case "BUILDINGBLOCK", "BUILDING BLOCK":
-			mdlCmd = fmt.Sprintf("DESCRIBE BUILDING BLOCK %s", name)
-		case "LAYOUT":
-			mdlCmd = fmt.Sprintf("DESCRIBE LAYOUT %s", name)
-		case "MODULEROLE", "MODULE ROLE":
-			mdlCmd = fmt.Sprintf("DESCRIBE MODULE ROLE %s", name)
-		case "USERROLE", "USER ROLE":
-			mdlCmd = fmt.Sprintf("DESCRIBE USER ROLE '%s'", name)
-		case "PROJECTSECURITY", "PROJECT SECURITY":
-			mdlCmd = "DESCRIBE APP SECURITY"
-		case "SETTINGS":
-			mdlCmd = "DESCRIBE SETTINGS"
-		case "DEMOUSER", "DEMO USER":
-			mdlCmd = fmt.Sprintf("DESCRIBE DEMO USER '%s'", name)
-		case "JAVAACTION", "JAVA ACTION":
-			mdlCmd = fmt.Sprintf("DESCRIBE JAVA ACTION %s", name)
-		case "CONSTANT":
-			mdlCmd = fmt.Sprintf("DESCRIBE CONSTANT %s", name)
-		case "JSONSTRUCTURE", "JSON STRUCTURE":
-			mdlCmd = fmt.Sprintf("DESCRIBE JSON STRUCTURE %s", name)
-		case "IMPORTMAPPING", "IMPORT MAPPING":
-			mdlCmd = fmt.Sprintf("DESCRIBE IMPORT MAPPING %s", name)
-		case "EXPORTMAPPING", "EXPORT MAPPING":
-			mdlCmd = fmt.Sprintf("DESCRIBE EXPORT MAPPING %s", name)
-		case "RESTCLIENT", "REST CLIENT":
-			mdlCmd = fmt.Sprintf("DESCRIBE CONSUMED REST SERVICE %s", name)
-		case "ODATACLIENT", "ODATA CLIENT":
-			mdlCmd = fmt.Sprintf("DESCRIBE CONSUMED ODATA SERVICE %s", name)
-		case "ODATASERVICE", "ODATA SERVICE":
-			mdlCmd = fmt.Sprintf("DESCRIBE PUBLISHED ODATA SERVICE %s", name)
-		case "IMAGECOLLECTION", "IMAGE COLLECTION":
-			mdlCmd = fmt.Sprintf("DESCRIBE IMAGE COLLECTION %s", name)
-		case "MENU":
-			mdlCmd = fmt.Sprintf("DESCRIBE MENU %s", name)
-		case "QUEUE":
-			mdlCmd = fmt.Sprintf("DESCRIBE TASK QUEUE %s", name)
-		case "SCHEDULEDEVENT", "SCHEDULED EVENT":
-			mdlCmd = fmt.Sprintf("DESCRIBE SCHEDULED EVENT %s", name)
-		case "REGULAREXPRESSION", "REGULAR EXPRESSION", "REGEX":
-			mdlCmd = fmt.Sprintf("DESCRIBE REGULAR EXPRESSION %s", name)
-		case "BUSINESSEVENTSERVICE", "BUSINESS EVENT SERVICE":
-			mdlCmd = fmt.Sprintf("DESCRIBE BUSINESS EVENT SERVICE %s", name)
-		case "DATABASECONNECTION", "DATABASE CONNECTION":
-			mdlCmd = fmt.Sprintf("DESCRIBE DATABASE CONNECTION %s", name)
-		case "EXTERNALENTITY", "EXTERNAL ENTITY":
-			mdlCmd = fmt.Sprintf("DESCRIBE ENTITY %s", name)
-		case "NAVIGATION":
-			mdlCmd = fmt.Sprintf("DESCRIBE NAVIGATION %s", name)
-		case "NAVPROFILE":
-			mdlCmd = fmt.Sprintf("DESCRIBE NAVIGATION %s", name)
-		case "AGENT":
-			mdlCmd = fmt.Sprintf("DESCRIBE AGENT %s", name)
-		case "AIMODEL", "AI MODEL", "MODEL":
-			mdlCmd = fmt.Sprintf("DESCRIBE MODEL %s", name)
-		case "KNOWLEDGEBASE", "KNOWLEDGE BASE":
-			mdlCmd = fmt.Sprintf("DESCRIBE KNOWLEDGE BASE %s", name)
-		case "CONSUMEDMCPSERVICE", "CONSUMED MCP SERVICE", "MCP SERVICE":
-			mdlCmd = fmt.Sprintf("DESCRIBE CONSUMED MCP SERVICE %s", name)
-		case "DATATRANSFORMER", "DATA TRANSFORMER":
-			mdlCmd = fmt.Sprintf("DESCRIBE DATA TRANSFORMER %s", name)
-		case "SYSTEMOVERVIEW":
-			mdlCmd = "" // handled directly by format-specific path
-		default:
+		mdlCmd, ok := describeMDLCommand(objectType, name)
+		if !ok {
 			fmt.Fprintf(os.Stderr, "Unknown type: %s\n", strings.Join(args[:len(args)-1], " "))
-			fmt.Fprintln(os.Stderr, "Valid types: module, entity, association, enumeration, constant, microflow, nanoflow, workflow, page, snippet, layout, javaaction, jsonstructure, importmapping, exportmapping, restclient, odataclient, odataservice, imagecollection, menu, queue, scheduledevent, businesseventservice, databaseconnection, agent, aimodel, knowledgebase, consumedmcpservice, datatransformer, modulerole, userrole, projectsecurity, settings, demouser, navigation, systemoverview")
-			fmt.Fprintln(os.Stderr, "Multi-word types also accepted: json structure, import mapping, export mapping, rest client, image collection, scheduled event, regular expression, business event service, agent, model, knowledge base, consumed mcp service, data transformer, etc.")
+			fmt.Fprintln(os.Stderr, "Valid types: module, entity, association, enumeration, constant, microflow, nanoflow, workflow, page, snippet, layout, javaaction, jsonstructure, importmapping, exportmapping, restclient, odataclient, odataservice, publishedrestservice, imagecollection, menu, queue, scheduledevent, businesseventservice, databaseconnection, agent, aimodel, knowledgebase, consumedmcpservice, datatransformer, modulerole, userrole, projectsecurity, settings, demouser, navigation, systemoverview")
+			fmt.Fprintln(os.Stderr, "Multi-word types also accepted: json structure, import mapping, export mapping, rest client, published rest service, image collection, scheduled event, regular expression, business event service, agent, model, knowledge base, consumed mcp service, data transformer, etc.")
 			os.Exit(1)
 		}
 
@@ -303,6 +223,98 @@ Example:
 	},
 }
 
+// describeMDLCommand maps a `describe` subcommand type (upper-cased, words joined
+// by single spaces) and a name to the MDL DESCRIBE statement it runs. ok is false
+// for an unknown type. SYSTEMOVERVIEW returns "" with ok true: it has no MDL form
+// and is handled by the --format elk path.
+func describeMDLCommand(objectType, name string) (mdlCmd string, ok bool) {
+	switch objectType {
+	case "MODULE":
+		return fmt.Sprintf("DESCRIBE MODULE %s", name), true
+	case "ENTITY":
+		return fmt.Sprintf("DESCRIBE ENTITY %s", name), true
+	case "ASSOCIATION":
+		return fmt.Sprintf("DESCRIBE ASSOCIATION %s", name), true
+	case "ENUMERATION":
+		return fmt.Sprintf("DESCRIBE ENUMERATION %s", name), true
+	case "MICROFLOW":
+		return fmt.Sprintf("DESCRIBE MICROFLOW %s", name), true
+	case "NANOFLOW":
+		return fmt.Sprintf("DESCRIBE NANOFLOW %s", name), true
+	case "WORKFLOW":
+		return fmt.Sprintf("DESCRIBE WORKFLOW %s", name), true
+	case "PAGE":
+		return fmt.Sprintf("DESCRIBE PAGE %s", name), true
+	case "SNIPPET":
+		return fmt.Sprintf("DESCRIBE SNIPPET %s", name), true
+	case "BUILDINGBLOCK", "BUILDING BLOCK":
+		return fmt.Sprintf("DESCRIBE BUILDING BLOCK %s", name), true
+	case "LAYOUT":
+		return fmt.Sprintf("DESCRIBE LAYOUT %s", name), true
+	case "MODULEROLE", "MODULE ROLE":
+		return fmt.Sprintf("DESCRIBE MODULE ROLE %s", name), true
+	case "USERROLE", "USER ROLE":
+		return fmt.Sprintf("DESCRIBE USER ROLE '%s'", name), true
+	case "PROJECTSECURITY", "PROJECT SECURITY":
+		return "DESCRIBE APP SECURITY", true
+	case "SETTINGS":
+		return "DESCRIBE SETTINGS", true
+	case "DEMOUSER", "DEMO USER":
+		return fmt.Sprintf("DESCRIBE DEMO USER '%s'", name), true
+	case "JAVAACTION", "JAVA ACTION":
+		return fmt.Sprintf("DESCRIBE JAVA ACTION %s", name), true
+	case "CONSTANT":
+		return fmt.Sprintf("DESCRIBE CONSTANT %s", name), true
+	case "JSONSTRUCTURE", "JSON STRUCTURE":
+		return fmt.Sprintf("DESCRIBE JSON STRUCTURE %s", name), true
+	case "IMPORTMAPPING", "IMPORT MAPPING":
+		return fmt.Sprintf("DESCRIBE IMPORT MAPPING %s", name), true
+	case "EXPORTMAPPING", "EXPORT MAPPING":
+		return fmt.Sprintf("DESCRIBE EXPORT MAPPING %s", name), true
+	case "RESTCLIENT", "REST CLIENT":
+		return fmt.Sprintf("DESCRIBE CONSUMED REST SERVICE %s", name), true
+	case "ODATACLIENT", "ODATA CLIENT":
+		return fmt.Sprintf("DESCRIBE CONSUMED ODATA SERVICE %s", name), true
+	case "ODATASERVICE", "ODATA SERVICE":
+		return fmt.Sprintf("DESCRIBE PUBLISHED ODATA SERVICE %s", name), true
+	case "PUBLISHEDRESTSERVICE", "PUBLISHED REST SERVICE", "RESTSERVICE", "REST SERVICE":
+		return fmt.Sprintf("DESCRIBE PUBLISHED REST SERVICE %s", name), true
+	case "IMAGECOLLECTION", "IMAGE COLLECTION":
+		return fmt.Sprintf("DESCRIBE IMAGE COLLECTION %s", name), true
+	case "MENU":
+		return fmt.Sprintf("DESCRIBE MENU %s", name), true
+	case "QUEUE":
+		return fmt.Sprintf("DESCRIBE TASK QUEUE %s", name), true
+	case "SCHEDULEDEVENT", "SCHEDULED EVENT":
+		return fmt.Sprintf("DESCRIBE SCHEDULED EVENT %s", name), true
+	case "REGULAREXPRESSION", "REGULAR EXPRESSION", "REGEX":
+		return fmt.Sprintf("DESCRIBE REGULAR EXPRESSION %s", name), true
+	case "BUSINESSEVENTSERVICE", "BUSINESS EVENT SERVICE":
+		return fmt.Sprintf("DESCRIBE BUSINESS EVENT SERVICE %s", name), true
+	case "DATABASECONNECTION", "DATABASE CONNECTION":
+		return fmt.Sprintf("DESCRIBE DATABASE CONNECTION %s", name), true
+	case "EXTERNALENTITY", "EXTERNAL ENTITY":
+		return fmt.Sprintf("DESCRIBE ENTITY %s", name), true
+	case "NAVIGATION":
+		return fmt.Sprintf("DESCRIBE NAVIGATION %s", name), true
+	case "NAVPROFILE":
+		return fmt.Sprintf("DESCRIBE NAVIGATION %s", name), true
+	case "AGENT":
+		return fmt.Sprintf("DESCRIBE AGENT %s", name), true
+	case "AIMODEL", "AI MODEL", "MODEL":
+		return fmt.Sprintf("DESCRIBE MODEL %s", name), true
+	case "KNOWLEDGEBASE", "KNOWLEDGE BASE":
+		return fmt.Sprintf("DESCRIBE KNOWLEDGE BASE %s", name), true
+	case "CONSUMEDMCPSERVICE", "CONSUMED MCP SERVICE", "MCP SERVICE":
+		return fmt.Sprintf("DESCRIBE CONSUMED MCP SERVICE %s", name), true
+	case "DATATRANSFORMER", "DATA TRANSFORMER":
+		return fmt.Sprintf("DESCRIBE DATA TRANSFORMER %s", name), true
+	case "SYSTEMOVERVIEW":
+		return "", true // handled directly by format-specific path
+	}
+	return "", false
+}
+
 // objectTypeToDescribe maps a catalog `objects` view ObjectType to the `describe`
 // keyword. Only directly describable types with a `Module.Name` shape are listed.
 var objectTypeToDescribe = map[string]string{
@@ -325,6 +337,7 @@ var objectTypeToDescribe = map[string]string{
 	"ODATA_CLIENT":           "odataclient",
 	"ODATA_SERVICE":          "odataservice",
 	"REST_CLIENT":            "restclient",
+	"PUBLISHED_REST_SERVICE": "publishedrestservice",
 	"BUSINESS_EVENT_SERVICE": "businesseventservice",
 	"DATABASE_CONNECTION":    "databaseconnection",
 	"IMAGE_COLLECTION":       "imagecollection",
@@ -362,6 +375,7 @@ var unitTypeToDescribe = map[string]string{
 	"Queues$Queue":                         "queue",
 	"ScheduledEvents$ScheduledEvent":       "scheduledevent",
 	"RegularExpressions$RegularExpression": "regularexpression",
+	"Rest$PublishedRestService":            "publishedrestservice",
 }
 
 // resolveDescribeType auto-detects the `describe` type for a qualified document

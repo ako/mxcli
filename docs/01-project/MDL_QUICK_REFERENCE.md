@@ -63,6 +63,7 @@ create persistent entity Module.Photo (
 | Show modules | `list modules;` | List all modules |
 | Describe module | `describe module ModuleName;` | All contents (entities, microflows, pages, etc.) |
 | Create module | `create module ModuleName;` | |
+| Module documentation | `/** text */ create or modify module ModuleName;` | Stored as the module's **domain model** documentation (a module has none of its own) — what lint reads as `modules().domain_model_documentation`. `describe module` prints it the same way. No comment leaves it as stored; `/** */` clears it; a plain `create module` of an existing module changes nothing |
 | Drop module | `drop module [if exists] ModuleName;` | |
 | Rename module | `rename module OldName to NewName;` | Updates all qualified name references |
 
@@ -710,6 +711,7 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 | Toggle demo users | `alter app security ( EnableDemoUsers: true\|false );` | Several keys may go in one list |
 | Enable guest access | `alter app security ( EnableGuestAccess: true, GuestUserRole: UserRole );` | Anonymous users. The role is what visitors get — its entity access is the public surface. Mendix fails the build without one (CE0133), so `on` is refused unless a role is given or already stored. mxcli validates the role exists; Mendix does not |
 | Disable guest access | `alter app security ( EnableGuestAccess: false );` | Keeps the stored role, so re-enabling needs no `GuestUserRole` |
+| Rename admin user | `alter app security ( AdminUserName: 'appadmin' );` | The built-in administrator (default `MxAdmin`), read by lint as `project_security().admin_user_name`. Its password is not settable from MDL |
 | Create demo user | `create demo user 'name' ( Password: 'pass', [Entity: Module.Entity,] UserRoles: (UserRole, ...) );` | The clause form `password … (…)` warns MDL-DEPR137 |
 | Drop demo user | `drop demo user [if exists] 'name';` | `if exists` makes a cleanup script re-runnable |
 | Update security | `update security [[in] Module];` | Re-syncs access rules with their domain model — Studio Pro's **Update security** button, headless. Repairs **CE0066** "Entity access is out of date", which a model authored elsewhere can carry (a module imported or updated outside Studio Pro). Not needed after mxcli's own writes: every write path reconciles as it writes. Writes nothing when the rules already match, and skips `System` |
@@ -1717,6 +1719,8 @@ This is the generic ALTER — `alter <type> Module.Name { set (Key: value) on <t
 | Insert column | `insert after dgGrid column(Attr) { column (…) }` | Add attribute to DataGrid; a column takes no name |
 | Add variable | `add variables $name: type = 'expr'` | Add a page variable |
 | Drop variable | `drop variables $name` | Remove a page variable |
+| Add parameter | `add parameters $name: type` | Add a page/snippet parameter (entity or primitive; snippet: entity only). A page with a `Url` needs a `{name}` segment — `set (Url: …)` in the same statement |
+| Drop parameter | `drop parameters $name` | Remove a parameter; refused while the page still uses it |
 | Set layout | `set layout = Module.LayoutName` | Change page layout, auto-maps placeholders |
 | Set layout + map | `set layout = Module.Layout map (Old as New)` | Explicit placeholder mapping |
 

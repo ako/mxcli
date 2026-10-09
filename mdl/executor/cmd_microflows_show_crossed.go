@@ -79,6 +79,12 @@ func labelCrossedMerges(col *microflows.MicroflowObjectCollection) mergeLabels {
 	for id := range sharedArmEntries(col, objects, findings) {
 		needsLabel[id] = true
 	}
+	for id := range sharedHandlerEntries(col, objects) {
+		needsLabel[id] = true
+	}
+	for id := range interleavedIfEntries(col, objects, findings) {
+		needsLabel[id] = true
+	}
 	for _, f := range findings {
 		if f.Class != microflowgraph.Recombinable || len(f.Entries) != 1 {
 			continue
@@ -353,6 +359,126 @@ func sharedArmEntries(
 			out[id] = true
 		}
 		out[join] = true
+	}
+	return out
+}
+
+// interleavedIfEntries labels every entry of an interleaved `if` whose entries
+// are all merges, and its join when that is a merge too.
+//
+// An `if` renders its arms with nothing shared between them but the visited
+// set, so a region two arms reach at different depths was written inline in
+// the first arm and as "fall out of the if" in the other — which lands on
+// whatever follows the `if`, not on the region (Evora: OIDC.GetLoginEndpoint,
+// whose inner arm skipped the authorization URL). Every entry being a merge is
+// what makes the crossed vocabulary enough: each arm that reaches one ends in
+// `join`, and each region is printed once, in its own section, ending in a
+// `join` of the next. An entry that is an activity would have to be split off a
+// merge that does not exist, so those keep MDL-FLOW01.
+//
+// Only `if`: a `case`/`split type` overlap is sharedArmEntries' business, which
+// carries its own conditions.
+func interleavedIfEntries(
+	col *microflows.MicroflowObjectCollection,
+	objects map[model.ID]microflows.MicroflowObject,
+	findings []microflowgraph.Finding,
+) map[model.ID]bool {
+	out := map[model.ID]bool{}
+	flowsByOrigin := map[model.ID][]*microflows.SequenceFlow{}
+	for _, fl := range col.Flows {
+		if fl != nil {
+			flowsByOrigin[fl.OriginID] = append(flowsByOrigin[fl.OriginID], fl)
+		}
+	}
+	for _, f := range findings {
+		if f.Class != microflowgraph.Interleaved {
+			continue
+		}
+		if _, ok := f.Split.(*microflows.ExclusiveSplit); !ok || hasEnumCaseFlows(findNormalFlows(flowsByOrigin[f.SplitID])) {
+			continue
+		}
+		allMerges := len(f.Entries) > 0
+		for _, id := range f.Entries {
+			if _, isMerge := objects[id].(*microflows.ExclusiveMerge); !isMerge {
+				allMerges = false
+			}
+		}
+		if !allMerges {
+			continue
+		}
+		for _, id := range f.Entries {
+			out[id] = true
+		}
+		if _, isMerge := objects[f.JoinID].(*microflows.ExclusiveMerge); isMerge {
+			out[f.JoinID] = true
+		}
+	}
+	return out
+}
+
+// sharedHandlerEntries finds the merges two or more error handlers settle on
+// that no normal path reaches: one handler body drawn once and wired to several
+// activities.
+//
+// Each guarded activity describes its own `on error … begin … end error` block,
+// and the handler walk (collectErrorHandlerStatementSpans) stops at the first
+// merge it meets — emitting `join <label>` if the merge has one, and nothing at
+// all if it does not. labelRejoinMerges only names merges the normal path also
+// reaches, so a merge reached by handlers alone had no name, every block came
+// out EMPTY, and the shared handler body — every activity in it — vanished from
+// the description (Evora: PrePopulateData.ASU_CheckForWorkforce, three java
+// action calls sharing a log + end; GenAICommons.ToolCall_ProcessAndExecuteTool,
+// two calls sharing four activities that rejoin the main path).
+//
+// Treating it as a crossed merge says exactly what the model holds: each block
+// ends in `join <label>`, and the body is printed once, in its own section,
+// after the main flow. A merge one handler alone settles on is left alone: it
+// is not shared, and is not what this describes.
+func sharedHandlerEntries(
+	col *microflows.MicroflowObjectCollection,
+	objects map[model.ID]microflows.MicroflowObject,
+) map[model.ID]bool {
+	out := map[model.ID]bool{}
+	normalSucc := map[model.ID][]model.ID{}
+	flowsByOrigin := map[model.ID][]*microflows.SequenceFlow{}
+	var errorFlows []*microflows.SequenceFlow
+	var startID model.ID
+	for _, o := range col.Objects {
+		if _, ok := o.(*microflows.StartEvent); ok {
+			startID = o.GetID()
+		}
+	}
+	for _, fl := range col.Flows {
+		if fl == nil {
+			continue
+		}
+		flowsByOrigin[fl.OriginID] = append(flowsByOrigin[fl.OriginID], fl)
+		if fl.IsErrorHandler {
+			errorFlows = append(errorFlows, fl)
+			continue
+		}
+		normalSucc[fl.OriginID] = append(normalSucc[fl.OriginID], fl.DestinationID)
+	}
+	if len(errorFlows) < 2 {
+		return out
+	}
+	normal := reachableUntil(startID, "", normalSucc)
+	incoming := incomingCounts(flowsByOrigin)
+	handlers := map[model.ID]map[model.ID]bool{}
+	for _, ef := range errorFlows {
+		m := firstMergeFrom(ef.DestinationID, objects, normalSucc, incoming)
+		if m == "" || normal[m] {
+			continue
+		}
+		if handlers[m] == nil {
+			handlers[m] = map[model.ID]bool{}
+		}
+		handlers[m][ef.OriginID] = true
+	}
+	for m, origins := range handlers {
+		if len(origins) >= 2 {
+			out[m] = true
+		}
 	}
 	return out
 }

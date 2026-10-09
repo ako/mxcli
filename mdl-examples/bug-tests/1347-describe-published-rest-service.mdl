@@ -1,0 +1,29 @@
+mdl 1;
+-- Bug #1347: the `mxcli describe` subcommand rejected a published REST
+-- service with "Unknown type", and auto-detect (`mxcli describe M.Api`)
+-- could not resolve it, although `describe published rest service` works
+-- under `mxcli -c` / exec / the REPL.
+--
+-- After running this script, all of these must print the service:
+--   mxcli describe -p app.mpr published rest service BugTest1347.OrderApi
+--   mxcli describe -p app.mpr rest service BugTest1347.OrderApi
+--   mxcli describe -p app.mpr publishedrestservice BugTest1347.OrderApi
+--   mxcli describe -p app.mpr BugTest1347.OrderApi          -- auto-detect
+
+create module BugTest1347;
+
+create microflow BugTest1347.MF_GetOrders ()
+begin
+end;
+
+create published rest service BugTest1347.OrderApi (
+  path: 'rest/orders/v1',
+  version: '1.0.0'
+)
+{
+  resource 'orders' {
+    get '' microflow BugTest1347.MF_GetOrders;
+  }
+};
+
+describe published rest service BugTest1347.OrderApi;

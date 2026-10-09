@@ -1,0 +1,31 @@
+mdl 1;
+-- mendixlabs/mxcli#1344 — a restrict association's delete error message must
+-- land in the project's language.
+--
+-- Before the fix the message was stored as a Texts$Text whose one translation
+-- was always en_US. On a project whose default language is not en_US the app had
+-- no message in its own language when a delete was refused, and `mx check`
+-- reported no error — so the stored LanguageCode is the oracle, not the check.
+-- Regression tests: TestCreateAssociation_DeleteMessageUsesProjectLanguage,
+-- TestAlterAssociation_DeleteMessageUsesProjectLanguage,
+-- TestDeleteErrorMessage_StoredInTheGivenLanguage.
+
+-- The reporter's configuration: nl_NL as the default language.
+alter settings LANGUAGE ADD 'nl_NL';
+alter settings LANGUAGE ( DefaultLanguageCode: 'nl_NL' );
+
+create persistent entity MyFirstModule.Issue1344Klant ( Naam: String(200) );
+create persistent entity MyFirstModule.Issue1344Order ( Nummer: Integer );
+
+-- CREATE: the message must be stored under nl_NL.
+create association MyFirstModule.Issue1344Order_Klant
+  from MyFirstModule.Issue1344Order to MyFirstModule.Issue1344Klant
+  type Reference
+  on delete restrict error message 'Een klant met orders kan niet worden verwijderd';
+
+-- ALTER: re-setting it must write nl_NL too.
+alter association MyFirstModule.Issue1344Order_Klant
+  set on delete restrict error message 'Klant heeft nog orders';
+
+-- DESCRIBE reads the language CREATE writes, so this prints the Dutch back.
+describe association MyFirstModule.Issue1344Order_Klant;

@@ -360,7 +360,7 @@ for t, props in crash_props.items():
 
 **Investigation methodology used for v0.10 CE0463 fixes** — see [WIDGET_BSON_VERSION_COMPATIBILITY.md](../../docs/03-development/WIDGET_BSON_VERSION_COMPATIBILITY.md) for the full case study and version-resilience model.
 
-**Quick workaround** (if you can't fix the root cause): normalize with `mxcli docker check`/`build`, which run the widget update **and preserve MPRv2 storage** (they snapshot/restore `.mpr` + `mprcontents/`). Do **not** run bare `mx update-widgets` on a v2 project you care about — it converts to single-file v1 and deletes `mprcontents/` (corrupts git, breaks `mxcli run --local`). Raw `mx update-widgets` is fine only on a throwaway diagnostic copy or a v1 project.
+**Quick workaround** (if you can't fix the root cause): normalize with `mxcli fix widgets -p app.mpr`, which runs the widget update on the project **and preserves MPRv2 storage**. Not `mxcli docker check`/`build`: they run the update on a **temporary copy**, so a CE0463 the normalization clears is not reported while the stored project still fails MxBuild — use `docker check --no-update-widgets` to see the project as stored (and [`diagnose-ce0463.md`](./diagnose-ce0463.md) before calling it widget drift). Do **not** run bare `mx update-widgets` on a v2 project you care about — it converts to single-file v1 and deletes `mprcontents/` (corrupts git, breaks `mxcli run --local`). Raw `mx update-widgets` is fine only on a throwaway diagnostic copy or a v1 project.
 
 ### CE0642: Property X Is Required
 
@@ -440,7 +440,7 @@ for _, pm := range a.ParameterMappings {
 
 2. **Mode-dependent properties must be consistent**: When changing a mode-switching property (e.g., `showContentAs`), all dependent properties must be updated to match.
 
-3. **Widget normalization is the safety net — via `mxcli docker check`/`build`**: they run the update-widgets normalization *and* preserve MPRv2 storage (snapshot/restore). Bare `mx update-widgets` does the same normalization but rewrites a v2 project to v1 and deletes `mprcontents/` — only use it on a v1 project or a throwaway diagnostic copy.
+3. **Widget normalization is the safety net — via `mxcli fix widgets`**: it applies the update-widgets normalization to the project *and* preserves MPRv2 storage. `mxcli docker check`/`build` normalize only a temporary copy, which hides CE0463 without fixing the stored project. Bare `mx update-widgets` does the same normalization but rewrites a v2 project to v1 and deletes `mprcontents/` — only use it on a v1 project or a throwaway diagnostic copy.
 
 4. **The mpk is the source of truth**: The XML schema defines property types/defaults, the editorConfig.js defines visibility rules. Together they specify the complete expected Object structure.
 

@@ -96,7 +96,7 @@ MDL does not perform implicit type conversions. Types must match exactly.
 @Position(100, 100)
 CREATE PERSISTENT ENTITY Demo.AllTypes (
   /** Auto-generated ID */
-  Id: AutoNumber NOT NULL UNIQUE DEFAULT 1,
+  ItemNumber: AutoNumber NOT NULL UNIQUE DEFAULT 1,
 
   /** Short text field */
   Code: String(10) NOT NULL UNIQUE,

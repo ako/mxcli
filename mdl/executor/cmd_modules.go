@@ -32,6 +32,16 @@ func execCreateModule(ctx *ExecContext, s *ast.CreateModuleStmt) error {
 
 	for _, m := range modules {
 		if m.Name == s.Name {
+			// A plain create of an existing module stays the no-op it always
+			// was; `or modify` applies the documentation the statement states.
+			if s.CreateOrModify && s.DocumentationSet {
+				return setModuleDocumentation(ctx, m, s.Documentation)
+			}
+			if s.DocumentationSet {
+				fmt.Fprintf(ctx.Output, "Module '%s' already exists; documentation unchanged "+
+					"(create or modify module sets it)\n", s.Name)
+				return nil
+			}
 			fmt.Fprintf(ctx.Output, "Module '%s' already exists\n", s.Name)
 			return nil
 		}
@@ -50,6 +60,28 @@ func execCreateModule(ctx *ExecContext, s *ast.CreateModuleStmt) error {
 	invalidateModuleCache(ctx)
 
 	fmt.Fprintf(ctx.Output, "Created module: %s\n", s.Name)
+	if s.DocumentationSet && s.Documentation != "" {
+		return setModuleDocumentation(ctx, module, s.Documentation)
+	}
+	return nil
+}
+
+// setModuleDocumentation stores a module's doc comment as its domain model's
+// documentation: a Mendix module has no documentation property, its
+// DomainModels$DomainModel does, and that is what lint reads as
+// modules().domain_model_documentation (mendixlabs/mxcli#1314).
+func setModuleDocumentation(ctx *ExecContext, module *model.Module, doc string) error {
+	dm, err := ctx.Backend.GetDomainModel(module.ID)
+	if err != nil {
+		return mdlerrors.NewBackend(fmt.Sprintf("read domain model of %s", module.Name), err)
+	}
+	if dm == nil {
+		return mdlerrors.NewNotFound("domain model of module", module.Name)
+	}
+	if err := ctx.Backend.SetDomainModelDocumentation(dm.ID, doc); err != nil {
+		return mdlerrors.NewBackend(fmt.Sprintf("set documentation of %s", module.Name), err)
+	}
+	fmt.Fprintf(ctx.Output, "Set documentation of module: %s\n", module.Name)
 	return nil
 }
 
@@ -611,7 +643,11 @@ func describeModule(ctx *ExecContext, moduleName string, withAll bool) error {
 		return mdlerrors.NewNotFound("module", moduleName)
 	}
 
-	// Output basic CREATE MODULE statement
+	// The module's documentation is its domain model's; print it as the doc
+	// comment that sets it, so the output re-run stores it (mendixlabs/mxcli#1314).
+	if dm, err := ctx.Backend.GetDomainModel(targetModule.ID); err == nil && dm != nil && dm.Documentation != "" {
+		fmt.Fprintf(ctx.Output, "/**\n * %s\n */\n", strings.ReplaceAll(dm.Documentation, "\n", "\n * "))
+	}
 	fmt.Fprintf(ctx.Output, "create or modify module %s;\n", targetModule.Name)
 
 	// Module roles live in the module's own Security$ModuleSecurity unit rather

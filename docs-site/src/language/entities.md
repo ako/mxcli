@@ -43,7 +43,7 @@ CREATE PERSISTENT ENTITY Sales.Customer (
   /** Whether the account is active */
   IsActive: Boolean DEFAULT TRUE,
   /** Timestamp of account creation */
-  CreatedDate: DateTime,
+  CreatedDate: AutoCreatedDate,
   /** Current lifecycle status */
   Status: Enumeration(Sales.CustomerStatus) DEFAULT 'Active'
 )
@@ -109,7 +109,7 @@ Creates the entity if it does not exist, or updates it if it does. New attribute
 
 ```sql
 CREATE OR MODIFY PERSISTENT ENTITY Sales.Customer (
-  CustomerId: AutoNumber NOT NULL UNIQUE,
+  CustomerId: AutoNumber NOT NULL UNIQUE DEFAULT 1,
   Name: String(200) NOT NULL,
   Email: String(200),
   Phone: String(50)  -- new attribute added on modify
@@ -122,7 +122,7 @@ Persistent entities can track who created/modified objects and when. Declare the
 
 ```sql
 CREATE PERSISTENT ENTITY Sales.Order (
-  OrderNumber: AutoNumber,
+  OrderNumber: AutoNumber DEFAULT 1,
   TotalAmount: Decimal,
   Owner: AutoOwner,
   ChangedBy: AutoChangedBy,
@@ -183,7 +183,7 @@ CREATE PERSISTENT ENTITY Sales.Customer (
   IsActive: Boolean DEFAULT TRUE,
 
   /** Timestamp of account creation */
-  CreatedDate: DateTime,
+  CreatedDate: AutoCreatedDate,
 
   /** Current lifecycle status */
   Status: Enumeration(Sales.CustomerStatus) DEFAULT 'Active'

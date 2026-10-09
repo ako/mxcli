@@ -147,6 +147,20 @@ type DropVariableOp struct {
 
 func (s *DropVariableOp) isAlterPageOperation() {}
 
+// AddParameterOp represents: ADD Parameters $Name: Type
+type AddParameterOp struct {
+	Parameter PageParameter
+}
+
+func (s *AddParameterOp) isAlterPageOperation() {}
+
+// DropParameterOp represents: DROP Parameters $Name
+type DropParameterOp struct {
+	ParameterName string // without $ prefix
+}
+
+func (s *DropParameterOp) isAlterPageOperation() {}
+
 // SetLayoutOp represents: SET Layout = Module.LayoutName [MAP (Old -> New, ...)]
 type SetLayoutOp struct {
 	NewLayout QualifiedName     // New layout qualified name

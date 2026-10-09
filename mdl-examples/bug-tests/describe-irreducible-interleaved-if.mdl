@@ -1,0 +1,58 @@
+mdl 1;
+-- ============================================================================
+-- DESCRIBE MICROFLOW flattened an `if` whose branches cross at two merges
+-- (Evora Factory Management: OIDC.GetLoginEndpoint)
+-- ============================================================================
+--
+-- The THEN arm goes straight to a shared region ('auth'); so does an arm two
+-- decisions deep in the ELSE. That region and another ELSE arm ('default') then
+-- meet at a second merge before the tail ('cookie').
+--
+-- Symptom (before fix):
+--   The inner arm's way to 'auth' came out as "fall out of the if", which lands
+--   on 'cookie' and skips 'auth'. The description carried the #923 MDL-FLOW01
+--   "NOT equivalent … must not be re-executed" warning — correctly: it was not
+--   the stored flow. Interleaved overlaps were deliberately left alone.
+--
+-- After fix:
+--   When every entry of an interleaved `if` is a merge, each is labelled: every
+--   arm that reaches one says `join`, each region is printed once in its own
+--   section, and the warning is retired because it is no longer true. A `join`
+--   is no longer written after `end if` when no arm falls out of the `if`.
+--   An interleaved overlap entered at an activity is still left with the
+--   warning: there is no merge to name.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/describe-irreducible-interleaved-if.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe microflow BugIrrInter.Interleaved" > d.mdl
+--   mxcli check d.mdl -p app.mpr --references   -- expect: Check passed!
+--   mxcli exec d.mdl -p app.mpr                  -- expect: Unchanged microflow
+-- ============================================================================
+
+create module BugIrrInter;
+
+create or modify microflow BugIrrInter.Interleaved ($A: Boolean, $B: Boolean, $C: Boolean) returns Boolean
+begin
+  if $A then
+    join first_path;
+  else
+    log info node 'Bug' 'lookup';
+    if $B then
+      if $C then
+        log info node 'Bug' 'discover';
+        return false;
+      else
+        join first_path;
+      end if;
+    else
+      log info node 'Bug' 'default';
+      join second_path;
+    end if;
+  end if;
+  merge first_path;
+  log info node 'Bug' 'auth';
+  join second_path;
+  merge second_path;
+  log info node 'Bug' 'cookie';
+  return true;
+end;

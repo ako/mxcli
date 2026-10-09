@@ -41,6 +41,11 @@ type Deps interface {
 	// Returns an error if the engine does not support DataGrid2 column ALTER (so
 	// the op refuses loudly rather than writing a corrupt column).
 	BuildDataGrid2Column(col *backend.DataGridColumnSpec, columnObjectTypeID string, columnPropertyIDs map[string]pages.PropertyTypeIDEntry) (bson.D, error)
+	// SerializeParameter builds a new Forms$PageParameter or
+	// Forms$SnippetParameter (by container kind) as raw bson.D. The engine owns
+	// it because which keys a page parameter carries depends on the project's
+	// Mendix version.
+	SerializeParameter(container backend.ContainerKind, p backend.PageParameterSpec) (bson.D, error)
 	// SaveUnit writes the (re-marshaled) unit bytes back to storage.
 	SaveUnit(unitID string, contents []byte) error
 }

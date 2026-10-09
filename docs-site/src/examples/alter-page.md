@@ -75,6 +75,18 @@ ALTER PAGE CRM.ProductOverview {
 };
 ```
 
+## Add a Page Parameter
+
+Add a parameter to an existing page without rewriting it. The page has a URL,
+so the new parameter gets a segment in the same statement:
+
+```sql
+ALTER PAGE CRM.Customer_Edit {
+  SET (Url: 'customer-edit/{Customer}/{Order}');
+  ADD Parameters $Order: CRM.Order
+};
+```
+
 ## Switch Page Layout
 
 Change a page's layout without losing any widgets:

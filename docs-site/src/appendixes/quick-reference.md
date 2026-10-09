@@ -122,7 +122,7 @@ CREATE CONSUMED ODATA SERVICE MyModule.ExternalAPI (
 **OData Service Example:**
 ```sql
 CREATE PUBLISHED ODATA SERVICE MyModule.CustomerAPI (
-  Path: '/odata/customers',
+  Path: 'odata/customers/',
   Version: '1.0.0',
   ODataVersion: OData4,
   Namespace: 'MyModule.Customers',
@@ -137,7 +137,9 @@ CREATE PUBLISHED ODATA SERVICE MyModule.CustomerAPI (
     UsePaging: Yes,
     PageSize: 100
   )
-  EXPOSE (Name, Email, Phone);
+  -- The KEY attribute must be unique on the entity
+  -- (Email: String(200) UNIQUE), or mxbuild reports CE6624.
+  EXPOSE (Email (KEY), Name, Phone);
 };
 ```
 
@@ -226,6 +228,7 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 | Set security level | `ALTER APP SECURITY ( SecurityLevel: OFF\|PROTOTYPE\|PRODUCTION );` | |
 | Toggle demo users | `ALTER APP SECURITY ( EnableDemoUsers: TRUE\|FALSE );` | |
 | Toggle guest access | `ALTER APP SECURITY ( EnableGuestAccess: TRUE, GuestUserRole: UserRole );` / `( EnableGuestAccess: FALSE )` | Anonymous users; role required (CE0133) |
+| Rename admin user | `ALTER APP SECURITY ( AdminUserName: 'appadmin' );` | Default `MxAdmin`; the password is not settable from MDL |
 | Create demo user | `CREATE DEMO USER 'name' ( Password: 'pass', [Entity: Module.Entity,] UserRoles: (UserRole, ...) );` | The clause form `PASSWORD … (…)` warns MDL-DEPR137 |
 | Drop demo user | `DROP DEMO USER [IF EXISTS] 'name';` | `IF EXISTS` makes a cleanup script re-runnable |
 
@@ -435,6 +438,8 @@ Modify an existing page or snippet's widget tree in-place without full `CREATE O
 | Pluggable prop | `SET ('showLabel': false) ON cbStatus` | Quoted name for pluggable widgets |
 | Add variable | `ADD Variables $name: Type = 'expr'` | Add a page variable |
 | Drop variable | `DROP Variables $name` | Remove a page variable |
+| Add parameter | `ADD Parameters $name: Type` | Add a page/snippet parameter (entity or primitive; snippet: entity only). A page with a `Url` needs a `{name}` segment — `SET (Url: …)` in the same statement |
+| Drop parameter | `DROP Parameters $name` | Remove a parameter; refused while the page still uses it |
 
 **Supported SET properties:** Caption, Label, ButtonStyle, Class, Style, Editable, Visible, Name, and quoted pluggable widget properties. Page-level (no `ON` clause, case-sensitive): Title, Class, Style, PopupWidth, PopupHeight, PopupResizable.
 

@@ -49,7 +49,7 @@ CREATE PERSISTENT ENTITY CRM.ContactLog (
   /** Date and time of the interaction */
   ContactDate: DateTime NOT NULL,
   /** Type of interaction */
-  Type: Enumeration(CRM.ContactType) DEFAULT 'Email',
+  ContactType: Enumeration(CRM.ContactType) DEFAULT 'Email',
   /** Summary of what was discussed */
   Summary: String(2000) NOT NULL ERROR MESSAGE 'Summary is required',
   /** Follow-up needed? */
@@ -68,6 +68,7 @@ CREATE ASSOCIATION CRM.ContactLog_Customer
 The two-microflow pattern: a validation microflow returns field-level feedback, and an action microflow calls it before saving.
 
 ```sql
+mdl 1;
 CREATE MICROFLOW CRM.VAL_Customer ($Customer: CRM.Customer)
 RETURNS Boolean AS $IsValid
 BEGIN
@@ -78,7 +79,7 @@ BEGIN
     VALIDATION FEEDBACK $Customer/Name MESSAGE 'Name cannot be empty';
   END IF;
 
-  IF $Customer/Email != empty AND NOT contains($Customer/Email, '@') THEN
+  IF $Customer/Email != empty AND not(contains($Customer/Email, '@')) THEN
     SET $IsValid = false;
     VALIDATION FEEDBACK $Customer/Email MESSAGE 'Enter a valid email address';
   END IF;
@@ -90,12 +91,11 @@ BEGIN
 
   RETURN $IsValid;
 END;
-/
 
 CREATE MICROFLOW CRM.ACT_Customer_Save ($Customer: CRM.Customer)
 RETURNS Boolean AS $IsValid
 BEGIN
-  $IsValid = CALL MICROFLOW CRM.VAL_Customer(param = $Customer);
+  $IsValid = CALL MICROFLOW CRM.VAL_Customer(Customer = $Customer);
 
   IF $IsValid THEN
     COMMIT $Customer;
@@ -104,31 +104,13 @@ BEGIN
 
   RETURN $IsValid;
 END;
-/
 ```
 
 ## Pages
 
 ```sql
 mdl 1;
--- Overview page with data grid
-CREATE PAGE CRM.Customer_Overview (
-  Title: 'Customers',
-  Layout: Atlas_Core.Atlas_Default
-) {
-  DATAGRID dgCustomers (DataSource: DATABASE CRM.Customer, Selection: Single) {
-    COLUMN (Attribute: Name, Caption: 'Name') { TEXTFILTER fName }
-    COLUMN (Attribute: Email, Caption: 'Email') { TEXTFILTER fEmail }
-    COLUMN (Attribute: Phone, Caption: 'Phone')
-    COLUMN (Attribute: Status, Caption: 'Status')
-    COLUMN (Attribute: IsActive, Caption: 'Active')
-    CONTROLBAR {
-      ACTIONBUTTON btnNew (Caption: 'New', Action: SHOW PAGE CRM.Customer_NewEdit, ButtonStyle: Primary)
-    }
-  }
-};
-
--- NewEdit page with validation
+-- NewEdit page with validation (first: the overview opens it)
 CREATE PAGE CRM.Customer_NewEdit (
   Params: ( $Customer: CRM.Customer ),
   Title: 'Customer',
@@ -152,6 +134,23 @@ CREATE PAGE CRM.Customer_NewEdit (
           }
         }
       }
+    }
+  }
+};
+
+-- Overview page with data grid
+CREATE PAGE CRM.Customer_Overview (
+  Title: 'Customers',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  DATAGRID dgCustomers (DataSource: DATABASE CRM.Customer, Selection: Single) {
+    COLUMN (Attribute: Name, Caption: 'Name') { TEXTFILTER fName }
+    COLUMN (Attribute: Email, Caption: 'Email') { TEXTFILTER fEmail }
+    COLUMN (Attribute: Phone, Caption: 'Phone')
+    COLUMN (Attribute: Status, Caption: 'Status')
+    COLUMN (Attribute: IsActive, Caption: 'Active')
+    CONTROLBAR {
+      ACTIONBUTTON btnNew (Caption: 'New', Action: CREATE OBJECT CRM.Customer THEN SHOW PAGE CRM.Customer_NewEdit, ButtonStyle: Primary)
     }
   }
 };
@@ -184,7 +183,7 @@ CREATE OR MODIFY USER ROLE CRMUser ( ModuleRoles: (System.User, CRM.User) );
 CREATE OR MODIFY USER ROLE CRMAdmin ( ModuleRoles: (System.User, CRM.Admin) );
 
 -- Demo users for testing
-CREATE OR MODIFY DEMO USER 'crm_user' ( Password: 'Password1!', UserRoles: (CRMUser) );
-CREATE OR MODIFY DEMO USER 'crm_admin' ( Password: 'Password1!', UserRoles: (CRMAdmin) );
+CREATE OR MODIFY DEMO USER 'crm_user' ( Password: 'CrmPassword1!', UserRoles: (CRMUser) );
+CREATE OR MODIFY DEMO USER 'crm_admin' ( Password: 'CrmPassword1!', UserRoles: (CRMAdmin) );
 ALTER APP SECURITY ( EnableDemoUsers: TRUE );
 ```

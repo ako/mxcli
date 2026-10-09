@@ -683,6 +683,14 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 				return mdlerrors.NewNotFound("module", s.Name.Module)
 			}
 		}
+	// exec resolves a module role's module first (findModule) and stops there,
+	// after the statements above it are written (mendixlabs/mxcli#1354).
+	case *ast.CreateModuleRoleStmt:
+		if s.Name.Module != "" && !sc.modules[s.Name.Module] {
+			if _, err := findModule(ctx, s.Name.Module); err != nil {
+				return mdlerrors.NewNotFound("module", s.Name.Module)
+			}
+		}
 	case *ast.CreateEnumerationStmt:
 		if s.Name.Module != "" && !sc.modules[s.Name.Module] {
 			if _, err := findModule(ctx, s.Name.Module); err != nil {

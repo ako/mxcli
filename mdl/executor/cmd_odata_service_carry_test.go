@@ -75,3 +75,52 @@ func TestModifyODataService_CarriesPageSizeOrderAndCanBeEmpty(t *testing.T) {
 		t.Errorf("new member Added got CanBeEmpty %v", *m.CanBeEmpty)
 	}
 }
+
+// The CanBeEmpty carry above is keyed on the member's name, so it also carried
+// across a change of key status. Exposing a member without (KEY) stores
+// CanBeEmpty true; re-running the statement with `Email (KEY)` then wrote true
+// onto a key member, and mxbuild refused it: CE0309 "Exposed attribute 'Email'
+// of entity 'Customer' that is part of the key cannot be marked as 'Can be
+// empty'". A fresh create of the same statement built clean. The stored value
+// is the member's state only while its key status is the one it was stored
+// with; when that changes, the derived value (!IsPartOfKey) applies.
+func TestModifyODataService_CanBeEmptyNotCarriedAcrossKeyChange(t *testing.T) {
+	svc, mb, h := existingPublishedService()
+	yes, no := true, false
+	svc.EntityTypes[0].Members = []*model.PublishedMember{
+		{Kind: "attribute", Name: "Label", ExposedName: "label", CanBeEmpty: &yes},                 // becomes a key
+		{Kind: "attribute", Name: "Code", ExposedName: "code", IsPartOfKey: true, CanBeEmpty: &no}, // stops being one
+		{Kind: "attribute", Name: "Note", ExposedName: "note", CanBeEmpty: &yes},                   // control: unchanged
+	}
+	var updated *model.PublishedODataService
+	mb.UpdatePublishedODataServiceFunc = func(s *model.PublishedODataService) error { updated = s; return nil }
+	ctx, _ := newMockCtx(t, withBackend(mb), withHierarchy(h))
+
+	stmt := &ast.CreateODataServiceStmt{
+		Name:           ast.QualifiedName{Module: "MyModule", Name: "CatalogService"},
+		CreateOrModify: true,
+		Entities: []*ast.PublishedEntityDef{
+			{Entity: ast.QualifiedName{Module: "MyModule", Name: "Order"}, ExposedName: "Orders",
+				Members: []*ast.PublishedMemberDef{
+					{Name: "Label", ExposedName: "label", IsPartOfKey: true},
+					{Name: "Code", ExposedName: "code"},
+					{Name: "Note", ExposedName: "note"},
+				}},
+		},
+	}
+	assertNoError(t, createODataService(ctx, stmt))
+	if updated == nil {
+		t.Fatal("the service was never updated")
+	}
+
+	if m := findPublishedMember(t, updated, "Label"); m.CanBeEmpty != nil && *m.CanBeEmpty {
+		t.Errorf("Label is now part of the key but carried CanBeEmpty true (CE0309)")
+	}
+	if m := findPublishedMember(t, updated, "Code"); m.CanBeEmpty != nil && !*m.CanBeEmpty {
+		t.Errorf("Code is no longer part of the key but carried the key's CanBeEmpty false")
+	}
+	// Control: a member whose key status did not change still carries.
+	if m := findPublishedMember(t, updated, "Note"); m.CanBeEmpty == nil || !*m.CanBeEmpty {
+		t.Errorf("Note CanBeEmpty = %v, want the stored true", m.CanBeEmpty)
+	}
+}

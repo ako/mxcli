@@ -12,6 +12,16 @@ import (
 // ContainerKind represents the type of page container (page, layout, or snippet).
 type ContainerKind string
 
+// PageParameterSpec is a page or snippet parameter for PageMutator.AddParameter.
+// Exactly one of PrimitiveType and EntityName is set: PrimitiveType is the
+// primitive's DataTypes $Type (e.g. "DataTypes$StringType"), EntityName the
+// qualified name of the entity an object parameter points at.
+type PageParameterSpec struct {
+	Name          string
+	PrimitiveType string
+	EntityName    string
+}
+
 const (
 	ContainerPage    ContainerKind = "page"
 	ContainerLayout  ContainerKind = "layout"
@@ -170,6 +180,17 @@ type PageMutator interface {
 
 	// DropVariable removes a local variable by name.
 	DropVariable(name string) error
+
+	// --- Parameter operations ---
+
+	// AddParameter declares a new page or snippet parameter. It refuses a name
+	// already used by a parameter or a variable, and a layout, which has none.
+	AddParameter(param PageParameterSpec) error
+
+	// DropParameter removes a parameter by name. It refuses one the document
+	// still references — a data source or an expression bound to it — since
+	// dropping it would leave a reference that resolves to nothing.
+	DropParameter(name string) error
 
 	// --- Layout operations ---
 

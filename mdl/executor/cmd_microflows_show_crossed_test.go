@@ -96,11 +96,37 @@ func TestLabelCrossedMerges_NestedGraphGetsNoLabels(t *testing.T) {
 	}
 }
 
-// An interleaved graph overlaps at more than one entry. `merge`/`join` could
-// spell it, but the describer cannot build branch structure from two entries, so
-// it keeps MDL-FLOW01 rather than being half-described.
-func TestLabelCrossedMerges_IgnoresInterleaved(t *testing.T) {
-	// A → {B, C}; B → {D, E}; C → {D, E}: D and E are both entries.
+// An interleaved `if` overlaps at more than one entry. When every entry is a
+// merge, merge/join spells it — each arm joins the region it reaches, each
+// region is printed once (TestDescribeInterleavedIf_*) — so the entries are
+// labelled. Evora's OIDC.GetLoginEndpoint is this shape.
+func TestLabelCrossedMerges_LabelsAnInterleavedIfWhoseEntriesAreMerges(t *testing.T) {
+	f := interleavedFixture(func(f *rejoinFixture, id string, x int) {
+		f.add(id, &microflows.ExclusiveMerge{BaseMicroflowObject: f.base(x)})
+	})
+	labels := labelCrossedMerges(f.col)
+	for _, id := range []string{"d", "e"} {
+		if !labels.isCrossed(f.ids[id]) {
+			t.Errorf("entry %s of an interleaved if is not labelled crossed", id)
+		}
+	}
+}
+
+// Control: an entry that is an activity has no merge to name, so the overlap
+// is not describable with merge/join and keeps MDL-FLOW01.
+func TestLabelCrossedMerges_IgnoresAnInterleavedIfWithAnActivityEntry(t *testing.T) {
+	f := interleavedFixture(func(f *rejoinFixture, id string, x int) {
+		f.add(id, &microflows.ActionActivity{BaseActivity: microflows.BaseActivity{BaseMicroflowObject: f.base(x)}})
+	})
+	labels := labelCrossedMerges(f.col)
+	if labels.len() != 0 {
+		t.Errorf("labelled an interleaved overlap entered at an activity: %v", labels.byID)
+	}
+}
+
+// interleavedFixture is A → {B, C}; B → {D, E}; C → {D, E}: D and E are both
+// entries. entry adds D and E.
+func interleavedFixture(entry func(f *rejoinFixture, id string, x int)) *rejoinFixture {
 	f := newRejoinFixture()
 	f.add("start", &microflows.StartEvent{BaseMicroflowObject: f.base(0)})
 	f.add("a", &microflows.ExclusiveSplit{
@@ -115,8 +141,8 @@ func TestLabelCrossedMerges_IgnoresInterleaved(t *testing.T) {
 		BaseMicroflowObject: f.base(210),
 		SplitCondition:      &microflows.ExpressionSplitCondition{Expression: "$C"},
 	})
-	f.add("d", &microflows.ExclusiveMerge{BaseMicroflowObject: f.base(300)})
-	f.add("e", &microflows.ExclusiveMerge{BaseMicroflowObject: f.base(310)})
+	entry(f, "d", 300)
+	entry(f, "e", 310)
 	f.add("tail", &microflows.ExclusiveMerge{BaseMicroflowObject: f.base(400)})
 	f.add("end", &microflows.EndEvent{BaseMicroflowObject: f.base(500)})
 	f.edge("start", "a", false)
@@ -130,10 +156,7 @@ func TestLabelCrossedMerges_IgnoresInterleaved(t *testing.T) {
 	f.edge("e", "tail", false)
 	f.edge("tail", "end", false)
 
-	labels := labelCrossedMerges(f.col)
-	if _, ok := labels.of(f.ids["d"]); ok {
-		t.Error("labelled an entry of an INTERLEAVED overlap; those are not describable from one entry and must keep MDL-FLOW01")
-	}
+	return f
 }
 
 // Labels must not depend on map iteration, or every re-describe is a diff.

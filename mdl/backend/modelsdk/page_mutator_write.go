@@ -11,6 +11,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/backend/pagemutator"
 	"github.com/mendixlabs/mxcli/mdl/backend/widgetobj"
 	"github.com/mendixlabs/mxcli/model"
+	"github.com/mendixlabs/mxcli/modelsdk/element"
 	"github.com/mendixlabs/mxcli/sdk/pages"
 )
 
@@ -48,6 +49,39 @@ var _ pagemutator.Deps = codecPageDeps{}
 // serializing any custom-content child widgets through the codec child serializer.
 func (d codecPageDeps) BuildDataGrid2Column(col *backend.DataGridColumnSpec, columnObjectTypeID string, columnPropertyIDs map[string]pages.PropertyTypeIDEntry) (bson.D, error) {
 	return widgetobj.BuildDataGrid2Column(codecChildSerializer{}, col, columnObjectTypeID, columnPropertyIDs), nil
+}
+
+// SerializeParameter builds a new page or snippet parameter through the same
+// converters CREATE writes with, so ALTER gets the same version gate on
+// IsRequired/DefaultValue (11.5+) and the same ParameterType shapes. A page
+// parameter MDL declares is always required with no default, as on CREATE.
+func (d codecPageDeps) SerializeParameter(container backend.ContainerKind, p backend.PageParameterSpec) (bson.D, error) {
+	var el element.Element
+	switch container {
+	case backend.ContainerPage:
+		el = pageParameterToGen(&pages.PageParameter{
+			Name:       p.Name,
+			TypeName:   p.PrimitiveType,
+			EntityName: p.EntityName,
+			IsRequired: true,
+		}, d.b.ProjectVersion())
+	case backend.ContainerSnippet:
+		el = snippetParameterToGen(&pages.SnippetParameter{
+			Name:       p.Name,
+			Type:       p.PrimitiveType,
+			EntityName: p.EntityName,
+		})
+	default:
+		return nil, fmt.Errorf("a %s has no parameters", container)
+	}
+	out := genToV1BSON(el)
+	if out == nil {
+		if err := takeChildSerializeErr(); err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("serialize parameter $%s: no output", p.Name)
+	}
+	return out, nil
 }
 
 func (d codecPageDeps) SaveUnit(unitID string, contents []byte) error {

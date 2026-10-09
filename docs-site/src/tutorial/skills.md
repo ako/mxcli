@@ -82,8 +82,8 @@ The core MDL syntax for the topic, with all available options and keywords:
 ```sql
 -- From write-microflows.md:
 CREATE MICROFLOW Module.Name(
-    $param: EntityType
-) RETURNS ReturnType AS $result
+    $param: Module.Entity
+) RETURNS Boolean AS $result
 BEGIN
     -- activities here
 END;

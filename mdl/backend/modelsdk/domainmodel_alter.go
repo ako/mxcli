@@ -511,15 +511,35 @@ func patchCrossDeleteErrorMessage(db *genDm.AssociationDeleteBehavior, child *do
 	if child == nil || child.Type != domainmodel.DeleteBehaviorTypeDeleteMeIfNoReferences {
 		return
 	}
-	if db.ChildErrorMessage() != nil && deleteErrorMessageFromGen(db.ChildErrorMessage()) == child.ErrorMessage {
+	if db.ChildErrorMessage() != nil && deleteErrorMessageFromGen(db.ChildErrorMessage(), deleteErrorLanguage(child)) == child.ErrorMessage {
 		return
 	}
-	txt := textToGen(deleteErrorText(child))
+	// Edit the translation in the written language and keep every other
+	// language's, as ALTER PAGE does for a caption — replacing the whole text
+	// would drop the Dutch the moment an English message was re-set, or the
+	// reverse.
+	sem := deleteErrorText(child)
+	for l, v := range deleteErrorTranslationsFromGen(db.ChildErrorMessage()) {
+		if _, ok := sem.Translations[l]; !ok {
+			sem.Translations[l] = v
+		}
+	}
+	txt := textToGen(sem)
 	assignID(txt)
 	for _, tr := range txt.TranslationsItems() {
 		assignID(tr)
 	}
 	db.SetChildErrorMessage(txt)
+}
+
+// deleteErrorLanguage is the language deleteErrorText stores db's message under:
+// the one the executor named, else the process's authoring language (see
+// model.AuthoringLanguage), which is en_US until a project's settings are read.
+func deleteErrorLanguage(db *domainmodel.DeleteBehavior) string {
+	if db == nil || db.ErrorMessageLanguage == "" {
+		return model.AuthoringLanguage()
+	}
+	return db.ErrorMessageLanguage
 }
 
 // DeleteAssociation removes an association from a domain model by ID. Used by
@@ -682,6 +702,22 @@ func (b *Backend) SetDomainModelAnnotations(domainModelID model.ID, annotations 
 		ga.SetWidth(int32(a.Width))
 		gdm.AddAnnotations(ga)
 	}
+	return b.persistDM(domainModelID, gdm)
+}
+
+// SetDomainModelDocumentation sets DomainModels$DomainModel.Documentation, the
+// domain model's own documentation and the only documentation a module has
+// (mendixlabs/mxcli#1314). It loads the stored unit and changes that one
+// property, so entities, associations and annotations pass through as stored.
+func (b *Backend) SetDomainModelDocumentation(domainModelID model.ID, documentation string) error {
+	if b.writer == nil {
+		return fmt.Errorf("SetDomainModelDocumentation: not connected for writing")
+	}
+	gdm, err := b.loadDomainModelGen(domainModelID)
+	if err != nil {
+		return err
+	}
+	gdm.SetDocumentation(documentation)
 	return b.persistDM(domainModelID, gdm)
 }
 

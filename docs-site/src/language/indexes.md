@@ -12,7 +12,7 @@ Indexes are placed after the closing parenthesis of the attribute list:
 
 ```sql
 CREATE PERSISTENT ENTITY Sales.Order (
-  OrderId: AutoNumber NOT NULL UNIQUE,
+  OrderId: AutoNumber NOT NULL UNIQUE DEFAULT 1,
   OrderNumber: String(50) NOT NULL,
   CustomerId: Long,
   OrderDate: DateTime,

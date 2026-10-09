@@ -86,6 +86,9 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 
 	deleteBehavior := storageDeleteBehavior(s.DeleteBehavior)
 	deleteMessage := s.DeleteErrorMessage
+	// The message is a Texts$Text, keyed by the project's default language like
+	// every other text mxcli authors (mendixlabs/mxcli#1344, #970).
+	deleteLang := authoringLanguage(ctx)
 
 	// Convert storage type. A new association defaults to Column (foreign key on
 	// the FROM entity's table); on OR MODIFY an unstated storage keeps what is
@@ -115,7 +118,7 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 					if s.Storage != ast.StorageDefault {
 						assoc.StorageFormat = storageFormat
 					}
-					assoc.ChildDeleteBehavior = &domainmodel.DeleteBehavior{Type: deleteBehavior, ErrorMessage: deleteMessage}
+					assoc.ChildDeleteBehavior = &domainmodel.DeleteBehavior{Type: deleteBehavior, ErrorMessage: deleteMessage, ErrorMessageLanguage: deleteLang}
 					assoc.Documentation = carriedDocumentation(
 						associationDocumentationStated(s), associationDocumentation(s), assoc.Documentation)
 					// Anchors are applied only when the statement names them —
@@ -141,7 +144,7 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 					if s.Storage != ast.StorageDefault { // as above (#704)
 						ca.StorageFormat = storageFormat
 					}
-					ca.ChildDeleteBehavior = &domainmodel.DeleteBehavior{Type: deleteBehavior, ErrorMessage: deleteMessage}
+					ca.ChildDeleteBehavior = &domainmodel.DeleteBehavior{Type: deleteBehavior, ErrorMessage: deleteMessage, ErrorMessageLanguage: deleteLang}
 					ca.ChildRef = childRef
 					ca.Documentation = carriedDocumentation(
 						associationDocumentationStated(s), associationDocumentation(s), ca.Documentation)
@@ -193,8 +196,9 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 			ParentID:      parentID,
 			ChildRef:      childRef,
 			ChildDeleteBehavior: &domainmodel.DeleteBehavior{
-				Type:         deleteBehavior,
-				ErrorMessage: deleteMessage,
+				Type:                 deleteBehavior,
+				ErrorMessage:         deleteMessage,
+				ErrorMessageLanguage: deleteLang,
 			},
 		}
 		if err := ctx.Backend.CreateCrossAssociation(dm.ID, ca); err != nil {
@@ -225,8 +229,9 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 			ParentID:      parentID,
 			ChildID:       childID,
 			ChildDeleteBehavior: &domainmodel.DeleteBehavior{
-				Type:         deleteBehavior,
-				ErrorMessage: deleteMessage,
+				Type:                 deleteBehavior,
+				ErrorMessage:         deleteMessage,
+				ErrorMessageLanguage: deleteLang,
 			},
 		}
 		applyAnchors(assoc, s.FromAnchor, s.ToAnchor)
@@ -281,8 +286,9 @@ func execAlterAssociation(ctx *ExecContext, s *ast.AlterAssociationStmt) error {
 			switch s.Operation {
 			case ast.AlterAssociationSetDeleteBehavior:
 				assoc.ChildDeleteBehavior = &domainmodel.DeleteBehavior{
-					Type:         storageDeleteBehavior(s.DeleteBehavior),
-					ErrorMessage: s.DeleteErrorMessage,
+					Type:                 storageDeleteBehavior(s.DeleteBehavior),
+					ErrorMessage:         s.DeleteErrorMessage,
+					ErrorMessageLanguage: authoringLanguage(ctx),
 				}
 			case ast.AlterAssociationSetOwner:
 				assoc.Owner = domainmodel.AssociationOwner(s.Owner.String())
@@ -295,7 +301,7 @@ func execAlterAssociation(ctx *ExecContext, s *ast.AlterAssociationStmt) error {
 			}
 			want := alteredAssociationValue(s.Operation, assocAlterView{
 				del: assoc.ChildDeleteBehavior, owner: string(assoc.Owner), storage: string(assoc.StorageFormat),
-				doc: assoc.Documentation, anchors: associationAnchors(assoc),
+				doc: assoc.Documentation, lang: authoringLanguage(ctx), anchors: associationAnchors(assoc),
 			})
 			if err := ctx.Backend.UpdateDomainModel(dm); err != nil {
 				return mdlerrors.NewBackend("update association", err)
@@ -317,8 +323,9 @@ func execAlterAssociation(ctx *ExecContext, s *ast.AlterAssociationStmt) error {
 			switch s.Operation {
 			case ast.AlterAssociationSetDeleteBehavior:
 				ca.ChildDeleteBehavior = &domainmodel.DeleteBehavior{
-					Type:         storageDeleteBehavior(s.DeleteBehavior),
-					ErrorMessage: s.DeleteErrorMessage,
+					Type:                 storageDeleteBehavior(s.DeleteBehavior),
+					ErrorMessage:         s.DeleteErrorMessage,
+					ErrorMessageLanguage: authoringLanguage(ctx),
 				}
 			case ast.AlterAssociationSetOwner:
 				ca.Owner = domainmodel.AssociationOwner(s.Owner.String())
@@ -336,7 +343,7 @@ func execAlterAssociation(ctx *ExecContext, s *ast.AlterAssociationStmt) error {
 			}
 			want := alteredAssociationValue(s.Operation, assocAlterView{
 				del: ca.ChildDeleteBehavior, owner: string(ca.Owner), storage: string(ca.StorageFormat),
-				doc: ca.Documentation,
+				doc: ca.Documentation, lang: authoringLanguage(ctx),
 			})
 			if err := ctx.Backend.UpdateDomainModel(dm); err != nil {
 				return mdlerrors.NewBackend("update cross-module association", err)
@@ -423,6 +430,10 @@ func reconcileModuleAccess(ctx *ExecContext, moduleName, why string) error {
 type assocAlterView struct {
 	del                          *domainmodel.DeleteBehavior
 	owner, storage, doc, anchors string
+	// lang is the language the delete message is compared in — the one the
+	// alter wrote. Reading it back in en_US would compare against a stale
+	// translation the write carried over (mendixlabs/mxcli#1344).
+	lang string
 }
 
 // alteredAssociationValue renders the one property op changes, so the value the
@@ -436,7 +447,7 @@ func alteredAssociationValue(op ast.AlterAssociationOperation, v assocAlterView)
 		// The message is stored only on the restrict side (assocToGen), so it is
 		// only part of the comparison there.
 		if v.del.Type == domainmodel.DeleteBehaviorTypeDeleteMeIfNoReferences {
-			return string(v.del.Type) + "|" + v.del.ErrorMessage
+			return string(v.del.Type) + "|" + deleteMessageIn(v.del, v.lang)
 		}
 		return string(v.del.Type)
 	case ast.AlterAssociationSetOwner:
@@ -473,7 +484,7 @@ func verifyAssociationAltered(ctx *ExecContext, moduleID model.ID, s *ast.AlterA
 			if a.Name == s.Name.Name {
 				got, found = alteredAssociationValue(s.Operation, assocAlterView{
 					del: a.ChildDeleteBehavior, owner: string(a.Owner), storage: string(a.StorageFormat),
-					doc: a.Documentation, anchors: associationAnchors(a),
+					doc: a.Documentation, lang: authoringLanguage(ctx), anchors: associationAnchors(a),
 				}), true
 				break
 			}
@@ -483,7 +494,7 @@ func verifyAssociationAltered(ctx *ExecContext, moduleID model.ID, s *ast.AlterA
 				if ca.Name == s.Name.Name {
 					got, found = alteredAssociationValue(s.Operation, assocAlterView{
 						del: ca.ChildDeleteBehavior, owner: string(ca.Owner), storage: string(ca.StorageFormat),
-						doc: ca.Documentation,
+						doc: ca.Documentation, lang: authoringLanguage(ctx),
 					}), true
 					break
 				}
@@ -961,8 +972,23 @@ func describeDeleteClause(ctx *ExecContext, db *domainmodel.DeleteBehavior) stri
 			action = "on delete restrict"
 		}
 	}
-	if db != nil && db.ErrorMessage != "" {
-		return action + " error message " + mdlQuote(ctx, db.ErrorMessage)
+	if msg := deleteMessageIn(db, describeDefaultLanguage(ctx)); msg != "" {
+		return action + " error message " + mdlQuote(ctx, msg)
 	}
 	return action
+}
+
+// deleteMessageIn is a delete behaviour's error message in lang: the language
+// CREATE writes it under, so DESCRIBE reads back what was written and describe
+// -> exec round-trips on a project whose default is not en_US
+// (mendixlabs/mxcli#1344). Without the stored translations — a behaviour built
+// in memory rather than read — it is the one string there is.
+func deleteMessageIn(db *domainmodel.DeleteBehavior, lang string) string {
+	if db == nil {
+		return ""
+	}
+	if len(db.ErrorMessageTranslations) == 0 {
+		return db.ErrorMessage
+	}
+	return pickTextTranslation(&model.Text{Translations: db.ErrorMessageTranslations}, lang)
 }

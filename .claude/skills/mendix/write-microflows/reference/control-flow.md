@@ -414,10 +414,13 @@ begin
   $response = call microflow Module.CallExternalAPI(data = $RequestData)
     on error without rollback begin
       log error node 'ExternalAPI' 'API call failed for: ' + $RequestData;
-      -- Create error response
-      $response = create Module.Response (
+      -- Not `$response = create …`: a variable name is unique flow-wide,
+      -- handler included (MDL063, CE0111). The fallback gets its own name
+      -- and the handler returns it.
+      $fallbackResponse = create Module.Response (
         success = false,
         message = 'External service unavailable');
+      return $fallbackResponse;
     end error;
 
   return $response;
