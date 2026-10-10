@@ -249,6 +249,14 @@ func restResponseHandlingToGen(responseType string) element.Element {
 		addStr(g, "ContentType", "text/plain")
 	case "FILE":
 		addStr(g, "ContentType", "application/octet-stream")
+	default:
+		// `Response: none` is an EMPTY content type, written. Leaving the key
+		// out meant "none" only to mxcli's reader: Mendix fills an absent
+		// ContentType with application/json (measured with `mx convert`), so
+		// Studio Pro's next save — and since mendixlabs/mxcli#1373 the
+		// property-set completion at the write choke point — turned it into
+		// `Response: json`.
+		addStr(g, "ContentType", "")
 	}
 	return g
 }

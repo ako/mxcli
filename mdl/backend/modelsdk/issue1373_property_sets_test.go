@@ -200,3 +200,17 @@ func elementKeys(t *testing.T, b *Backend, unit, id model.ID) map[string]bool {
 	walk(doc)
 	return found
 }
+
+// `Response: none` is written as an empty ContentType. Absent, Mendix fills it
+// with application/json — and so does the property-set completion — which read
+// back as `Response: json` (TestRoundtripRestClient_* in CI).
+func TestIssue1373_ResponseNoneWritesEmptyContentType(t *testing.T) {
+	m := encodeToMap(t, restResponseHandlingToGen("NONE"))
+	if v, ok := m["ContentType"]; !ok || v != "" {
+		t.Fatalf("ContentType = %#v (present %v), want an explicit empty string", v, ok)
+	}
+	// Control: a declared type keeps its content type.
+	if v := encodeToMap(t, restResponseHandlingToGen("JSON"))["ContentType"]; v != "application/json" {
+		t.Errorf("json: ContentType = %#v", v)
+	}
+}
