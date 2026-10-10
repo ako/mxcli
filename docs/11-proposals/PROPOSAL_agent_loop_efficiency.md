@@ -16,7 +16,10 @@ related:
 **Status:** Draft
 **Date:** 2026-09-22 (initial), revised 2026-09-23 — three complete builds
 measured with `diag loop-report`, overturning the `check`-dominant assumption and
-promoting the app restart to the wall-time lever (§"Three projects, measured").
+promoting the app restart to the wall-time lever (§"Three projects, measured");
+revised 2026-10-10 — the BENCH-001 baseline recorded, putting skill and doc
+reads at ~68% of the re-read cost against mxcli's ~15%, which promotes a new
+item 3b, demotes item 4 and closes `mxcli apply` (§"The baseline, measured").
 
 ## The report
 
@@ -125,6 +128,111 @@ that basis. The 30 min is the closed-run total (1,775 s), which already contains
 the 7 boots that closed; the 27 it excludes add ~41 min at the measured median,
 so the real figure is around 70 min — more than double, and enough to change
 which levers are worth pulling.
+
+## The baseline, measured (BENCH-001, 2026-10-10)
+
+The first `eval run` of the fixed brief, on Mendix 11.15.0, scoring 20 of 21 —
+the one failure environmental (`postgresql: unrecognized service`, so the
+`tests --local` tier never ran).
+
+| | |
+|---|---:|
+| model calls | 47 |
+| tool calls | 48 (Bash only) |
+| wall | 7m00s |
+| avg context | 103 k |
+| cache read | 4.7 M |
+| output | 27 k |
+| tool results | 48 k, re-read cost **1.7 M (37% of cache read)** |
+| mxcli invocations | 70 across 38 Bash calls, **17 chained >1**: `exec` 20, `check` 15, `syntax` 6, `-c describe` 5, `lint` 4, `test` 4 |
+| categories | orientation 31%, validate 23%, apply 17%, verify 13%, retry 15%, write 2% |
+
+`47 × 103 k ≈ 4.8 M` — the run behaves exactly as `N × S` predicts, and output
+is a rounding error again.
+
+**It is NOT comparable to the 523-call report.** Different brief, far smaller
+scope, and the levers in this document had already shipped. Nothing here says
+they worked; the pre-intervention "before" is not recoverable. This is a
+reference point for *future* changes, which is all item 1 ever claimed.
+
+**It is also n = 1.** Every share below is one sample of a stochastic process
+with unmeasured variance. Treat the ordering as the finding and the percentages
+as approximate.
+
+### The dominant cost is reading the skills, not running mxcli
+
+The top ten results carry ~1.34 M of the 1.7 M re-read cost, and they split:
+
+| what | re-read cost | share of 1.7 M |
+|---|---:|---:|
+| skill and doc reads (three `cat …/SKILL.md`, a `wc -l` over three more, a `sed` range, a `grep` over a skill) | ~1.16 M | **68%** |
+| mxcli's own output (`DESCRIBE STRUCTURE`, `syntax page datasource`, `syntax entity`) | ~252 k | 15% |
+| `ls -la` | 35 k | 2% |
+
+`cat write-microflows/SKILL.md` alone is 7.1 k tokens re-read 43 times — 307 k,
+more than every mxcli invocation in the top ten put together. With
+`DESCRIBE STRUCTURE` and `ls -la`, **orientation is ~77% of the re-read bill
+against 31% of the calls.**
+
+The cheap path exists and was used: `mxcli syntax page datasource` cost 2.6 k
+and `syntax entity` 1.1 k, against 7.1 k for the skill that covers the same
+ground. The agent also tried to read a skill in part (`sed -n 314,420p`), so the
+intent is there and the structure is not.
+
+**This is a lever this document did not have**, and it dominates the two it did:
+make consuming the skills cheap. Cheapest first — point the skills at `mxcli
+syntax` instead of restating syntax in prose; give them sections an agent can
+read one of; and only then spend on item 4, which addresses the 15%.
+
+### First pass at the fix, and what still has to be measured
+
+Two changes, deliberately only two, so a second benchmark run stays
+interpretable:
+
+- **Routing.** The generated CLAUDE.md said "read the matching skill before
+  writing microflows, pages, security…", which is the instruction that produced
+  the `cat`. Its lookup table now reads *How to write any MDL — **before any
+  skill*** against `./mxcli syntax`, and one line says to read a skill's section
+  rather than the file. It had to be folded into the existing table row rather
+  than added as a paragraph: that file is re-read every session and
+  `TestGeneratedClaudeMDStaysWithinItsContextBudget` had 75 bytes of headroom,
+  so prose about saving tokens would have cost more than it saved.
+- **Storage.** Every `SKILL.md` now opens with a generated line-numbered
+  section index (`scripts/skill-index.py`, `make check-skill-index` in CI), so
+  `sed -n '<a>,<b>p'` is reachable without first paying for the file or a
+  `grep`. Generated, never hand-written — a hand-kept table of contents is the
+  drift this repo has paid for twice — and the ranges are computed to a fixed
+  point, because the block's own height shifts every range below it. All 745
+  rows were verified to land on their heading.
+
+Both have a cost, and it is honest to state it: the index is ~0.17k tokens on
+every skill read, so if the agent keeps reading whole files the change is a
+small *loss*. That is the hypothesis a second run tests, and the measurement to
+watch is not the total but whether `cat …/SKILL.md` leaves the costliest-results
+list.
+
+Measured consequence worth recording: **the naive version of this lever is
+smaller than it looked.** Code blocks are 28% of all skill bytes (32-43% in the
+two most-read), so "move the syntax out of the skills into `syntax`" could never
+have reclaimed most of the 68% — the skills are mostly prose, which is the part
+CLAUDE.md says belongs there. The reachable win is in *how much of a file gets
+read*, not in what the file contains.
+
+### What that settles about `mxcli apply`
+
+The criteria recorded above are answered. The second — chained output being a
+material share of `tool results` — is **no**: mxcli's output is a minority of
+the re-read cost. On this evidence the staged pipeline would be optimising 15%
+while 68% sits untouched, so it is not the thing to build, and the entry is
+closed in the sequencing table rather than left open.
+
+One datum is still outstanding on the first criterion. `check` 15 against `exec`
+20 looks like the redundant check-before-exec pattern, since `exec` already runs
+the full check pass — but plain `check` without a project is a legitimate call,
+so the verb counts cannot settle it. `diag loop-report`'s
+`check_then_exec_pairs`, run in the same container, is what decides it; if it is
+high, the answer is to **state the chain better**, which is item 3, not to wrap
+it in a command.
 
 ## What is actually asymmetric — and how little of it is irreducible
 
@@ -691,7 +799,7 @@ baseline is the first thing to record wherever it does.
 
 | | Lever | Effort | Expected effect |
 |---|---|---|---|
-| 1 | `diag loop-report`, `diag session-report` + benchmark harness (`eval run`, `BENCH-001`) (lever 6) — shipped; baseline still to record | S | none directly — makes the rest falsifiable |
+| 1 | `diag loop-report`, `diag session-report` + benchmark harness (`eval run`, `BENCH-001`) (lever 6) — **shipped, baseline recorded 2026-10-10** (§"The baseline, measured") | S | none directly — makes the rest falsifiable, and it did: the baseline overturned both candidate levers in favour of orientation cost |
 | 1b | Measure the check↔build gap rate: how many builds in a real session caught something `check` did not | S | sizes the batching prize, and feeds the parity programme's queue |
 | 2 | Fix `projectGates` to teach `exec`, not `check`+`exec` (lever 1) | XS | ~1 call per change, every project, immediately |
 | 2b | Measure `test --attach` on 11.14; pin the bootstrap default off 11.14 | XS | removes a forced 35 s/change from new projects |
@@ -699,7 +807,8 @@ baseline is the first thing to record wherever it does.
 | 2d | **Count a killed `run` in `diag loop-report` rather than dropping it** — **shipped** | S | was: the restart bill is invisible, `run`'s reported wall time a floor built from 4 of 30 invocations. Now a 30 s `session_alive` heartbeat bounds every unclosed run from below, whatever killed it, and the report separates the measured total, the measured floor and an explicitly-labelled estimate |
 | 2e | **App lifecycle as commands** — `run --local --detach`, `run status`, `run wait`, `run stop`, `run restart`, taught in the run-local/run-app skills and the generated gate list — **shipped** | M | ~25–28% of all tool calls in measured sessions were hand-rolled `nohup`/poll/`pkill` loops; each becomes one call, and `exec … && run wait` is the per-change chain |
 | 3 | Publish the canonical `&&` chain in `projectGates` + skills (lever 1) | XS | the 5–8 → 1–2 collapse, with nothing built |
-| 4 | Terse/delta output for `exec` and the noisy listings (lever 2) | M | the token half of the chain win; helps every call |
+| 3b | **Make consuming the skills cheap** — **first pass shipped 2026-10-10**: the generated CLAUDE.md now routes `syntax` before any skill, and `scripts/skill-index.py` puts a verified line-numbered section index at the head of all 74 (`make check-skill-index` in CI). Not yet done: moving the syntax that skills restate into `syntax` itself — code blocks are only 28% of skill bytes, so that is a smaller prize than it looked | M | the largest measured token item, and it displaces item 4. **Unverified**: needs a second BENCH-001 run to say whether the agent takes the cheap path |
+| 4 | Terse/delta output for `exec` and the noisy listings (lever 2) | M | the token half of the chain win; helps every call — but the baseline puts mxcli's own output at ~15% of the re-read cost against the skills' ~68%, so this is the junior partner to 3b |
 | 5 | Tiered verification rule in the skills (lever 3) | S | stops the default path at the cheapest sufficient gate |
 | 6 | Subagent trigger in the skills (lever 4) | XS | caps the worst tail |
 | 7 | Workarounds → diagnostics and skills (lever 5) | M, ongoing | compounds across all future sessions |
@@ -707,6 +816,13 @@ baseline is the first thing to record wherever it does.
 Item 1 first is deliberate. Items 2, 3, 5 and 6 are all XS-to-S and can ship
 immediately after it — item 3 is now the one that changes the shape of the loop,
 and it is a documentation change.
+
+**Item 1 has now run, and it reordered this table rather than confirming it.**
+The baseline put the skills, not mxcli, at the top of the token bill, which
+promotes the new item 3b above item 4 and closes `mxcli apply`. That is the
+instrument working as intended: the two levers this document argued hardest for
+were both aimed at the smaller share. Re-read §"The baseline, measured" before
+picking the next item, and remember it is one sample.
 
 **Items 2c and 2d were added after three projects were measured, and 2c is the
 largest single item in this table by wall time.** It is also the cheapest: a
@@ -716,8 +832,12 @@ that 2d has to land for 2c to be claimable, because a lever that removes
 uncounted time cannot be shown to have worked. Item 4 is the only substantial build, and it
 is what makes item 3 pay in tokens rather than only in call count.
 
-`mxcli apply` is deliberately **not** in this table. It is contingent on item 1
-showing that the published chain is still being composed wrong.
+`mxcli apply` is deliberately **not** in this table, and as of the 2026-10-10
+baseline it is **closed rather than pending**: the measurement answered its
+criterion no — mxcli's output is ~15% of the re-read cost where the skills are
+~68% — so the command would optimise the smaller share. Re-open it only if
+`check_then_exec_pairs` shows the published chain still being composed wrong,
+and even then prefer item 3 (state the chain) over a wrapper.
 
 ## What this does not fix
 
