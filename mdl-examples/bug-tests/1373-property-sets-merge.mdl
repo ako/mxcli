@@ -1,0 +1,57 @@
+mdl 1;
+-- ============================================================================
+-- mendixlabs/mxcli#1373: documents mxcli writes must be MERGEABLE
+-- ============================================================================
+--
+-- Mendix's merge and diff engine compares an element's property NAMES between
+-- two revisions and throws when they differ:
+--
+--   InvalidOperationException: Objects with ID … of type
+--   Microflows$LoopedActivity do not have the same properties.
+--
+-- Every construct below used to be written without a key Studio Pro always
+-- writes, or with one Mendix does not declare: a loop's Documentation, a
+-- close-page count under the deleted NumberOfPages, validation feedback's
+-- empty Association, an XPath-less retrieve's XpathConstraint, the new
+-- module's settings (package keys).
+--
+-- Verify (no Studio Pro needed): exec this on a fresh app, copy the project,
+-- run `mx convert -p -s <copy>`, then `mx diff <app>.mpr <copy>.mpr out.json`.
+-- It must exit 0 (it exited 129 before the fix). In Studio Pro: change any of
+-- these documents, save, and Version Control -> Status must open it.
+-- Also: F1373M.ACT_CloseTwo closes TWO pages (`describe` prints
+-- `close page 2;`).
+-- ============================================================================
+
+create module F1373M;
+
+create persistent entity F1373M.Item (
+  Name: String(100)
+);
+
+create microflow F1373M.ACT_Loop ($Items: List of F1373M.Item)
+returns Integer as $Count
+begin
+  declare $Count Integer = 0;
+  loop $Item in $Items
+  begin
+    set $Count = $Count + 1;
+  end loop;
+  return $Count;
+end;
+
+create microflow F1373M.ACT_CloseTwo ()
+begin
+  close page 2;
+end;
+
+create microflow F1373M.ACT_Validate ($Item: F1373M.Item)
+returns Boolean
+begin
+  retrieve $All from F1373M.Item;
+  if $Item/Name = empty then
+    validation feedback $Item/Name message 'Name is required';
+    return false;
+  end if;
+  return true;
+end;
