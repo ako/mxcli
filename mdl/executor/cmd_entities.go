@@ -494,7 +494,7 @@ func mergeDeclaredOntoStoredEntity(stored, declared *domainmodel.Entity, s *ast.
 	merged.Persistable = declared.Persistable
 	merged.Location = declared.Location
 	merged.Attributes = declared.Attributes
-	carryStoredAttributeState(stored, merged.Attributes)
+	carryStoredAttributeState(stored, merged.Attributes, statedLocalize(s.Attributes))
 	merged.ValidationRules = mergeValidationRules(stored, declared)
 	merged.Indexes = declared.Indexes
 	merged.EventHandlers = declared.EventHandlers
@@ -528,8 +528,10 @@ func mergeDeclaredOntoStoredEntity(stored, declared *domainmodel.Entity, s *ast.
 // entity attribute's OData mapping (without it the writer emits a plain
 // StoredValue and the attribute is no longer mapped to the remote property), and
 // a DateTime's LocalizeDate. The attribute set and each declared type stay the
-// statement's; LocalizeDate carries only onto a DateTime that stays one (#743).
-func carryStoredAttributeState(stored *domainmodel.Entity, declared []*domainmodel.Attribute) {
+// statement's; LocalizeDate carries only onto a DateTime that stays one (#743),
+// and only when the statement did not state `localized` / `not localized`
+// itself (stated, by attribute name) — a stated one wins (#1373).
+func carryStoredAttributeState(stored *domainmodel.Entity, declared []*domainmodel.Attribute, stated map[string]bool) {
 	byName := make(map[string]*domainmodel.Attribute, len(stored.Attributes))
 	for _, a := range stored.Attributes {
 		if a != nil {
@@ -559,12 +561,39 @@ func carryStoredAttributeState(stored *domainmodel.Entity, declared []*domainmod
 				a.Value = &v
 			}
 		}
-		if dt, ok := a.Type.(*domainmodel.DateTimeAttributeType); ok {
-			if odt, ok := old.Type.(*domainmodel.DateTimeAttributeType); ok {
-				dt.LocalizeDate = odt.LocalizeDate
-			}
+		if !stated[a.Name] {
+			carryStoredLocalizeDate(old.Type, a.Type)
 		}
 	}
+}
+
+// carryStoredLocalizeDate copies a stored DateTime's LocalizeDate onto a rebuilt
+// type that is still a DateTime. A type change is the statement's to decide, so
+// nothing carries onto (or from) another type.
+func carryStoredLocalizeDate(stored, rebuilt domainmodel.AttributeType) {
+	dt, ok := rebuilt.(*domainmodel.DateTimeAttributeType)
+	if !ok {
+		return
+	}
+	if odt, ok := stored.(*domainmodel.DateTimeAttributeType); ok {
+		dt.LocalizeDate = odt.LocalizeDate
+	}
+}
+
+// statedLocalize names the attributes whose definition states `localized` or
+// `not localized` — the ones whose LocalizeDate is the statement's, not the
+// stored value's.
+func statedLocalize(attrs []ast.Attribute) map[string]bool {
+	var stated map[string]bool
+	for _, a := range attrs {
+		if a.Type.Localize != ast.LocalizeUnstated {
+			if stated == nil {
+				stated = make(map[string]bool)
+			}
+			stated[a.Name] = true
+		}
+	}
+	return stated
 }
 
 // entityFieldsDeclaredByStatement names the domainmodel.Entity fields that
@@ -1035,7 +1064,7 @@ func execCreateViewEntity(ctx *ExecContext, s *ast.CreateViewEntityStmt) error {
 				ViewReference: a.Name, // OQL column alias matches attribute name
 			},
 		}
-		if dt, ok := attr.Type.(*domainmodel.DateTimeAttributeType); ok {
+		if dt, ok := attr.Type.(*domainmodel.DateTimeAttributeType); ok && a.Type.Localize == ast.LocalizeUnstated {
 			if l, ok := localize[a.Name]; ok {
 				dt.LocalizeDate = l
 			}
@@ -1408,7 +1437,14 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 		found := false
 		for _, attr := range entity.Attributes {
 			if attr.Name == s.AttributeName {
+				storedType := attr.Type
 				attr.Type = convertDataType(s.DataType)
+				// A DateTime that stays one keeps its stored LocalizeDate unless
+				// the statement says `localized` / `not localized` (#1373);
+				// rebuilding the type reset it to true.
+				if s.DataType.Localize == ast.LocalizeUnstated {
+					carryStoredLocalizeDate(storedType, attr.Type)
+				}
 				if s.Calculated {
 					attrValue, err := resolveCalculatedValue(ctx, s.CalculatedMicroflow, s.Name.String(), s.AttributeName, s.DataType)
 					if err != nil {

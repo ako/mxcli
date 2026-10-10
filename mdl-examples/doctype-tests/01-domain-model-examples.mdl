@@ -15,7 +15,7 @@ mdl 1;
 --   - Enumerations (simple and with captions)
 --   - Persistent entities (basic to complex)
 --   - All attribute types (String, Integer, Decimal, Boolean, DateTime, etc.)
---   - Constraints (NOT NULL, UNIQUE, DEFAULT)
+--   - Constraints (NOT NULL, UNIQUE, DEFAULT, DateTime NOT LOCALIZED)
 --   - Indexes
 --   - Position annotations
 --   - JavaDoc documentation
@@ -219,8 +219,8 @@ create persistent entity DmTest.Product (
   TotalUnitsProduced: long default 0,
   /** Whether product is available for sale */
   IsActive: boolean default true,
-  /** Date product was released (Mendix has no date-only type; a DateTime) */
-  ReleaseDate: datetime,
+  /** Date product was released: a calendar date, so not localized (no time-zone shift) */
+  ReleaseDate: datetime not localized,
   /** Timestamp of creation (DateTime with time) */
   CreatedAt: datetime,
   /** Timestamp of last modification */
@@ -312,8 +312,8 @@ create persistent entity DmTest.Employee (
   LastName: string(100) not null error message 'Last name is required',
   /** Department name */
   Department: string(100),
-  /** Hire date */
-  HireDate: datetime,
+  /** Hire date (Studio Pro "Localize" unticked) */
+  HireDate: datetime not localized,
   /** Whether employee is a manager */
   IsManager: boolean default false
 );

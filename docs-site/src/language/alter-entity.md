@@ -74,6 +74,20 @@ Clearing a default that is already absent is a no-op, not an error. A
 *calculated* attribute is refused rather than silently converted to a plain
 stored one — that is a different change.
 
+### DateTime localization
+
+A DateTime that stays a DateTime keeps its stored **Localize** setting unless the
+statement states one, so restating the type does not undo a Studio Pro choice.
+`NOT LOCALIZED` and `LOCALIZED` switch it explicitly:
+
+```mdl
+mdl 1;
+ALTER ENTITY Sales.Customer MODIFY ATTRIBUTE BirthDate: DateTime NOT LOCALIZED;
+ALTER ENTITY Sales.Customer MODIFY ATTRIBUTE BirthDate: DateTime LOCALIZED;
+```
+
+See [Constraints](./constraints.md#localized--not-localized-datetime-only).
+
 ## RENAME Attributes
 
 Rename an attribute with `RENAME ATTRIBUTE`:

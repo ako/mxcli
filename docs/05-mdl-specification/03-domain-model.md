@@ -100,6 +100,7 @@ create view entity Reports.CustomerStats (
 | Required | `not null` | Value cannot be empty |
 | Unique | `unique` | Value must be unique |
 | Default | `default value` | Default value on create |
+| Localize (DateTime only) | `not localized` / `localized` | `DomainModels$DateTimeAttributeType.LocalizeDate`. Unstated: true on a new attribute, the stored value on a rewrite. `describe` prints only `not localized` |
 
 ### Attribute Ordering
 

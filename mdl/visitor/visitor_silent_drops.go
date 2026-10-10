@@ -163,3 +163,34 @@ func (b *Builder) rejectParenthesisedAssociation(ctx *parser.CreateAssociationSt
 		"  Write the options after the entities, without parentheses or colons:\n"+
 		"    %s;", ctxPos(ctx), canonical))
 }
+
+// ExitAttributeConstraint refuses `localized` / `not localized` on an attribute
+// whose type is not a DateTime. LocalizeDate is a property of
+// DomainModels$DateTimeAttributeType only; on any other type there is nowhere
+// to store it, and accepting it would be a silent drop (#1373).
+func (b *Builder) ExitAttributeConstraint(ctx *parser.AttributeConstraintContext) {
+	if ctx.LOCALIZED() == nil {
+		return
+	}
+	var dtCtx parser.IDataTypeContext
+	switch p := ctx.GetParent().(type) {
+	case *parser.AttributeDefinitionContext:
+		dtCtx = p.DataType()
+	case *parser.AlterEntityActionContext:
+		dtCtx = p.DataType()
+	}
+	if dtCtx == nil {
+		return
+	}
+	if dt := buildDataType(dtCtx); dt.Kind == ast.TypeDateTime {
+		return
+	}
+	clause := "localized"
+	if ctx.NOT() != nil {
+		clause = "not localized"
+	}
+	b.addError(fmt.Errorf("%s: `%s` applies only to a DateTime attribute, not %s — "+
+		"LocalizeDate is a property of the DateTime type and there is nowhere to store it on another type.\n"+
+		"  Remove the clause, or declare the attribute as `DateTime %s`.",
+		ctxPos(ctx), clause, dtCtx.GetText(), clause))
+}

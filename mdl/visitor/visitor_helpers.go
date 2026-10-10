@@ -225,6 +225,7 @@ func buildAttributes(ctx parser.IAttributeDefinitionListContext, b *Builder) []a
 					attr.CalculatedMicroflow = &name
 				}
 			}
+			applyLocalizeConstraint(&attr.Type, c)
 		}
 
 		attrs = append(attrs, attr)
@@ -283,9 +284,25 @@ func buildSingleAttribute(a *parser.AttributeDefinitionContext) *ast.Attribute {
 				attr.CalculatedMicroflow = &name
 			}
 		}
+		applyLocalizeConstraint(&attr.Type, c)
 	}
 
 	return attr
+}
+
+// applyLocalizeConstraint records a `localized` / `not localized` constraint on
+// the attribute's type (DateTimeAttributeType.LocalizeDate, #1373). Whether the
+// type is a DateTime at all is ExitAttributeConstraint's to refuse; here the
+// spec is only carried, so a non-DateTime type keeps it but never reads it.
+func applyLocalizeConstraint(dt *ast.DataType, c *parser.AttributeConstraintContext) {
+	if c == nil || c.LOCALIZED() == nil {
+		return
+	}
+	if c.NOT() != nil {
+		dt.Localize = ast.LocalizeNotLocalized
+	} else {
+		dt.Localize = ast.LocalizeLocalized
+	}
 }
 
 func buildIndex(ctx parser.IIndexDefinitionContext) ast.Index {

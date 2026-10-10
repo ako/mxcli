@@ -86,6 +86,7 @@ create persistent entity Module.Photo (
 |-----------|--------|-------|
 | Create entity | `create [or modify] persistent\|non-persistent entity Module.Name (attrs);` | Persistent is default |
 | Create with extends | `create persistent entity Module.Name extends Parent.Entity (attrs);` | EXTENDS before `(` |
+| DateTime localization | `Born: DateTime not localized` | Studio Pro's **Localize** checkbox (`LocalizeDate`), DateTime only — on any other type it is a check error. `not localized` = stored in UTC and shown without time-zone conversion (a calendar date such as a birth date); unstated or `localized` = converted to the user's time zone (Mendix's default). A rewrite that does not state it (`create or modify`, `modify attribute`) keeps the stored value; a stated one wins. `describe` prints only `not localized` |
 | Create with auditing | `create persistent entity Module.Name (attrs, owner: autoowner, ChangedBy: autochangedby, CreatedDate: autocreateddate, ChangedDate: autochangeddate);` | Pseudo-types like AutoNumber |
 | Create view entity | `create view entity Module.Name (attrs) as select ...;` | OQL-backed read-only |
 | View entity clause order | `... as select … from …;` **or** `... as from … group by … select …;` | Both are Mendix OQL and both are checked. The second is what **Studio Pro stores**, so it is what `DESCRIBE ENTITY` emits — describe → edit → exec round-trips. The declared attributes are matched to the select columns **by position**, in either order |
@@ -116,7 +117,7 @@ Modifies an existing entity without full replacement.
 |-----------|--------|-------|
 | Add attribute | `alter entity Module.Name add attribute [if not exists] attr: type [constraints];` | Comma-separate the whole action to add several: `add attribute A: integer, add attribute B: string(20)`. `if not exists` skips instead of erroring, so the script re-runs |
 | Drop attribute | `alter entity Module.Name drop attribute [if exists] AttrName;` | `if exists` skips when it is already gone |
-| Modify attribute | `alter entity Module.Name modify attribute Attr: NewType [constraints];` | Change type/constraints. Always `Name: Type`; without the colon warns MDL-DEPR065 |
+| Modify attribute | `alter entity Module.Name modify attribute Attr: NewType [constraints];` | Change type/constraints. Always `Name: Type`; without the colon warns MDL-DEPR065. A DateTime keeps its stored localization unless `localized` / `not localized` is stated |
 | Rename attribute | `alter entity Module.Name rename attribute OldName to NewName;` | Also rewrites stored references (microflow members, page widgets, validation/access rules) and XPath constraints. Microflow expressions are free text and are **not** rewritten |
 | Add index | `alter entity Module.Name add index [if not exists] [name] [on] (Col1 [asc\|desc], ...);` | `on` is optional (SQL-like). **Without `if not exists`, re-running is an error** — a second identical index fails the build with CE0072 |
 | Document an association | `/** What it links. */`<br>`create association Mod.C_P from Mod.C to Mod.P;` | Documentation is a doc comment, as on every document. `... comment 'What it links.'` still parses as a deprecated alias (`MDL-DEPR100`, also on constants, JSON structures and image collections); the doc comment wins when both are present |

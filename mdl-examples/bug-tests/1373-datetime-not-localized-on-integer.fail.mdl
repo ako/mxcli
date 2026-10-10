@@ -1,0 +1,16 @@
+-- ============================================================================
+-- mendixlabs/mxcli#1373 (the refusal): `not localized` on a non-DateTime
+-- ============================================================================
+--
+-- LocalizeDate exists only on DomainModels$DateTimeAttributeType; on any other
+-- type there is nowhere to store it. `mxcli check` must refuse it rather than
+-- accept and silently drop it. See the companion 1373-datetime-not-localized.mdl.
+--
+-- This file is expected to FAIL `mxcli check`.
+-- ============================================================================
+
+create module F1373b;
+
+create persistent entity F1373b.Counter (
+  N: Integer not localized
+);
