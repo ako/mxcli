@@ -43,3 +43,5 @@
 | `bug-patterns/binding-context.md` | bug-pattern | which object an unqualified attribute name is read against, and the four layers that each keep their own answer |
 | `bug-patterns/reports-that-outrun-the-write.md` | bug-pattern | the sentence `exec` prints as a claim about storage, made by code that cannot see storage |
 | `bug-patterns/cost-scales-with-the-project.md` | bug-pattern | work proportional to the project for a request that is not — multiplier chains, and the guard that discards half-finished work |
+| `bug-patterns/generated-mdl-on-the-authors-lines.md` | bug-pattern | mxcli rendering a `.test.mdl` into MDL and then checking it — every wrapper defect arrives as a diagnostic on the author's line |
+| `bug-patterns/the-platform-ci-does-not-run.md` | bug-pattern | defects whose only habitat is a machine no automated run inhabits: an unprivileged Windows account, a non-root devcontainer, an unpinned Mendix version |

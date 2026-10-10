@@ -1,7 +1,7 @@
 ---
 title: A Test Runner That Cannot Fail
 category: bug-pattern
-last-synced: ced830e0
+last-synced: 5c24d899
 covers:
   - cmd/mxcli
 sources:
@@ -70,6 +70,16 @@ differed in whether constant overrides were applied and whether the project's ow
 after-startup microflow was chained. Nothing in either output explained the
 difference. Both are now printed, and both boot paths share one options mapping.
 
+**A failure that leaves the injected module behind poisons every later run.**
+An injection failure reported only `build failed: the project contains errors`,
+discarding the parsed problems it already held — and then left the leftover
+module in place, so every subsequent run of *any* test file failed the same way.
+That compounding is what makes cleanup a correctness property rather than
+tidiness: the first failure is recoverable, the second is a project the user
+cannot test at all. The control that settles it cannot be argued with: plant one
+bad test, watch run 1 fail *and clean*, then watch run 2 pass. A self-healing
+sequence, not an assertion that cleanup ran.
+
 **A test run must not change the project.** The runner injects a module and takes
 it back out; restoring the model still moved the `.mpr`'s bytes, so a
 "tests pass and the tree is clean" CI step failed on a meaningless diff. Snapshot
@@ -81,4 +91,6 @@ reads clean while the project is not is worse than a visible discrepancy.
 - [fix-issue findings](../../.claude/skills/fix-issue/findings/) — each annotation,
   its consumer, and the control that proves it can now fail
 - [[duplicate-resolver-drift]] — the same structural cause, in the executor
+- [[generated-mdl-on-the-authors-lines]] — the same runner's other half, where
+  its rendering of a test file is what gets checked
 - `.claude/skills/test-microflows.md` — the annotation reference itself

@@ -1,12 +1,16 @@
 ---
 title: A Rule That Cannot Fire
 category: bug-pattern
-last-synced: ce063188
+last-synced: 5c24d899
 covers:
   - mdl/linter
+  - cmd/mxcli
 sources:
   - .claude/skills/fix-issue/findings/
+  - .claude/skills/fix-issue/findings/cmd-mxcli/
   - mdl/linter/context.go
+  - cmd/mxcli/lint_setup.go
+  - mdl/linter/report.go
   - mdl/catalog/lint_rule_vocabulary_test.go
   - .claude/skills/mendix/write-lint-rules.md
 ---
@@ -105,6 +109,38 @@ schema silently, and the assertion text for "the query broke" is identical to
 yields microflows, nanoflows and rules, so a literal "Microflow" in a message
 reported a rule as a microflow — into the JSON and SARIF `documentType` too.
 Widening a shared iterator is not a compile error anywhere it is formatted.
+
+**The score inherits every way a rule can fail, and carries no provenance.**
+`mxcli report` turns these verdicts into a number teams calibrate against, and
+the number has now been wrong in both directions: a silently reduced rule set
+made it falsely high, and an unread `lint-config.yaml` — `lint` honoured it,
+`report` never loaded it — made it falsely low, scoring a project against rules
+the team had switched off. Neither is visible from the output, because a score
+says nothing about what produced it. So the fix is as much **printing the
+selection** as reading the config, and the same applies to scope: `report
+--modules` had to decide explicitly what to do with project-level findings (role
+mappings, project security) that carry no module, or a module's score reads as
+the project's.
+
+The mechanism underneath was a second command re-deriving the rule set — an
+inline copy of the built-in list, built inside a command handler where no unit
+test can reach it. One shared setup function is the durable form; a value test
+cannot guard a list constructed in a `RunE`.
+
+**A finding count is not a severity.** CONV006 appended a violation inside its
+`permissions_for()` loop, so one entity missing one restriction became 111
+findings on a mid-sized app — the same advice repeated per role — and the
+Security score tracked the *role* count rather than the entities. Group by what
+the advice is about, de-duplicate the roles it names, and the number starts
+meaning what a reader assumes it means.
+
+**The authoring surface drifts like any other API.** The skill that Starlark
+rules are written from had fallen seven query functions and a dozen struct fields
+behind the code, because each builtin arrived with its own PR and a docs
+paragraph at most. Nothing compared the document to the implementation. The guard
+covers the whole surface at once rather than the row that was reported: range
+over the predeclared environment for the builtins, parse the package for the
+struct dictionaries it builds, and fail when the skill's tables disagree.
 
 ## See also
 
