@@ -67,9 +67,33 @@ func TestLargeSkillsWereSplit(t *testing.T) {
 			t.Errorf("%s: %v", skill, err)
 			continue
 		}
-		if n := strings.Count(string(body), "\n"); n > bound {
-			t.Errorf("%s/SKILL.md is %d lines (> %d) and has no supporting files to move detail into; "+
-				"a body this long is loaded whole every time the skill is used", skill, n, bound)
+		if n := strings.Count(skillBodyWithoutIndex(string(body)), "\n"); n > bound {
+			t.Errorf("%s/SKILL.md is %d lines of body (> %d) and has no supporting files to move "+
+				"detail into; a body this long is loaded whole every time the skill is used",
+				skill, n, bound)
 		}
 	}
+}
+
+// skillBodyWithoutIndex drops the generated "Find it fast" block before the
+// body is measured.
+//
+// This is not a loosening of the bound above. The block is NAVIGATION — it
+// exists so a reader can `sed -n` one section instead of loading the body,
+// which is the very cost this test is defending. Counting it as body would
+// penalise the mechanism for the problem it addresses, and it did: adding the
+// index pushed five skills from 694-699 lines of body to 710-726 of file, with
+// no content added at all. The bound still applies to every line an author
+// writes (scripts/skill-index.py owns the rest).
+func skillBodyWithoutIndex(text string) string {
+	const begin, end = "<!-- skill-index:", "<!-- /skill-index -->"
+	i := strings.Index(text, begin)
+	if i == -1 {
+		return text
+	}
+	j := strings.Index(text[i:], end)
+	if j == -1 {
+		return text
+	}
+	return text[:i] + strings.TrimLeft(text[i+j+len(end):], "\n")
 }

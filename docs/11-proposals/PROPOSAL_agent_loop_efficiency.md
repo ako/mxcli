@@ -184,6 +184,40 @@ make consuming the skills cheap. Cheapest first — point the skills at `mxcli
 syntax` instead of restating syntax in prose; give them sections an agent can
 read one of; and only then spend on item 4, which addresses the 15%.
 
+### First pass at the fix, and what still has to be measured
+
+Two changes, deliberately only two, so a second benchmark run stays
+interpretable:
+
+- **Routing.** The generated CLAUDE.md said "read the matching skill before
+  writing microflows, pages, security…", which is the instruction that produced
+  the `cat`. Its lookup table now reads *How to write any MDL — **before any
+  skill*** against `./mxcli syntax`, and one line says to read a skill's section
+  rather than the file. It had to be folded into the existing table row rather
+  than added as a paragraph: that file is re-read every session and
+  `TestGeneratedClaudeMDStaysWithinItsContextBudget` had 75 bytes of headroom,
+  so prose about saving tokens would have cost more than it saved.
+- **Storage.** Every `SKILL.md` now opens with a generated line-numbered
+  section index (`scripts/skill-index.py`, `make check-skill-index` in CI), so
+  `sed -n '<a>,<b>p'` is reachable without first paying for the file or a
+  `grep`. Generated, never hand-written — a hand-kept table of contents is the
+  drift this repo has paid for twice — and the ranges are computed to a fixed
+  point, because the block's own height shifts every range below it. All 745
+  rows were verified to land on their heading.
+
+Both have a cost, and it is honest to state it: the index is ~0.17k tokens on
+every skill read, so if the agent keeps reading whole files the change is a
+small *loss*. That is the hypothesis a second run tests, and the measurement to
+watch is not the total but whether `cat …/SKILL.md` leaves the costliest-results
+list.
+
+Measured consequence worth recording: **the naive version of this lever is
+smaller than it looked.** Code blocks are 28% of all skill bytes (32-43% in the
+two most-read), so "move the syntax out of the skills into `syntax`" could never
+have reclaimed most of the 68% — the skills are mostly prose, which is the part
+CLAUDE.md says belongs there. The reachable win is in *how much of a file gets
+read*, not in what the file contains.
+
 ### What that settles about `mxcli apply`
 
 The criteria recorded above are answered. The second — chained output being a
@@ -773,7 +807,7 @@ baseline is the first thing to record wherever it does.
 | 2d | **Count a killed `run` in `diag loop-report` rather than dropping it** — **shipped** | S | was: the restart bill is invisible, `run`'s reported wall time a floor built from 4 of 30 invocations. Now a 30 s `session_alive` heartbeat bounds every unclosed run from below, whatever killed it, and the report separates the measured total, the measured floor and an explicitly-labelled estimate |
 | 2e | **App lifecycle as commands** — `run --local --detach`, `run status`, `run wait`, `run stop`, `run restart`, taught in the run-local/run-app skills and the generated gate list — **shipped** | M | ~25–28% of all tool calls in measured sessions were hand-rolled `nohup`/poll/`pkill` loops; each becomes one call, and `exec … && run wait` is the per-change chain |
 | 3 | Publish the canonical `&&` chain in `projectGates` + skills (lever 1) | XS | the 5–8 → 1–2 collapse, with nothing built |
-| 3b | **Make consuming the skills cheap** — point them at `mxcli syntax` rather than restating syntax in prose, and section them so an agent can read one part rather than `cat` the file. Measured 2026-10-10: skill and doc reads are ~68% of the re-read cost against 31% of the calls | M | the largest measured token item, and it displaces item 4 |
+| 3b | **Make consuming the skills cheap** — **first pass shipped 2026-10-10**: the generated CLAUDE.md now routes `syntax` before any skill, and `scripts/skill-index.py` puts a verified line-numbered section index at the head of all 74 (`make check-skill-index` in CI). Not yet done: moving the syntax that skills restate into `syntax` itself — code blocks are only 28% of skill bytes, so that is a smaller prize than it looked | M | the largest measured token item, and it displaces item 4. **Unverified**: needs a second BENCH-001 run to say whether the agent takes the cheap path |
 | 4 | Terse/delta output for `exec` and the noisy listings (lever 2) | M | the token half of the chain win; helps every call — but the baseline puts mxcli's own output at ~15% of the re-read cost against the skills' ~68%, so this is the junior partner to 3b |
 | 5 | Tiered verification rule in the skills (lever 3) | S | stops the default path at the cheapest sufficient gate |
 | 6 | Subagent trigger in the skills (lever 4) | XS | caps the worst tail |

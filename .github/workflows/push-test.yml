@@ -167,6 +167,12 @@ jobs:
         # The table of contents must describe the wiki, both directions. It
         # drifted for three months before anyone noticed.
         run: make check-wiki-pages
+      - name: Check the skill section indexes
+        # Each SKILL.md opens with a generated line-numbered index so an agent
+        # can read one section instead of the file — measured on BENCH-001 as
+        # ~68% of a session's re-read cost. A hand-kept table of contents is
+        # the drift this repo has paid for twice, so the generator owns it.
+        run: make check-skill-index
       - name: Check every go test sets -timeout
         # Without one Go applies 10m per test binary, and a package that passes
         # in seconds alone can exceed it under `./...` load (mendixlabs/mxcli#1291).

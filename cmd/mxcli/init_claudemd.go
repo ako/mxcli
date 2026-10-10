@@ -215,7 +215,7 @@ func generateClaudeMD(projectName, mprFile string) string {
 	w("These change every release, and a copy that disagrees with the tool is worse than none.\n\n")
 	w("| To find out | Run |\n")
 	w("|---|---|\n")
-	w("| What MDL can say, and how | " + bt + "./mxcli syntax" + bt + " → " + bt + "./mxcli syntax <topic> [sub]" + bt + " (" + bt + "--json" + bt + " for bulk) |\n")
+	w("| How to write any MDL — **before any skill** | " + bt + "./mxcli syntax" + bt + " → " + bt + "./mxcli syntax <topic> [sub]" + bt + " |\n")
 	w("| Which lint rules exist | " + bt + "./mxcli lint -p " + mprPath + " --list-rules" + bt + " |\n")
 	w("| What a command takes | " + bt + "./mxcli help <command>" + bt + " |\n")
 	w("| What this project contains | " + bt + "./mxcli -p " + mprPath + " -c \"DESCRIBE STRUCTURE\"" + bt + " |\n")
@@ -223,8 +223,19 @@ func generateClaudeMD(projectName, mprFile string) string {
 	w("\n")
 	w("**Skills** are in " + bt + ".ai-context/skills/<name>/SKILL.md" + bt + " (and " + bt + ".claude/skills/" + bt + ", which is\n")
 	w("the path Claude Code scans). Each one's frontmatter " + bt + "description" + bt + " says when to reach for\n")
-	w("it — that IS the index, so list the directory rather than looking for a table. Read the\n")
-	w("matching skill **before** writing microflows, pages, security, or anything touching data.\n\n")
+	w("it — that IS the index, so list the directory rather than looking for a table.\n\n")
+	// Measured on the BENCH-001 baseline (2026-10-10): reading the skills was
+	// ~68% of the session's re-read cost against ~31% of its calls, and one
+	// `cat write-microflows/SKILL.md` (7.1k tokens, re-read 43 times) cost more
+	// than every mxcli invocation in the costliest ten put together. The same
+	// answers cost 0.1-0.6k through `syntax`. Both paths existed; the line here
+	// said only "read the matching skill", so it read whole files.
+	//
+	// The routing itself rides the table row above rather than a paragraph of
+	// its own: this file is re-read every session, so prose about saving tokens
+	// that costs 500 bytes is self-defeating. What is left is the one thing the
+	// table cannot say.
+	w("**Read a skill's section, not the file** — each opens with a line-numbered index.\n\n")
 
 	// ── The non-derivable conventions ───────────────────────────────
 	// Short, and each one is here precisely because no command reports it.
