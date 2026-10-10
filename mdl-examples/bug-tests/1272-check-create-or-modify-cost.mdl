@@ -1,0 +1,50 @@
+mdl 1;
+-- ============================================================================
+-- check -p was 4-7x slower on `create or modify` of stored microflows
+-- (mendixlabs/mxcli#1272)
+-- ============================================================================
+--
+-- Reported: `check -p` spent 0.6-1.3 s per `create or modify microflow` whose
+-- microflow already exists, and the cost per statement grew with the project.
+-- Generated scripts that are re-run consist almost entirely of such statements.
+--
+-- Each lookup the verdict and reference passes make re-read every microflow
+-- file of the project and decoded every flow, several times per statement.
+-- A check pass now reads each unit file once, and a lookup by name or ID
+-- decodes only the flows it returns. What check reports is unchanged.
+--
+-- Usage (the second run is the slow case: every flow exists by then):
+--   mxcli exec  mdl-examples/bug-tests/1272-check-create-or-modify-cost.mdl -p app.mpr
+--   mxcli check mdl-examples/bug-tests/1272-check-create-or-modify-cost.mdl -p app.mpr --references
+-- To measure, repeat the three microflows (the issue used 25-200 of them in a
+-- project holding 200-400): time grows with the statements, not the project.
+
+create module BugTest1272;
+
+create or modify persistent entity BugTest1272.Item (Title: String(100), Code: String(20));
+create or modify persistent entity BugTest1272.Tag (Name: String(100));
+create or modify association BugTest1272.Item_Tag from BugTest1272.Item to BugTest1272.Tag type Reference;
+
+create or modify microflow BugTest1272.MF_001 ($Title: String, $Tag: BugTest1272.Tag) returns Integer as $N
+begin
+  retrieve $Items from BugTest1272.Item where Title = $Title and BugTest1272.Item_Tag = $Tag;
+  declare $Prev Integer = 0;
+  declare $N Integer = length($Items) + $Prev;
+  return $N;
+end;
+
+create or modify microflow BugTest1272.MF_002 ($Title: String, $Tag: BugTest1272.Tag) returns Integer as $N
+begin
+  retrieve $Items from BugTest1272.Item where Title = $Title and BugTest1272.Item_Tag = $Tag;
+  $Prev = call microflow BugTest1272.MF_001(Title = $Title, Tag = $Tag);
+  declare $N Integer = length($Items) + $Prev;
+  return $N;
+end;
+
+create or modify microflow BugTest1272.MF_003 ($Title: String, $Tag: BugTest1272.Tag) returns Integer as $N
+begin
+  retrieve $Items from BugTest1272.Item where Title = $Title and BugTest1272.Item_Tag = $Tag;
+  $Prev = call microflow BugTest1272.MF_002(Title = $Title, Tag = $Tag);
+  declare $N Integer = length($Items) + $Prev;
+  return $N;
+end;
