@@ -19,6 +19,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 
 	"github.com/mendixlabs/mxcli/modelsdk/canon"
+	"github.com/mendixlabs/mxcli/modelsdk/version"
 )
 
 // idToBsonBinary converts a UUID string to BSON Binary format.
@@ -556,6 +557,7 @@ func (w *Writer) insertUnit(unitID, containerID, containmentName, unitType strin
 		return fmt.Errorf("invalid container ID (not a valid UUID): %q", containerID)
 	}
 
+	contents = w.completePropertySets(contents)
 	contents, restoreTransactionID := w.carryIdentityFromRemovedUnit(
 		unitID, containerIDBlob, containmentName, contents)
 
@@ -709,6 +711,9 @@ func (w *Writer) updateUnit(unitID string, contents []byte, opts ...canon.Option
 // ADR-0008 decision 1) to a write against this project.
 func (w *Writer) reconcileWithStored(unitID string, contents []byte, opts ...canon.Option) (out []byte, unchanged bool, err error) {
 	w.writesOffered++
+	// Completed before comparing, so a rebuild of a Studio Pro document that
+	// differed from it only by the properties the writer leaves out is elided.
+	contents = w.completePropertySets(contents)
 	stored, readErr := w.reader.GetRawUnitBytes(unitID)
 	if readErr != nil {
 		w.writesLanded++
@@ -1003,4 +1008,19 @@ func (w *Writer) UpdateUnitContainer(unitID, newContainerID string) error {
 	w.reader.InvalidateCache()
 	w.updateTransactionID()
 	return nil
+}
+
+// completePropertySets gives every element the full property set Studio Pro
+// writes for its $Type (canon.CompletePropertySets). It runs on every unit that
+// reaches storage — insert, update, and the transaction path, both through
+// reconcileWithStored — because a gap left by ANY writer makes the document
+// unmergeable once Studio Pro saves it (mendixlabs/mxcli#1373), and a fix per
+// writer is the list that never ends.
+func (w *Writer) completePropertySets(contents []byte) []byte {
+	pv := w.reader.ProjectVersion()
+	if pv == nil || pv.MajorVersion == 0 {
+		return contents
+	}
+	v := version.Version{Major: pv.MajorVersion, Minor: pv.MinorVersion, Patch: pv.PatchVersion}
+	return canon.CompletePropertySets(contents, &v)
 }

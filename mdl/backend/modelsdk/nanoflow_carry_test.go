@@ -11,12 +11,16 @@
 //   - ExportLevel, UseListParameterByReference and ReturnVariableName were never
 //     written, so a rewrite deleted them. None has an MDL spelling except the
 //     return variable (`returns T as $Var`), so UpdateNanoflow carries the stored
-//     keys — and only the keys the stored document carries, since Studio Pro
-//     accepts an absent one and a key a project's metamodel does not declare
-//     makes it unopenable.
+//     keys. A key the stored document lacks is filled at the write choke point
+//     with Studio Pro's value, but only on a version it was measured on — a key
+//     a project's metamodel does not declare makes it unopenable
+//     (mendixlabs/mxcli#1373, canon.CompletePropertySets).
 package modelsdkbackend
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -220,19 +224,28 @@ func TestUpdateNanoflow_AuthoredReturnVariableWins(t *testing.T) {
 	}
 }
 
-// Control: a stored document WITHOUT the keys gets none. Writing a key the
-// project's metamodel may not declare is worse than leaving it absent.
-func TestUpdateNanoflow_WritesNoKeyTheStoredDocumentLacks(t *testing.T) {
+// A stored document without the keys gets the values Studio Pro writes, but
+// only the keys MEASURED on a version this old: a key the project's metamodel
+// may not declare is worse than leaving it absent. ExportLevel was measured on
+// 10.24 and 11.14, so the 11.6 fixture gets it; UseListParameterByReference only
+// on 11.14, so it does not (modelsdk/canon/studiopro_property_defaults.json).
+// Before mendixlabs/mxcli#1373 neither was written, and a nanoflow without them
+// is one Mendix's merge engine cannot compare with Studio Pro's next save.
+func TestUpdateNanoflow_GetsTheMeasuredKeysTheStoredDocumentLacks(t *testing.T) {
 	b, nf := nanoflowFixture(t)
+	if pv := b.ProjectVersion(); pv == nil || pv.IsAtLeast(11, 14) || !pv.IsAtLeast(10, 24) {
+		t.Fatalf("precondition: the fixture must be 10.24 ≤ v < 11.14 to sit between the two floors; got %+v", pv)
+	}
 	nf.Documentation = "rewritten"
 	if err := b.UpdateNanoflow(nf); err != nil {
 		t.Fatalf("UpdateNanoflow: %v", err)
 	}
 	got := storedKeys(t, b, nf.ID)
-	for _, k := range []string{"ExportLevel", "UseListParameterByReference"} {
-		if v, ok := got[k]; ok {
-			t.Errorf("%s = %#v was written, but the stored document had no such key", k, v)
-		}
+	if got["ExportLevel"] != "Hidden" {
+		t.Errorf("ExportLevel = %#v, want Studio Pro's Hidden", got["ExportLevel"])
+	}
+	if v, ok := got["UseListParameterByReference"]; ok {
+		t.Errorf("UseListParameterByReference = %#v was written below the version it was measured on", v)
 	}
 }
 
@@ -243,8 +256,12 @@ func TestUpdateNanoflow_WritesNoKeyTheStoredDocumentLacks(t *testing.T) {
 // ever name the return variable of such a nanoflow.
 func TestSetHeader_AddsReturnVariableToAStoredNanoflow(t *testing.T) {
 	b, nf := nanoflowFixture(t)
+	// mxcli has written ReturnVariableName since mendixlabs/mxcli#1373, so the
+	// shape this test is about — a nanoflow an older mxcli stored without the
+	// key — can only be produced by editing the unit file behind the writer.
+	stripStoredKeyOnDisk(t, b, nf.ID, "ReturnVariableName")
 	if _, ok := storedKeys(t, b, nf.ID)["ReturnVariableName"]; ok {
-		t.Fatal("precondition: the fixture nanoflow already stores ReturnVariableName")
+		t.Fatal("precondition: the fixture nanoflow still stores ReturnVariableName")
 	}
 	if pv := b.ProjectVersion(); pv == nil || !pv.IsAtLeast(10, 12) {
 		t.Fatalf("precondition: the fixture must be 10.12+, where Nanoflow declares ReturnVariableName; got %+v", pv)
@@ -296,4 +313,41 @@ func TestDeclaresProperty_FollowsTheProjectVersion(t *testing.T) {
 	if (codecMicroflowDeps{b: New()}).DeclaresProperty("Microflows$Nanoflow", "ReturnVariableName") {
 		t.Error("a backend with no project version declares a property")
 	}
+}
+
+// stripStoredKeyOnDisk removes a top-level key from a stored unit by rewriting
+// its file directly. Going through the writer would put the key back: every
+// write completes the property set Studio Pro writes (mendixlabs/mxcli#1373).
+func stripStoredKeyOnDisk(t *testing.T, b *Backend, id model.ID, key string) {
+	t.Helper()
+	want, err := b.reader.GetRawUnitBytes(string(id))
+	if err != nil {
+		t.Fatalf("GetRawUnitBytes: %v", err)
+	}
+	matches, _ := filepath.Glob(filepath.Join(filepath.Dir(b.Path()), "mprcontents", "*", "*", "*.mxunit"))
+	for _, m := range matches {
+		raw, err := os.ReadFile(m)
+		if err != nil || !bytes.Equal(raw, want) {
+			continue
+		}
+		var d bson.D
+		if err := bson.Unmarshal(raw, &d); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		out := d[:0]
+		for _, e := range d {
+			if e.Key != key {
+				out = append(out, e)
+			}
+		}
+		b2, err := bson.Marshal(out)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if err := os.WriteFile(m, b2, 0o644); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		return
+	}
+	t.Fatalf("no unit file holds %s", id)
 }
