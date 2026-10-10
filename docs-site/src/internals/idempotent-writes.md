@@ -74,6 +74,36 @@ write choke point of **both** the default `modelsdk` engine and the `legacy`
 engine. Which engine ran is an `--engine` flag, and it must not be visible in
 your diff.
 
+## Every element is written with Studio Pro's property set
+
+Before a unit is compared and written, every element in it gets every property
+Studio Pro always writes for its type, filled with the value Mendix itself uses
+when the property is absent. The reason is version control, not validity.
+Mendix's merge and diff engine compares an element's property *names* between
+two revisions, and throws when they differ:
+
+```
+System.InvalidOperationException: Objects with ID … of type
+Microflows$LoopedActivity do not have the same properties.
+```
+
+A missing key is invisible everywhere else. `mx check`, the build and the
+runtime all fill in the default. So before this, a branch with documents mxcli
+had written could not be merged once Studio Pro had saved one of them (#1373).
+
+The values are measured, not guessed. They live in
+`modelsdk/canon/studiopro_property_defaults.json`. Each one is taken from
+`mx convert -p`, which re-serializes exactly the units that are not canonical
+for its version, the way Studio Pro saves them. Each entry is bounded by the
+Mendix versions it was measured on. A key is never written to a project whose
+version may not declare it, because that would make the document unopenable,
+which is worse than the gap.
+
+The doctype integration gate measures this on every script. A new gap fails it.
+To record a new measurement into the table, run the gate with
+`MXCLI_PROPERTY_SETS_RECORD=<file>` and then run
+`go run ./internal/propertysets/cmd/propdefaults -record <file>`.
+
 ## A run of grants is compared as a whole
 
 Most statements write the document they change, and that write is compared with
