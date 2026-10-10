@@ -278,6 +278,30 @@ agents still composing it wrong after that. This is strictly cheaper, ships
 sooner, and does not add a surface that has to stay in sync with the commands
 underneath it.
 
+**Re-raised 2026-10-10, as a staged pipeline with the agent naming how far to
+run** (`check -> check --references -> mx check -> mxbuild -> run -> test`). The
+deferral holds, and two facts narrow the idea further than the paragraphs above
+already do. **`exec` runs the whole `check` pass, references included, before it
+writes anything** — so the first two stages are not stages, they are inside the
+third. And **`docker check` IS `mx check`**; mxbuild is what `mx` wraps, so those
+are one stage rather than two. Six stages are four: apply, build-validate, serve,
+behaviour.
+
+To keep the decision falsifiable rather than a matter of taste, this is what the
+baseline has to show for the command to be worth building:
+
+- the transcript composes the chain **inconsistently or wrongly** across the run
+  (a redundant `check` before `exec`, a restart where a reload would do, a
+  verification tier above what the change needed), or
+- the chained invocations' concatenated output is a materially large share of
+  `session-report`'s `tool results` figure — which would argue for item 4
+  first regardless, since that lands on every invocation and not only the
+  chained ones.
+
+If instead the chains are well-formed and the output volume sits elsewhere, the
+command buys nothing that item 4 does not buy more cheaply, and this entry should
+be closed rather than left open.
+
 ### The chain is tiered, not fixed — most changes stop at the first gate
 
 The first draft put `--verify <playwright>` in the default chain. That is a

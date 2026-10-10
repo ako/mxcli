@@ -13,6 +13,15 @@ unchanged: its value is that runs before and after a change are comparable.
 Run it with `mxcli eval run docs/14-eval/eval-bench-001.md --version 11.15.0`;
 the run writes `diag session-report` for the transcript.
 
+**Run it from a terminal, not from inside an agent session.** `eval run` spawns
+`claude -p --dangerously-skip-permissions` (hardcoded, `evalrunner/run.go`), and
+a host that sandboxes its children refuses to create a permission-bypassed agent
+— measured on Claude Code on the web, where the denial reads "Create Unsafe
+Agents". The credentials and a plain `claude -p` are fine there; it is the bypass
+flag that is refused, and there is no flag to omit it. Supplying the child a
+pre-approved settings file instead is the same bypass by another route, so the
+honest answer is to run the benchmark where an unattended agent is allowed.
+
 ## Prompt
 Build a small order desk app in this Mendix project, in a new module called Sales.
 
