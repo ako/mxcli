@@ -366,6 +366,65 @@ enters quadratically, and nothing shipped so far touches it. That is item 3's
 territory — publish the chain and the facts the agent is round-tripping for —
 not further compression.
 
+### Item 4 is no longer the junior partner — runs 2-3 reverse the demotion
+
+Run 1 put mxcli's own output at ~15% of the re-read cost against the skills'
+68%, and item 4 (terse/delta output) was demoted on that basis. Run 3's
+composition inverts it: `syntax` 23% + `DESCRIBE STRUCTURE`/`DESCRIBE
+NAVIGATION` 16% = **39% from mxcli's own stdout**, against 37% from skill
+reads. Both post-change runs show it, so the demotion was made on the one run
+where it happened to be true.
+
+The correction is not "item 4 was right all along" — it is that the shares move
+with the routing, because the agent substitutes between the two sources. A lever
+aimed at a share measured before the routing changed is aimed at a number that
+no longer exists. **Re-read the composition, not the ordering, before picking.**
+
+### Three things testable without spending the 3b control
+
+Each is orthogonal to the `9ce90f32` A/B — none touches the routing line or the
+section index — so measuring them does not forfeit the control run.
+
+1. **Terse by default, verbose on request** (item 4, now co-equal with 3b).
+   `syntax <topic>` is 1.9-3.9 k per call and was invoked 16 times in run 3;
+   `DESCRIBE STRUCTURE` is 3.2 k and `DESCRIBE NAVIGATION` 3.3 k. A
+   signature-only default with `--full` for the prose attacks 39% of the bill
+   without telling the agent to behave differently, which is the part that
+   backfired.
+
+2. **A cheap substitute for the sweep, not a prohibition.** Runs 2 and 3 show
+   the agent batching topics (`for t in …; do ./mxcli syntax $t; done`, twice in
+   run 3 at 195 k + 105 k, plus a 90 k `syntax --json` dump). It is batching
+   because it wants one answer covering a doctype and has to assemble it from
+   per-topic calls. `syntax --digest <doctype>` — every signature for that
+   doctype, no prose — turns a loop of full topics into one small result. Telling
+   it not to sweep leaves the want unmet; giving it a cheaper sweep does not.
+
+3. **Retry elimination as a call-count lever.** Run 3: 11 failures, 8 retry
+   chains, 8 retry calls — **14% of all model calls**, and each failure's text
+   is then re-read for the rest of the session. This is the only lever on the
+   list that removes *calls* rather than bytes, which is the term that enters
+   quadratically. The chains it recorded are specific and most are mxcli's to
+   fix, not the agent's:
+
+   | error | whose |
+   |---|---|
+   | `create or modify microflow …: this change cannot be spliced into the stored microflow` (agent then dropped and recreated) | mxcli |
+   | `CE1613 "The selected attribute 'Sales.Order."Order_Customer/Name"' no longer exists"` | mxcli, probably |
+   | `no store yet — run 'mxcli brain init' first` | routing |
+   | `ERROR: Action: OPEN LINK without a URL or SHOW PAGE without a page` | authoring, but the message is reachable from `syntax` |
+   | `injecting test microflows: exit status N` | mxcli |
+
+   All 8 chains resolved in one retry, so none is a loop — but a resolved retry
+   still costs a call, a result, and that result's re-read for every call after
+   it.
+
+A fourth, unmeasured: **collapse the orientation round-trip**. Doc lookups went
+7 → 13 → 21 across the three runs while each read got cheaper, so the agent is
+making more trips for the same understanding. One call that returns the
+project's shape and the canonical chain together is item 3's job, and nothing
+yet measures whether it would replace trips or just add one.
+
 ### What that settles about `mxcli apply`
 
 The criteria recorded above are answered. The second — chained output being a
@@ -956,7 +1015,9 @@ baseline is the first thing to record wherever it does.
 | 2e | **App lifecycle as commands** — `run --local --detach`, `run status`, `run wait`, `run stop`, `run restart`, taught in the run-local/run-app skills and the generated gate list — **shipped** | M | ~25–28% of all tool calls in measured sessions were hand-rolled `nohup`/poll/`pkill` loops; each becomes one call, and `exec … && run wait` is the per-change chain |
 | 3 | Publish the canonical `&&` chain in `projectGates` + skills (lever 1) | XS | the 5–8 → 1–2 collapse, with nothing built |
 | 3b | **Make consuming the skills cheap** — **first pass shipped 2026-10-10**: the generated CLAUDE.md now routes `syntax` before any skill, and `scripts/skill-index.py` puts a verified line-numbered section index at the head of all 74 (`make check-skill-index` in CI). Not yet done: moving the syntax that skills restate into `syntax` itself — code blocks are only 28% of skill bytes, so that is a smaller prize than it looked | M | the largest measured token item, and it displaces item 4. **Measured, leaning negative**: across runs 2 and 3 the skills' share of the re-read bill halved (68% -> 37%) and `syntax` sweeps took the freed share (23%), leaving the total 26% worse at a reproducible 59-61 calls against one pre-change point at 47. Missing datum is the control: two runs of `9ce90f32`. The identified surgical fix is to narrow the routing line against speculative sweeps, keeping the index (§"Run 3") |
-| 4 | Terse/delta output for `exec` and the noisy listings (lever 2) | M | the token half of the chain win; helps every call — but the baseline puts mxcli's own output at ~15% of the re-read cost against the skills' ~68%, so this is the junior partner to 3b |
+| 4 | Terse/delta output for `exec`, `syntax` and the noisy listings (lever 2) | M | **promoted back to co-equal with 3b**: run 1's ~15% was the one run where that was true. Runs 2-3 put mxcli's own stdout at ~39% of the re-read cost (`syntax` 23%, the two `DESCRIBE`s 16%) against skill reads' 37%, because the agent substitutes between the two sources (§"Item 4 is no longer the junior partner") |
+| 4b | **`syntax --digest <doctype>`** — every signature for a doctype, no prose, one call | S | both post-change runs show the agent assembling exactly this by hand (`for t in …; do mxcli syntax $t; done`, 195 k + 105 k in run 3, plus a 90 k `syntax --json` dump). A cheaper sweep, rather than a rule against sweeping |
+| 4c | **Remove the recurring retry chains** — the unspliceable `create or modify`, the CE1613 association-attribute page reference, `injecting test microflows`, the `brain init` routing gap | M | 14% of run 3's model calls were retries, all resolved in one, most of them mxcli's fault. The only listed lever that removes *calls* rather than bytes |
 | 5 | Tiered verification rule in the skills (lever 3) | S | stops the default path at the cheapest sufficient gate |
 | 6 | Subagent trigger in the skills (lever 4) | XS | caps the worst tail |
 | 7 | Workarounds → diagnostics and skills (lever 5) | M, ongoing | compounds across all future sessions |
