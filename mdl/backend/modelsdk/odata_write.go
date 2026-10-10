@@ -335,7 +335,7 @@ func (b *Backend) CreatePublishedODataService(svc *model.PublishedODataService) 
 		svc.ID = model.ID(mmpr.GenerateID())
 	}
 	svc.TypeName = "ODataPublish$PublishedODataService2"
-	contents, err := (&codec.Encoder{}).Encode(publishedODataServiceToGen(svc))
+	contents, err := (&codec.Encoder{}).Encode(publishedODataServiceToGen(svc, b.publishesMemberTypes()))
 	if err != nil {
 		return fmt.Errorf("CreatePublishedODataService: encode: %w", err)
 	}
@@ -349,7 +349,7 @@ func (b *Backend) UpdatePublishedODataService(svc *model.PublishedODataService) 
 	if b.writer == nil {
 		return fmt.Errorf("UpdatePublishedODataService: not connected for writing")
 	}
-	contents, err := (&codec.Encoder{}).Encode(publishedODataServiceToGen(svc))
+	contents, err := (&codec.Encoder{}).Encode(publishedODataServiceToGen(svc, b.publishesMemberTypes()))
 	if err != nil {
 		return fmt.Errorf("UpdatePublishedODataService: encode: %w", err)
 	}
@@ -363,7 +363,19 @@ func (b *Backend) DeletePublishedODataService(id model.ID) error {
 	return b.writer.DeleteUnit(string(id))
 }
 
-func publishedODataServiceToGen(svc *model.PublishedODataService) element.Element {
+// publishesMemberTypes reports whether the project's metamodel declares the
+// derived member types a published OData service stores from 11.12.0 —
+// PublishedAttribute.EdmType and PublishedAssociationEnd.IsMany (measured with
+// `mx convert`: 11.11.0 strips both, 11.12.0 keeps them). Written to an older
+// project they are keys Studio Pro cannot open the document with
+// (mendixlabs/mxcli#1373); the storage layer would refuse them, since they
+// hold values. An unreadable version writes them, as before.
+func (b *Backend) publishesMemberTypes() bool {
+	pv := b.ProjectVersion()
+	return pv == nil || pv.MajorVersion == 0 || pv.IsAtLeast(11, 12)
+}
+
+func publishedODataServiceToGen(svc *model.PublishedODataService, memberTypes bool) element.Element {
 	g := newElem("ODataPublish$PublishedODataService2", string(svc.ID))
 	addStr(g, "Name", svc.Name)
 	addStr(g, "Documentation", svc.Documentation)
@@ -408,7 +420,7 @@ func publishedODataServiceToGen(svc *model.PublishedODataService) element.Elemen
 			et.ID = model.ID(mmpr.GenerateID())
 		}
 		entityTypeIDByName[et.Entity] = string(et.ID)
-		etElems = append(etElems, publishedEntityTypeToGen(et))
+		etElems = append(etElems, publishedEntityTypeToGen(et, memberTypes))
 	}
 	if len(etElems) > 0 {
 		addPartList(g, "EntityTypes", etElems)
@@ -506,7 +518,7 @@ func dataTypeElement(kind, ref string) element.Element {
 	}
 }
 
-func publishedEntityTypeToGen(et *model.PublishedEntityType) element.Element {
+func publishedEntityTypeToGen(et *model.PublishedEntityType, memberTypes bool) element.Element {
 	g := newElem("ODataPublish$EntityType", string(et.ID))
 	addStr(g, "Entity", et.Entity)
 	addStr(g, "ExposedName", et.ExposedName)
@@ -514,7 +526,7 @@ func publishedEntityTypeToGen(et *model.PublishedEntityType) element.Element {
 	addStr(g, "Description", et.Description)
 	members := make([]element.Element, 0, len(et.Members))
 	for _, m := range et.Members {
-		members = append(members, publishedMemberToGen(m, et.Entity))
+		members = append(members, publishedMemberToGen(m, et.Entity, memberTypes))
 	}
 	if len(members) > 0 {
 		addPartList(g, "ChildMembers", members)
@@ -555,7 +567,7 @@ func publishedEntitySetToGen(es *model.PublishedEntitySet, entityTypeID string) 
 	return g
 }
 
-func publishedMemberToGen(m *model.PublishedMember, ownerQN string) element.Element {
+func publishedMemberToGen(m *model.PublishedMember, ownerQN string, memberTypes bool) element.Element {
 	memberID := string(m.ID)
 	switch m.Kind {
 	case "association":
@@ -568,7 +580,10 @@ func publishedMemberToGen(m *model.PublishedMember, ownerQN string) element.Elem
 		addStr(g, "Entity", m.AssociationTargetEntity)
 		// IsMany is the exposed navigation's multiplicity; without it Studio Pro
 		// reports CE5022 ("changed multiplicity"). Verified against Studio Pro BSON.
-		addBool(g, "IsMany", m.IsMany)
+		// Declared from 11.12.0 only (publishesMemberTypes).
+		if memberTypes {
+			addBool(g, "IsMany", m.IsMany)
+		}
 		addStr(g, "ExposedAssociationName", m.ExposedAssociationName)
 		return g
 	case "id":
@@ -591,7 +606,10 @@ func publishedMemberToGen(m *model.PublishedMember, ownerQN string) element.Elem
 		addStr(g, "Attribute", qualifyMemberName(m.Name, ownerQN))
 		// EdmType is the published OData type; without it Studio Pro reports
 		// CE5016 ("published as ."). Verified against Studio Pro's corrected BSON.
-		addStr(g, "EdmType", m.EdmType)
+		// Declared from 11.12.0 only (publishesMemberTypes).
+		if memberTypes {
+			addStr(g, "EdmType", m.EdmType)
+		}
 		addBool(g, "Filterable", m.Filterable)
 		addBool(g, "Sortable", m.Sortable)
 		addBool(g, "IsPartOfKey", m.IsPartOfKey)

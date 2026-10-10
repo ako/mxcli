@@ -24,7 +24,7 @@ func TestPublishedODataServiceToGen_WritesTheRoleGrants(t *testing.T) {
 	g := publishedODataServiceToGen(&model.PublishedODataService{
 		Name:               "ZzApi",
 		AllowedModuleRoles: []string{"MyFirstModule.User", "MyFirstModule.Admin"},
-	})
+	}, true)
 	raw, err := (&codec.Encoder{}).Encode(g)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
@@ -61,7 +61,7 @@ func TestPublishedODataServiceToGen_WritesTheRoleGrants(t *testing.T) {
 // what deletes the stored grants on the next modify; an explicit empty list is
 // the honest encoding of "none", and matches what the legacy writer emits.
 func TestPublishedODataServiceToGen_WritesAnEmptyRoleListNotNothing(t *testing.T) {
-	g := publishedODataServiceToGen(&model.PublishedODataService{Name: "ZzApi"})
+	g := publishedODataServiceToGen(&model.PublishedODataService{Name: "ZzApi"}, true)
 	raw, err := (&codec.Encoder{}).Encode(g)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
@@ -83,7 +83,7 @@ func TestPublishedODataServiceToGen_WritesAnEmptyRoleListNotNothing(t *testing.T
 // nothing in the suite noticed for a whole release.
 func TestPublishedODataServiceToGen_RoleEncodingMatchesTheMprEngine(t *testing.T) {
 	roles := []string{"MyFirstModule.User"}
-	g := publishedODataServiceToGen(&model.PublishedODataService{Name: "ZzApi", AllowedModuleRoles: roles})
+	g := publishedODataServiceToGen(&model.PublishedODataService{Name: "ZzApi", AllowedModuleRoles: roles}, true)
 	raw, err := (&codec.Encoder{}).Encode(g)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
