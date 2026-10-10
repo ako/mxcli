@@ -154,6 +154,9 @@ func DecodeChildren(raw bson.Raw, key string) ([]element.Element, error) {
 }
 
 // decodeID extracts the $ID field, accepting either a UUID binary or a plain string.
+// PeekID is the element ID Decode would give raw, read without decoding it.
+func PeekID(raw bson.Raw) element.ID { return decodeID(raw) }
+
 func decodeID(raw bson.Raw) element.ID {
 	val, err := raw.LookupErr("$ID")
 	if err != nil {

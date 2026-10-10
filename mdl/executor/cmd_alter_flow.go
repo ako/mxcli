@@ -313,7 +313,7 @@ func loadAlterFlow(ctx *ExecContext, s *ast.AlterFlowStmt) (*alterFlowContext, e
 			ObjectCollection:   nf.ObjectCollection,
 		}
 	} else {
-		mfs, err := ctx.Backend.ListMicroflows()
+		mfs, err := microflowsNamed(ctx, s.Name.Name)
 		if err != nil {
 			return nil, mdlerrors.NewBackend("list microflows", err)
 		}

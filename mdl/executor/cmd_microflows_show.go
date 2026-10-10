@@ -228,17 +228,11 @@ func describeMicroflowMode(ctx *ExecContext, name ast.QualifiedName, opts descri
 	entityNames := getEntityNames(ctx, h)
 	microflowNames := getMicroflowNames(ctx, h)
 
-	// Find the microflow
-	allMicroflows, err := ctx.Backend.ListMicroflows()
+	// Find the microflow: getMicroflowNames above already named every
+	// microflow, so only the ones with this name are decoded.
+	allMicroflows, err := microflowsNamed(ctx, name.Name)
 	if err != nil {
 		return mdlerrors.NewBackend("list microflows", err)
-	}
-
-	// Supplement microflow name lookup if not pre-warmed
-	if len(microflowNames) == 0 {
-		for _, mf := range allMicroflows {
-			microflowNames[mf.ID] = h.GetQualifiedName(mf.ContainerID, mf.Name)
-		}
 	}
 
 	// Describe the live microflow: a module may hold an excluded twin of this

@@ -143,7 +143,7 @@ func getMicroflowNames(ctx *ExecContext, h *ContainerHierarchy) map[model.ID]str
 		return ctx.Cache.microflowNames
 	}
 	microflowNames := make(map[model.ID]string)
-	mfs, err := ctx.Backend.ListMicroflows()
+	mfs, err := microflowHeaders(ctx)
 	if err != nil {
 		if ctx.Logger != nil {
 			ctx.Logger.Warn("getMicroflowNames: ListMicroflows failed", "error", err)
