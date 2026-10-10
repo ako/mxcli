@@ -49,9 +49,11 @@ var evalCheckCmd = &cobra.Command{
 Checks include:
   - entity_exists: Verify entity with matching name exists
   - entity_has_attribute: Verify entity has attribute with expected type
+  - entity_has_type: Verify the Type column reads Persistent, View, Non-Persistent or External
   - page_exists: Verify page with matching name exists
   - page_has_widget: Verify page contains expected widget type
   - microflow_exists: Verify microflow with matching name exists
+  - workflow_exists: Verify workflow with matching name exists
   - navigation_has_item: Verify navigation menu has items
   - association_exists: Verify an association with matching name exists
   - module_role_exists: Verify a module role with matching name exists

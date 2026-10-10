@@ -57,6 +57,8 @@ func runCheck(check Check, opts CheckOptions, entityList, pageList, microflowLis
 		return checkEntityExists(check, entityList)
 	case "entity_has_attribute":
 		return checkEntityHasAttribute(check, opts, entityList, describeCache)
+	case "entity_has_type":
+		return checkEntityHasType(check, entityList)
 	case "page_exists":
 		return checkPageExists(check, pageList)
 	case "page_has_widget":
@@ -76,6 +78,8 @@ func runCheck(check Check, opts CheckOptions, entityList, pageList, microflowLis
 		return checkListed(check, cachedList(opts, describeCache, "list associations"), "association")
 	case "module_role_exists":
 		return checkListed(check, cachedList(opts, describeCache, "list module roles"), "module role")
+	case "workflow_exists":
+		return checkListed(check, cachedList(opts, describeCache, "list workflows"), "workflow")
 	case "file_exists":
 		return checkFileExists(check, opts)
 	case "tests_pass":
@@ -94,6 +98,51 @@ func checkEntityExists(check Check, entityList string) CheckResult {
 	match := findMatch(entityList, pattern)
 	if match != "" {
 		return CheckResult{Check: check, Passed: true, Detail: fmt.Sprintf("found: %s", match)}
+	}
+	return CheckResult{Check: check, Passed: false, Detail: "entity not found"}
+}
+
+// checkEntityHasType verifies that `SHOW ENTITIES` lists the entity under the
+// expected Type column: "Persistent", "View", "Non-Persistent" or "External".
+// Args format: "Service.OpenRequestsPerFab View".
+//
+// entity_exists cannot do this. It matches on the qualified name alone, so a
+// brief that asks for a view entity passes when the agent builds an ordinary
+// persistent entity of the same name — which is the whole of what makes a view
+// entity a view entity. The Type column is the only place the distinction is
+// visible in a listing, and a name that merely ends in "View" is not evidence.
+func checkEntityHasType(check Check, entityList string) CheckResult {
+	parts := strings.Fields(check.Args)
+	if len(parts) != 2 {
+		return CheckResult{Check: check, Passed: false, Detail: `invalid args: expected "EntityPattern Type"`}
+	}
+	pattern, want := parts[0], parts[1]
+
+	for _, line := range strings.Split(entityList, "\n") {
+		matched := ""
+		for _, name := range extractQualifiedNames(line) {
+			if matchPattern(name, pattern) {
+				matched = name
+				break
+			}
+		}
+		if matched == "" {
+			continue
+		}
+		for _, field := range strings.Fields(line) {
+			field = strings.Trim(field, "()[]{}:,;|")
+			// The qualified name itself is never the type, so an entity called
+			// Mod.View does not answer for a view entity.
+			if field == matched {
+				continue
+			}
+			if strings.EqualFold(field, want) {
+				return CheckResult{Check: check, Passed: true, Detail: fmt.Sprintf("found: %s (%s)", matched, field)}
+			}
+		}
+		// Distinguished on purpose from "not found": the entity was built and
+		// is the wrong kind, which every other check kind reads as a pass.
+		return CheckResult{Check: check, Passed: false, Detail: fmt.Sprintf("found %s, but not as %s", matched, want)}
 	}
 	return CheckResult{Check: check, Passed: false, Detail: "entity not found"}
 }
