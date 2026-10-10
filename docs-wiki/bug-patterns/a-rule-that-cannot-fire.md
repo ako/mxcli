@@ -2,6 +2,8 @@
 title: A Rule That Cannot Fire
 category: bug-pattern
 last-synced: ce063188
+covers:
+  - mdl/linter
 sources:
   - .claude/skills/fix-issue/findings/
   - mdl/linter/context.go

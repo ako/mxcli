@@ -2,6 +2,8 @@
 title: Two Implementations, One Interface
 category: bug-pattern
 last-synced: 038f810e
+covers:
+  - mdl/backend
 sources:
   - .claude/skills/fix-issue/findings/mdl-backend/
   - mdl/backend/modelsdk/microflow.go

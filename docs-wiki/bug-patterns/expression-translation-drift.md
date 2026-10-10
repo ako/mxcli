@@ -2,6 +2,8 @@
 title: The Expression Translation Loses Meaning
 category: bug-pattern
 last-synced: ced830e0
+covers:
+  - mdl/visitor
 sources:
   - .claude/skills/fix-issue/findings/mdl-visitor/
   - mdl/visitor/visitor_microflow_expression.go

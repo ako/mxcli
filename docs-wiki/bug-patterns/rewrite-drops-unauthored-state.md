@@ -2,6 +2,8 @@
 title: Rewrites That Drop What They Did Not Author
 category: bug-pattern
 last-synced: 038f810e
+covers:
+  - mdl/executor
 sources:
   - .claude/skills/fix-issue/findings/mdl-executor/
   - docs/13-decisions/0005-semantic-model-interface-currency.md

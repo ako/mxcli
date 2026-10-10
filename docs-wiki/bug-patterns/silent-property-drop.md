@@ -2,6 +2,8 @@
 title: Properties That Parse but Never Persist
 category: bug-pattern
 last-synced: ced830e0
+covers:
+  - mdl/executor
 sources:
   - .claude/skills/fix-issue/findings/mdl-executor/
   - mdl/executor/validate_widgets.go

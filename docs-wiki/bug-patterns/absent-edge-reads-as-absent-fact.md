@@ -2,6 +2,8 @@
 title: An Absent Edge Reads As An Absent Fact
 category: bug-pattern
 last-synced: ce063188
+covers:
+  - mdl/catalog
 sources:
   - .claude/skills/fix-issue/findings/
   - mdl/catalog/builder_references.go

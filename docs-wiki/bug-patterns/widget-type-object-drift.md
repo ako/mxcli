@@ -2,6 +2,10 @@
 title: Widget Type / Object Drift (CE0463)
 category: bug-pattern
 last-synced: 392cacd6
+covers:
+  - cmd/mxcli
+  - mdl/backend
+  - mdl/executor
 sources:
   - .claude/skills/fix-issue/findings/mdl-executor/
   - .claude/skills/fix-issue/findings/cmd-mxcli/

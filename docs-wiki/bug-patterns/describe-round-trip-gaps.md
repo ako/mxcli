@@ -2,6 +2,8 @@
 title: DESCRIBE Round-Trip Gaps
 category: bug-pattern
 last-synced: 888e78cf
+covers:
+  - mdl/executor
 sources:
   - .claude/skills/fix-issue/findings/mdl-executor/
   - mdl/executor/cmd_workflows.go

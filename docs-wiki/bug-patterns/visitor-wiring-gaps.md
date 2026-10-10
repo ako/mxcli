@@ -2,6 +2,8 @@
 title: Visitor Wiring Gaps
 category: bug-pattern
 last-synced: ced830e0
+covers:
+  - mdl/visitor
 sources:
   - .claude/skills/fix-issue/findings/mdl-visitor/
   - mdl/visitor/visitor_enumeration.go

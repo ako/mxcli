@@ -2,6 +2,8 @@
 title: Styling That Compiles to Nothing
 category: bug-pattern
 last-synced: ced830e0
+covers:
+  - cmd/mxcli
 sources:
   - .claude/skills/fix-issue/findings/cmd-mxcli/
   - cmd/mxcli/theme/block.go

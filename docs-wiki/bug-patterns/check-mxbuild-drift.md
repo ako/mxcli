@@ -2,6 +2,10 @@
 title: When `mxcli check` and mxbuild Disagree
 category: bug-pattern
 last-synced: 038f810e
+covers:
+  - mdl/backend
+  - mdl/executor
+  - mdl/grammar
 sources:
   - .claude/skills/fix-issue/findings/mdl-executor/
   - .claude/skills/fix-issue/findings/mdl-backend/
