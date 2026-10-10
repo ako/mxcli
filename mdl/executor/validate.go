@@ -524,6 +524,7 @@ func pageDefinedAfter(prog *ast.Program, ref string, fromIdx int) bool {
 // to objects that are defined within the script itself.
 func (e *Executor) ValidateProgram(prog *ast.Program) []error {
 	defer e.enterLanguage(prog.LanguageVersion)()
+	defer e.CacheUnitReads()()
 	return validateProgram(e.newExecContext(context.Background()), prog)
 }
 
@@ -534,6 +535,7 @@ func (e *Executor) ValidateProgramWithWarnings(prog *ast.Program) ([]error, []st
 	// The script's header decides the gated rejections check predicts
 	// (viewAutoNumberRefused), as it does for exec.
 	defer e.enterLanguage(prog.LanguageVersion)()
+	defer e.CacheUnitReads()()
 	return validateProgramWithWarnings(e.newExecContext(context.Background()), prog)
 }
 
@@ -542,12 +544,14 @@ func (e *Executor) ValidateProgramWithWarnings(prog *ast.Program) ([]error, []st
 // exists in the connected project. Names created earlier in the same script are
 // excluded — those will be caught by CheckScriptDuplicates.
 func (e *Executor) CheckProjectConflicts(prog *ast.Program) []error {
+	defer e.CacheUnitReads()()
 	return CheckProjectConflicts(e.newExecContext(context.Background()), prog)
 }
 
 // CheckProjectNameClashes returns an error for every create that would give an
 // element a name another kind already has in its module (ako/mxcli#793).
 func (e *Executor) CheckProjectNameClashes(prog *ast.Program) []error {
+	defer e.CacheUnitReads()()
 	return CheckProjectNameClashes(e.newExecContext(context.Background()), prog)
 }
 

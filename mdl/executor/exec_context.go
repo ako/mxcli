@@ -248,6 +248,27 @@ func (ctx *ExecContext) Connected() bool {
 	return ctx != nil && ctx.Backend != nil && ctx.Backend.IsConnected()
 }
 
+// unitReadCacher is a backend that can hold the unit contents it reads in
+// memory over a span (the modelsdk backend; see mpr.Reader.CacheUnitReads).
+type unitReadCacher interface {
+	CacheUnitReads() (release func())
+}
+
+// CacheUnitReads holds the units the backend reads in memory until release is
+// called, for a span that writes nothing. check's passes, and exec's plan of a
+// `create or modify`, look a flow, an entity or a module up again and again,
+// and each lookup listed every document of its kind from disk: a `create or
+// modify` of a stored microflow read every microflow file of the project ~9
+// times (mendixlabs/mxcli#1272). A backend that cannot cache gets a no-op.
+func (ctx *ExecContext) CacheUnitReads() (release func()) {
+	if ctx != nil && ctx.Backend != nil {
+		if c, ok := ctx.Backend.(unitReadCacher); ok && ctx.Backend.IsConnected() {
+			return c.CacheUnitReads()
+		}
+	}
+	return func() {}
+}
+
 // ConnectedForWrite returns true if a project is connected and the backend
 // supports write operations. Currently equivalent to Connected() since
 // MprBackend always supports writes.

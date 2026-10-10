@@ -621,6 +621,12 @@ func (e *Executor) Backend() backend.FullBackend {
 	return e.backend
 }
 
+// CacheUnitReads holds the units the backend reads in memory until release is
+// called, for a pass that writes nothing (see ExecContext.CacheUnitReads).
+func (e *Executor) CacheUnitReads() (release func()) {
+	return (&ExecContext{Backend: e.Backend()}).CacheUnitReads()
+}
+
 // Close closes the connection to the project and all SQL connections.
 func (e *Executor) Close() error {
 	var closeErr error
