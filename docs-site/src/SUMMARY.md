@@ -5,6 +5,7 @@
 - [What is mxcli?](preface/what-is-mxcli.md)
 - [What is MDL?](preface/what-is-mdl.md)
 - [Design Principles](preface/design-principles.md)
+- [The Language Poster](preface/poster.md)
 - [Mendix Concepts for Newcomers](preface/mendix-concepts.md)
 - [Document Conventions](preface/conventions.md)
 

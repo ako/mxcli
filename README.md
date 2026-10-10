@@ -8,6 +8,10 @@ A command-line tool that enables AI coding assistants ([Claude Code](https://cla
 
 **[Read the documentation](https://mendixlabs.github.io/mxcli/)** | **[Try it in the Playground](https://codespaces.new/mendixlabs/mxcli-playground)** -- no install needed, runs in your browser
 
+[![The mxcli language poster -- click to open the interactive version](docs-site/src/poster/mxcli-poster.png)](https://mendixlabs.github.io/mxcli/poster/mxcli-language-poster.html)
+
+*Click the poster to open the [interactive version](https://mendixlabs.github.io/mxcli/poster/mxcli-language-poster.html).*
+
 ## Why mxcli?
 
 Mendix projects are stored in binary `.mpr` files that AI agents can't read directly. `mxcli` bridges this gap by providing:
