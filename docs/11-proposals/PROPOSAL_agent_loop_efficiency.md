@@ -23,7 +23,9 @@ item 3b, demotes item 4 and closes `mxcli apply` (§"The baseline, measured").
 Revised again 2026-10-10 — a second BENCH-001 run shows the first pass at item 3b
 was adopted (whole-file skill reads became `sed` ranges) but did not reduce the
 bill, with one adverse shape it appears to have induced; the comparison is n = 1
-per side and is recorded as unsettled (§"Run 2, measured").
+per side and is recorded as unsettled (§"Run 2, measured"); a third run
+makes the post-change side n = 2 and tight, and shows the skills' share of the
+bill halved with `syntax` sweeps taking the freed share (§"Run 3").
 
 ## The report
 
@@ -295,6 +297,74 @@ against the current binary, `brain plan` itself degrades gracefully (`No slices
 yet`, exit 0) and `brain brief` is the one that stops; which of the two the run
 hit is not recoverable from the pasted output, so this is logged as a routing
 question to confirm, not a diagnosed defect.
+
+### Run 3 — the post-change side is reproducible, and the composition is the finding
+
+`BENCH-001-2026-10-10T19-40-28`, session `77de22fb`, same binary as run 2, with
+**postgresql installed in the container**, so the `tests --local` tier ran and
+the run scored **21/21**.
+
+| | run 1 (pre) | run 2 (post) | run 3 (post) |
+|---|---:|---:|---:|
+| model calls | 47 | 61 | **59** |
+| wall | 7m00 | 7m25 | 6m57 |
+| avg context | 103 k | 104 k | 108 k |
+| cache read | 4.7 M | 6.2 M | 6.2 M |
+| re-read cost | 1.7 M (37%) | 2.1 M (34%) | **2.2 M (35%)** |
+| mxcli invocations | 70 / 17 chained | 85 / 22 | **93 / 28** |
+| `syntax` invocations | 6 | 8 | **16** |
+| doc lookups | 7 | 13 | **21** |
+| orientation share of calls | 31% | 43% | 37% |
+| score | 20/21 (env) | 20/21 (env) | **21/21** |
+
+Two things this adds that run 2 could not.
+
+**The post-change side is now n = 2 and tight** — 59 and 61 calls, 2.1 M and
+2.2 M — against a single pre-change point at 47 and 1.7 M. Run 3 is also the
+*stronger* of the two post-change points, because it did strictly more work:
+postgres present meant the test tier, `docker check` and `playwright check` all
+ran (`test` 5, `docker check` 5, `playwright check` 3) where runs 1 and 2 stopped
+short. Doing more work for the same call count is the better outcome, and it is
+still 26% above the pre-change point.
+
+**The lever hit its target and the total did not move, because a substitute
+appeared.** Composition of the top ten, which carry 1.66 M of the 2.2 M (75%):
+
+| | re-read | share of 2.2 M | run 1 |
+|---|---:|---:|---:|
+| skill reads (`cat` ×2, `sed` ×2) | 814 k | **37%** | 68% |
+| `syntax` (2 sweep loops, `--json`, 1 topic) | 502 k | **23%** | ~4% |
+| `DESCRIBE STRUCTURE` + `DESCRIBE NAVIGATION` | 345 k | 16% | ~11% |
+
+The skills' share of the bill **halved**, which is exactly what item 3b set out
+to do. The freed share was not returned — `syntax` took it, going from a cheap
+sixth of a lever to 23% of the re-read bill on 16 invocations, two of them
+`for t in …; do ./mxcli syntax $t; done` sweeps (195 k + 105 k) and one a whole
+`syntax --json` index dump (90 k). Run 2 showed the same shape with three sweeps;
+it reproduces.
+
+**And the index's realised saving is smaller than the design assumed**, measured
+against the files actually read:
+
+- `overview-pages` (699 lines) was read with a **full `cat`** — 331 k, the single
+  costliest result in the run. This is the exact case the index exists for and it
+  did not fire.
+- `test-microflows` (625 lines) was read as `40,400p` + `461,570p` — 470 of 625
+  lines across two calls, 311 k against ~345 k for a `cat`. A ~10% saving for two
+  round-trips instead of one.
+- `validation-microflows` (312 lines, ~3.2 k) was `cat`-ed, and that is *correct*
+  — a file that small is cheaper whole than in two ranges.
+
+So of three skill reads, one was rational, one saved ~10%, and the one that
+mattered ignored the index. **A section index makes a partial read possible; it
+does not make the agent want one.**
+
+The read that is now unambiguous across all three runs: compressing what each
+orientation read *returns* has not reduced how many orientation reads *happen*
+(31% → 43% → 37% of calls; 7 → 13 → 21 doc lookups). Read count is the term that
+enters quadratically, and nothing shipped so far touches it. That is item 3's
+territory — publish the chain and the facts the agent is round-tripping for —
+not further compression.
 
 ### What that settles about `mxcli apply`
 
@@ -885,7 +955,7 @@ baseline is the first thing to record wherever it does.
 | 2d | **Count a killed `run` in `diag loop-report` rather than dropping it** — **shipped** | S | was: the restart bill is invisible, `run`'s reported wall time a floor built from 4 of 30 invocations. Now a 30 s `session_alive` heartbeat bounds every unclosed run from below, whatever killed it, and the report separates the measured total, the measured floor and an explicitly-labelled estimate |
 | 2e | **App lifecycle as commands** — `run --local --detach`, `run status`, `run wait`, `run stop`, `run restart`, taught in the run-local/run-app skills and the generated gate list — **shipped** | M | ~25–28% of all tool calls in measured sessions were hand-rolled `nohup`/poll/`pkill` loops; each becomes one call, and `exec … && run wait` is the per-change chain |
 | 3 | Publish the canonical `&&` chain in `projectGates` + skills (lever 1) | XS | the 5–8 → 1–2 collapse, with nothing built |
-| 3b | **Make consuming the skills cheap** — **first pass shipped 2026-10-10**: the generated CLAUDE.md now routes `syntax` before any skill, and `scripts/skill-index.py` puts a verified line-numbered section index at the head of all 74 (`make check-skill-index` in CI). Not yet done: moving the syntax that skills restate into `syntax` itself — code blocks are only 28% of skill bytes, so that is a smaller prize than it looked | M | the largest measured token item, and it displaces item 4. **Measured, unsettled**: run 2 shows the cheap path taken (ranges replaced three of four whole-file reads) with the bill up anyway and one induced sweep shape; n = 1 per side, so an A/B of 2 + 2 against `9ce90f32` is what decides keep-or-revert (§"Run 2, measured") |
+| 3b | **Make consuming the skills cheap** — **first pass shipped 2026-10-10**: the generated CLAUDE.md now routes `syntax` before any skill, and `scripts/skill-index.py` puts a verified line-numbered section index at the head of all 74 (`make check-skill-index` in CI). Not yet done: moving the syntax that skills restate into `syntax` itself — code blocks are only 28% of skill bytes, so that is a smaller prize than it looked | M | the largest measured token item, and it displaces item 4. **Measured, leaning negative**: across runs 2 and 3 the skills' share of the re-read bill halved (68% -> 37%) and `syntax` sweeps took the freed share (23%), leaving the total 26% worse at a reproducible 59-61 calls against one pre-change point at 47. Missing datum is the control: two runs of `9ce90f32`. The identified surgical fix is to narrow the routing line against speculative sweeps, keeping the index (§"Run 3") |
 | 4 | Terse/delta output for `exec` and the noisy listings (lever 2) | M | the token half of the chain win; helps every call — but the baseline puts mxcli's own output at ~15% of the re-read cost against the skills' ~68%, so this is the junior partner to 3b |
 | 5 | Tiered verification rule in the skills (lever 3) | S | stops the default path at the cheapest sufficient gate |
 | 6 | Subagent trigger in the skills (lever 4) | XS | caps the worst tail |
