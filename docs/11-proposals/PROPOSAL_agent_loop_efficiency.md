@@ -20,6 +20,10 @@ promoting the app restart to the wall-time lever (§"Three projects, measured");
 revised 2026-10-10 — the BENCH-001 baseline recorded, putting skill and doc
 reads at ~68% of the re-read cost against mxcli's ~15%, which promotes a new
 item 3b, demotes item 4 and closes `mxcli apply` (§"The baseline, measured").
+Revised again 2026-10-10 — a second BENCH-001 run shows the first pass at item 3b
+was adopted (whole-file skill reads became `sed` ranges) but did not reduce the
+bill, with one adverse shape it appears to have induced; the comparison is n = 1
+per side and is recorded as unsettled (§"Run 2, measured").
 
 ## The report
 
@@ -217,6 +221,80 @@ two most-read), so "move the syntax out of the skills into `syntax`" could never
 have reclaimed most of the 68% — the skills are mostly prose, which is the part
 CLAUDE.md says belongs there. The reachable win is in *how much of a file gets
 read*, not in what the file contains.
+
+### Run 2, measured — the mechanism was adopted and the bill went up
+
+`BENCH-001-2026-10-10T18-47-02`, session `03e4df6c`, same brief, same 20/21
+(same environmental `postgresql` failure), run against a binary carrying both
+changes above.
+
+| | run 1 | run 2 |
+|---|---:|---:|
+| model calls | 47 | **61** |
+| wall | 7m00 | 7m25 |
+| avg context | 103 k | 104 k |
+| cache read | 4.7 M | **6.2 M** |
+| re-read cost | 1.7 M (37%) | **2.1 M (34%)** |
+| mxcli invocations | 70 / 17 chained | 85 / 22 chained |
+| `syntax` calls | 6 | 8 |
+| doc lookups | 7 | 13 |
+| orientation share of calls | 31% | **43%** |
+
+**The mechanism was adopted.** Three of the four whole-file skill reads became
+ranges — `sed -n 47,264p create-page` 3.7 k, `sed -n 112,265p write-microflows`
+2.4 k, `sed -n 1,200p test-microflows` 2.1 k, against run 1's 7.1 k and 6.7 k
+`cat`s — and `syntax` use rose. The index is being read and used for what it was
+built for.
+
+**The totals got worse anyway**, and one `cat
+.ai-context/…/overview-pages/SKILL.md` (6.1 k × 55 = 338 k) is now the single
+costliest result in the run. So the hypothesis as written — "watch whether `cat
+…/SKILL.md` leaves the costliest-results list" — came back **mixed**, which is
+not a pass.
+
+**One adverse mechanism is visible and plausibly induced by the routing
+change.** Run 2 contains three `for t in "…" "…" …; do ./mxcli syntax $t; done`
+loops, at slots 3, 4 and 6 of the costliest results (3.4 k + 2.6 k + 1.9 k,
+≈ 686 k combined). Run 1 has no such shape. Telling the agent to reach for
+`syntax` before a skill appears to have produced *speculative sweeps across
+topics*: per-topic `syntax` is still cheap, but a batched sweep is a single
+result larger than the whole-file read it replaced, and it is paid on every
+subsequent call. The cheap path was made more attractive without being made
+narrower.
+
+**n = 1 per side, so none of the deltas above are attributable.** Two independent
+reasons to distrust the comparison, beyond the sample size:
+
+- The two runs read **different skills** (run 1 write-microflows and
+  test-microflows; run 2 overview-pages and create-page). Skill *selection* is
+  itself stochastic, so the per-read costs are not measuring the same text.
+- The 47 → 61 call delta is larger than anything the change plausibly touches
+  directly, which is what a variance-dominated pair looks like.
+
+So the honest position is: **the first pass at item 3b is not validated, and not
+refuted.** What settles it is an A/B with repetition — two more runs of the
+current binary and two of `9ce90f32` (the pre-change build), reported as four
+points, not two. Until that exists, neither defending the change nor reverting
+it has evidence behind it, and the pre-registered revert condition ("if the agent
+keeps reading whole files, revert") did not fire cleanly: it kept reading *one*.
+
+The one unambiguous read of run 2 is about **where the remaining cost is**: with
+ranges in place, orientation went from 77% of the re-read bill to still being its
+largest block, now spread across more and cheaper results rather than
+concentrated in a few expensive ones. Making each read cheaper has not reduced
+the number of reads, and the number of reads is the term that enters
+quadratically. That points the next attempt at item 3 (state the chain, so fewer
+orientation round-trips are needed) rather than at further compression of what
+each read returns.
+
+Separately found while reading the transcript, and not part of this measurement:
+the run spent a call on a `brain` subcommand reporting that no store exists
+before `brain init` has run. The generated CLAUDE.md routes to `brain plan` for
+"planning, or picking work up" without naming that prerequisite. Verified
+against the current binary, `brain plan` itself degrades gracefully (`No slices
+yet`, exit 0) and `brain brief` is the one that stops; which of the two the run
+hit is not recoverable from the pasted output, so this is logged as a routing
+question to confirm, not a diagnosed defect.
 
 ### What that settles about `mxcli apply`
 
@@ -807,7 +885,7 @@ baseline is the first thing to record wherever it does.
 | 2d | **Count a killed `run` in `diag loop-report` rather than dropping it** — **shipped** | S | was: the restart bill is invisible, `run`'s reported wall time a floor built from 4 of 30 invocations. Now a 30 s `session_alive` heartbeat bounds every unclosed run from below, whatever killed it, and the report separates the measured total, the measured floor and an explicitly-labelled estimate |
 | 2e | **App lifecycle as commands** — `run --local --detach`, `run status`, `run wait`, `run stop`, `run restart`, taught in the run-local/run-app skills and the generated gate list — **shipped** | M | ~25–28% of all tool calls in measured sessions were hand-rolled `nohup`/poll/`pkill` loops; each becomes one call, and `exec … && run wait` is the per-change chain |
 | 3 | Publish the canonical `&&` chain in `projectGates` + skills (lever 1) | XS | the 5–8 → 1–2 collapse, with nothing built |
-| 3b | **Make consuming the skills cheap** — **first pass shipped 2026-10-10**: the generated CLAUDE.md now routes `syntax` before any skill, and `scripts/skill-index.py` puts a verified line-numbered section index at the head of all 74 (`make check-skill-index` in CI). Not yet done: moving the syntax that skills restate into `syntax` itself — code blocks are only 28% of skill bytes, so that is a smaller prize than it looked | M | the largest measured token item, and it displaces item 4. **Unverified**: needs a second BENCH-001 run to say whether the agent takes the cheap path |
+| 3b | **Make consuming the skills cheap** — **first pass shipped 2026-10-10**: the generated CLAUDE.md now routes `syntax` before any skill, and `scripts/skill-index.py` puts a verified line-numbered section index at the head of all 74 (`make check-skill-index` in CI). Not yet done: moving the syntax that skills restate into `syntax` itself — code blocks are only 28% of skill bytes, so that is a smaller prize than it looked | M | the largest measured token item, and it displaces item 4. **Measured, unsettled**: run 2 shows the cheap path taken (ranges replaced three of four whole-file reads) with the bill up anyway and one induced sweep shape; n = 1 per side, so an A/B of 2 + 2 against `9ce90f32` is what decides keep-or-revert (§"Run 2, measured") |
 | 4 | Terse/delta output for `exec` and the noisy listings (lever 2) | M | the token half of the chain win; helps every call — but the baseline puts mxcli's own output at ~15% of the re-read cost against the skills' ~68%, so this is the junior partner to 3b |
 | 5 | Tiered verification rule in the skills (lever 3) | S | stops the default path at the cheapest sufficient gate |
 | 6 | Subagent trigger in the skills (lever 4) | XS | caps the worst tail |
