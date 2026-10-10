@@ -377,6 +377,10 @@ func TestMxCheck_DoctypeScripts(t *testing.T) {
 				// nowhere else.
 				env.executor.SetScriptDir(doctypeDir)
 
+				// Fingerprint the units before the script, so the property-set
+				// check below judges only what mxcli wrote.
+				unitsBefore := propertySetsBefore(t, env.projectPath)
+
 				// Execute the script
 				prog, errs := visitor.Build(filtered)
 				if len(errs) > 0 {
@@ -428,6 +432,10 @@ func TestMxCheck_DoctypeScripts(t *testing.T) {
 				} else {
 					t.Logf("mx check passed: 0 errors")
 				}
+
+				// A clean mx check says nothing about whether Mendix can MERGE
+				// what was written (mendixlabs/mxcli#1373).
+				checkPropertySets(t, mxPath, env.projectPath, pv.ProductVersion, unitsBefore)
 			})
 		}
 	}
