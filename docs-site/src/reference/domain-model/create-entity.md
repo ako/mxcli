@@ -5,7 +5,8 @@
     CREATE [ OR MODIFY ] entity_type ENTITY module.name
         [ EXTENDS parent_module.parent_entity ]
     (
-        attribute_name : data_type [ NOT NULL [ ERROR 'message' ] ]
+        attribute_name : data_type [ NOT LOCALIZED | LOCALIZED ]
+                                   [ NOT NULL [ ERROR 'message' ] ]
                                    [ UNIQUE [ ERROR 'message' ] ]
                                    [ DEFAULT value ]
                                    [ CALCULATED [ BY module.microflow ] ]
@@ -78,6 +79,9 @@ One or more `INDEX` clauses may follow the attribute list to create database ind
 
 **data_type**
 : The attribute's data type. See the table above for all supported types. `String` requires an explicit length argument.
+
+**NOT LOCALIZED | LOCALIZED**
+: DateTime only: Studio Pro's **Localize** setting (`LocalizeDate`). `NOT LOCALIZED` stores and shows the value without time-zone conversion (a calendar date such as a birth date); `LOCALIZED` states the default. On a new attribute no clause means localized; with `OR MODIFY`, no clause keeps the stored value and a stated one wins. On any other type it is an error. See [Constraints](../../language/constraints.md#localized--not-localized-datetime-only).
 
 **NOT NULL**
 : Marks the attribute as required. An optional `ERROR 'message'` clause provides a custom validation message shown when the constraint is violated.
