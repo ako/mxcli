@@ -1,13 +1,15 @@
 ---
 title: Legal MDL, Illegal Mendix
 category: bug-pattern
-last-synced: ced830e0
+last-synced: a20932c1
 covers:
   - mdl/executor
 sources:
   - .claude/skills/fix-issue/findings/mdl-executor/
   - mdl/executor/validate_microflow_ce_gaps.go
   - mdl/executor/validate_microflow_loop_scope.go
+  - mdl/executor/cmd_entities_system_members.go
+  - modelsdk/meta/system_module.go
 ---
 
 > **Do not duplicate**: each rule's predicate, CE number and measured fix live in
@@ -50,6 +52,40 @@ Mendix's model, which is why they are rejected on a non-persistent entity
 a list. An `else` on a type split is the `(empty)` flow — a null object — not a
 default branch, so it never catches an unlisted subtype.
 
+**A fifth sub-language: the platform's own module.** `System` is a module with a
+domain model and **no stored unit** — it is synthesized in code — so every *read*
+of it resolves and every *write* reaches for a container that does not exist.
+`CREATE ENUMERATION System.X` reported success and wrote an orphaned unit
+parented to a synthetic id. The general lesson is uncomfortable and worth
+stating plainly: **making a synthesized element readable makes it writable, so
+audit every write verb in the same change.** The read fix was one append;
+enumerating what it exposed took three passes and kept growing — create, alter,
+drop, and `MOVE` in *both* directions, since guarding only the source still lets
+a user element be moved *into* System. Any per-module write sweep has the same
+hole: an access reconcile of the TO end's module tried to open a zero-GUID unit
+for it.
+
+The inverse holds for references *into* System: they can never appear in a
+project listing, because the project does not store them. A resolver that
+refuses what it cannot find there is wrong, and the honest behaviour is **not to
+judge** — mxbuild resolves the name, and its member lists are not in a readable
+form anywhere in mxcli.
+
+**System members are flags on the root of the generalization chain, and two of
+them are associations.** `owner` and `changedBy` are associations to
+`System.User`, addressable only as `System.owner` / `System.changedBy`, and no
+domain model lists them; an entity carries them as `HasOwner` / `HasChangedBy`
+on the root's `NoGeneralization`. Everything surprising follows from that: the
+names are lower camel case and the case is significant, so `sort by CreatedDate`
+— the spelling DESCRIBE prints for the pseudo-type — is CE1613; a declaration on
+a *specialization* has exactly two meanings, redundant (the root stores it) or
+impossible (it does not, and for a System root nothing can change it); and a
+retrieve over `$x/System.owner` has no storable shape, because the association
+is not an element there is an id for. The stored flags are **measurable** rather
+than guessable — each root's `NoGeneralization` in `deployment/model/model.mdp`
+carries them, which is the same place the System attribute *lengths* come from
+(they are not in the Model SDK at all).
+
 **None of this is discoverable from the MDL side.** The author writes something
 that reads correctly, `mxcli check` has no rule for it, `exec` writes it, and the
 build names a CE code against a construct the author believed was ordinary. The
@@ -80,3 +116,5 @@ measurement is for.
   CE number, and the mxbuild run that established it
 - [[check-mxbuild-drift]] — what happens when one of these rules is wrong
 - [[mdl-as-sql]] — why the language is permissive by design
+- [[binding-context]] — the sibling class where the name is legal and resolved
+  against the wrong object

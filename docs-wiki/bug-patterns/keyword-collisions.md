@@ -1,12 +1,14 @@
 ---
 title: The Keyword Set Leaks Into User Data
 category: bug-pattern
-last-synced: ced830e0
+last-synced: a20932c1
 covers:
   - mdl/grammar
 sources:
   - .claude/skills/fix-issue/findings/mdl-grammar/
   - mdl/grammar/MDLLexer.g4
+  - mdl/grammar/MDLParser.g4
+  - mdl/grammar/MDLSecurity.g4
   - mdl/executor/identifier_quoting.go
 ---
 
@@ -61,6 +63,46 @@ do that, which is why the sibling emitter never had the bug — and where
 stringifying is unavoidable, the guard is a describe-then-parse loop over the
 enumeration's full membership.
 
+**Every bare `IDENTIFIER` in a name position is a time bomb that the next lexer
+keyword arms.** The collision does not need a new user name — it needs a new
+*keyword*. Promoting `ai` and `sample` to lexer tokens broke
+`alter enumeration … drop value Sample;` (create already used a keyword-tolerant
+name rule, alter did not); `Region` has lexed as `SCROLLREGION` for as long as
+scroll regions have existed, so `grant read on M.E (Region)` was a parse error
+while `create entity` accepted the same name unquoted. Two rules fall out, and
+both are greps rather than judgement:
+
+- **When a PR adds a lexer token, grep the grammar for bare `IDENTIFIER` in name
+  positions** — anything not `identifierOrKeyword` or a `*Name` rule — and try
+  the new word there. The round-trip corpus only catches it if some app happens
+  to use the word.
+- **A name a statement can declare must be usable everywhere it is referenced.**
+  The asymmetry is the bug: one rule out of the whole security grammar lacked
+  `| keyword`, and a user who could create the attribute could not grant on it.
+
+The same applies to any new `( key: value )` option list, where the keys are
+usually English words the lexer already owns: keying one on `IDENTIFIER` made the
+feature's **only** option a parse error on the day it shipped.
+
+**A catch-all alternative is a silent no-op for everything its visitor does not
+list.** `helpStatement: IDENTIFIER (word …)*` matched any statement beginning
+with an identifier, and the visitor filtered by `switch word { case "help": … }`
+— so `craete module Foo;` parsed cleanly, did nothing, and exited 0. A misspelt
+keyword is not a typo the user gets told about; it is a statement that vanishes.
+Move the filter **into** the grammar as a predicate so the parser refuses what
+the visitor would ignore. The method for finding what an old catch-all used to
+swallow is worth keeping: do not diff the grammars (the word is in neither) —
+dump the old binary's parse tree for the failing line, which named
+`(helpStatement private)` at once, then sweep a corpus for every error-free old
+parse that reached that rule.
+
+**An AST field cannot be singular where the grammar allows repetition.** Two
+predicates on one XPath step parsed and the second was dropped, because the step
+carried one `Predicate` field — and the stored-constraint reader did not report
+it either, since ANTLR's recovery consumed the stray bracket up to EOF and the
+EOF check passed. When relaxing a rule to accept repetition, the AST, every
+serializer and every rewriter change with it.
+
 **Quoting is not one question.** Quoting escapes MDL's *parser* keywords. It does
 not escape Mendix's platform-reserved member names, and it does not help in an
 OQL alias. Three vocabularies stack, and a rule that conflates them produces
@@ -72,3 +114,5 @@ confident, wrong advice.
   collisions and their controls
 - [[describe-round-trip-gaps]] — where an unquoted emit surfaces
 - [[platform-semantics-gaps]] — the other two vocabularies quoting does not reach
+- [[capability-gap-as-parse-error]] — when the parse error is honest and the
+  capability is what is missing
