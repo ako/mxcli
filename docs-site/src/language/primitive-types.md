@@ -101,6 +101,14 @@ ModifiedAt: DateTime
 ScheduledFor: DateTime
 ```
 
+A DateTime is localized (shown in the user's time zone) by default. For a
+calendar date that must not shift with the time zone, such as a birth date, add
+`NOT LOCALIZED` — see [Constraints](./constraints.md#localized--not-localized-datetime-only):
+
+```text
+BirthDate: DateTime NOT LOCALIZED
+```
+
 DateTime values include both date and time components. To show only the date, format it on the widget; there is no `Date` type.
 
 ## No `Date`, `Float` or `Currency`

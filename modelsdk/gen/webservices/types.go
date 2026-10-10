@@ -1830,13 +1830,19 @@ func (o *RpcMessagePartElement) SetPartName(v string) {
 	o.partName.Set(v)
 }
 
-// TypeName returns the value of the typeName property.
-func (o *RpcMessagePartElement) TypeName() string {
+// PartTypeName returns the value of the typeName property.
+//
+// GEN FIX: generated as TypeName/SetTypeName, which shadowed element.Base's —
+// the $Type accessors the codec reads. initRpcMessagePartElement's
+// SetTypeName("WebServices$RpcMessagePartElement") then hit the property before
+// it existed, so the package's init panicked the moment anything imported it,
+// and an encoded element would have carried the property value as its $Type.
+func (o *RpcMessagePartElement) PartTypeName() string {
 	return o.propTypeName.Get()
 }
 
-// SetTypeName sets the value of the typeName property.
-func (o *RpcMessagePartElement) SetTypeName(v string) {
+// SetPartTypeName sets the value of the typeName property.
+func (o *RpcMessagePartElement) SetPartTypeName(v string) {
 	o.propTypeName.Set(v)
 }
 

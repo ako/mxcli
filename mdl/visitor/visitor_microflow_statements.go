@@ -115,6 +115,13 @@ func buildMicroflowStatement(ctx parser.IMicroflowStatementContext) ast.Microflo
 		stmt = buildShowPageStatement(showPage)
 	} else if closePage := mfCtx.ClosePageStatement(); closePage != nil {
 		close := &ast.ClosePageStmt{NumberOfPages: 1}
+		// `close page n`: a count that is not a positive whole number is
+		// refused by ExitClosePageStatement.
+		if num := closePage.NUMBER_LITERAL(); num != nil {
+			if n, err := strconv.Atoi(num.GetText()); err == nil && n >= 1 {
+				close.NumberOfPages = n
+			}
+		}
 		if errClause := closePage.OnErrorClause(); errClause != nil {
 			close.ErrorHandling = buildOnErrorClause(errClause)
 		}

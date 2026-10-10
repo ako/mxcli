@@ -1348,7 +1348,9 @@ var r8Entries = []Entry{
 		Rewrite:   Rewrite{Structural: "type `date` as the type it was stored as: `DateTime`"},
 		RemovedIn: 1,
 		Note: "Mendix has no date-only type: `date` was always stored as a DateTime, and still is. " +
-			"To show only the date, give the widget a date format.",
+			"To show only the date, give the widget a date format. For a calendar date that must not shift " +
+			"with the user's time zone (a birth date), write `DateTime not localized` — the rewrite does not, " +
+			"because `date` was always stored localized.",
 		Example:          "create persistent entity M.Account ( LastImport: date );",
 		CanonicalExample: "create persistent entity M.Account ( LastImport: DateTime );",
 	},

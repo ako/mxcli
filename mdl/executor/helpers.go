@@ -15,6 +15,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
+	"github.com/mendixlabs/mxcli/sdk/microflows"
 )
 
 // ----------------------------------------------------------------------------
@@ -491,7 +492,7 @@ func buildMicroflowQualifiedNames(ctx *ExecContext) map[string]bool {
 	if err != nil {
 		return result
 	}
-	mfs, err := ctx.Backend.ListMicroflows()
+	mfs, err := microflowHeaders(ctx)
 	if err != nil {
 		return result
 	}
@@ -500,6 +501,53 @@ func buildMicroflowQualifiedNames(ctx *ExecContext) map[string]bool {
 		result[qn] = true
 	}
 	return result
+}
+
+// microflowLookup is a backend that can find microflows without decoding
+// every one of them (the modelsdk backend).
+type microflowLookup interface {
+	ListMicroflowsNamed(name string) ([]*microflows.Microflow, error)
+	ListMicroflowHeaders() ([]types.DocumentHeader, error)
+}
+
+// microflowsNamed is the project's microflows whose local name is name, in
+// every module. A caller that looks one microflow up needs no other: the
+// modelsdk backend decodes only these, where ListMicroflows decoded the whole
+// flow of every microflow in the project — for a lookup check makes several
+// times per statement (mendixlabs/mxcli#1272).
+func microflowsNamed(ctx *ExecContext, name string) ([]*microflows.Microflow, error) {
+	if l, ok := ctx.Backend.(microflowLookup); ok {
+		return l.ListMicroflowsNamed(name)
+	}
+	all, err := ctx.Backend.ListMicroflows()
+	if err != nil {
+		return nil, err
+	}
+	var out []*microflows.Microflow
+	for _, mf := range all {
+		if mf.Name == name {
+			out = append(out, mf)
+		}
+	}
+	return out, nil
+}
+
+// microflowHeaders is every microflow's ID, container, name and Excluded flag,
+// for a name set or an ID-to-name map: no flow is decoded where the backend
+// can avoid it.
+func microflowHeaders(ctx *ExecContext) ([]types.DocumentHeader, error) {
+	if l, ok := ctx.Backend.(microflowLookup); ok {
+		return l.ListMicroflowHeaders()
+	}
+	all, err := ctx.Backend.ListMicroflows()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]types.DocumentHeader, len(all))
+	for i, mf := range all {
+		out[i] = types.DocumentHeader{ID: mf.ID, ContainerID: mf.ContainerID, Name: mf.Name, Excluded: mf.Excluded}
+	}
+	return out, nil
 }
 
 // buildMicroflowReturnTypes maps each stored microflow's qualified name to the
@@ -831,7 +879,10 @@ func convertDataType(dt ast.DataType) domainmodel.AttributeType {
 	case ast.TypeBoolean:
 		return &domainmodel.BooleanAttributeType{}
 	case ast.TypeDateTime:
-		return &domainmodel.DateTimeAttributeType{LocalizeDate: true}
+		// `not localized` is the one spelling of false; unstated is Mendix's
+		// default, true. A rewrite that leaves it unstated carries the stored
+		// value afterwards (carryStoredAttributeState, MODIFY ATTRIBUTE).
+		return &domainmodel.DateTimeAttributeType{LocalizeDate: dt.Localize.LocalizeDate()}
 	case ast.TypeDate:
 		return &domainmodel.DateAttributeType{}
 	case ast.TypeAutoNumber:
@@ -895,6 +946,16 @@ func getAttributeTypeName(at domainmodel.AttributeType) string {
 
 func formatAttributeType(at domainmodel.AttributeType) string {
 	return getAttributeTypeName(at)
+}
+
+// localizeClause renders a DateTime attribute's LocalizeDate as the constraint
+// that follows its type: " not localized" when false, and nothing for the
+// default, so describe only says what differs from a fresh `DateTime` (#1373).
+func localizeClause(at domainmodel.AttributeType) string {
+	if dt, ok := at.(*domainmodel.DateTimeAttributeType); ok && !dt.LocalizeDate {
+		return " not localized"
+	}
+	return ""
 }
 
 // buildWorkflowQualifiedNames returns a set of all workflow qualified names in

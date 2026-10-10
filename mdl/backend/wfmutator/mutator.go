@@ -469,9 +469,13 @@ func (m *Mutator) InsertBranch(activityRef string, atPos int, condition string, 
 		}
 	}
 
-	if len(activities) > 0 {
-		outcomeDoc = append(outcomeDoc, bson.E{Key: "Flow", Value: m.buildSubFlowBson(activities)})
-	}
+	// Every outcome carries a Flow (empty when the branch is) and a
+	// PersistentId: Studio Pro stores both on all of them (ako/TestApp 11.14.0),
+	// and an outcome without them is one Mendix's merge engine cannot compare
+	// with Studio Pro's next save of the workflow (mendixlabs/mxcli#1373).
+	outcomeDoc = append(outcomeDoc,
+		bson.E{Key: "Flow", Value: m.buildSubFlowBson(activities)},
+		bson.E{Key: "PersistentId", Value: bsonutil.NewIDBsonBinary()})
 
 	outcomes := bsonnav.DGetArrayElements(bsonnav.DGet(actDoc, "Outcomes"))
 	outcomes = append(outcomes, outcomeDoc)

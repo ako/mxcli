@@ -731,7 +731,14 @@ func attributeTypeToGen(t domainmodel.AttributeType) element.Element {
 		g.SetLocalizeDate(at.LocalizeDate)
 		return g
 	case *domainmodel.DateAttributeType:
-		return genDm.NewDateTimeAttributeType()
+		// Mendix has no date-only type. The key is written, never omitted: an
+		// absent LocalizeDate is not what Studio Pro writes and trips Mendix's
+		// merge/diff (mendixlabs/mxcli#1373). True is what the absent key was
+		// always read as (storedLocalizeDate), so the stored meaning is
+		// unchanged; `DateTime not localized` is the spelling for false.
+		g := genDm.NewDateTimeAttributeType()
+		g.SetLocalizeDate(true)
+		return g
 	case *domainmodel.AutoNumberAttributeType:
 		return genDm.NewAutoNumberAttributeType()
 	case *domainmodel.BinaryAttributeType:

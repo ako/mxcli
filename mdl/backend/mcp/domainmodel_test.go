@@ -219,6 +219,21 @@ func TestAssociationMultiplicity(t *testing.T) {
 	}
 }
 
+// PED cannot carry LocalizeDate, so `not localized` is refused rather than
+// silently created localized (#1373).
+func TestGuardUnsupportedEntityFeatures_RefusesNotLocalizedDateTime(t *testing.T) {
+	e := newPersistentEntity("Person", attr("Born", &domainmodel.DateTimeAttributeType{LocalizeDate: false}))
+	err := guardUnsupportedEntityFeatures(e)
+	if err == nil || !strings.Contains(err.Error(), "not localized") {
+		t.Errorf("not localized DateTime: err = %v, want a refusal naming it", err)
+	}
+	// Control: the default is accepted.
+	e = newPersistentEntity("Person", attr("Born", &domainmodel.DateTimeAttributeType{LocalizeDate: true}))
+	if err := guardUnsupportedEntityFeatures(e); err != nil {
+		t.Errorf("localized DateTime refused: %v", err)
+	}
+}
+
 func TestGuardAssociationFeatures_RejectsCustomDeleteBehavior(t *testing.T) {
 	a := &domainmodel.Association{
 		Name:                "A",

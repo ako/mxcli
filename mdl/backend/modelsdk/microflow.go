@@ -12,6 +12,7 @@ import (
 	genTexts "github.com/mendixlabs/mxcli/modelsdk/gen/texts"
 	"github.com/mendixlabs/mxcli/modelsdk/mprread"
 
+	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
 )
@@ -34,8 +35,37 @@ func (b *Backend) ListMicroflows() ([]*microflows.Microflow, error) {
 	return out, nil
 }
 
+// ListMicroflowsNamed is ListMicroflows for the microflows whose local name is
+// name, in every module: a lookup by name decodes only those
+// (mendixlabs/mxcli#1272).
+func (b *Backend) ListMicroflowsNamed(name string) ([]*microflows.Microflow, error) {
+	units, err := mprread.ListUnitsWithContainerWhere[*genMf.Microflow](b.reader, mprread.HasName(name))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*microflows.Microflow, 0, len(units))
+	for _, u := range units {
+		out = append(out, microflowFromGen(u.Element, u.ContainerID))
+	}
+	return out, nil
+}
+
+// ListMicroflowHeaders lists every microflow's ID, container, name and
+// Excluded flag without decoding any flow.
+func (b *Backend) ListMicroflowHeaders() ([]types.DocumentHeader, error) {
+	hs, err := mprread.ListUnitHeaders[*genMf.Microflow](b.reader)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]types.DocumentHeader, len(hs))
+	for i, h := range hs {
+		out[i] = types.DocumentHeader(h)
+	}
+	return out, nil
+}
+
 func (b *Backend) GetMicroflow(id model.ID) (*microflows.Microflow, error) {
-	units, err := mprread.ListUnitsWithContainer[*genMf.Microflow](b.reader)
+	units, err := mprread.ListUnitsWithContainerWhere[*genMf.Microflow](b.reader, mprread.HasID(id))
 	if err != nil {
 		return nil, err
 	}

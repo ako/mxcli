@@ -54,7 +54,6 @@
 7	syntax	.claude/skills/mendix/test-microflows/reference/annotations.md
 3	syntax	.claude/skills/mendix/theme-styling/SKILL.md
 2	syntax	.claude/skills/mendix/translations/SKILL.md
-1	syntax	.claude/skills/mendix/validation-microflows/SKILL.md
 1	syntax	.claude/skills/mendix/write-layouts/SKILL.md
 17	syntax	.claude/skills/mendix/write-microflows/SKILL.md
 1	syntax	.claude/skills/mendix/write-microflows/reference/integration.md

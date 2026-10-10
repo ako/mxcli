@@ -1,0 +1,35 @@
+mdl 1;
+-- ============================================================================
+-- mendixlabs/mxcli#1373: a DateTime attribute's "Localize" setting
+-- ============================================================================
+--
+-- Studio Pro's "Localize" checkbox on a DateTime attribute is
+-- DomainModels$DateTimeAttributeType.LocalizeDate. MDL spells it as a
+-- constraint after the type:
+--
+--   D: DateTime                 -- localized, Mendix's default
+--   D: DateTime not localized   -- LocalizeDate = false
+--   D: DateTime localized       -- the default, stated
+--
+-- Verify in Studio Pro: open F1373.Person; BirthDate and Born have "Localize"
+-- unticked, CreatedAt and Flip have it ticked. `describe entity F1373.Person`
+-- prints ` not localized` on BirthDate and Born only. 0 errors from mx check
+-- (measured on a fresh 11.14.0 app).
+-- ============================================================================
+
+create module F1373;
+
+create persistent entity F1373.Person (
+  CreatedAt: DateTime,
+  BirthDate: DateTime not localized not null,
+  Flip: DateTime not localized
+);
+
+-- A modify that does not state it keeps the stored value: BirthDate stays
+-- not localized (it used to come back localized).
+alter entity F1373.Person modify attribute BirthDate: DateTime;
+
+-- A stated clause wins: Flip becomes localized again.
+alter entity F1373.Person modify attribute Flip: DateTime localized;
+
+alter entity F1373.Person add attribute Born: DateTime not localized;

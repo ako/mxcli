@@ -44,6 +44,11 @@ type logRecord struct {
 	// ParentPID is the mxcli process that spawned this one, when one did. It is
 	// a string because diaglog writes "" for a top-level run (ako/mxcli#629).
 	ParentPID string `json:"parent_pid"`
+	// ExitCode is on session_end, and only when non-zero. Absent means zero:
+	// before mxcli closed the session on its error path, a session_end could
+	// only be written by a run that succeeded, so the default reads correctly
+	// on older logs too.
+	ExitCode int `json:"exit_code"`
 }
 
 // invocation is one mxcli process: a session_start and the session_end that
@@ -61,6 +66,21 @@ type invocation struct {
 	// single test executes, so counting them as calls the agent made overstates
 	// the loop and understates `test` (ako/mxcli#629).
 	Spawned bool
+	// ExitCode is the code the process left with, for one that closed.
+	ExitCode int
+	// LastSeen is the newest session_alive heartbeat from this process. For a
+	// run that never closed it is the only MEASURED evidence of how long it
+	// lasted — a lower bound, since the process died somewhere after it.
+	LastSeen time.Time
+}
+
+// Floor is the measured lower bound on an unclosed run's duration: how long it
+// was still heartbeating. Zero when it died before its first heartbeat.
+func (i invocation) Floor() time.Duration {
+	if i.Ended || i.LastSeen.IsZero() {
+		return 0
+	}
+	return i.LastSeen.Sub(i.Start)
 }
 
 // Duration is wall time for an invocation that closed. An invocation that did
@@ -75,11 +95,28 @@ type verbStats struct {
 	// NOT named Failed, and there is no per-verb error field either: the two
 	// populations are disjoint (see loopReport.StatementErrors) and one name for
 	// two meanings is how a report starts lying.
-	Count    int           `json:"count"`
-	Unclosed int           `json:"unclosed"`
-	TotalDur time.Duration `json:"-"`
-	TotalSec float64       `json:"total_seconds"`
-	MedianMS int64         `json:"median_ms"`
+	Count    int `json:"count"`
+	Unclosed int `json:"unclosed"`
+	// ExitedNonZero is runs that closed and reported a non-zero exit code.
+	// Unlike Unclosed these carry a measured duration, which is the point:
+	// a run that failed still spent the time it spent.
+	ExitedNonZero int           `json:"exited_nonzero"`
+	TotalDur      time.Duration `json:"-"`
+	TotalSec      float64       `json:"total_seconds"`
+	MedianMS      int64         `json:"median_ms"`
+	// FloorSec is the summed measured lower bound of this verb's unclosed runs:
+	// how long each was still heartbeating. Measured, not extrapolated.
+	FloorSec float64 `json:"unclosed_floor_seconds"`
+	// UnmeasuredSec is an ESTIMATE for the unclosed runs that left no heartbeat
+	// at all, at this verb's median closed duration — the only figure here that
+	// is not a measurement. Zero when no run of this verb closed, because there
+	// is then nothing to extrapolate from and a guess would be worse than the
+	// admission.
+	UnmeasuredSec float64 `json:"unmeasured_estimate_seconds"`
+	// unheard is the unclosed runs with no heartbeat — the only ones the
+	// estimate above covers. Not emitted: it is working state, and the two
+	// figures it splits are both reported.
+	unheard int
 }
 
 // loopReport is the whole analysis, and is what --json emits.
@@ -98,16 +135,33 @@ type loopReport struct {
 	// it measures is the fix; making it mean "failed" would take an exit-code
 	// path through all ~250 os.Exit sites.
 	StatementErrors int `json:"runs_with_statement_errors"`
-	// Unclosed is runs with no session_end. See the comment at its increment.
+	// Unclosed is runs with no session_end — a process that VANISHED: killed
+	// with SIGKILL, or exited through an os.Exit inside a command. A run that
+	// merely returned an error now closes and is counted in ExitedNonZero
+	// instead, with its duration (item 2d).
 	Unclosed int `json:"unclosed"`
+	// ExitedNonZero is runs that closed with a non-zero exit code. Measured,
+	// duration included.
+	ExitedNonZero int `json:"runs_exited_nonzero"`
 	// Spawned is runs mxcli started itself, excluded from every other figure
 	// here. They are real processes and their time is already inside their
 	// parent's, so counting them again would double it (ako/mxcli#629).
-	Spawned      int         `json:"spawned_by_mxcli"`
-	WallSeconds  float64     `json:"wall_seconds"`
-	ByVerb       []verbStats `json:"by_verb"`
-	CheckExecDup int         `json:"check_then_exec_pairs"`
-	Span         string      `json:"span"`
+	Spawned     int     `json:"spawned_by_mxcli"`
+	WallSeconds float64 `json:"wall_seconds"`
+	// UnclosedFloorSeconds is how long the unclosed runs were MEASURED to still
+	// be running, from their heartbeats. A lower bound: each died somewhere
+	// after its last one.
+	UnclosedFloorSeconds float64 `json:"unclosed_floor_seconds"`
+	// UnmeasuredSeconds estimates the unclosed runs that left no heartbeat, at
+	// their verb's median. It is NEVER added into WallSeconds, which stays a
+	// pure measurement — the figure a before/after comparison is read from.
+	// Printing the three side by side is the fix for item 2d: the restart bill
+	// was invisible because the only number on the page was computed over the
+	// minority of runs that closed.
+	UnmeasuredSeconds float64     `json:"unmeasured_estimate_seconds"`
+	ByVerb            []verbStats `json:"by_verb"`
+	CheckExecDup      int         `json:"check_then_exec_pairs"`
+	Span              string      `json:"span"`
 }
 
 // parseLogRecords reads JSON Lines, skipping anything that does not parse. A
@@ -196,6 +250,16 @@ func buildInvocations(records []logRecord) []invocation {
 			if r.PID != 0 {
 				open[r.PID] = cur
 			}
+		case "session_alive":
+			// Pairs by pid like session_end. A heartbeat is the only thing a
+			// process that is killed, or that exits through an os.Exit inside a
+			// command, leaves behind about its duration.
+			if r.PID == 0 {
+				continue
+			}
+			if i, ok := open[r.PID]; ok && r.Time.After(out[i].LastSeen) {
+				out[i].LastSeen = r.Time
+			}
 		case "session_end":
 			// Pair by pid when the log has one. `mxcli test` spawns three mxcli
 			// processes before a single test runs, so their session_ends arrive
@@ -217,6 +281,7 @@ func buildInvocations(records []logRecord) []invocation {
 				out[i].Ended = true
 				out[i].Commands = r.CommandsExecuted
 				out[i].Errors = r.ErrorsCount
+				out[i].ExitCode = r.ExitCode
 			}
 		}
 	}
@@ -255,19 +320,32 @@ func analyzeLoop(records []logRecord) loopReport {
 		}
 		s.Count++
 
-		// An invocation with no session_end exited through os.Exit, which is how
-		// mxcli reports almost every failure — Close() is deferred and deferred
-		// calls do not run on os.Exit. Verified against a real log: the three
-		// unclosed sessions were exactly the three runs that exited non-zero.
-		// A process killed or still running looks identical, so this is reported
-		// as "did not close" rather than asserted as "failed".
+		// An invocation with no session_end is a process that VANISHED: killed,
+		// or exited through an os.Exit inside a command (deferred calls do not
+		// run then). A command that returns an error no longer lands here —
+		// main() closes the session on that path — which is what gives a failed
+		// run a duration. What is left genuinely has none: the process did not
+		// get to write one, and the log cannot say when it stopped. Its time is
+		// estimated below rather than dropped.
 		if !inv.Ended {
 			s.Unclosed++
 			rep.Unclosed++
+			if f := inv.Floor(); f > 0 {
+				s.FloorSec += f.Seconds()
+				rep.UnclosedFloorSeconds += f.Seconds()
+			} else {
+				// No heartbeat: it died inside the first interval, or the log
+				// predates heartbeats. Only this remainder is extrapolated.
+				s.unheard++
+			}
 			continue
 		}
 		if inv.Errors > 0 {
 			rep.StatementErrors++
+		}
+		if inv.ExitCode != 0 {
+			s.ExitedNonZero++
+			rep.ExitedNonZero++
 		}
 		d := inv.Duration()
 		s.TotalDur += d
@@ -280,8 +358,15 @@ func analyzeLoop(records []logRecord) loopReport {
 		sort.Slice(ds, func(i, j int) bool { return ds[i] < ds[j] })
 		if len(ds) > 0 {
 			s.MedianMS = ds[len(ds)/2].Milliseconds()
+			// The median, not the mean: a boot that was killed early and one
+			// that ran to a timeout are both in the unclosed set, and the mean
+			// of the closed runs is the more easily skewed of the two. Only the
+			// runs that left NO heartbeat are extrapolated — the rest carry a
+			// measured floor instead.
+			s.UnmeasuredSec = float64(s.unheard) * ds[len(ds)/2].Seconds()
 		}
 		s.TotalSec = s.TotalDur.Seconds()
+		rep.UnmeasuredSeconds += s.UnmeasuredSec
 		rep.ByVerb = append(rep.ByVerb, *s)
 	}
 	// Most invocations first; ties by name so the output is stable.
@@ -363,11 +448,37 @@ func renderLoopReport(rep loopReport, w io.Writer) {
 		fmt.Fprintln(w, "and logs are kept for 7 days.")
 		return
 	}
-	fmt.Fprintf(w, "Wall time in mxcli: %.1fs across the runs that closed\n", rep.WallSeconds)
+	fmt.Fprintf(w, "Wall time in mxcli: %.1fs measured, across the runs that closed\n", rep.WallSeconds)
 	if rep.Unclosed > 0 {
-		fmt.Fprintf(w, "Did not close: %d (mxcli exits through os.Exit on most failures,\n"+
-			"               which skips the summary record — so these are very likely\n"+
-			"               non-zero exits, but a killed process looks the same)\n", rep.Unclosed)
+		// The headline fix for item 2d. The measured total was the only number
+		// on the page, and it is computed over the runs that closed — 4 of 30
+		// `run` invocations on one measured project, so it read as 27% of the
+		// session's mxcli time when the real figure was several times that.
+		// Printing the estimate beside it, named as an estimate, is what makes
+		// the restart bill visible without asserting a number nobody measured.
+		if rep.UnclosedFloorSeconds > 0 {
+			fmt.Fprintf(w, "Unclosed, at least: %.1fs more, measured from the heartbeats those\n"+
+				"               runs wrote before they died (a lower bound: each stopped\n"+
+				"               somewhere after its last one)\n", rep.UnclosedFloorSeconds)
+		}
+		if rep.UnmeasuredSeconds > 0 {
+			fmt.Fprintf(w, "Not measured:       ~%.1fs more, estimated for the run(s) that left no\n"+
+				"               heartbeat, at their command's median. An ESTIMATE, and\n"+
+				"               deliberately not added to the measured total above\n",
+				rep.UnmeasuredSeconds)
+		}
+		if rep.UnclosedFloorSeconds == 0 && rep.UnmeasuredSeconds == 0 {
+			fmt.Fprintf(w, "Not measured:       %d run(s) that never closed, with no heartbeat and\n"+
+				"               no closed run of the same command to estimate from\n", rep.Unclosed)
+		}
+		fmt.Fprintf(w, "Did not close: %d (a process that vanished: killed, or an os.Exit\n"+
+			"               inside a command. A run that returns an error closes and is\n"+
+			"               counted below instead, with its time)\n", rep.Unclosed)
+	}
+	// Measured, unlike the unclosed runs above: these ended and said so.
+	if rep.ExitedNonZero > 0 {
+		fmt.Fprintf(w, "Exited non-zero: %d (ran to the end and failed — their wall time is\n"+
+			"               in the measured total)\n", rep.ExitedNonZero)
 	}
 	// Printed only when non-zero. It is near-always zero, and a "0" next to the
 	// unclosed count reads as "nothing failed" — which is the opposite of what
@@ -385,11 +496,16 @@ func renderLoopReport(rep loopReport, w io.Writer) {
 	}
 
 	fmt.Fprintln(w, "\nBy command, most calls first:")
-	fmt.Fprintf(w, "  %-22s %6s %8s %10s %9s\n", "COMMAND", "CALLS", "UNCLOSED", "TOTAL", "MEDIAN")
+	fmt.Fprintf(w, "  %-20s %6s %8s %6s %9s %8s %9s %9s\n",
+		"COMMAND", "CALLS", "UNCLOSED", "FAIL", "TOTAL", "MEDIAN", "+FLOOR", "+EST")
 	for _, s := range rep.ByVerb {
-		fmt.Fprintf(w, "  %-22s %6d %8d %9.1fs %8dms\n",
-			s.Verb, s.Count, s.Unclosed, s.TotalSec, s.MedianMS)
+		fmt.Fprintf(w, "  %-20s %6d %8d %6d %8.1fs %7dms %8.1fs %8.1fs\n",
+			s.Verb, s.Count, s.Unclosed, s.ExitedNonZero,
+			s.TotalSec, s.MedianMS, s.FloorSec, s.UnmeasuredSec)
 	}
+	fmt.Fprintln(w, "  TOTAL and +FLOOR are measured — the second from the unclosed runs'")
+	fmt.Fprintln(w, "  heartbeats. +EST extrapolates only the unclosed runs that left none,")
+	fmt.Fprintln(w, "  at this verb's median, so a command with no closed run reports 0.")
 
 	if rep.CheckExecDup > 0 {
 		fmt.Fprintf(w, "\n`check` immediately followed by `exec` of the same script: %d\n", rep.CheckExecDup)
@@ -405,6 +521,9 @@ func renderLoopReport(rep loopReport, w io.Writer) {
 	fmt.Fprintln(w, "    is the other half of the bill.")
 	fmt.Fprintln(w, "  - reloads vs restarts. A long-running `run --local` is one invocation")
 	fmt.Fprintln(w, "    however many times it hot-applies a change.")
+	fmt.Fprintf(w, "  - exactly when a killed process stopped. Nothing is written at the kill,\n"+
+		"    so an unclosed run is bounded by its last heartbeat (every %s) and the\n"+
+		"    remainder is unknowable.\n", diaglog.HeartbeatInterval)
 }
 
 var diagLoopReportCmd = &cobra.Command{

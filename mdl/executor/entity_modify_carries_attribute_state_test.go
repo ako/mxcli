@@ -97,7 +97,7 @@ func TestCarryStoredAttributeState_MappedDefault(t *testing.T) {
 		{Name: "Online", Type: &domainmodel.BooleanAttributeType{}},
 		{Name: "Flag", Type: &domainmodel.BooleanAttributeType{}, Value: &domainmodel.AttributeValue{DefaultValue: "true"}},
 	}
-	carryStoredAttributeState(stored, declared)
+	carryStoredAttributeState(stored, declared, nil)
 	if declared[0].Value == nil || declared[0].Value.DefaultValue != "false" {
 		t.Errorf("Online default = %+v, want the stored \"false\"", declared[0].Value)
 	}

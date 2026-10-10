@@ -103,6 +103,22 @@ Multiply the boot count by the per-boot median instead and the shape changes
 completely: ~35 min of boots in demo-2, ~50 min in CapTrack — against sessions of
 5 h and 2 h 45. Every other command in both tables is noise beside that.
 
+**Since fixed (item 2d).** `diag loop-report` no longer drops an unclosed run's
+time. Three separate reasons a boot wrote no summary record had to be dealt with
+— `main()` exited through `os.Exit` on the error path; each command's own
+deferred close got there first and recorded the run as clean; and `run --local`
+is a `Run:` command that exits through `os.Exit` at every failure site, which no
+close-on-error can reach. What covers all three, and a `SIGKILL` as well, is a
+`session_alive` heartbeat every 30 s: an unclosed run is now bounded from below
+by its last one. The report prints three figures rather than one — the closed
+runs' measured total, the unclosed runs' **measured floor**, and an estimate at
+the verb's median for the unclosed runs that left no heartbeat at all — and the
+estimate is never added into the measured total.
+
+One caveat for the numbers above: the logs behind this table predate the
+heartbeat, so they can only be re-derived with the estimate, not the floor. The
+table's figures stay floors; what changes is that the next session's will not.
+
 This also corrects a figure CapTrack reported about itself. Its write-up says "of
 ~2.5 h building, only ~30 min was spent inside mxcli" and ranks its levers on
 that basis. The 30 min is the closed-run total (1,775 s), which already contains
@@ -261,6 +277,30 @@ concatenates, and build `mxcli apply` only if `diag loop-report` (lever 6) shows
 agents still composing it wrong after that. This is strictly cheaper, ships
 sooner, and does not add a surface that has to stay in sync with the commands
 underneath it.
+
+**Re-raised 2026-10-10, as a staged pipeline with the agent naming how far to
+run** (`check -> check --references -> mx check -> mxbuild -> run -> test`). The
+deferral holds, and two facts narrow the idea further than the paragraphs above
+already do. **`exec` runs the whole `check` pass, references included, before it
+writes anything** — so the first two stages are not stages, they are inside the
+third. And **`docker check` IS `mx check`**; mxbuild is what `mx` wraps, so those
+are one stage rather than two. Six stages are four: apply, build-validate, serve,
+behaviour.
+
+To keep the decision falsifiable rather than a matter of taste, this is what the
+baseline has to show for the command to be worth building:
+
+- the transcript composes the chain **inconsistently or wrongly** across the run
+  (a redundant `check` before `exec`, a restart where a reload would do, a
+  verification tier above what the change needed), or
+- the chained invocations' concatenated output is a materially large share of
+  `session-report`'s `tool results` figure — which would argue for item 4
+  first regardless, since that lands on every invocation and not only the
+  chained ones.
+
+If instead the chains are well-formed and the output volume sits elsewhere, the
+command buys nothing that item 4 does not buy more cheaply, and this entry should
+be closed rather than left open.
 
 ### The chain is tiered, not fixed — most changes stop at the first gate
 
@@ -656,7 +696,7 @@ baseline is the first thing to record wherever it does.
 | 2 | Fix `projectGates` to teach `exec`, not `check`+`exec` (lever 1) | XS | ~1 call per change, every project, immediately |
 | 2b | Measure `test --attach` on 11.14; pin the bootstrap default off 11.14 | XS | removes a forced 35 s/change from new projects |
 | 2c | **Make `--watch` the default invocation** in the skills and the generated gate list, wherever the version supports it | XS | the largest measured wall-time item: ~30 boots on a 11.13 project that had the warm loop and never used it |
-| 2d | Count a killed `run` in `diag loop-report` rather than dropping it | S | the restart bill is invisible today — `run`'s reported wall time is a floor built from 4 of 30 invocations |
+| 2d | **Count a killed `run` in `diag loop-report` rather than dropping it** — **shipped** | S | was: the restart bill is invisible, `run`'s reported wall time a floor built from 4 of 30 invocations. Now a 30 s `session_alive` heartbeat bounds every unclosed run from below, whatever killed it, and the report separates the measured total, the measured floor and an explicitly-labelled estimate |
 | 2e | **App lifecycle as commands** — `run --local --detach`, `run status`, `run wait`, `run stop`, `run restart`, taught in the run-local/run-app skills and the generated gate list — **shipped** | M | ~25–28% of all tool calls in measured sessions were hand-rolled `nohup`/poll/`pkill` loops; each becomes one call, and `exec … && run wait` is the per-change chain |
 | 3 | Publish the canonical `&&` chain in `projectGates` + skills (lever 1) | XS | the 5–8 → 1–2 collapse, with nothing built |
 | 4 | Terse/delta output for `exec` and the noisy listings (lever 2) | M | the token half of the chain win; helps every call |

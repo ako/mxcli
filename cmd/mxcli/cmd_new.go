@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -295,45 +296,14 @@ Examples:
 			}
 		}
 
-		// Step 6: Ensure correct mxcli binary for devcontainer
+		// Step 7: a Linux mxcli in the project for the devcontainer. Like step 6
+		// this is best-effort — the project is complete by now — so a failure is
+		// a warning, never an exit code that tells a script the scaffold failed.
 		fmt.Printf("\nStep 7/7: Setting up mxcli binary...\n")
-		mxcliBinPath := filepath.Join(absDir, "mxcli")
-		if runtime.GOOS != "linux" {
-			// Running on Windows/macOS — download the Linux binary for devcontainer
-			tag := mxcliReleaseTag()
-			fmt.Printf("  Downloading Linux mxcli (%s) for devcontainer...\n", tag)
-			if err := downloadMxcliBinary("mendixlabs/mxcli", tag, "linux", "amd64", mxcliBinPath, os.Stdout); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: could not download Linux mxcli binary for devcontainer: %v\n", err)
-				fmt.Fprintln(os.Stderr, "  Run 'mxcli setup mxcli --output ./mxcli' inside the project directory to fix this.")
-				os.Exit(1)
-			}
-		} else {
-			// Running on Linux — link ourselves into the project. Prefer a hard link:
-			// it shares the inode (no ~111MB duplicated per project on the same
-			// filesystem), is a real ELF the devcontainer can exec, and survives the
-			// original binary being moved/removed (unlike a symlink). Fall back to a
-			// full copy across filesystems (EXDEV) or when linking isn't possible.
-			self, err := os.Executable()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "  Warning: could not locate mxcli binary: %v\n", err)
-			} else if resolved, rerr := filepath.EvalSymlinks(self); rerr == nil {
-				self = resolved
-				_ = os.Remove(mxcliBinPath) // os.Link fails if the target already exists
-				if err := os.Link(self, mxcliBinPath); err == nil {
-					fmt.Printf("  Linked mxcli to %s (shared inode, no copy)\n", mxcliBinPath)
-				} else if selfBytes, rerr := os.ReadFile(self); rerr == nil {
-					if werr := os.WriteFile(mxcliBinPath, selfBytes, 0o755); werr != nil {
-						fmt.Fprintf(os.Stderr, "  Warning: could not copy mxcli binary: %v\n", werr)
-					} else {
-						fmt.Printf("  Copied mxcli to %s\n", mxcliBinPath)
-					}
-				} else {
-					fmt.Fprintf(os.Stderr, "  Warning: could not read mxcli binary: %v\n", rerr)
-				}
-			} else {
-				fmt.Fprintf(os.Stderr, "  Warning: could not resolve mxcli binary path: %v\n", rerr)
-			}
-		}
+		provisionDevcontainerMxcli(runtime.GOOS, devcontainerReleaseTag(Version), filepath.Join(absDir, "mxcli"),
+			func(tag, outPath string, w io.Writer) error {
+				return downloadMxcliBinary("mendixlabs/mxcli", tag, "linux", "amd64", outPath, w)
+			}, os.Stdout, os.Stderr)
 
 		fmt.Printf("\n✓ Project '%s' created at %s\n", appName, absDir)
 		fmt.Println("\nNext steps:")
@@ -341,6 +311,80 @@ Examples:
 		fmt.Println("  2. Reopen in Dev Container when prompted")
 		fmt.Printf("  3. Run './mxcli -p %s' to start working\n", filepath.Base(mprPath))
 	},
+}
+
+// devcontainerReleaseTag is the release whose Linux binary matches this mxcli,
+// or "" when there is none. ldflagsVersion is main.Version: empty for a plain
+// `go build` (which then reports 0.1.0 — not a release), and a bare commit hash
+// or "dev" for `make build` without a reachable tag. Asking GitHub for any of
+// those is a guaranteed 404 (mendixlabs/mxcli#1365).
+func devcontainerReleaseTag(ldflagsVersion string) string {
+	if strings.Contains(ldflagsVersion, "nightly") {
+		return "nightly"
+	}
+	v := strings.TrimPrefix(ldflagsVersion, "v")
+	if idx := strings.IndexByte(v, '-'); idx > 0 {
+		v = v[:idx]
+	}
+	parts := strings.Split(v, ".")
+	if len(parts) != 3 {
+		return ""
+	}
+	for _, p := range parts {
+		if p == "" || strings.Trim(p, "0123456789") != "" {
+			return ""
+		}
+	}
+	return "v" + v
+}
+
+// provisionDevcontainerMxcli puts a Linux mxcli at binPath for the devcontainer:
+// a link to (or copy of) this binary on Linux, a download of release tag
+// elsewhere. It only ever warns: it runs after the project is complete, and a
+// missing devcontainer binary is one command to fix, not a failed scaffold.
+func provisionDevcontainerMxcli(goos, tag, binPath string,
+	download func(tag, outPath string, w io.Writer) error, out, errOut io.Writer) {
+	if goos != "linux" {
+		if tag == "" {
+			fmt.Fprintln(errOut, "  Warning: skipped the Linux mxcli for the devcontainer: this is a development")
+			fmt.Fprintln(errOut, "  build with no matching release. The project is usable. Inside the project")
+			fmt.Fprintln(errOut, "  directory, run 'mxcli setup mxcli --tag <release> --output ./mxcli', or")
+			fmt.Fprintln(errOut, "  cross-compile your build with GOOS=linux GOARCH=amd64 and copy it to ./mxcli.")
+			return
+		}
+		fmt.Fprintf(out, "  Downloading Linux mxcli (%s) for devcontainer...\n", tag)
+		if err := download(tag, binPath, out); err != nil {
+			fmt.Fprintf(errOut, "  Warning: could not download Linux mxcli binary for devcontainer: %v\n", err)
+			fmt.Fprintln(errOut, "  The project is usable. Run 'mxcli setup mxcli --output ./mxcli' inside the")
+			fmt.Fprintln(errOut, "  project directory to add it.")
+		}
+		return
+	}
+	// Running on Linux — link ourselves into the project. Prefer a hard link:
+	// it shares the inode (no ~111MB duplicated per project on the same
+	// filesystem), is a real ELF the devcontainer can exec, and survives the
+	// original binary being moved/removed (unlike a symlink). Fall back to a
+	// full copy across filesystems (EXDEV) or when linking isn't possible.
+	self, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(errOut, "  Warning: could not locate mxcli binary: %v\n", err)
+	} else if resolved, rerr := filepath.EvalSymlinks(self); rerr == nil {
+		self = resolved
+		_ = os.Remove(binPath) // os.Link fails if the target already exists
+		if err := os.Link(self, binPath); err == nil {
+			fmt.Fprintf(out, "  Linked mxcli to %s (shared inode, no copy)\n", binPath)
+		} else if selfBytes, rerr := os.ReadFile(self); rerr == nil {
+			if werr := os.WriteFile(binPath, selfBytes, 0o755); werr != nil {
+				fmt.Fprintf(errOut, "  Warning: could not copy mxcli binary: %v\n", werr)
+			} else {
+				fmt.Fprintf(out, "  Copied mxcli to %s\n", binPath)
+			}
+		} else {
+			fmt.Fprintf(errOut, "  Warning: could not read mxcli binary: %v\n", rerr)
+		}
+	} else {
+		fmt.Fprintf(errOut, "  Warning: could not resolve mxcli binary path: %v\n", rerr)
+	}
 }
 
 // cleanupDuplicateLocaleFiles removes duplicate locale files that mx create-project

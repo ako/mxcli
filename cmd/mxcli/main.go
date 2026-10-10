@@ -38,16 +38,32 @@ func main() {
 	// (ako/mxcli#633).
 	startSession(os.Args[1:])
 
+	if code := runCLI(); code != 0 {
+		os.Exit(code)
+	}
+}
+
+// runCLI runs the root command and returns the process exit code, ending the
+// session on both paths.
+//
+// Closing here rather than in PersistentPostRun covers --help and --version,
+// which cobra answers before any hook and which would otherwise read as failed
+// runs. Closing on the ERROR path too is what gives a failed run a recorded
+// duration: this used to exit straight through os.Exit, so `diag loop-report`
+// summed wall time over the runs that happened to succeed and the rest landed
+// in `unclosed` with no time at all — 4 of 30 `run` invocations counted on one
+// measured project (PROPOSAL_agent_loop_efficiency.md item 2d).
+//
+// A command that calls os.Exit itself still skips this, and so does a process
+// killed with SIGKILL; both stay `unclosed`, which is now what the word means.
+func runCLI() int {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		diaglog.CloseCurrentWithExit(1)
+		return 1
 	}
-	// Close only on a normal return. A failure that exits through os.Exit —
-	// almost every one — leaves no session_end, and that absence is what
-	// `diag loop-report` reads as a non-zero exit. Closing here rather than in
-	// PersistentPostRun also covers --help and --version, which cobra answers
-	// before any hook and which would otherwise read as failed runs.
 	diaglog.CloseCurrent()
+	return 0
 }
 
 // shouldSuppressWarning checks if the warning should be suppressed

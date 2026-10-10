@@ -28,6 +28,57 @@ type Logger struct {
 	errCount  int
 	startTime time.Time
 	closed    bool
+	// stopBeat ends the heartbeat goroutine. See startHeartbeat.
+	stopBeat chan struct{}
+}
+
+// HeartbeatInterval is how often a live session records that it is still
+// running. A var so tests can shorten it.
+//
+// It exists because mxcli's long-running commands almost never write a
+// session_end: `run --local` is a `Run:` (not `RunE:`) command that exits
+// through os.Exit at every failure site — 258 such sites in cmd/mxcli — and a
+// boot the agent kills writes nothing at all. So `diag loop-report` summed wall
+// time over the runs that happened to close, which on two measured projects was
+// 4 of 30 and 7 of 34 `run` invocations: the restart bill, the single largest
+// item in an agent session, was invisible
+// (PROPOSAL_agent_loop_efficiency.md item 2d).
+//
+// A heartbeat turns that into a MEASURED lower bound rather than an
+// extrapolation, and it does so for every death mode at once — SIGKILL, an
+// os.Exit deep inside a command, a crash — without touching any of them. The
+// interval is coarse on purpose: a 90-second boot costs three lines.
+var HeartbeatInterval = 30 * time.Second
+
+// startHeartbeat records "still running" until the session ends, so a process
+// that never closes still bounds its own duration from below.
+//
+// Called with mu held, from Init.
+func (l *Logger) startHeartbeat() {
+	if HeartbeatInterval <= 0 {
+		return
+	}
+	stop := make(chan struct{})
+	l.stopBeat = stop
+	start, pid, logger := l.startTime, l.pid, l.slog
+	go func() {
+		t := time.NewTicker(HeartbeatInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case now := <-t.C:
+				// Only the fields a reader needs to bound the run: anything
+				// mutable (the command counter) would be a data race, and the
+				// record is written from this goroutine.
+				logger.Info("session_alive",
+					"pid", pid,
+					"elapsed_s", int(now.Sub(start).Seconds()),
+				)
+			}
+		}
+	}()
 }
 
 // parentPIDEnv names the mxcli process that spawned this one, when one did.
@@ -46,15 +97,31 @@ var (
 	current *Logger
 )
 
-// CloseCurrent ends the process session, if one was started. It is called from
-// main() only when the command returned normally —
-// so a run that exits through os.Exit leaves no session_end, and that absence is
-// what `diag loop-report` reads as a non-zero exit.
+// CloseCurrent ends the process session, if one was started, as a clean exit.
 func CloseCurrent() {
+	CloseCurrentWithExit(0)
+}
+
+// CloseCurrentWithExit ends the process session and records the exit code the
+// process is about to leave with.
+//
+// main() calls this on the error path as well as the clean one. It used to call
+// Close only on a normal return, so a command that merely returned an error
+// wrote no session_end — and with it went the run's DURATION, not just its
+// verdict. `diag loop-report` then computed wall time over the runs that
+// happened to succeed: on two measured projects only 4 of 30 and 7 of 34 `run`
+// invocations were counted, making the restart bill a floor
+// (PROPOSAL_agent_loop_efficiency.md item 2d).
+//
+// A run that exits through os.Exit *inside* a command still leaves no
+// session_end, and so does one that is killed with SIGKILL. Those remain in the
+// report's `unclosed` bucket, which is now what it says: a process that
+// vanished rather than one that failed.
+func CloseCurrentWithExit(code int) {
 	mu.Lock()
 	l := current
 	mu.Unlock()
-	l.Close()
+	l.closeWithExit(code)
 }
 
 // resetForTest drops the process logger so a test can start a fresh session.
@@ -104,6 +171,7 @@ func Init(version, mode string) *Logger {
 
 	current = l
 	l.pid = os.Getpid()
+	l.startHeartbeat()
 
 	// mxcli spawns mxcli: `test` runs `-c DESCRIBE SETTINGS`, `-c SHOW MODULES`
 	// and an `exec` of the generated runner before a single test executes, and
@@ -135,20 +203,51 @@ func Init(version, mode string) *Logger {
 	return l
 }
 
-// Close writes a session summary and closes the log file.
+// Close releases a command's hold on the session. It writes nothing when this
+// logger is the PROCESS session, because the process ends that — see
+// closeWithExit.
+//
+// Commands `defer logger.Close()` after building a logged executor, and that
+// defer runs while the command is RETURNING, before cobra hands its error back
+// to main(). So the command always closed the session first and recorded the
+// exit code as 0, which made main's close a no-op and left every failing run
+// looking clean (and, before main closed on error at all, left it with no
+// duration — PROPOSAL_agent_loop_efficiency.md item 2d).
+//
+// Nothing is lost by deferring the write to the process: a command that reaches
+// its own defer has returned, so main's close is still ahead of it. A command
+// that exits through os.Exit skips BOTH, exactly as before.
 func (l *Logger) Close() {
 	if l == nil {
 		return
 	}
-	// Each command that holds the process logger defers Close; only the first
-	// may end the session, or a run would be recorded as finishing early.
+	mu.Lock()
+	isProcessSession := current == l
+	mu.Unlock()
+	if isProcessSession {
+		return
+	}
+	l.closeWithExit(0)
+}
+
+// closeWithExit writes the session summary and closes the log file, recording
+// the code the process is exiting with.
+func (l *Logger) closeWithExit(code int) {
+	if l == nil {
+		return
+	}
+	// Still first-wins: a process has one session_end whoever gets here first.
 	mu.Lock()
 	defer mu.Unlock()
 	if l.closed {
 		return
 	}
 	l.closed = true
-	l.slog.Info("session_end",
+	if l.stopBeat != nil {
+		close(l.stopBeat)
+		l.stopBeat = nil
+	}
+	attrs := []any{
 		"commands_executed", l.cmdCount,
 		"errors_count", l.errCount,
 		"duration_s", int(time.Since(l.startTime).Seconds()),
@@ -156,7 +255,14 @@ func (l *Logger) Close() {
 		// can only guess by position, which is wrong the moment one mxcli runs
 		// another — and mxcli runs itself routinely (ako/mxcli#629).
 		"pid", l.pid,
-	)
+	}
+	// Omitted when zero, so a reader cannot mistake "exited cleanly" for
+	// "we did not record it" — and so a session_end from a log written before
+	// this existed (where closing implied success) reads correctly as 0.
+	if code != 0 {
+		attrs = append(attrs, "exit_code", code)
+	}
+	l.slog.Info("session_end", attrs...)
 	l.file.Close()
 }
 

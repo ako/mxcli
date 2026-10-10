@@ -71,12 +71,38 @@ func (b *Backend) AddNavigationProfile(navDocID model.ID, name string) error {
 		}
 	}
 
-	doc = navSetField(doc, "Profiles", append(profiles, newWebProfileBson(kind)))
+	profile := newWebProfileBson(kind)
+	if !b.declaresThrowPartialSyncError() {
+		profile = withoutKey(profile, "ThrowPartialSyncError")
+	}
+	doc = navSetField(doc, "Profiles", append(profiles, profile))
 	out, err := bson.Marshal(doc)
 	if err != nil {
 		return fmt.Errorf("AddNavigationProfile: marshal: %w", err)
 	}
 	return b.writer.UpdateRawUnit(string(navDocID), out)
+}
+
+// declaresThrowPartialSyncError reports whether the project's metamodel has
+// NavigationProfile.ThrowPartialSyncError — from 11.12.0 (measured: the profile
+// `mx create-project` writes carries it on 11.12.0 and not on 11.11.0). On an
+// older project the key is one Studio Pro cannot open the document with
+// (mendixlabs/mxcli#1373), and the storage layer refuses it, since a new profile
+// sets it true. An unreadable version writes it, as before.
+func (b *Backend) declaresThrowPartialSyncError() bool {
+	pv := b.ProjectVersion()
+	return pv == nil || pv.MajorVersion == 0 || pv.IsAtLeast(11, 12)
+}
+
+// withoutKey returns d without its top-level key.
+func withoutKey(d bson.D, key string) bson.D {
+	out := make(bson.D, 0, len(d))
+	for _, e := range d {
+		if e.Key != key {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // newWebProfileBson builds an empty profile of the given kind, with every key a

@@ -619,6 +619,7 @@ FEEDBACK: F E E D B A C K;
 RULE: R U L E;
 REQUIRED: R E Q U I R E D;
 NULLABLE: N U L L A B L E;                 // MODIFY ATTRIBUTE … NULLABLE — clears NOT NULL (Bug 12a)
+LOCALIZED: L O C A L I Z E D;              // DateTime [NOT] LOCALIZED — DateTimeAttributeType.LocalizeDate (#1373)
 ERROR: E R R O R;
 IGNORE: I G N O R E;
 OVERRIDABLE: O V E R R I D A B L E;

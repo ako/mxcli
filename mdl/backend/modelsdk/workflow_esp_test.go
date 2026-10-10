@@ -5,6 +5,8 @@ package modelsdkbackend
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	genWf "github.com/mendixlabs/mxcli/modelsdk/gen/workflows"
@@ -99,7 +101,14 @@ func TestReadEventSubProcessesFromStudioProFixture(t *testing.T) {
 // stores it: EventSubProcesses and BoundaryEvents as marker-2 lists, and a
 // notification boundary event with the Name a notify action targets.
 func TestCreateWorkflow_EventSubProcessesRoundTrip(t *testing.T) {
-	proj := copyFixture(t)
+	// Event sub-processes exist from Mendix 11.8.0, so the subject is the 11.14
+	// fixture: on the 11.6 one the storage layer refuses the workflow
+	// (TestCreateWorkflow_EventSubProcessesRefusedBeforeTheirVersion).
+	dst := t.TempDir()
+	if err := os.CopyFS(dst, os.DirFS("../../../testdata/testapp-views")); err != nil {
+		t.Fatalf("copy fixture: %v", err)
+	}
+	proj := filepath.Join(dst, "TestApp.mpr")
 	b := New()
 	if err := b.Connect(proj); err != nil {
 		t.Fatalf("connect: %v", err)
@@ -215,5 +224,45 @@ func TestCreateWorkflow_EventSubProcessesRoundTrip(t *testing.T) {
 		if _, hasTimer := first["FirstExecutionTime"]; hasTimer {
 			t.Errorf("a notification boundary event must not carry a timer: %v", first)
 		}
+	}
+}
+
+// On a project older than Workflows$Workflow.EventSubProcesses (11.8.0) a
+// workflow that has them is refused, naming the version — Studio Pro 11.6
+// cannot open a document holding a property its metamodel lacks, and dropping
+// the sub-processes would write a different workflow than was declared
+// (mendixlabs/mxcli#1373).
+func TestCreateWorkflow_EventSubProcessesRefusedBeforeTheirVersion(t *testing.T) {
+	b := New()
+	if err := b.Connect(copyFixture(t)); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = b.Disconnect() })
+	if pv := b.ProjectVersion(); pv == nil || pv.IsAtLeast(11, 8) {
+		t.Fatalf("precondition: the fixture must predate 11.8; got %+v", pv)
+	}
+	mod, err := b.GetModuleByName("MyFirstModule")
+	if err != nil || mod == nil {
+		t.Fatalf("GetModuleByName: %v", err)
+	}
+	end := &workflows.EndWorkflowActivity{BaseWorkflowActivity: workflows.BaseWorkflowActivity{Name: "End", Caption: "End"}}
+	wf := &workflows.Workflow{
+		ContainerID: mod.ID, Name: "ZzTooNew",
+		Parameter: &workflows.WorkflowParameter{EntityRef: "MyFirstModule.Ctx"},
+		Flow: &workflows.Flow{Activities: []workflows.WorkflowActivity{
+			&workflows.StartWorkflowActivity{BaseWorkflowActivity: workflows.BaseWorkflowActivity{Name: "Start", Caption: "Start"}},
+			end,
+		}},
+		EventSubProcesses: []*workflows.EventSubProcess{{Name: "ESP", Caption: "Cancel", Flow: &workflows.Flow{Activities: []workflows.WorkflowActivity{
+			&workflows.EventSubProcessStartActivity{BaseWorkflowActivity: workflows.BaseWorkflowActivity{Name: "s", Caption: "s"}, Interrupting: true},
+			&workflows.EndWorkflowActivity{BaseWorkflowActivity: workflows.BaseWorkflowActivity{Name: "e", Caption: "e"}},
+		}}}},
+	}
+	err = b.CreateWorkflow(wf)
+	if err == nil {
+		t.Fatal("a workflow with event sub-processes was written to a pre-11.8 project")
+	}
+	if !strings.Contains(err.Error(), "EventSubProcesses") || !strings.Contains(err.Error(), "11.8.0") {
+		t.Errorf("refusal does not name the property and its version: %v", err)
 	}
 }

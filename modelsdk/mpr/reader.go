@@ -43,10 +43,19 @@ type Reader struct {
 	unitCacheValid bool
 
 	// contentCache stores raw BSON bytes per unit ID (MPR v2 only).
-	// Populated on first read; survives across requests when the Reader is
-	// held persistently by the per-MPR daemon. Cleared by InvalidateCache.
-	// nil means caching is disabled (zero cost on the normal per-request path).
+	// Populated on first read while caching is on (EnableContentCache, or a
+	// CacheUnitReads scope); cleared by InvalidateCache, which every write
+	// calls. nil means caching is off. contentMu guards it and cacheScopes.
+	contentMu    sync.Mutex
 	contentCache map[string][]byte
+	// cacheScopes counts the open CacheUnitReads scopes; the cache is dropped
+	// when the last one closes. -1 means EnableContentCache turned it on for
+	// the reader's lifetime, which no scope ends.
+	cacheScopes int
+
+	// fileReads counts unit files read from mprcontents/ — what the content
+	// cache saves. Read by tests (mendixlabs/mxcli#1272).
+	fileReads atomic.Int64
 
 	// overlay holds unit bytes injected by BufferedUnitStore so that reads
 	// within the same import file see buffered (uncommitted) writes.

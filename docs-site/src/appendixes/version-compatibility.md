@@ -107,6 +107,12 @@ Pluggable widget templates are currently extracted from Mendix 11.6. When used o
 | Database Connector | `CREATE DATABASE CONNECTION` | -- | -- | -- | Yes | Yes |
 | REST client query params | `QUERY $param: Type` | -- | -- | -- | -- | Yes |
 
+A REST client operation's `body: json from $X` is stored as Mendix 11's JSON
+body (`Rest$JsonBody`) on 11.0+. Mendix 10 has no JSON body, so there it is
+written as the string body Mendix 10 has, holding the same text, and
+`describe` reads it back as `body: template`. Before this, mxcli wrote the JSON
+body on Mendix 10 too, and Studio Pro could not open the project.
+
 ### Workflows
 
 | Feature | MDL Syntax | 9.x | 10.0+ |

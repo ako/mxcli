@@ -283,6 +283,11 @@ func describeEntity(ctx *ExecContext, name ast.QualifiedName) error {
 
 				typeStr := formatAttributeType(attr.Type)
 				var constraints strings.Builder
+				// A view's DateTime LocalizeDate is derived from its OQL source
+				// (#1297); stating it would pin a value that must follow it.
+				if entityType != "view" {
+					constraints.WriteString(localizeClause(attr.Type))
+				}
 
 				// Check for validation rules - try by ID first, then by name
 				attrValidations := validationsByAttr[attr.ID]

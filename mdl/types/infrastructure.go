@@ -62,6 +62,15 @@ type FolderInfo struct {
 	Name        string
 }
 
+// DocumentHeader is what a name listing needs of a document, read without
+// decoding the rest of it.
+type DocumentHeader struct {
+	ID          model.ID
+	ContainerID model.ID
+	Name        string
+	Excluded    bool
+}
+
 // UnitInfo is a lightweight unit descriptor.
 type UnitInfo struct {
 	ID              model.ID

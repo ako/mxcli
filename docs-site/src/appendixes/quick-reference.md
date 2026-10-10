@@ -161,7 +161,7 @@ CREATE PUBLISHED ODATA SERVICE MyModule.CustomerAPI (
 | Call microflow | `$Result = CALL MICROFLOW Module.Name (Param = $value);` | |
 | Call nanoflow | `$Result = CALL NANOFLOW Module.Name (Param = $value);` | |
 | Show page | `SHOW PAGE Module.PageName (Param = $value);` | `($Param = …)` and `(Param: …)` are deprecated |
-| Close page | `CLOSE PAGE;` | |
+| Close page | `CLOSE PAGE [n];` | `n` pages, default 1 |
 | Validation | `VALIDATION FEEDBACK $Entity/Attribute MESSAGE 'message';` | Requires attribute path + MESSAGE |
 | Log | `LOG INFO\|WARNING\|ERROR [NODE 'name'] 'message';` | |
 | Position | `@position(x, y)` | Canvas position (before activity) |

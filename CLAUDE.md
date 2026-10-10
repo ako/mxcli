@@ -228,7 +228,7 @@ a write does land the stored element `$ID`s are carried onto it rather than
 replaced. Mechanism, measurements and the reporting rules:
 [idempotent-writes](docs-site/src/internals/idempotent-writes.md).
 
-Three rules, each already violated once:
+Four rules, each already violated once:
 
 1. **Never rewrite an element `$ID` without rewriting every reference to it in the
    same pass.** Pointers are primitive properties holding an `element.ID`, so a
@@ -240,6 +240,9 @@ Three rules, each already violated once:
 3. **A new document type with an identity property needs a row in
    `canon.identityFields`.** It cannot be generated — Mendix's `IsIdentifier` is
    not in the reflection data.
+
+4. **Write Studio Pro's exact property set**: merge compares names (#1373,
+   `canon.CompletePropertySets`).
 
 **Any test asserting "nothing changed" must include a control.** Without one it
 passes against a build that never had the fix, which is how PR #125 shipped green.

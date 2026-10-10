@@ -742,8 +742,10 @@ showPageArg
     | expression                                                       // positional: refused by the visitor
     ;
 
+// CLOSE PAGE [n]: n is how many pages to close (default 1), stored as
+// Microflows$CloseFormAction.NumberOfPagesToClose (mendixlabs/mxcli#1373).
 closePageStatement
-    : CLOSE PAGE onErrorClause?
+    : CLOSE PAGE NUMBER_LITERAL? onErrorClause?
     ;
 
 showHomePageStatement

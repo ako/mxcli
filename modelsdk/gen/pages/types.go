@@ -24353,7 +24353,8 @@ func (o *TabContainer) InitFromRaw(raw bson.Raw) {
 			o.tabPages.AppendFromDecode(child)
 		}
 	}
-	if val, err := raw.LookupErr("DefaultPage"); err == nil {
+	// STORAGE-NAME OVERRIDE: see initTabContainer. Key is "DefaultPagePointer".
+	if val, err := raw.LookupErr("DefaultPagePointer"); err == nil {
 		if s, ok := val.StringValueOK(); ok {
 			o.defaultPage.SetFromDecode(element.ID(s))
 		} else if _, bdata, bok := val.BinaryOK(); bok {
@@ -33183,7 +33184,11 @@ func initTabContainer() *TabContainer {
 	o.accessibilitySettings.Bind(&o.Base, 6)
 	o.tabPages = property.NewPartList[element.Element]("TabPages")
 	o.tabPages.Bind(&o.Base, 7)
-	o.defaultPage = property.NewByIdRef[element.Element]("DefaultPage")
+	// STORAGE-NAME OVERRIDE: Mendix stores the default tab as "DefaultPagePointer"
+	// (generated/metamodel: defaultPagePointer). Bound as "DefaultPage", the
+	// chosen default tab was written under a key Mendix drops and never read
+	// back from a Studio Pro document (mendixlabs/mxcli#1373).
+	o.defaultPage = property.NewByIdRef[element.Element]("DefaultPagePointer")
 	o.defaultPage.Bind(&o.Base, 8)
 	o.activePageAttributeRef = property.NewPart[element.Element]("ActivePageAttributeRef")
 	o.activePageAttributeRef.Bind(&o.Base, 9)

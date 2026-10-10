@@ -125,11 +125,57 @@ func TestRootSessionKeepsBatchAndReplMode(t *testing.T) {
 	}
 }
 
-// An arity failure exits non-zero, so it must stay unclosed — that absence is
-// what the report reads as a failed run.
-func TestArityFailureLeavesSessionUnclosed(t *testing.T) {
-	if n := len(runMainRecords(t, "session_end", "check")); n != 0 {
-		t.Fatalf("mxcli check (no args) wrote %d session_end records, want 0", n)
+// An arity failure exits non-zero, and it now CLOSES, recording the code.
+//
+// It used to be the other way round: the absence of a session_end was the
+// report's only evidence of a failure. That cost the run its DURATION as well
+// as its verdict, so `diag loop-report` summed wall time over the runs that
+// happened to succeed (PROPOSAL_agent_loop_efficiency.md item 2d). `unclosed`
+// now means a process that vanished — killed, or an os.Exit inside a command —
+// and a non-zero exit_code is what marks a run that ended badly.
+func TestArityFailureClosesWithItsExitCode(t *testing.T) {
+	recs := runMainRecords(t, "session_end", "check")
+	if len(recs) != 1 {
+		t.Fatalf("mxcli check (no args) wrote %d session_end records, want 1", len(recs))
+	}
+	if got := recs[0]["exit_code"]; got != float64(1) {
+		t.Errorf("exit_code = %v, want 1 — a failed run that ends must say so", got)
+	}
+	// The half item 2d is about: the run's time is recorded at all.
+	if _, ok := recs[0]["duration_s"]; !ok {
+		t.Error("session_end carries no duration_s, so the failed run's time is still lost")
+	}
+}
+
+// A command that builds a logged executor AND returns its error to cobra is
+// where the close ORDERING mattered: its `defer logger.Close()` runs while the
+// command is returning, before cobra hands the error back to main, so under
+// diaglog's old first-wins rule the command closed the session and recorded the
+// run as clean. Measured on `widget sync -p <missing>`: the pre-change binary
+// wrote a session_end with no exit code, this one records 1.
+//
+// An arity failure cannot show this — it fails before any command builds an
+// executor, so nothing competes for the close.
+func TestLoggedCommandThatReturnsAnErrorRecordsTheCode(t *testing.T) {
+	recs := runMainRecords(t, "session_end", "widget", "sync", "-p", "/nonexistent-xyz.mpr")
+	if len(recs) != 1 {
+		t.Fatalf("wrote %d session_end records, want 1", len(recs))
+	}
+	if got := recs[0]["exit_code"]; got != float64(1) {
+		t.Errorf("exit_code = %v, want 1 — the command's own deferred Close got there first "+
+			"and recorded a failed run as clean", got)
+	}
+}
+
+// The success path still records no exit code, so a reader cannot mistake
+// "exited cleanly" for "nobody wrote it down".
+func TestSuccessfulRunRecordsNoExitCode(t *testing.T) {
+	recs := runMainRecords(t, "session_end", "syntax")
+	if len(recs) != 1 {
+		t.Fatalf("mxcli syntax wrote %d session_end records, want 1", len(recs))
+	}
+	if got := recs[0]["exit_code"]; got != nil {
+		t.Errorf("exit_code = %v on a successful run, want absent", got)
 	}
 }
 

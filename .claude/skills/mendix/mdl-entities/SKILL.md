@@ -36,7 +36,10 @@ create persistent entity Module.Customer (
   IsActive: boolean default true,
 
   -- Date/Time
-  BirthDate: datetime,   -- there is no date-only type; `date` is refused
+  -- There is no date-only type (`date` is deprecated, MDL-DEPR160). A calendar
+  -- date that must not shift with the user's time zone is `not localized`.
+  BirthDate: datetime not localized,
+  LastLogin: datetime,   -- localized: shown in the user's time zone (default)
   -- Use autocreateddate (not datetime) to record when the object was created.
   -- 'CreatedDate' as a plain datetime triggers lint error MDL020.
   CreatedDate: autocreateddate,
@@ -89,6 +92,14 @@ create non-persistent entity Module.CustomerSearchParams (
 | `not null` | Required field | `Name: string(100) not null` |
 | `unique` | Unique constraint | `Code: string(20) unique` |
 | `default value` | Default value | `IsActive: boolean default true` |
+| `not localized` | **DateTime only.** Studio Pro's "Localize" unticked: no time-zone conversion — use for calendar dates (birth date, due date) | `BirthDate: datetime not localized` |
+| `localized` | **DateTime only.** The default, stated — switches a `not localized` attribute back on `modify attribute` | `alter entity M.E modify attribute D: datetime localized` |
+
+**DateTime localization on a rewrite:** `create or modify` / `modify attribute` that
+does not state `localized` / `not localized` keeps what is stored (so restating a
+Studio Pro-authored non-localized date does not localize it); a stated clause wins.
+`describe` prints `not localized` only when it applies. Using either clause on a
+non-DateTime attribute is a `check` error.
 
 **Note:** Boolean attributes auto-default to `false` when no `default` is specified.
 
@@ -361,7 +372,7 @@ create view entity Module.Name (attributes) as select ...;
 
 ### Attribute Syntax
 ```mdl
-attributename: type [(length)] [not null] [unique] [default value]
+attributename: type [(length)] [not localized | localized] [not null] [unique] [default value]
 ```
 
 ### Association Syntax

@@ -7,6 +7,8 @@ package roundtrip
 import (
 	"bytes"
 	"testing"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 // ako/mxcli#843, found by the beta dress rehearsal (M5, M2). Both made an
@@ -74,8 +76,10 @@ end;`); err != nil {
 			t.Fatalf("setup: %v", err)
 		}
 		stored := h.flowUnit(t, "Rt843_ReturnName")
-		if bytes.Contains(stored, []byte("ReturnVariableName")) {
-			t.Fatal("precondition: the setup nanoflow already stores ReturnVariableName")
+		// Since mendixlabs/mxcli#1373 the writer stores the key Studio Pro
+		// always has, empty; what matters is that no return variable is named.
+		if name, err := bson.Raw(stored).LookupErr("ReturnVariableName"); err == nil && name.StringValue() != "" {
+			t.Fatalf("precondition: the setup nanoflow already names return variable %q", name.StringValue())
 		}
 		// The control is exec 1 itself: it must change the unit, so an
 		// unchanged exec 2 is the re-run rule and not a check that sees nothing.

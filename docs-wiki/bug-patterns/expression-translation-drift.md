@@ -1,11 +1,14 @@
 ---
 title: The Expression Translation Loses Meaning
 category: bug-pattern
-last-synced: ced830e0
+last-synced: a918689d
+covers:
+  - mdl/visitor
 sources:
   - .claude/skills/fix-issue/findings/mdl-visitor/
   - mdl/visitor/visitor_microflow_expression.go
   - mdl/visitor/visitor_helpers.go
+  - mdl/visitor/visitor_xpath_quotes.go
 ---
 
 > **Do not duplicate**: the Mendix expression rules themselves are
@@ -70,12 +73,44 @@ stored constraints with the mdl 0 lexer, so a multi-line `'C:\'` corrupted the
 constraint under *both* languages (#825); asking "which language is the script"
 would have fixed only one. Ask "whose spelling is this text".
 
+**`GetText()` has the opposite defect from a source-interval slice, and it is
+worse.** The slice carries hidden tokens; `GetText()` **concatenates visible
+tokens with nothing between them**, so the whitespace that separates words
+disappears: `Flag: true and false` was stored as the expression `trueandfalse`,
+`if true then 'a' else 'b'` as `iftruethen'a'else'b'`. Which gives the blunt
+rule — **`GetText()` on an expression context is always a bug** — and a grep that
+finds them (`Expression().*GetText()`, `expr.GetText()`). The earlier fix for the
+comment leak moved six microflow sites onto a shared helper and missed four more
+that lived in page and REST code rather than microflow code, which is the usual
+reason this class comes back: the sites are grouped by document type, not by
+what they do.
+
+**Precedence is part of the translation.** `/` shares a level with `*`, `div` and
+`mod`, so a left-associative chain reads `$a/X * $b/Y` as `(($a/X) * $b) / Y` — a
+division where the author wrote a member path, stored and evaluated as such with
+every check green. The fix belongs where the AST is **built**, because that fixes
+every consumer at once; an earlier attempt taught only the rule that had noticed
+the mis-nesting to tolerate it, leaving the serializer and the iterator
+qualification reading the wrong tree.
+
 **Quoting is the other systematic leak.** The guidance to quote identifiers is
 about the MDL *parser*; a quote that survives into the stored expression produces
 `Mod."Entity".Attr`, which Mendix rejects. The tell is a **half-stripped** name in
 the error message — one half went through the unquoting reader and the other did
 not, which localises the bug to a `GetText()` call that should have been the
 structured accessor.
+
+**Position decides whether a quote is a name or a value.** The quote-stripping
+that saves `Mod."Entity".Attr` is right for a *name* and wrong for a *value* — and
+Mendix XPath never compares two members, so a quoted token after `=`, `!=`, `<`,
+`<=`, `>` or `>=` is always a mis-quoted string. Left alone it stores a literal
+that compares against itself: `where '["Status" = ''Accepted'']'` grants no rows,
+with check, exec, lint and `mx check` all passing. Two consequences. The
+normalisation lived in some XPath sinks and not others — the grant and the
+workflow targeting had never been routed through it, both spellings each — so the
+grep is for the normaliser's callers, not for the symptom. And because refusing
+the quoted-value form fixes a silent wrong *write*, it applies under every
+language version rather than waiting for a header.
 
 **The same expression text means different things in different slots.** A widget
 `Visible:` is a client expression and needs bare identifiers prefixed; a
@@ -95,3 +130,4 @@ swapped operands.
   literals, operators and overloads
 - [[platform-semantics-gaps]] — expressions Mendix forbids outright
 - [[keyword-collisions]] — where the quoting leak starts
+- [[two-meanings-one-script]] — the version boundary these spellings sit across

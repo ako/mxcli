@@ -4,6 +4,7 @@ package visitor
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/antlr4-go/antlr/v4"
@@ -41,6 +42,23 @@ func (b *Builder) ExitThrowStatement(ctx *parser.ThrowStatementContext) {
 		"    raise error;\n"+
 		"  On the main flow Mendix has no throw: call a Java action that throws, or\n"+
 		"  report the problem with `validation feedback` / `log error` and return.", ctxPos(ctx)))
+}
+
+// ExitClosePageStatement refuses a page count that is not a positive whole
+// number (`close page 0`, `close page 1.5`): Mendix stores the count as
+// NumberOfPagesToClose and closes at least one page, so anything else would be
+// written as something the statement did not say.
+func (b *Builder) ExitClosePageStatement(ctx *parser.ClosePageStatementContext) {
+	num := ctx.NUMBER_LITERAL()
+	if num == nil {
+		return
+	}
+	if n, err := strconv.Atoi(num.GetText()); err != nil || n < 1 {
+		b.addErrorWithExample(
+			fmt.Sprintf("%s: `close page %s`: the number of pages to close must be a whole number of at least 1",
+				ctxPos(ctx), num.GetText()),
+			"  close page;      -- the current page\n  close page 2;    -- the current page and the one that opened it")
+	}
 }
 
 // removedPrimitiveType reports the replacement for a type word Mendix does not
@@ -162,4 +180,35 @@ func (b *Builder) rejectParenthesisedAssociation(ctx *parser.CreateAssociationSt
 		"were parsed and dropped, so a ReferenceSet was stored as a Reference.\n"+
 		"  Write the options after the entities, without parentheses or colons:\n"+
 		"    %s;", ctxPos(ctx), canonical))
+}
+
+// ExitAttributeConstraint refuses `localized` / `not localized` on an attribute
+// whose type is not a DateTime. LocalizeDate is a property of
+// DomainModels$DateTimeAttributeType only; on any other type there is nowhere
+// to store it, and accepting it would be a silent drop (#1373).
+func (b *Builder) ExitAttributeConstraint(ctx *parser.AttributeConstraintContext) {
+	if ctx.LOCALIZED() == nil {
+		return
+	}
+	var dtCtx parser.IDataTypeContext
+	switch p := ctx.GetParent().(type) {
+	case *parser.AttributeDefinitionContext:
+		dtCtx = p.DataType()
+	case *parser.AlterEntityActionContext:
+		dtCtx = p.DataType()
+	}
+	if dtCtx == nil {
+		return
+	}
+	if dt := buildDataType(dtCtx); dt.Kind == ast.TypeDateTime {
+		return
+	}
+	clause := "localized"
+	if ctx.NOT() != nil {
+		clause = "not localized"
+	}
+	b.addError(fmt.Errorf("%s: `%s` applies only to a DateTime attribute, not %s — "+
+		"LocalizeDate is a property of the DateTime type and there is nowhere to store it on another type.\n"+
+		"  Remove the clause, or declare the attribute as `DateTime %s`.",
+		ctxPos(ctx), clause, dtCtx.GetText(), clause))
 }

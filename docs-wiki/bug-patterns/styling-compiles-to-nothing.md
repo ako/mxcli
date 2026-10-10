@@ -1,7 +1,9 @@
 ---
 title: Styling That Compiles to Nothing
 category: bug-pattern
-last-synced: ced830e0
+last-synced: 5c24d899
+covers:
+  - cmd/mxcli
 sources:
   - .claude/skills/fix-issue/findings/cmd-mxcli/
   - cmd/mxcli/theme/block.go
@@ -43,6 +45,24 @@ survives a theme swap and is wrong under every theme but one.
 selector must be a quoted string; a bare selector is not a Sass expression, and
 the failure happens in mxbuild's SCSS compiler where no Go test and no `mx check`
 can see it. The only signal is the build log of a real build.
+
+**The rewrites mxcli performs on stylesheets are text surgery, and SCSS is
+nested.** Two defects in one command came from regexes that cannot see
+structure. Matching a `@font-face` block with `[^}]*\}[^}]*\}` ended early on
+the `}` of a `#{$weight}` interpolation, so the span closed in the wrong place
+and left a stray brace pair: 27 `{` against 29 `}`, a theme that does not
+compile. And under `(?m)`, `^\s*` is not "leading indentation" — `\s` matches
+newlines, so the match crossed lines. Count braces for a nested block
+(interpolations are balanced), use `[ \t]*` for indentation, and **assert brace
+balance on every shipped asset**: the existing test used the real shape and
+asserted only that `@font-face` was gone, which any mangling also satisfies.
+
+**A palette that does not say which variant it describes must not seed the
+other.** A design with only a `:root` block had its light tokens written into the
+base theme's dark mixin, whose remaining surfaces stayed dark — so the result was
+unreadable rather than wrong in an obvious way. A base palette is the *default*
+variant's, never both. The control for "the other mixin is untouched" is the same
+scaffold generated with no design at all, compared byte for byte.
 
 **Writing into files the project already owns needs a fence, not a rewrite.**
 `theme/web/main.scss` is Mendix's own three lines and `custom-variables.scss`

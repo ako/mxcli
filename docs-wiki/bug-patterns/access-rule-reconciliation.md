@@ -2,6 +2,8 @@
 title: Access Rules Are Reconciled, Not Appended
 category: bug-pattern
 last-synced: ced830e0
+covers:
+  - mdl/backend
 sources:
   - .claude/skills/fix-issue/findings/mdl-backend/
   - mdl/backend/modelsdk/domainmodel_security_write.go

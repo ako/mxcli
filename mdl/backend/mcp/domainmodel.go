@@ -956,6 +956,16 @@ func guardUnsupportedEntityFeatures(entity *domainmodel.Entity) error {
 	if entity.HasOwner || entity.HasChangedBy || entity.HasCreatedDate || entity.HasChangedDate {
 		return unsupportedEntityFeature(entity.Name, "system members (owner/changedBy/createdDate/changedDate)")
 	}
+	// PED's attribute constructor takes a type name only, and the payload it
+	// reads back carries no LocalizeDate (read_router.go), so `not localized`
+	// (#1373) could be neither written nor checked: refused, not dropped. An
+	// attribute only arrives false when the statement said so — every
+	// live-read DateTime reads as true.
+	for _, a := range entity.Attributes {
+		if dt, ok := a.Type.(*domainmodel.DateTimeAttributeType); ok && !dt.LocalizeDate {
+			return unsupportedEntityFeature(entity.Name, "non-localized DateTime attributes (`not localized`, attribute "+a.Name+")")
+		}
+	}
 	return nil
 }
 

@@ -38,3 +38,12 @@
 | `bug-patterns/scripts-that-cannot-rerun.md` | bug-pattern | statement-level idempotence, and why it is not write-level idempotence |
 | `bug-patterns/expression-translation-drift.md` | bug-pattern | MDL expression to Mendix expression, where the translation changes the meaning |
 | `bug-patterns/misleading-diagnostics.md` | bug-pattern | hints that fire on the wrong thing and send the reader somewhere the problem is not |
+| `bug-patterns/absent-edge-reads-as-absent-fact.md` | bug-pattern | a reference the catalog never indexed, read back as "nothing uses this" — and the tools that phrase it as a recommendation to delete |
+| `bug-patterns/a-rule-that-cannot-fire.md` | bug-pattern | the two mirrored ways a lint rule's verdict stops meaning anything: silence that looks clean, and firing on correct code |
+| `bug-patterns/binding-context.md` | bug-pattern | which object an unqualified attribute name is read against, and the four layers that each keep their own answer |
+| `bug-patterns/reports-that-outrun-the-write.md` | bug-pattern | the sentence `exec` prints as a claim about storage, made by code that cannot see storage |
+| `bug-patterns/cost-scales-with-the-project.md` | bug-pattern | work proportional to the project for a request that is not — multiplier chains, and the guard that discards half-finished work |
+| `bug-patterns/generated-mdl-on-the-authors-lines.md` | bug-pattern | mxcli rendering a `.test.mdl` into MDL and then checking it — every wrapper defect arrives as a diagnostic on the author's line |
+| `bug-patterns/the-platform-ci-does-not-run.md` | bug-pattern | defects whose only habitat is a machine no automated run inhabits: an unprivileged Windows account, a non-root devcontainer, an unpinned Mendix version |
+| `bug-patterns/the-visitor-walks-a-failed-parse.md` | bug-pattern | `Build()` walks error-recovered trees on purpose, so a required grammar child is not a guarantee — the crash class that follows |
+| `bug-patterns/two-meanings-one-script.md` | bug-pattern | while ADR-0011 keeps two MDL meanings live: where the gate is consulted, what the upgrade can rewrite, and which spelling a value is read in |
