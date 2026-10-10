@@ -45,3 +45,5 @@
 | `bug-patterns/cost-scales-with-the-project.md` | bug-pattern | work proportional to the project for a request that is not — multiplier chains, and the guard that discards half-finished work |
 | `bug-patterns/generated-mdl-on-the-authors-lines.md` | bug-pattern | mxcli rendering a `.test.mdl` into MDL and then checking it — every wrapper defect arrives as a diagnostic on the author's line |
 | `bug-patterns/the-platform-ci-does-not-run.md` | bug-pattern | defects whose only habitat is a machine no automated run inhabits: an unprivileged Windows account, a non-root devcontainer, an unpinned Mendix version |
+| `bug-patterns/the-visitor-walks-a-failed-parse.md` | bug-pattern | `Build()` walks error-recovered trees on purpose, so a required grammar child is not a guarantee — the crash class that follows |
+| `bug-patterns/two-meanings-one-script.md` | bug-pattern | while ADR-0011 keeps two MDL meanings live: where the gate is consulted, what the upgrade can rewrite, and which spelling a value is read in |
