@@ -12,6 +12,8 @@ mxcli new MyApp --version 11.8.0 --skip-init   # Skip AI tooling setup
 
 This downloads MxBuild, creates a blank Mendix project via `mx create-project`, runs `mxcli init` to set up AI tooling and Dev Container, and downloads the correct Linux mxcli binary for the container. The result is a ready-to-open folder.
 
+Placing that Linux binary is best-effort. If the download fails (no network, a proxy, or a development build with no matching release), `mxcli new` prints a warning and still exits 0, because the project is already complete. Add the binary afterwards with `mxcli setup mxcli --output ./mxcli` in the project directory, adding `--tag <release>` when you're running a development build.
+
 | Flag | Description |
 |------|-------------|
 | `--version` | Mendix version (required, e.g., `11.8.0`) |
