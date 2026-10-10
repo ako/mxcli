@@ -270,6 +270,9 @@ const (
 	// QuotedSettingsConstant is `alter settings [drop] constant 'Module.Const'`:
 	// a constant named in a string.
 	QuotedSettingsConstant = "MDL-DEPR085"
+	// QuotedVariableDefault is a page or snippet variable's default written in
+	// a string: `$show: boolean = 'true'`.
+	QuotedVariableDefault = "MDL-DEPR086"
 
 	// Codes 070-079 are R2's integration documents (ako/mxcli#754): properties
 	// in ( ), declarative children in { }.
@@ -928,9 +931,12 @@ var r5Entries = []Entry{
 			"decision $WorkflowContext/Total > 1000 outcomes true -> { } false -> { }; end workflow;",
 	},
 	{
-		Code:      BracketedWidgetCondition,
-		Old:       "Visible: [<expression>] / Editable: [<expression>]",
-		Canonical: "Visible: <expression> / Editable: <expression>",
+		Code: BracketedWidgetCondition,
+		Old:  "Visible: [<expression>] / Editable: [<expression>]",
+		// The bare form alone is not the same meaning: inside the brackets a bare
+		// attribute is rooted in $currentObject, so the canonical form names it
+		// (sudoku FINDINGS #63 migrated from this text by hand and rebound them).
+		Canonical: "Visible: <expression> / Editable: <expression>, each attribute as $currentObject/Attr",
 		Rewrite: Rewrite{Structural: "brackets into the expression they store: `Visible: [Active]` becomes " +
 			"`Visible: $currentObject/Active`"},
 		RemovedIn: 2,
@@ -990,6 +996,22 @@ var r5Entries = []Entry{
 			"constant`. A string that is not a qualified name is left in place and reported by fmt --upgrade.",
 		Example:          "alter settings constant 'M.ApiUrl' value 'https://test.example.com' in configuration 'Default';",
 		CanonicalExample: "alter settings constant @M.ApiUrl value 'https://test.example.com' in configuration 'Default';",
+	},
+	{
+		Code:      QuotedVariableDefault,
+		Old:       "Variables: ( $name: Type = '<expression>' ) / add variables $name: Type = '<expression>'",
+		Canonical: "Variables: ( $name: Type = <expression> ) / add variables $name: Type = <expression>",
+		Rewrite:   Rewrite{Structural: "default out of its string: `$show: boolean = 'true'` becomes `$show: boolean = true`"},
+		RemovedIn: 2,
+		Note: "A variable's default is an expression, written bare like every other (R5). The string form keeps " +
+			"its meaning — its content is the expression — under every language version, so it is an alias. " +
+			"A default that is itself a string (`$s: string = '''abc'''`) or empty has no other spelling yet and " +
+			"is not reported; one whose content would not read back as the same bare expression is left in " +
+			"place and reported by fmt --upgrade.",
+		Example: "create page M.P (Title: 'P', Layout: Atlas_Core.Atlas_Default, " +
+			"Variables: ( $show: boolean = 'if (3 < 4) then true else false' )) { };",
+		CanonicalExample: "create page M.P (Title: 'P', Layout: Atlas_Core.Atlas_Default, " +
+			"Variables: ( $show: boolean = if (3 < 4) then true else false )) { };",
 	},
 }
 

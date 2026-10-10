@@ -291,8 +291,12 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		// the wrong token — measured on `htmlelemnt frame (tagName: 'div')`,
 		// which drew a `tagName` warning beside the real error. A built-in
 		// (TypeIsGeneric false) keeps the check, since its properties are the
-		// only thing that can be wrong about it.
-		if def == nil && !isObjectListItem && !w.TypeIsGeneric {
+		// only thing that can be wrong about it. An explicit widget id
+		// (`pluggablewidget '<id>'`) is never a built-in either: with a project
+		// an unknown one is MDL-WIDGET25, and with none the registry simply has
+		// no definition for the project's own widget — the built-in allow-list
+		// would report every property it has.
+		if def == nil && !isObjectListItem && !w.TypeIsGeneric && explicitWidgetID(w) == "" {
 			out = append(out, validateStaticWidgetUnknownProps(w, locationPrefix)...)
 			// #928: `editable:` on a widget Mendix gives no editability — same
 			// "silently dropped on write" family, but the flat property
@@ -786,6 +790,9 @@ var staticWidgetKnownProps = func() map[string]bool {
 		// menu source and orientation of navigationtree / menubar /
 		// simplemenubar, and a scroll-container region's size mode.
 		"ShowFooter", "Menu", "Profile", "Orientation", "SizeMode",
+		// a layout-grid row's and column's alignment, read by
+		// buildLayoutGridRowV3 / buildLayoutGridColumnV3 and emitted by describe.
+		"VerticalAlignment", "HorizontalAlignment", "SpacingBetweenColumns",
 		// fragment / building-block sentinel-internal keys (USE_FRAGMENT /
 		// USE_BUILDING_BLOCK), consumed by the expander, never serialized
 		"Args", "DataSourceOverride", "ActionOverride",

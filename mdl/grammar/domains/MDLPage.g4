@@ -74,8 +74,10 @@ variableDeclarationList
     : variableDeclaration (COMMA variableDeclaration)*
     ;
 
+// A variable's default is an expression, written bare: `$show: Boolean = true`.
+// A string whose content is the expression is the old spelling (MDL-DEPR086).
 variableDeclaration
-    : VARIABLE COLON dataType EQUALS STRING_LITERAL     // $varName: Boolean = 'expression'
+    : VARIABLE COLON dataType EQUALS (STRING_LITERAL /* @alias MDL-DEPR086 */ | expression)
     ;
 
 // A sort column. The name may navigate associations, one `/` per hop, with the

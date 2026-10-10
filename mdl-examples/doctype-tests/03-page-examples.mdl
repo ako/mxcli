@@ -2227,7 +2227,7 @@ create page PgTest.P033b_DataGrid_ColumnProperties folder 'DataGrid'
   title: 'DataGrid Column Properties',
   layout: Atlas_Core.Atlas_Default,
   url: 'p033b_datagrid_column_properties',
-  variables: ( $showStockColumn: boolean = 'if (3 < 4) then true else false' )
+  variables: ( $showStockColumn: boolean = if (3 < 4) then true else false )
 )
 {
   datagrid dgProducts (datasource: database PgTest.Product) {
@@ -2506,7 +2506,7 @@ create page PgTest.P041_Placeholders
 
 -- Add a boolean page variable for controlling column visibility
 alter page PgTest.P033b_DataGrid_ColumnProperties {
-  add variables $showPriceColumn: boolean = 'true';
+  add variables $showPriceColumn: boolean = true;
 };
 
 -- Add a string variable with an escaped string default
@@ -2521,7 +2521,7 @@ alter page PgTest.P033b_DataGrid_ColumnProperties {
 
 -- Multiple variable operations in a single ALTER statement
 alter page PgTest.P033b_DataGrid_ColumnProperties {
-  add variables $pageSize: integer = '20';
+  add variables $pageSize: integer = 20;
   drop variables $showPriceColumn;
 };
 

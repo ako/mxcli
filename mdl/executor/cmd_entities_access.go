@@ -5,6 +5,7 @@ package executor
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/visitor"
@@ -200,9 +201,13 @@ func quoteMembers(members []string) []string {
 	return out
 }
 
-// xpath selects among the rules that name the same role — Mendix allows one per
-// constraint — and anyXPath takes the first of them regardless, which is what
-// REVOKE wants since it narrows every rule the roles appear in.
+// With anyXPath false (GRANT) the rule is the one the backend upserted: exactly
+// roleNames as a set, and the same xpath — Mendix allows one rule per constraint,
+// and several rules may name one role. Matching on any overlap reported a shared
+// rule (FabUser, Coordinator, Engineer) after a GRANT that wrote a separate rule
+// for Coordinator alone. anyXPath takes the first rule naming any of the roles,
+// whatever its constraint, which is what REVOKE wants since it narrows every rule
+// the roles appear in.
 //
 // formatAccessRuleResult re-reads the entity and formats the resulting access state
 // for the given roles. Returns a string like "  Result: CREATE, READ (Name, Price)\n".
@@ -246,10 +251,10 @@ func formatAccessRuleResult(ctx *ExecContext, moduleName, entityName string, rol
 		if matchCount == 0 {
 			continue
 		}
-		// A role may hold one rule per XPath constraint (#936), so the roles
-		// alone no longer identify the rule the statement touched — echoing the
-		// first match would report a different rule's rights back to the user.
-		if !anyXPath && rule.XPathConstraint != xpath {
+		// A role may hold one rule per XPath constraint (#936), and the backend
+		// keys the rule by role set plus constraint — echoing any other match
+		// would report a different rule's rights back to the user.
+		if !anyXPath && (rule.XPathConstraint != xpath || !sameRoleSet(rule.ModuleRoleNames, roleNames)) {
 			continue
 		}
 		// Found a matching rule
@@ -261,6 +266,17 @@ func formatAccessRuleResult(ctx *ExecContext, moduleName, entityName string, rol
 	}
 
 	return "  Result: (no access)\n"
+}
+
+// sameRoleSet reports whether a and b hold the same role names, order-insensitive.
+// It is the comparison AddEntityAccessRule upserts by (sameStringSet in
+// mdl/backend/modelsdk), so the GRANT echo finds the rule that was written.
+func sameRoleSet(a, b []string) bool {
+	ac := slices.Clone(a)
+	bc := slices.Clone(b)
+	slices.Sort(ac)
+	slices.Sort(bc)
+	return slices.Equal(ac, bc)
 }
 
 // --- Executor method wrappers for callers not yet migrated ---

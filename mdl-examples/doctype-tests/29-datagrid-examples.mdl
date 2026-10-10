@@ -614,7 +614,7 @@ create page DgTest.DG15_Variable_Visibility folder 'DataGrid' (
   title: 'Products (conditional column)',
   layout: Atlas_Core.Atlas_Default,
   url: 'dg15_variable_visibility',
-  variables: ( $showStock: boolean = 'if (1 < 2) then true else false' )
+  variables: ( $showStock: boolean = if (1 < 2) then true else false )
 ) {
   datagrid dg1 (datasource: database DgTest.Product) {
     column  (attribute: Name,  caption: 'Name')

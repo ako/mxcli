@@ -30,7 +30,7 @@ Guide for writing CREATE PAGE statements in Mendix Definition Language (MDL).
 create [or replace] page Module.PageName
 (
   [params: ( $ParamName: Module.EntityType | PrimitiveType, ... ),]
-  [variables: ( $varName: DataType = 'defaultExpression', ... ),]
+  [variables: ( $varName: DataType = <default expression>, ... ),]   -- bare: `= true`, not `= 'true'`
   title: 'Page Title',
   layout: Module.LayoutName,
   [url: 'page-url',]

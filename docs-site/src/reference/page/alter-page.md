@@ -53,7 +53,7 @@ DROP widgetName1, widgetName2;
 REPLACE widgetName WITH { widget_definitions };
 
 -- Add a page variable
-ADD Variables $name : type = 'expression';
+ADD Variables $name : type = <expression>;
 
 -- Drop a page variable
 DROP Variables $name;
@@ -215,7 +215,7 @@ Add and drop page variables:
 ```sql
 mdl 1;
 ALTER PAGE Sales.Order_Edit {
-    ADD Variables $showAdvanced : Boolean = 'false';
+    ADD Variables $showAdvanced : Boolean = false;
 };
 
 ALTER PAGE Sales.Order_Edit {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
+	"github.com/mendixlabs/mxcli/mdl/visitor"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/pages"
 
@@ -155,7 +156,7 @@ func describePage(ctx *ExecContext, name ast.QualifiedName) error {
 						varTypeName = pageVariableMDLType(vtType, enumQN)
 					}
 				}
-				varParts = append(varParts, fmt.Sprintf("$%s: %s = %s", varName, varTypeName, mdlQuote(ctx, defaultVal)))
+				varParts = append(varParts, pageVariableMDL(ctx, varName, varTypeName, defaultVal))
 			}
 			props = append(props, fmt.Sprintf("Variables: ( %s )", strings.Join(varParts, ", ")))
 		}
@@ -858,13 +859,21 @@ type rawDesignProp struct {
 
 type rawWidgetRow struct {
 	Columns []rawWidgetColumn
+	// Appearance holds only Class, Style, DynamicClasses and DesignProperties —
+	// a row is not a widget, but its Forms$Appearance is a widget's.
+	Appearance            rawWidget
+	VerticalAlignment     string // "" or "None" is the default
+	HorizontalAlignment   string
+	SpacingBetweenColumns bool
 }
 
 type rawWidgetColumn struct {
-	Width       int
-	TabletWidth int
-	PhoneWidth  int
-	Widgets     []rawWidget
+	Width             int
+	TabletWidth       int
+	PhoneWidth        int
+	Widgets           []rawWidget
+	Appearance        rawWidget // Class, Style, DynamicClasses, DesignProperties
+	VerticalAlignment string
 }
 
 // toBsonArray converts various BSON array types to []interface{}.
@@ -1108,4 +1117,15 @@ func primitiveParamTypeMDL(bsonType string) string {
 	default:
 		return bsonType
 	}
+}
+
+// pageVariableMDL writes one page variable, its default as the bare
+// expression it stores (R5). A default with no bare spelling — a string, the
+// empty default, text that would read back differently — is written in a
+// string whose content is the expression (MDL-DEPR086's form), as before.
+func pageVariableMDL(ctx *ExecContext, name, typeName, defaultVal string) string {
+	if visitor.VariableDefaultReadsBack(defaultVal) {
+		return fmt.Sprintf("$%s: %s = %s", name, typeName, defaultVal)
+	}
+	return fmt.Sprintf("$%s: %s = %s", name, typeName, mdlQuote(ctx, defaultVal))
 }

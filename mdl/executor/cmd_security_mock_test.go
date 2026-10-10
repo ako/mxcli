@@ -553,3 +553,89 @@ func TestRevokeEntityAccess_FakeRole_Issue399(t *testing.T) {
 	assertContainsStr(t, err.Error(), "module role")
 	assertContainsStr(t, err.Error(), "GhostRole")
 }
+
+// grantResultFixture builds an entity holding a shared read-only rule for
+// {FabUser, Coordinator, Engineer} and a separate rule for {Coordinator} alone
+// that writes Country — the state after `grant write (Country) … to Coordinator`
+// against an entity that already had the shared rule.
+func grantResultFixture(t *testing.T, grantRoles []string) string {
+	t.Helper()
+	mod := mkModule("FieldService")
+	h := mkHierarchy(mod)
+
+	country := &domainmodel.Attribute{BaseElement: model.BaseElement{ID: nextID("attr")}, Name: "Country"}
+	entity := &domainmodel.Entity{
+		BaseElement: model.BaseElement{ID: nextID("ent")},
+		ContainerID: mod.ID,
+		Name:        "Customer",
+		Persistable: true,
+		Attributes:  []*domainmodel.Attribute{country},
+		AccessRules: []*domainmodel.AccessRule{
+			{
+				ModuleRoleNames:           []string{"FieldService.FabUser", "FieldService.Coordinator", "FieldService.Engineer"},
+				DefaultMemberAccessRights: domainmodel.MemberAccessRightsReadOnly,
+				MemberAccesses: []*domainmodel.MemberAccess{
+					{AttributeName: "FieldService.Customer.Country", AccessRights: domainmodel.MemberAccessRightsReadOnly},
+				},
+			},
+			{
+				ModuleRoleNames:           []string{"FieldService.Coordinator"},
+				DefaultMemberAccessRights: domainmodel.MemberAccessRightsNone,
+				MemberAccesses: []*domainmodel.MemberAccess{
+					{AttributeName: "FieldService.Customer.Country", AccessRights: domainmodel.MemberAccessRightsReadWrite},
+				},
+			},
+		},
+	}
+	dm := &domainmodel.DomainModel{
+		BaseElement: model.BaseElement{ID: nextID("dm")},
+		ContainerID: mod.ID,
+		Entities:    []*domainmodel.Entity{entity},
+	}
+
+	mb := &mock.MockBackend{
+		IsConnectedFunc:     func() bool { return true },
+		ListModulesFunc:     func() ([]*model.Module, error) { return []*model.Module{mod}, nil },
+		GetModuleByNameFunc: func(name string) (*model.Module, error) { return mod, nil },
+		GetModuleSecurityFunc: func(moduleID model.ID) (*security.ModuleSecurity, error) {
+			return &security.ModuleSecurity{ModuleRoles: []*security.ModuleRole{
+				{Name: "FabUser"}, {Name: "Coordinator"}, {Name: "Engineer"},
+			}}, nil
+		},
+		GetDomainModelFunc:          func(id model.ID) (*domainmodel.DomainModel, error) { return dm, nil },
+		AddEntityAccessRuleFunc:     func(params backend.EntityAccessRuleParams) error { return nil },
+		ReconcileMemberAccessesFunc: func(unitID model.ID, moduleName string) (int, error) { return 0, nil },
+	}
+
+	ctx, buf := newMockCtx(t, withBackend(mb), withHierarchy(h))
+	var roles []ast.QualifiedName
+	for _, r := range grantRoles {
+		roles = append(roles, ast.QualifiedName{Module: "FieldService", Name: r})
+	}
+	rights := []ast.EntityAccessRight{{Type: ast.EntityAccessReadAll}}
+	if len(grantRoles) == 1 {
+		rights = []ast.EntityAccessRight{{Type: ast.EntityAccessWriteMembers, Members: []string{"Country"}}}
+	}
+	assertNoError(t, execGrantEntityAccess(ctx, &ast.GrantEntityAccessStmt{
+		Entity: ast.QualifiedName{Module: "FieldService", Name: "Customer"},
+		Roles:  roles,
+		Rights: rights,
+	}))
+	return buf.String()
+}
+
+// TestGrantEntityAccess_ResultDescribesExactRoleSetRule: the Result line after a
+// GRANT must describe the rule the backend upserted — the one keyed by the exact
+// role set plus XPath — not the first rule that merely mentions one of the
+// granted roles. Granting to Coordinator alone used to echo the shared
+// FabUser/Coordinator/Engineer rule ("read *").
+func TestGrantEntityAccess_ResultDescribesExactRoleSetRule(t *testing.T) {
+	out := grantResultFixture(t, []string{"Coordinator"})
+	assertContainsStr(t, out, "Result: read (Country), write (Country)")
+	assertNotContainsStr(t, out, "Result: read *")
+
+	// Control: granting to the shared rule's exact role set still describes it.
+	out = grantResultFixture(t, []string{"Engineer", "FabUser", "Coordinator"})
+	assertContainsStr(t, out, "Result: read *")
+	assertNotContainsStr(t, out, "write (Country)")
+}

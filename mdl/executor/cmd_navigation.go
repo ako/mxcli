@@ -137,8 +137,11 @@ func execAlterNavigation(ctx *ExecContext, s *ast.AlterNavigationStmt) error {
 		// An offline profile changes what the platform demands of pages this
 		// statement never mentioned. Say so now, not at the next build.
 		warnOfflineIncompatiblePages(ctx, createdKind)
-	} else {
-		fmt.Fprintf(ctx.Output, "Navigation profile %s updated.\n", mdlQuoted(s.ProfileName))
+	} else if !ctx.reportWrite("navigation profile "+mdlQuoted(s.ProfileName),
+		"Navigation profile %s updated.", mdlQuoted(s.ProfileName)) {
+		// A re-run whose write was elided rewrote nothing, so it carried nothing
+		// either (ako/mxcli#890 is the same rule for security and settings).
+		return nil
 	}
 	reportKeptMenuActions(ctx, kept)
 	return nil

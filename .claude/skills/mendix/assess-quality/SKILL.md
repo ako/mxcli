@@ -152,6 +152,7 @@ After reviewing automated results, assess the following areas manually. The guid
 |-----------|------|----------|
 | 1:1 mapping between module roles and user roles | CONV008 | High |
 | Pages in navigation must have allowed roles | MPR007 | High |
+| Every user role can open its home page (else CE2729) | MPR007 | High |
 | No guest/anonymous access to sensitive data | SEC004 | Critical |
 | Strict security mode enabled | SEC005 | High |
 | No demo users in production | SEC003 | Critical |

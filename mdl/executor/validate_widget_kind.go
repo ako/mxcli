@@ -29,6 +29,13 @@ import (
 // def-driven body (slices 2-3) safe: those give up the parser's enforcement, so
 // the semantic check has to exist first.
 
+// explicitWidgetID returns the widget id a `pluggablewidget '<id>'` /
+// `customwidget '<id>'` form names, or "" for any other widget.
+func explicitWidgetID(w *ast.WidgetV3) string {
+	id, _ := w.Properties["WidgetType"].(string)
+	return id
+}
+
 // validateWidgetKind reports a widget whose kind mxcli cannot resolve, and a
 // container keyword the parent's definition does not declare.
 func validateWidgetKind(w *ast.WidgetV3, registry *WidgetRegistry, parentDef *WidgetDefinition,
@@ -40,7 +47,7 @@ func validateWidgetKind(w *ast.WidgetV3, registry *WidgetRegistry, parentDef *Wi
 	// An explicit widget id that resolves to nothing. Only reachable through the
 	// `pluggablewidget '<id>'` / `customwidget '<id>'` forms, where the id is a
 	// string literal the parser cannot check.
-	if id, ok := w.Properties["WidgetType"].(string); ok && id != "" {
+	if id := explicitWidgetID(w); id != "" {
 		// With no project there is nothing to be unknown RELATIVE TO: the
 		// registry holds only the embedded widgets, so every real project
 		// widget would be reported. `mxcli check` with no -p is the common

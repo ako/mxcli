@@ -73,7 +73,7 @@ CREATE PAGE MyModule.Customer_Edit
 | `Params` | Page parameters (entity objects or primitives) | `Params: ( $Order: Sales.Order, $Qty: Integer )` |
 | `Title` | Page title shown in the browser/tab | `Title: 'Edit Customer'` |
 | `Layout` | Layout to use for the page | `Layout: Atlas_Core.PopupLayout` |
-| `Variables` | Page-level variables for conditional logic | `Variables: ( $show: Boolean = 'true' )` |
+| `Variables` | Page-level variables for conditional logic | `Variables: ( $show: Boolean = true )` |
 | `Class` | CSS class applied to the page (Forms$Appearance) | `Class: 'container-fluid bg-light'` |
 | `Style` | Inline CSS style applied to the page | `Style: 'min-height: 100vh'` |
 

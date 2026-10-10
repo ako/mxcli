@@ -170,7 +170,7 @@ Add or remove page-level variables:
 mdl 1;
 -- Add a variable
 ALTER PAGE Module.EditPage {
-  ADD Variables $showAdvanced: Boolean = 'false'
+  ADD Variables $showAdvanced: Boolean = false
 };
 
 -- Remove a variable

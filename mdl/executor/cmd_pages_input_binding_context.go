@@ -231,7 +231,7 @@ func validatePageVariableBindings(widgets []*ast.WidgetV3, variables []ast.PageV
 						RuleID:     "MDL-WIDGET34",
 						Severity:   linter.SeverityError,
 						Message:    locationPrefix + ": " + msg,
-						Suggestion: "Bind an input to a page variable by declaring it: `Variables: ( $name: Boolean = 'true' )`, then `Attribute: $name`.",
+						Suggestion: "Bind an input to a page variable by declaring it: `Variables: ( $name: Boolean = true )`, then `Attribute: $name`.",
 					})
 				}
 			}
