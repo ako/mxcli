@@ -3,6 +3,7 @@
 package diaglog
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -68,7 +69,10 @@ func TestCommandLogging(t *testing.T) {
 
 	l.Command("ShowStmt", "SHOW ENTITIES", 50*time.Millisecond, nil)
 	l.Command("CreateEntityStmt", "CREATE ENTITY Foo.Bar", 100*time.Millisecond, nil)
-	l.Close()
+	// The PROCESS ends the session, not a command: l.Close() is a command
+	// releasing its hold and writes nothing, because it runs while the command
+	// is still returning and so cannot know the exit code.
+	CloseCurrent()
 
 	// Read log file and check it contains expected entries
 	logDir := filepath.Join(tmpDir, ".mxcli", "logs")
@@ -149,5 +153,74 @@ func TestTruncate(t *testing.T) {
 	}
 	if got := truncate("this is a long string", 10); got != "this is a ..." {
 		t.Errorf("expected truncated, got %q", got)
+	}
+}
+
+// readSessionEnd returns the session_end record from the one log file in dir.
+func readSessionEnd(t *testing.T, tmpDir string) map[string]any {
+	t.Helper()
+	logDir := filepath.Join(tmpDir, ".mxcli", "logs")
+	entries, err := os.ReadDir(logDir)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("want one log file in %s, got %v (err %v)", logDir, entries, err)
+	}
+	data, err := os.ReadFile(filepath.Join(logDir, entries[0].Name()))
+	if err != nil {
+		t.Fatalf("reading log: %v", err)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		var rec map[string]any
+		if json.Unmarshal([]byte(line), &rec) != nil {
+			continue
+		}
+		if rec["msg"] == "session_end" {
+			return rec
+		}
+	}
+	t.Fatalf("no session_end record in:\n%s", data)
+	return nil
+}
+
+// A command that returns an error is a run that ENDED, and main() closes the
+// session on that path so the run keeps its duration. Before this, the error
+// path went straight to os.Exit: no session_end, so no duration, so
+// `diag loop-report` summed wall time over the runs that happened to succeed
+// (PROPOSAL_agent_loop_efficiency.md item 2d).
+func TestCloseWithExitRecordsTheCode(t *testing.T) {
+	tmpDir := t.TempDir()
+	testutil.SetHome(t, tmpDir)
+	resetForTest()
+
+	if l := Init("test-version", "test"); l == nil {
+		t.Fatal("expected non-nil logger")
+	}
+	CloseCurrentWithExit(1)
+
+	rec := readSessionEnd(t, tmpDir)
+	if got, ok := rec["exit_code"]; !ok || got != float64(1) {
+		t.Errorf("exit_code = %v (present %v), want 1", got, ok)
+	}
+	// The duration is the half that item 2d is about: a failed run's time is
+	// still time the loop spent.
+	if _, ok := rec["duration_s"]; !ok {
+		t.Error("session_end carries no duration_s, so the run's time is still lost")
+	}
+}
+
+// Zero is omitted rather than written, so a reader cannot mistake "exited
+// cleanly" for "nobody recorded it" — and a session_end from a log written
+// before exit codes existed, where closing implied success, reads as 0 too.
+func TestCleanCloseOmitsTheExitCode(t *testing.T) {
+	tmpDir := t.TempDir()
+	testutil.SetHome(t, tmpDir)
+	resetForTest()
+
+	if l := Init("test-version", "test"); l == nil {
+		t.Fatal("expected non-nil logger")
+	}
+	CloseCurrent()
+
+	if rec := readSessionEnd(t, tmpDir); rec["exit_code"] != nil {
+		t.Errorf("exit_code = %v on a clean close, want absent", rec["exit_code"])
 	}
 }
