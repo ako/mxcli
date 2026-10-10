@@ -99,8 +99,6 @@ var knownFailures = map[string]knownFailure{
 	// AlternativeText and Items).
 
 	// Pages: #705 item 1 plus #721 C.
-	"page Administration.Account_Edit":       {laws: []law{lawGetPut}, issue: "#705 #721", why: "texts and translations (#705 item 1); widget properties (#721 C)"},
-	"page Administration.Account_New":        {laws: []law{lawGetPut}, issue: "#705 #721", why: "texts and translations (#705 item 1); widget properties (#721 C)"},
 	"page Administration.Account_Overview":   {laws: []law{lawGetPut}, issue: "#705 #721", why: "texts and translations (#705 item 1); widget properties (#721 C)"},
 	"page FeedbackModule.PopupFailure":       {laws: []law{lawGetPut}, issue: "#705 #721", why: "texts and translations (#705 item 1); widget properties (#721 C)"},
 	"page FeedbackModule.PopupSuccess":       {laws: []law{lawGetPut}, issue: "#705 #721", why: "texts and translations (#705 item 1); widget properties (#721 C)"},

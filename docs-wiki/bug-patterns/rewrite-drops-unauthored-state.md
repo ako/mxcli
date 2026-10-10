@@ -343,6 +343,22 @@ members, print what is being dropped, and point at the incremental spelling. Whe
 the statement *is* a full replace, the user asked for it; where the loss is of
 something MDL cannot express at all, they did not.
 
+**A dropped key can break version control even when its value was the default.**
+Every loss above is a lost *value*. There is a quieter variant where nothing is
+lost: an empty `Documentation`, the empty half of an attribute/association pair.
+Mendix fills the default back in when it loads the document, so `mx check`, the
+build and the runtime are all clean. But Mendix's merge and diff engine compares
+an element's property *names* between two revisions before it compares any value,
+and it throws rather than defaulting. So the first time Studio Pro saves the
+document, every merge, diff and Version Control status view between the two
+revisions crashes. Carrying `$ID`s forward is what turns a missing key into that
+crash, because the merge then sees the same element on both sides with different
+names. A brand-new element crashes the same way, one save later. The reference
+for "what Studio Pro writes" is `mx convert -p`, which re-serializes exactly the
+non-canonical units. Its additions are the gaps, valued with Mendix's own
+defaults. Its removals are keys the version does not declare, and those turned
+out to hide real behaviour bugs.
+
 ## See also
 
 - [fix-issue findings](../../.claude/skills/fix-issue/findings/) — the individual

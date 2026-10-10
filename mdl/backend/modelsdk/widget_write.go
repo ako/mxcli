@@ -479,9 +479,13 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 		return g, nil
 
 	case *pages.Title:
+		// No Caption: a Title widget shows its page's title, and Forms$Title
+		// declares no caption (generated/metamodel PagesTitle; `mx convert`
+		// strips one on 10.24 and 11.14 alike). Writing it left a key Mendix's
+		// merge engine cannot compare once Studio Pro saves the page
+		// (mendixlabs/mxcli#1373) — and never changed what the page showed.
 		g := genPg.NewTitle()
 		applyWidgetBase(g, &x.BaseWidget)
-		g.SetCaption(captionToGen(x.Caption))
 		return g, nil
 
 	case *pages.Label:
@@ -958,19 +962,13 @@ func navListItemToGen(item *pages.NavigationListItem) (element.Element, error) {
 		g.SetID(element.ID(item.ID))
 	}
 	assignID(g)
-	// The item MUST carry its name, else Studio Pro rejects the project with
-	// CE7247 "name cannot be empty" (and CE0495 "duplicate name ''" when there is
-	// more than one item). The gen NavigationListItem type has no typed Name
-	// setter, so write it as a raw property (like the legacy writer's Name key).
-	// (ledger finding #24)
-	//
-	// An unnamed item is how Studio Pro stores every one it creates: no Name key
-	// at all (all six in ako/TestApp at 11.14.0), and `mx check` accepts that.
-	// Writing `Name: ""` for it turned a describe → exec of such a list into a
-	// rewrite (ako/mxcli#950).
-	if item.Name != "" {
-		addStr(&g.Base, "Name", item.Name)
-	}
+	// No Name: Forms$NavigationListItem declares none. Studio Pro stores none
+	// on any item it creates (all six in ako/TestApp at 11.14.0), and `mx
+	// convert` strips one on 10.24 and 11.14 alike, so writing the MDL item name
+	// left a key Mendix's merge engine cannot compare once Studio Pro saves the
+	// document (mendixlabs/mxcli#1373). `mx check` is clean without it (measured
+	// on 11.14.0 with two named items) — the CE7247 / CE0495 an older note
+	// blamed on its absence is not reproduced.
 	g.SetAppearance(newAppearance("", "", "", nil))
 	act, err := clientActionToGen(item.Action)
 	if err != nil {
