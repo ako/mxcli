@@ -43,7 +43,7 @@ func (b *Backend) CreateConsumedRestService(svc *model.ConsumedRestService) erro
 		svc.ID = model.ID(mmpr.GenerateID())
 	}
 	svc.TypeName = "Rest$ConsumedRestService"
-	contents, err := (&codec.Encoder{}).Encode(consumedRestServiceToGen(svc))
+	contents, err := (&codec.Encoder{}).Encode(consumedRestServiceToGen(svc, b.restBodyForms()))
 	if err != nil {
 		return fmt.Errorf("CreateConsumedRestService: encode: %w", err)
 	}
@@ -58,7 +58,7 @@ func (b *Backend) UpdateConsumedRestService(svc *model.ConsumedRestService) erro
 	if b.writer == nil {
 		return fmt.Errorf("UpdateConsumedRestService: not connected for writing")
 	}
-	contents, err := (&codec.Encoder{}).Encode(consumedRestServiceToGen(svc))
+	contents, err := (&codec.Encoder{}).Encode(consumedRestServiceToGen(svc, b.restBodyForms()))
 	if err != nil {
 		return fmt.Errorf("UpdateConsumedRestService: encode: %w", err)
 	}
@@ -78,7 +78,7 @@ func (b *Backend) DeleteConsumedRestService(id model.ID) error {
 	return b.writer.DeleteUnit(string(id))
 }
 
-func consumedRestServiceToGen(svc *model.ConsumedRestService) element.Element {
+func consumedRestServiceToGen(svc *model.ConsumedRestService, forms restBodyForms) element.Element {
 	g := newElem("Rest$ConsumedRestService", string(svc.ID))
 	addStr(g, "Name", svc.Name)
 	addStr(g, "Documentation", svc.Documentation)
@@ -97,7 +97,7 @@ func consumedRestServiceToGen(svc *model.ConsumedRestService) element.Element {
 	}
 	ops := make([]element.Element, 0, len(svc.Operations))
 	for _, op := range svc.Operations {
-		ops = append(ops, restOperationToGen(op))
+		ops = append(ops, restOperationToGen(op, forms))
 	}
 	if len(ops) > 0 {
 		addPartList(g, "Operations", ops)
@@ -132,7 +132,7 @@ func restValueElem(value string) element.Element {
 	return g
 }
 
-func restOperationToGen(op *model.RestClientOperation) element.Element {
+func restOperationToGen(op *model.RestClientOperation, forms restBodyForms) element.Element {
 	g := newElem("Rest$RestOperation", "")
 	addStr(g, "Name", op.Name)
 	timeout := int64(op.Timeout)
@@ -143,7 +143,7 @@ func restOperationToGen(op *model.RestClientOperation) element.Element {
 	if len(op.Tags) > 0 {
 		addByNameRefList(g, "Tags", "", op.Tags)
 	}
-	addPart(g, "Method", restMethodToGen(op))
+	addPart(g, "Method", restMethodToGen(op, forms))
 	addPart(g, "Path", valueTemplateElem(op.Path))
 
 	headers := make([]element.Element, 0, len(op.Headers)+1)
@@ -195,7 +195,7 @@ func restOperationToGen(op *model.RestClientOperation) element.Element {
 
 // restMethodToGen builds the polymorphic Method field. POST/PUT/PATCH always
 // carry a body (CE7064); GET/DELETE/etc. use the without-body form.
-func restMethodToGen(op *model.RestClientOperation) element.Element {
+func restMethodToGen(op *model.RestClientOperation, forms restBodyForms) element.Element {
 	httpMethod := httpMethodToMendix(op.HttpMethod)
 	upper := strings.ToUpper(op.HttpMethod)
 	withBody := op.BodyType != "" || upper == "POST" || upper == "PUT" || upper == "PATCH"
@@ -213,22 +213,52 @@ func restMethodToGen(op *model.RestClientOperation) element.Element {
 		if bodyType == "" {
 			bodyType = "JSON"
 		}
-		addPart(g, "Body", restBodyToGen(bodyType, op.BodyVariable))
+		addPart(g, "Body", restBodyToGen(bodyType, op.BodyVariable, forms))
 	}
 	return g
 }
 
-func restBodyToGen(bodyType, bodyExpr string) element.Element {
-	switch strings.ToUpper(bodyType) {
-	case "FILE", "TEMPLATE":
-		g := newElem("Rest$StringBody", "")
-		addPart(g, "ValueTemplate", valueTemplateElem(bodyExpr))
-		return g
-	default: // JSON
+// restBodyForms says which request-body element shapes the project's Mendix
+// version has. Measured with `mx convert`, which refuses to load a project
+// holding a type its version does not know (TypeCacheUnknownTypeException —
+// Studio Pro cannot open it either, while `mx check` passes):
+//
+//   - Rest$JsonBody exists from 11.0.0: 10.24.24 refuses it, 11.0.0 loads it.
+//   - Rest$StringBody stores its text as ValueTemplate from 10.11.0, as the
+//     string Value before (modelsdk/gen/rest/version.go).
+type restBodyForms struct {
+	jsonBody      bool
+	valueTemplate bool
+}
+
+// restBodyForms reads the forms off the project version. An unreadable version
+// gets the current forms, as every other consumed-REST write does.
+func (b *Backend) restBodyForms() restBodyForms {
+	pv := b.ProjectVersion()
+	if pv == nil || pv.MajorVersion == 0 {
+		return restBodyForms{jsonBody: true, valueTemplate: true}
+	}
+	return restBodyForms{jsonBody: pv.IsAtLeast(11, 0), valueTemplate: pv.IsAtLeast(10, 11)}
+}
+
+// restBodyToGen builds the operation's request body. A JSON body on a project
+// older than Rest$JsonBody is written as the string body Mendix 10 has: both
+// hold the same body text, and a Mendix 10 consumed REST operation has no
+// other kind. It reads back as a template body, which is what it is there.
+func restBodyToGen(bodyType, bodyExpr string, forms restBodyForms) element.Element {
+	upper := strings.ToUpper(bodyType)
+	if upper != "FILE" && upper != "TEMPLATE" && forms.jsonBody {
 		g := newElem("Rest$JsonBody", "")
 		addStr(g, "Value", bodyExpr)
 		return g
 	}
+	g := newElem("Rest$StringBody", "")
+	if forms.valueTemplate {
+		addPart(g, "ValueTemplate", valueTemplateElem(bodyExpr))
+	} else {
+		addStr(g, "Value", bodyExpr)
+	}
+	return g
 }
 
 func restHeaderToGen(h *model.RestClientHeader) element.Element {

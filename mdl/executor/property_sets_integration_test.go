@@ -48,6 +48,7 @@ var propertySetExtraLedger = map[string]string{
 	"ODataPublish$PublishedAssociationEnd.IsMany":        versionFloorExtra,
 	"ODataPublish$PublishedAttribute.EdmType":            versionFloorExtra,
 	"Projects$ModuleImpl.AppStorePackageIdString":        versionFloorExtra,
+	"Rest$RestOperation.QueryParameters":                 versionFloorExtra,
 	"Rest$ODataEntityTypeSource.IsOpen":                  versionFloorExtra,
 	"Settings$WorkflowsProjectSettingsPart.Groups":       versionFloorExtra,
 }
@@ -58,11 +59,7 @@ const versionFloorExtra = "written to projects older than the key (10.24 / 11.6)
 // own, keyed by a substring of convert's output, each with its reason. The
 // project cannot be measured, so the script is skipped for property sets only;
 // mx check above still judged it.
-var propertySetConvertKnownFailures = map[string]string{
-	"type with qualified name Rest$JsonBody": "mxcli writes Rest$JsonBody into projects older than the type " +
-		"(10.24), so Mendix cannot load the project at all — a version-floor defect tracked on its own, not a " +
-		"property-set gap",
-}
+var propertySetConvertKnownFailures = map[string]string{}
 
 // propertySetsBefore fingerprints the project's units before a script runs, so
 // checkPropertySets judges only what mxcli wrote. Nil for an MPR v1 project.

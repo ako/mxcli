@@ -1,0 +1,58 @@
+mdl 1;
+-- ============================================================================
+-- Consumed REST clients that every supported Mendix version can hold
+-- ============================================================================
+--
+-- 06-rest-client-examples.mdl is gated to 11.0+ as a whole (it uses query
+-- parameters), so until mendixlabs/mxcli#1373's follow-up nothing wrote a
+-- consumed REST client to a Mendix 10 project in the doctype gate — and every
+-- POST/PUT/PATCH there was written with Rest$JsonBody, a type Mendix 10 does not
+-- have: `mx check` passed, but `mx convert` (and Studio Pro) could not load the
+-- project at all. This script is NOT version-gated, so the gate's
+-- `mx convert -p` property-set check runs it on 10.24 as well.
+--
+-- On Mendix 10 a JSON body is written as the string body Mendix 10 has
+-- (Rest$StringBody); `describe` reads it back as `body: template`.
+-- ============================================================================
+
+create module RestTen;
+
+create consumed rest service RestTen.RC_Items (
+  BaseUrl: 'https://httpbin.org',
+  authentication: none
+)
+{
+  operation ListItems (
+    method: get,
+    path: '/get',
+    headers: ('Accept': 'application/json'),
+    response: none
+  )
+
+  operation AddItem (
+    method: post,
+    path: '/post',
+    headers: ('Content-Type': 'application/json'),
+    body: json from $ItemData,
+    response: none
+  )
+
+  operation ReplaceItem (
+    method: put,
+    path: '/put',
+    response: none
+  )
+};
+
+create consumed rest service RestTen.RC_Secured (
+  BaseUrl: 'https://httpbin.org',
+  authentication: basic (username: 'api_user', password: 'api_secret')
+)
+{
+  operation Patch (
+    method: patch,
+    path: '/patch',
+    body: json from $Patch,
+    response: none
+  )
+};
