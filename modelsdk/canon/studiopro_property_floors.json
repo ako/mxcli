@@ -1,0 +1,6 @@
+[
+  {"type":"DomainModels$IndexedAttribute","key":"AssociationPointer","since":"11.11.0","absent":"11.10.0"},
+  {"type":"Navigation$NavigationProfile","key":"ThrowPartialSyncError","since":"11.12.0","absent":"11.11.0"},
+  {"type":"ODataPublish$PublishedAssociationEnd","key":"IsMany","since":"11.12.0","absent":"11.11.0"},
+  {"type":"ODataPublish$PublishedAttribute","key":"EdmType","since":"11.12.0","absent":"11.11.0"}
+]

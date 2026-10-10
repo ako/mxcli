@@ -196,13 +196,20 @@ func TestUpdateNanoflow_CarriesStoredHeaderKeys(t *testing.T) {
 	}
 	got := storedKeys(t, b, nf.ID)
 	for k, want := range map[string]any{
-		"ExportLevel": "API", "UseListParameterByReference": false, "ReturnVariableName": "IsValid",
+		"ExportLevel": "API", "ReturnVariableName": "IsValid",
 		// Control: the authored change still lands.
 		"Documentation": "rewritten",
 	} {
 		if got[k] != want {
 			t.Errorf("%s = %#v, want %#v", k, got[k], want)
 		}
+	}
+	// UseListParameterByReference exists from 11.9.0 (the metamodel's version
+	// data); the 11.6 fixture cannot hold it, so the stand-in's `false` is
+	// stripped as the empty key it is there (mendixlabs/mxcli#1373) rather than
+	// carried into a document Studio Pro 11.6 could not open.
+	if v, ok := got["UseListParameterByReference"]; ok {
+		t.Errorf("UseListParameterByReference = %#v was kept in an 11.6 document", v)
 	}
 }
 

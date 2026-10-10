@@ -557,7 +557,10 @@ func (w *Writer) insertUnit(unitID, containerID, containmentName, unitType strin
 		return fmt.Errorf("invalid container ID (not a valid UUID): %q", containerID)
 	}
 
-	contents = w.completePropertySets(contents)
+	contents, normErr := w.normalizePropertySets(unitID, contents)
+	if normErr != nil {
+		return normErr
+	}
 	contents, restoreTransactionID := w.carryIdentityFromRemovedUnit(
 		unitID, containerIDBlob, containmentName, contents)
 
@@ -711,9 +714,12 @@ func (w *Writer) updateUnit(unitID string, contents []byte, opts ...canon.Option
 // ADR-0008 decision 1) to a write against this project.
 func (w *Writer) reconcileWithStored(unitID string, contents []byte, opts ...canon.Option) (out []byte, unchanged bool, err error) {
 	w.writesOffered++
-	// Completed before comparing, so a rebuild of a Studio Pro document that
+	// Normalised before comparing, so a rebuild of a Studio Pro document that
 	// differed from it only by the properties the writer leaves out is elided.
-	contents = w.completePropertySets(contents)
+	contents, err = w.normalizePropertySets(unitID, contents)
+	if err != nil {
+		return nil, false, err
+	}
 	stored, readErr := w.reader.GetRawUnitBytes(unitID)
 	if readErr != nil {
 		w.writesLanded++
@@ -1010,17 +1016,24 @@ func (w *Writer) UpdateUnitContainer(unitID, newContainerID string) error {
 	return nil
 }
 
-// completePropertySets gives every element the full property set Studio Pro
-// writes for its $Type (canon.CompletePropertySets). It runs on every unit that
-// reaches storage — insert, update, and the transaction path, both through
-// reconcileWithStored — because a gap left by ANY writer makes the document
-// unmergeable once Studio Pro saves it (mendixlabs/mxcli#1373), and a fix per
-// writer is the list that never ends.
-func (w *Writer) completePropertySets(contents []byte) []byte {
+// normalizePropertySets gives every element exactly the property set Studio
+// Pro writes for its $Type on this project's version: keys the version does not
+// declare yet are stripped when empty and refused when they hold a value
+// (canon.StripUndeclaredProperties), then missing ones are added
+// (canon.CompletePropertySets). It runs on every unit that reaches storage —
+// insert, update, and the transaction path, both through reconcileWithStored —
+// because a key too many or too few from ANY writer makes the document
+// unopenable or unmergeable (mendixlabs/mxcli#1373), and a fix per writer is
+// the list that never ends.
+func (w *Writer) normalizePropertySets(unitID string, contents []byte) ([]byte, error) {
 	pv := w.reader.ProjectVersion()
 	if pv == nil || pv.MajorVersion == 0 {
-		return contents
+		return contents, nil
 	}
 	v := version.Version{Major: pv.MajorVersion, Minor: pv.MinorVersion, Patch: pv.PatchVersion}
-	return canon.CompletePropertySets(contents, &v)
+	stripped, err := canon.StripUndeclaredProperties(contents, &v)
+	if err != nil {
+		return nil, fmt.Errorf("unit %s: %w", unitID, err)
+	}
+	return canon.CompletePropertySets(stripped, &v), nil
 }

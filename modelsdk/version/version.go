@@ -70,3 +70,48 @@ func (p PropertyVersionInfo) IsAvailableIn(v Version) bool {
 type TypeVersionInfo struct {
 	Properties map[string]PropertyVersionInfo
 }
+
+//go:generate go run gen_metamodel.go
+
+// registry is the metamodel's property version data by storage $Type, merged
+// from metamodelVersions (metamodel_versions_gen.go). A type that appears in
+// several generated packages keeps the union of its properties.
+var registry = func() map[string]TypeVersionInfo {
+	out := map[string]TypeVersionInfo{}
+	for _, infos := range metamodelVersions {
+		for typ, info := range infos {
+			cur, ok := out[typ]
+			if !ok {
+				cur = TypeVersionInfo{Properties: map[string]PropertyVersionInfo{}}
+				out[typ] = cur
+			}
+			for k, p := range info.Properties {
+				cur.Properties[k] = p
+			}
+		}
+	}
+	return out
+}()
+
+// MetamodelProperty returns the version data the metamodel has for a property,
+// by storage $Type and the SDK property name (as the generated data keys it).
+func MetamodelProperty(typeName, sdkName string) (PropertyVersionInfo, bool) {
+	p, ok := registry[typeName].Properties[sdkName]
+	return p, ok
+}
+
+// PropertyIntroduced returns the version a property was introduced in, looked
+// up by its storage $Type and BSON key (the generated data keys a property by
+// its SDK name, which is the BSON key with a lower-case first letter). ok is
+// false when there is nothing to go on — no version data, a property bound
+// under a different storage name, or one declared on a supertype.
+func PropertyIntroduced(typeName, key string) (Version, bool) {
+	if key == "" {
+		return Version{}, false
+	}
+	p, ok := MetamodelProperty(typeName, strings.ToLower(key[:1])+key[1:])
+	if !ok || p.Introduced == "" {
+		return Version{}, false
+	}
+	return Parse(p.Introduced), true
+}

@@ -31,38 +31,16 @@ import (
 var propertySetLedger = map[string]string{}
 
 // propertySetExtraLedger is the same for keys mxcli writes that the project's
-// version does not declare. Each entry here is a key introduced in a newer
-// Mendix version that the writer emits unconditionally: measured extra on
-// 10.24.24 and/or 11.6.8, declared on 11.12.2 and later. That is the
-// version-floor defect (Studio Pro resolves every stored property against the
-// type, see codec.Encoder.OmitKeys), pre-existing and tracked on its own — not a
-// gap this gate closes. Strike an entry when its writer is version-gated.
-var propertySetExtraLedger = map[string]string{
-	"CustomWidgets$WidgetValueType.AllowUpload":          versionFloorExtra,
-	"DomainModels$IndexedAttribute.AssociationPointer":   versionFloorExtra,
-	"Forms$MicroflowSettings.OutputMappings":             versionFloorExtra,
-	"Forms$PageVariable.SubKey":                          versionFloorExtra,
-	"Forms$SnippetParameterMapping.Argument":             versionFloorExtra,
-	"Navigation$NavigationProfile.ThrowPartialSyncError": versionFloorExtra,
-	"Navigation$OfflineEntityConfig.CompatibilityMode":   versionFloorExtra,
-	"ODataPublish$PublishedAssociationEnd.IsMany":        versionFloorExtra,
-	"ODataPublish$PublishedAttribute.EdmType":            versionFloorExtra,
-	"Projects$ModuleImpl.AppStorePackageIdString":        versionFloorExtra,
-	"Rest$ODataEntityTypeSource.IsOpen":                  versionFloorExtra,
-	"Settings$WorkflowsProjectSettingsPart.Groups":       versionFloorExtra,
-}
-
-const versionFloorExtra = "written to projects older than the key (10.24 / 11.6); version-floor defect, tracked separately"
+// version does not declare. Empty: canon.StripUndeclaredProperties drops an
+// empty one at the write choke point and refuses one that holds a value, and
+// writers that derive a value for a newer key gate it themselves.
+var propertySetExtraLedger = map[string]string{}
 
 // propertySetConvertKnownFailures lists `mx convert` refusals the gate does not
 // own, keyed by a substring of convert's output, each with its reason. The
 // project cannot be measured, so the script is skipped for property sets only;
 // mx check above still judged it.
-var propertySetConvertKnownFailures = map[string]string{
-	"type with qualified name Rest$JsonBody": "mxcli writes Rest$JsonBody into projects older than the type " +
-		"(10.24), so Mendix cannot load the project at all — a version-floor defect tracked on its own, not a " +
-		"property-set gap",
-}
+var propertySetConvertKnownFailures = map[string]string{}
 
 // propertySetsBefore fingerprints the project's units before a script runs, so
 // checkPropertySets judges only what mxcli wrote. Nil for an MPR v1 project.

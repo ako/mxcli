@@ -18,7 +18,7 @@ import (
 
 func encodePublishedService(t *testing.T, svc *model.PublishedODataService) bson.Raw {
 	t.Helper()
-	raw, err := (&codec.Encoder{}).Encode(publishedODataServiceToGen(svc))
+	raw, err := (&codec.Encoder{}).Encode(publishedODataServiceToGen(svc, true))
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}

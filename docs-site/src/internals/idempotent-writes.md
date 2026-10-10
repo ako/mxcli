@@ -99,6 +99,15 @@ Mendix versions it was measured on. A key is never written to a project whose
 version may not declare it, because that would make the document unopenable,
 which is worse than the gap.
 
+The other direction matters as much. A key the project's version does not
+declare yet is removed before the write if it is empty, which is exactly what
+`mx convert` does. If it holds a value, the write is refused and the error
+names the version it needs. That version comes from the metamodel's version
+data, copied into `modelsdk/version` by `go generate`, or, for keys that data
+lacks, from `modelsdk/canon/studiopro_property_floors.json`. Writers that derive
+a value for a newer key leave it out on older versions themselves, so the
+refusal only fires for something the statement asked for.
+
 The doctype integration gate measures this on every script. A new gap fails it.
 To record a new measurement into the table, run the gate with
 `MXCLI_PROPERTY_SETS_RECORD=<file>` and then run
