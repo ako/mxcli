@@ -188,11 +188,15 @@ deprecated (MDL-DEPR006, MDL-DEPR007); `mxcli fmt --upgrade` rewrites them.
 
 ### CLOSE PAGE
 
-Closes the current page:
+Closes the current page, or the given number of pages:
 
 ```sql
-CLOSE PAGE;
+CLOSE PAGE;      -- the current page
+CLOSE PAGE 2;    -- the current page and the one that opened it
 ```
+
+The count is a whole number of at least 1. Mendix stores it as
+`NumberOfPagesToClose`, and `describe` prints it when it is more than one.
 
 ## Validation
 
@@ -318,7 +322,7 @@ The query name follows a three-part naming convention: `Module.ConnectionName.Qu
 | Call nanoflow | `$Var = CALL NANOFLOW Module.Name (Param = $val);` | Any type |
 | Call Java action | `$Var = CALL JAVA ACTION Module.Name (Param = val);` | Any type |
 | Show page | `SHOW PAGE Module.Page (Param = $val);` | -- |
-| Close page | `CLOSE PAGE;` | -- |
+| Close page | `CLOSE PAGE [n];` | -- |
 | Validation | `VALIDATION FEEDBACK $Var/Attr MESSAGE 'msg';` | -- |
 | Log | `LOG INFO\|WARNING\|ERROR [NODE 'name'] 'msg';` | -- |
 | DB query | `$Var = EXECUTE DATABASE QUERY Module.Conn.Query;` | Result set |

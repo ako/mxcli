@@ -4,6 +4,7 @@ package visitor
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/antlr4-go/antlr/v4"
@@ -41,6 +42,23 @@ func (b *Builder) ExitThrowStatement(ctx *parser.ThrowStatementContext) {
 		"    raise error;\n"+
 		"  On the main flow Mendix has no throw: call a Java action that throws, or\n"+
 		"  report the problem with `validation feedback` / `log error` and return.", ctxPos(ctx)))
+}
+
+// ExitClosePageStatement refuses a page count that is not a positive whole
+// number (`close page 0`, `close page 1.5`): Mendix stores the count as
+// NumberOfPagesToClose and closes at least one page, so anything else would be
+// written as something the statement did not say.
+func (b *Builder) ExitClosePageStatement(ctx *parser.ClosePageStatementContext) {
+	num := ctx.NUMBER_LITERAL()
+	if num == nil {
+		return
+	}
+	if n, err := strconv.Atoi(num.GetText()); err != nil || n < 1 {
+		b.addErrorWithExample(
+			fmt.Sprintf("%s: `close page %s`: the number of pages to close must be a whole number of at least 1",
+				ctxPos(ctx), num.GetText()),
+			"  close page;      -- the current page\n  close page 2;    -- the current page and the one that opened it")
+	}
 }
 
 // removedPrimitiveType reports the replacement for a type word Mendix does not

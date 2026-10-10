@@ -3,6 +3,7 @@
 package modelsdkbackend
 
 import (
+	"strconv"
 	"strings"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -243,7 +244,7 @@ func actionFromGen(el element.Element) microflows.MicroflowAction {
 	case *genMf.CloseFormAction:
 		out := &microflows.ClosePageAction{
 			ErrorHandlingType: microflows.ErrorHandlingType(a.ErrorHandlingType()),
-			NumberOfPages:     int(a.NumberOfPages()),
+			NumberOfPages:     closePageCount(a),
 		}
 		out.ID = model.ID(a.ID())
 		return out
@@ -1552,4 +1553,20 @@ func queueSettingsFromRaw(raw bson.Raw) *microflows.QueueSettings {
 		qs.Retry = v
 	}
 	return qs
+}
+
+// closePageCount reads how many pages a close-page action closes. Mendix stores
+// it in NumberOfPagesToClose, a string ("" is the default, one page) — the int
+// NumberOfPages was deleted in 8.11. The int is read only when the string is
+// absent, which is what mxcli itself wrote before mendixlabs/mxcli#1373.
+func closePageCount(a *genMf.CloseFormAction) int {
+	if raw := a.Raw(); raw != nil {
+		if _, err := raw.LookupErr("NumberOfPagesToClose"); err != nil {
+			return int(a.NumberOfPages())
+		}
+	}
+	if n, err := strconv.Atoi(strings.TrimSpace(a.NumberOfPagesToClose())); err == nil && n > 0 {
+		return n
+	}
+	return 1
 }

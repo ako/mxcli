@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"sort"
+	"strconv"
 
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
@@ -803,13 +804,15 @@ func microflowActionToGen(action microflows.MicroflowAction) element.Element {
 		g.SetNumberOfPagesToClose("")
 		return g
 	case *microflows.ClosePageAction:
-		// Storage $Type Microflows$CloseFormAction. Legacy emits only
-		// ErrorHandlingType + NumberOfPages (int32); the gen's extra
-		// NumberOfPagesToClose string is left unset (not dirty → not emitted).
+		// Storage $Type Microflows$CloseFormAction. The count is the string
+		// NumberOfPagesToClose ("" = one page), as Studio Pro stores it. The
+		// int NumberOfPages was deleted in 8.11: writing it (as the legacy
+		// serializer did) made `close page 2` close one page, and left a key
+		// Mendix's merge engine does not have (mendixlabs/mxcli#1373).
 		g := genMf.NewCloseFormAction()
 		g.SetID(element.ID(a.ID))
 		g.SetErrorHandlingType(orDefault(string(a.ErrorHandlingType), "Rollback"))
-		g.SetNumberOfPages(int32(a.NumberOfPages))
+		g.SetNumberOfPagesToClose(numberOfPagesToClose(a.NumberOfPages))
 		return g
 	case *microflows.ShowHomePageAction:
 		// Storage $Type Microflows$ShowHomePageAction. Legacy emits only
@@ -1948,4 +1951,13 @@ func patchMicroflowToolboxEntries(contents []byte, mf *microflows.Microflow) ([]
 		}
 	}
 	return contents, nil
+}
+
+// numberOfPagesToClose renders a close-page count as Studio Pro stores it: the
+// empty string for the default single page, the number otherwise.
+func numberOfPagesToClose(n int) string {
+	if n <= 1 {
+		return ""
+	}
+	return strconv.Itoa(n)
 }

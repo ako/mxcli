@@ -589,7 +589,7 @@ it is for pages.
 | REST call (mapping list) | `$Var = call rest service get '<url>' returns mapping Module.IMM as list of Module.Entity;` | List result |
 | REST call (none) | `call rest service get '<url>' returns nothing;` | Discard response |
 | Show page | `show page Module.PageName (Param = $value);` | `Param = expression`, as at every call site. `($Param = …)` and `(Param: …)` are deprecated (MDL-DEPR006/007) |
-| Close page | `close page;` | |
+| Close page | `close page [n];` | `n` pages, default 1 (stored as `NumberOfPagesToClose`) |
 | Download file | `download file $FileDocument [show in browser];` | Streams a `System.FileDocument` |
 | Show message | `show message 'text' [type Information\|Warning\|Error] [with ({1} = $a, {2} = $b)] [blocking];` | `blocking` halts the client until the user dismisses it — Studio Pro's checkbox. It goes after the `with` list and before `on error`. `with ({1} = $a, {2} = $b)` is the deprecated spelling of the list (MDL-DEPR009). Without it, a describe → exec round trip turned a blocking message into a non-blocking one (16 microflows measured) |
 | Database connection | `create database connection Mod.Db ( Type: 'PostgreSQL', ConnectionString: @Mod.Url, Username: @Mod.User, Password: @Mod.Pass ) { query Q ( Sql: $$…$$, Parameters: ( p: Integer default '0' ), Returns: Mod.E, Map: ( Attr = column ) ) }` | Properties in `( )`, queries as children in `{ }` (R2). The clause form with `begin … end` still parses and warns (MDL-DEPR127) |
