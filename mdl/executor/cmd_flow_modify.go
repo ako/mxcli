@@ -138,7 +138,10 @@ func cannotSplice(format string, args ...any) error {
 // such flow yet, or a change the splice cannot make under mdl 0 — and the
 // caller then runs the create / rebuild path.
 func modifyFlowInPlace(ctx *ExecContext, d *flowDecl) (handled bool, err error) {
+	// The verdict only reads; what it writes comes after, outside the cache.
+	release := ctx.CacheUnitReads()
 	v := decideFlowModify(ctx, d)
+	release()
 	switch {
 	case v.why != nil:
 		return fallBack(ctx, d, v)

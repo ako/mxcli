@@ -143,7 +143,7 @@ func getMicroflowNames(ctx *ExecContext, h *ContainerHierarchy) map[model.ID]str
 		return ctx.Cache.microflowNames
 	}
 	microflowNames := make(map[model.ID]string)
-	mfs, err := ctx.Backend.ListMicroflows()
+	mfs, err := microflowHeaders(ctx)
 	if err != nil {
 		if ctx.Logger != nil {
 			ctx.Logger.Warn("getMicroflowNames: ListMicroflows failed", "error", err)
@@ -619,6 +619,12 @@ func (e *Executor) Backend() backend.FullBackend {
 		return nil
 	}
 	return e.backend
+}
+
+// CacheUnitReads holds the units the backend reads in memory until release is
+// called, for a pass that writes nothing (see ExecContext.CacheUnitReads).
+func (e *Executor) CacheUnitReads() (release func()) {
+	return (&ExecContext{Backend: e.Backend()}).CacheUnitReads()
 }
 
 // Close closes the connection to the project and all SQL connections.

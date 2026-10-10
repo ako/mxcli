@@ -208,11 +208,13 @@ func (r *Reader) GetRawUnitByName(objectType, qualifiedName string) (*types.RawU
 		if err != nil {
 			continue
 		}
-		var raw map[string]any
-		if err := bson.Unmarshal(contents, &raw); err != nil {
+		// Only the name is compared, so only the name is read: decoding every
+		// document of the type into a map was most of a lookup's cost, and
+		// check makes several per statement (mendixlabs/mxcli#1272).
+		name, ok := rawUnitName(contents)
+		if !ok {
 			continue
 		}
-		name, _ := raw["Name"].(string)
 		moduleName := ResolveModuleName(u.ContainerID, moduleMap, containerParent)
 
 		fullName := name
@@ -230,6 +232,18 @@ func (r *Reader) GetRawUnitByName(objectType, qualifiedName string) (*types.RawU
 		}
 	}
 	return nil, fmt.Errorf("%s not found: %s", objectType, qualifiedName)
+}
+
+// rawUnitName is a unit's top-level Name ("" when it has none), read without
+// decoding the document; ok is false for bytes that are not a valid document,
+// which the map decode this replaces skipped too.
+func rawUnitName(contents []byte) (name string, ok bool) {
+	raw := bson.Raw(contents)
+	if raw.Validate() != nil {
+		return "", false
+	}
+	name, _ = raw.Lookup("Name").StringValueOK()
+	return name, true
 }
 
 // ListRawUnits returns all units of the given object type with metadata.
@@ -255,11 +269,13 @@ func (r *Reader) ListRawUnits(objectType string) ([]*types.RawUnitInfo, error) {
 		if err != nil {
 			continue
 		}
-		var raw map[string]any
-		if err := bson.Unmarshal(contents, &raw); err != nil {
+		// Only the name is compared, so only the name is read: decoding every
+		// document of the type into a map was most of a lookup's cost, and
+		// check makes several per statement (mendixlabs/mxcli#1272).
+		name, ok := rawUnitName(contents)
+		if !ok {
 			continue
 		}
-		name, _ := raw["Name"].(string)
 		moduleName := ResolveModuleName(u.ContainerID, moduleMap, containerParent)
 		fullName := name
 		if moduleName != "" {

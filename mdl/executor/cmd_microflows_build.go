@@ -179,7 +179,7 @@ func buildMicroflowFromStmt(ctx *ExecContext, s *ast.CreateMicroflowStmt, opts b
 	var existingDocumentation string
 	preserveDocumentation := false
 	var existingActionInfo, existingWorkflowInfo *types.MicroflowActionInfo
-	existingMicroflows, err := ctx.Backend.ListMicroflows()
+	existingMicroflows, err := microflowsNamed(ctx, s.Name.Name)
 	if err != nil {
 		return nil, mdlerrors.NewBackend("check existing microflows", err)
 	}

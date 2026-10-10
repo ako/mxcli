@@ -190,6 +190,25 @@ func (b *Backend) InvalidateCache() {
 	b.reader.InvalidateCache()
 }
 
+// CacheUnitReads holds the unit contents this backend reads in memory until
+// release is called: for a pass that writes nothing and looks documents up
+// once per statement (mendixlabs/mxcli#1272). See mpr.Reader.CacheUnitReads.
+func (b *Backend) CacheUnitReads() (release func()) {
+	if b.reader == nil {
+		return func() {}
+	}
+	return b.reader.CacheUnitReads()
+}
+
+// UnitFileReads is how many unit files this backend's reader has read from
+// mprcontents/ — what CacheUnitReads saves. For tests.
+func (b *Backend) UnitFileReads() int64 {
+	if b.reader == nil {
+		return 0
+	}
+	return b.reader.UnitFileReads()
+}
+
 func (b *Backend) Version() types.MPRVersion {
 	if b.reader == nil {
 		return 0

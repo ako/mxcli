@@ -50,6 +50,7 @@ func (e *Executor) CheckFlowVerdicts(prog *ast.Program) []linter.Violation {
 		return nil
 	}
 	defer e.enterLanguage(prog.LanguageVersion)()
+	defer e.CacheUnitReads()()
 	return CheckFlowVerdicts(e.newExecContext(context.Background()), prog)
 }
 
