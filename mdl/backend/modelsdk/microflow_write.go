@@ -381,6 +381,10 @@ func microflowObjectToGen(obj microflows.MicroflowObject) element.Element {
 	case *microflows.LoopedActivity:
 		g := genMf.NewLoopedActivity()
 		g.SetID(element.ID(o.ID))
+		// Always written, empty included: the reader keeps it, and a loop
+		// without the key is one Mendix's merge engine cannot compare with
+		// the Studio Pro revision that has it (mendixlabs/mxcli#1373).
+		g.SetDocumentation(o.Documentation)
 		g.SetErrorHandlingType(string(o.ErrorHandlingType))
 		if ls := loopSourceToGen(o.LoopSource); ls != nil {
 			g.SetLoopSource(ls)

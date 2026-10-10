@@ -902,6 +902,28 @@ func TestWorkflowMutator_InsertBranch_True(t *testing.T) {
 	}
 }
 
+// mendixlabs/mxcli#1373: Studio Pro stores a Flow and a PersistentId on every
+// outcome, so a branch inserted without them is one Mendix's merge engine
+// cannot compare with Studio Pro's next save of the workflow — for each kind of
+// branch, empty or not.
+func TestWorkflowMutator_InsertBranch_WritesStudioProPropertySet(t *testing.T) {
+	for _, cond := range []string{"true", "false", "default", "SomeEnumValue"} {
+		act := makeWfActivityWithOutcomes("Decision", "dec1")
+		act[1] = bson.E{Key: "$Type", Value: "Workflows$ExclusiveSplitActivity"}
+		m := newMutator(makeWorkflowDoc(act))
+		if err := m.InsertBranch("Decision", 0, cond, nil); err != nil {
+			t.Fatalf("%s: InsertBranch: %v", cond, err)
+		}
+		actDoc, _ := m.findActivityByCaption("Decision", 0)
+		oDoc := bsonnav.DGetArrayElements(bsonnav.DGet(actDoc, "Outcomes"))[0].(bson.D)
+		for _, key := range []string{"Flow", "PersistentId"} {
+			if bsonnav.DGet(oDoc, key) == nil {
+				t.Errorf("%s branch: no %s", cond, key)
+			}
+		}
+	}
+}
+
 func TestWorkflowMutator_InsertBranch_False(t *testing.T) {
 	act := makeWfActivityWithOutcomes("Decision", "dec1")
 	act[1] = bson.E{Key: "$Type", Value: "Workflows$ExclusiveSplitActivity"}

@@ -50,7 +50,7 @@ func (b *Backend) CreateDatabaseConnection(conn *model.DatabaseConnection) error
 	if conn.ID == "" {
 		conn.ID = model.ID(mmpr.GenerateID())
 	}
-	g := databaseConnectionToGen(conn, b.storesQueryTypeEnum())
+	g := databaseConnectionToGen(conn, b.storesQueryTypeEnum(), b.storesLastSelectedQuery())
 	contents, err := (&codec.Encoder{}).Encode(g)
 	if err != nil {
 		return fmt.Errorf("CreateDatabaseConnection: encode: %w", err)
@@ -68,7 +68,7 @@ func (b *Backend) UpdateDatabaseConnection(conn *model.DatabaseConnection) error
 	if b.writer == nil {
 		return fmt.Errorf("UpdateDatabaseConnection: not connected for writing")
 	}
-	g := databaseConnectionToGen(conn, b.storesQueryTypeEnum())
+	g := databaseConnectionToGen(conn, b.storesQueryTypeEnum(), b.storesLastSelectedQuery())
 	contents, err := (&codec.Encoder{}).Encode(g)
 	if err != nil {
 		return fmt.Errorf("UpdateDatabaseConnection: encode: %w", err)
@@ -102,10 +102,21 @@ func (b *Backend) storesQueryTypeEnum() bool {
 	return dbconnector.StoresTypeEnum(pv.MajorVersion, pv.MinorVersion)
 }
 
+// storesLastSelectedQuery reports whether this project's metamodel declares
+// DatabaseConnection.LastSelectedQuery: introduced in 10.0, gone in 11.11
+// (measured with `mx convert`: kept by 11.10.0, removed by 11.11.0). Writing it
+// to a project without it leaves a key Studio Pro drops on its next save, and
+// Mendix's merge engine refuses to compare the two (mendixlabs/mxcli#1373). An
+// unreadable version omits it.
+func (b *Backend) storesLastSelectedQuery() bool {
+	pv := b.ProjectVersion()
+	return pv != nil && pv.IsAtLeast(10, 0) && !pv.IsAtLeast(11, 11)
+}
+
 // databaseConnectionToGen builds the DatabaseConnection element tree directly with
 // the verified storage keys. The gen/databaseconnector setters bind different
 // property keys, so this mirrors sdk/mpr.serializeDatabaseConnection field-for-field.
-func databaseConnectionToGen(conn *model.DatabaseConnection, typeEnum bool) element.Element {
+func databaseConnectionToGen(conn *model.DatabaseConnection, typeEnum, lastSelectedQuery bool) element.Element {
 	e := newElem("DatabaseConnector$DatabaseConnection", string(conn.ID))
 	addStr(e, "Name", conn.Name)
 	addStr(e, "DatabaseType", conn.DatabaseType)
@@ -129,7 +140,9 @@ func databaseConnectionToGen(conn *model.DatabaseConnection, typeEnum bool) elem
 
 	// AdditionalProperties always serializes as an empty marker-2 list.
 	addPartList(e, "AdditionalProperties", nil)
-	addStr(e, "LastSelectedQuery", "")
+	if lastSelectedQuery {
+		addStr(e, "LastSelectedQuery", "")
+	}
 	return e
 }
 
