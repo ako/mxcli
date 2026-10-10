@@ -23,6 +23,27 @@ type DataType struct {
 	// enumeration distinctly (e.g. Java/JavaScript action parameters, #680) use
 	// this as the authoritative signal that the name is an enumeration.
 	ExplicitEnum bool
+	// Localize is a DateTime attribute's `localized` / `not localized`
+	// constraint (DateTimeAttributeType.LocalizeDate, #1373). It is tri-state
+	// because "not stated" is a third answer: a rewrite that does not state it
+	// keeps the stored value (#743), while a stated one wins.
+	Localize LocalizeSpec
+}
+
+// LocalizeSpec is what an attribute definition says about a DateTime's
+// LocalizeDate.
+type LocalizeSpec int
+
+const (
+	LocalizeUnstated     LocalizeSpec = iota // no clause: new attribute true, rewrite keeps stored
+	LocalizeLocalized                        // `localized`: LocalizeDate = true
+	LocalizeNotLocalized                     // `not localized`: LocalizeDate = false
+)
+
+// LocalizeDate resolves the spec for a newly built DateTime attribute: true
+// unless `not localized` was stated. Mendix's default is true.
+func (s LocalizeSpec) LocalizeDate() bool {
+	return s != LocalizeNotLocalized
 }
 
 // DataTypeKind represents the kind of data type.

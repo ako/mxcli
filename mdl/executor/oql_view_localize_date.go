@@ -18,8 +18,9 @@ var oqlSourceAttrRefRe = regexp.MustCompile(`(` + oqlIdent + `)\s*[./]\s*(` + oq
 // viewDateTimeLocalize derives, per declared DateTime view attribute, the
 // LocalizeDate its OQL column carries from the source attribute(s) it reads.
 //
-// MDL has no spelling for LocalizeDate, and it needs none on a view entity: the
-// column's localization is a property of the query, and Mendix requires the
+// A view attribute needs no `localized` / `not localized` clause (#1373) — a
+// stated one wins over this derivation, and describe never prints one on a
+// view: the column's localization is a property of the query, and Mendix requires the
 // attribute to match it — written localized over a non-localized source, mx
 // check reports CE6770 "View Entity is out of sync with the OQL Query"
 // (mendixlabs/mxcli#1297). Measured on mxbuild 11.12.5, the source's flag

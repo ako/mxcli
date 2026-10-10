@@ -879,7 +879,10 @@ func convertDataType(dt ast.DataType) domainmodel.AttributeType {
 	case ast.TypeBoolean:
 		return &domainmodel.BooleanAttributeType{}
 	case ast.TypeDateTime:
-		return &domainmodel.DateTimeAttributeType{LocalizeDate: true}
+		// `not localized` is the one spelling of false; unstated is Mendix's
+		// default, true. A rewrite that leaves it unstated carries the stored
+		// value afterwards (carryStoredAttributeState, MODIFY ATTRIBUTE).
+		return &domainmodel.DateTimeAttributeType{LocalizeDate: dt.Localize.LocalizeDate()}
 	case ast.TypeDate:
 		return &domainmodel.DateAttributeType{}
 	case ast.TypeAutoNumber:
@@ -943,6 +946,16 @@ func getAttributeTypeName(at domainmodel.AttributeType) string {
 
 func formatAttributeType(at domainmodel.AttributeType) string {
 	return getAttributeTypeName(at)
+}
+
+// localizeClause renders a DateTime attribute's LocalizeDate as the constraint
+// that follows its type: " not localized" when false, and nothing for the
+// default, so describe only says what differs from a fresh `DateTime` (#1373).
+func localizeClause(at domainmodel.AttributeType) string {
+	if dt, ok := at.(*domainmodel.DateTimeAttributeType); ok && !dt.LocalizeDate {
+		return " not localized"
+	}
+	return ""
 }
 
 // buildWorkflowQualifiedNames returns a set of all workflow qualified names in

@@ -517,6 +517,9 @@ func buildViewAttributes(attrList parser.IAttributeDefinitionListContext) []ast.
 		if dt := defCtx.DataType(); dt != nil {
 			attr.Type = buildDataType(dt)
 		}
+		for _, c := range defCtx.AllAttributeConstraint() {
+			applyLocalizeConstraint(&attr.Type, c.(*parser.AttributeConstraintContext))
+		}
 		attrs = append(attrs, attr)
 	}
 	return attrs
@@ -699,6 +702,8 @@ func (b *Builder) ExitAlterEntityAction(ctx *parser.AlterEntityActionContext) {
 							calcName := buildQualifiedName(qn)
 							stmt.CalculatedMicroflow = &calcName
 						}
+					case c.LOCALIZED() != nil:
+						applyLocalizeConstraint(&stmt.DataType, c)
 					}
 				}
 				b.statements = append(b.statements, stmt)

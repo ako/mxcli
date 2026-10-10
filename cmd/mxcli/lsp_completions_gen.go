@@ -390,6 +390,7 @@ var mdlGeneratedKeywords = []protocol.CompletionItem{
 	{Label: "RULE", Kind: protocol.CompletionItemKindKeyword, Detail: "Validation keyword"},
 	{Label: "REQUIRED", Kind: protocol.CompletionItemKindKeyword, Detail: "Validation keyword"},
 	{Label: "NULLABLE", Kind: protocol.CompletionItemKindKeyword, Detail: "Validation keyword"},
+	{Label: "LOCALIZED", Kind: protocol.CompletionItemKindKeyword, Detail: "Validation keyword"},
 	{Label: "ERROR", Kind: protocol.CompletionItemKindKeyword, Detail: "Validation keyword"},
 	{Label: "IGNORE", Kind: protocol.CompletionItemKindKeyword, Detail: "Validation keyword"},
 	{Label: "OVERRIDABLE", Kind: protocol.CompletionItemKindKeyword, Detail: "Validation keyword"},

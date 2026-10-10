@@ -428,7 +428,7 @@ func attributeBsonToMDL(_ *ExecContext, raw map[string]any) string {
 			if !ok || localize {
 				typeStr = "DateTime"
 			} else {
-				typeStr = "Date"
+				typeStr = "DateTime not localized" // #1373; `Date` is deprecated (MDL-DEPR160)
 			}
 		case strings.Contains(attrType, "AutoNumberAttributeType"):
 			typeStr = "AutoNumber"
@@ -474,7 +474,7 @@ func attributeBsonToMDL(_ *ExecContext, raw map[string]any) string {
 				if !ok || localize {
 					typeStr = "DateTime"
 				} else {
-					typeStr = "Date"
+					typeStr = "DateTime not localized" // #1373; `Date` is deprecated (MDL-DEPR160)
 				}
 			case strings.Contains(typeType, "AutoNumberAttributeType"):
 				typeStr = "AutoNumber"

@@ -82,6 +82,8 @@ attributeConstraint
     : NOT_NULL (constraintErrorKeyword STRING_LITERAL)?
     | NOT NULL (constraintErrorKeyword STRING_LITERAL)?
     | NULLABLE                              // explicit: clear NOT NULL (MODIFY ATTRIBUTE, Bug 12a)
+    | NOT LOCALIZED                         // DateTime only: LocalizeDate = false (#1373)
+    | LOCALIZED                             // DateTime only: LocalizeDate = true, the default stated (flips back on MODIFY)
     | UNIQUE (constraintErrorKeyword STRING_LITERAL)?
     | DEFAULT (literal | expression)
     | REQUIRED (constraintErrorKeyword STRING_LITERAL)?
