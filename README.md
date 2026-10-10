@@ -6,7 +6,11 @@
 
 A command-line tool that enables AI coding assistants ([Claude Code](https://claude.ai/claude-code), GitHub Copilot, OpenCode, Cursor, Continue.dev, Windsurf, Aider, and others) to read, understand, and modify Mendix application projects.
 
-**[Read the documentation](https://mendixlabs.github.io/mxcli/)** | **[Try it in the Playground](https://codespaces.new/mendixlabs/mxcli-playground)** -- no install needed, runs in your browser
+**[Read the documentation](https://mendixlabs.github.io/mxcli/)** | **[Use the bootstrap prompt](https://mendixlabs.github.io/mxcli/tools/bootstrap-prompt.html)** -- the fastest way to spin up a Mendix project: paste it into a Claude Code cloud session on an empty repo, no local install needed
+
+[![The mxcli language poster -- click to open the interactive version](docs-site/src/poster/mxcli-poster-small.png)](https://mendixlabs.github.io/mxcli/poster/mxcli-language-poster.html)
+
+*Click the poster to open the [interactive version](https://mendixlabs.github.io/mxcli/poster/mxcli-language-poster.html).*
 
 ## Why mxcli?
 
