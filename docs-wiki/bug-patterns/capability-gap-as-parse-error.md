@@ -2,6 +2,8 @@
 title: A Missing Capability Looks Like a Syntax Error
 category: bug-pattern
 last-synced: ced830e0
+covers:
+  - mdl/grammar
 sources:
   - .claude/skills/fix-issue/findings/mdl-grammar/
   - mdl/grammar/MDLParser.g4

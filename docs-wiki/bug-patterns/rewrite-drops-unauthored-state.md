@@ -1,9 +1,14 @@
 ---
 title: Rewrites That Drop What They Did Not Author
 category: bug-pattern
-last-synced: 038f810e
+last-synced: a20932c1
+covers:
+  - mdl/executor
+  - mdl/backend
 sources:
   - .claude/skills/fix-issue/findings/mdl-executor/
+  - .claude/skills/fix-issue/findings/mdl-backend/
+  - mdl/backend/modelsdk/domainmodel_alter.go
   - docs/13-decisions/0005-semantic-model-interface-currency.md
   - docs/13-decisions/0008-identity-and-idempotence.md
   - mdl/executor/validate_workflow_rewrite.go
@@ -286,6 +291,50 @@ Pro's own file banner states what a regeneration must retain. The same goes for
 measuring: a multiset of
 lost values says nothing about *which* property went — address each value by the
 element that owns it before diagnosing.
+
+**A key can be REMOVED by a version, not only introduced.** The carry rule runs
+in both directions: Mendix 11.15 took the mapping's `MessageDefinition` key away
+when message definitions became their own documents, so a writer that keeps
+emitting it adds a key Studio Pro never writes, and a pre-11.15 document
+transplanted forward carries one. Version gating is usually written as a floor;
+this class needs a ceiling as often. The oracle for a storage change is
+`mx convert` — converting a known project of the older version produces a
+Studio Pro-authored reference for the new shape *and* for how its references
+move, so nothing has to be guessed.
+
+**A whole-model update that rebuilds some lists and passes others through is
+only as correct as its list of what the semantic model carries.** The domain
+model's cross-associations were raw passthrough under a comment claiming they
+were not in the semantic model, long after a read converter for them existed —
+so six statements (alter owner, storage, comment, delete behaviour, create-or-
+modify, rename) printed success and wrote nothing. The sibling shape is an
+*overlay* that merges field by field onto preserved raw bytes: a child list
+nothing rebuilds is carried through from disk unchanged, so adding a workflow
+group reported "3 group(s)" and stored two. In both shapes the handler's
+success message is reporting its in-memory model, which is why the assertion
+has to be on the **re-read document**.
+
+**A half-set element passes every check and crashes Studio Pro's Changes
+panel.** An unset gen `Part` is simply omitted by the encoder, so an argument
+bound one way and not the other produced two elements of one `$Type` with
+different key sets: `mx check` 0 errors, and the Changes panel throwing
+`Objects with ID … do not have the same properties`. The headless reproduction
+is worth knowing — `mx diff base.mpr new.mpr out.mpr` runs the same MergeLib
+comparer and prints the identical line — with the base made by a *fixed* binary
+so the difference is the one under test.
+
+**List markers are stored state too, and the encoder's default is not Studio
+Pro's.** Mendix writes marker 2 for several property lists where the encoder
+defaults to 3, so the first rewrite of any element in such a list silently
+re-markers it. It hides until that first rewrite, which makes a census the right
+instrument: the stored marker per (owner `$Type`, key) across the Studio
+Pro-authored fixtures, registered rather than inferred.
+
+**A refusal keyed on "the stored document lacks the key" conflates two different
+facts.** "This project's version has no such property" and "the writer that
+created this document left it out" need opposite treatment, and only the
+metamodel version data separates them — a refusal that cannot tell them apart
+blocks a legitimate header change on every document mxcli itself wrote.
 
 **Partial statements are the honest hazard.** `create or modify entity` with a
 subset of attributes drops the rest, which is arguably what "modify to this shape"

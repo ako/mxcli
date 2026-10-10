@@ -2,6 +2,10 @@
 title: Scripts That Cannot Be Re-Run
 category: bug-pattern
 last-synced: ced830e0
+covers:
+  - mdl/backend
+  - mdl/executor
+  - mdl/grammar
 sources:
   - .claude/skills/fix-issue/findings/mdl-grammar/
   - .claude/skills/fix-issue/findings/mdl-executor/

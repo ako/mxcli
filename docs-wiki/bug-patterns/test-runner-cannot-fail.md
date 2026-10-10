@@ -2,6 +2,8 @@
 title: A Test Runner That Cannot Fail
 category: bug-pattern
 last-synced: ced830e0
+covers:
+  - cmd/mxcli
 sources:
   - .claude/skills/fix-issue/findings/cmd-mxcli/
   - cmd/mxcli/testrunner/parser.go

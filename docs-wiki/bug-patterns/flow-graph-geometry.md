@@ -2,6 +2,8 @@
 title: Generated Microflow Geometry and Wiring
 category: bug-pattern
 last-synced: ced830e0
+covers:
+  - mdl/executor
 sources:
   - .claude/skills/fix-issue/findings/mdl-executor/
   - mdl/executor/layout.go

@@ -38,3 +38,8 @@
 | `bug-patterns/scripts-that-cannot-rerun.md` | bug-pattern | statement-level idempotence, and why it is not write-level idempotence |
 | `bug-patterns/expression-translation-drift.md` | bug-pattern | MDL expression to Mendix expression, where the translation changes the meaning |
 | `bug-patterns/misleading-diagnostics.md` | bug-pattern | hints that fire on the wrong thing and send the reader somewhere the problem is not |
+| `bug-patterns/absent-edge-reads-as-absent-fact.md` | bug-pattern | a reference the catalog never indexed, read back as "nothing uses this" — and the tools that phrase it as a recommendation to delete |
+| `bug-patterns/a-rule-that-cannot-fire.md` | bug-pattern | the two mirrored ways a lint rule's verdict stops meaning anything: silence that looks clean, and firing on correct code |
+| `bug-patterns/binding-context.md` | bug-pattern | which object an unqualified attribute name is read against, and the four layers that each keep their own answer |
+| `bug-patterns/reports-that-outrun-the-write.md` | bug-pattern | the sentence `exec` prints as a claim about storage, made by code that cannot see storage |
+| `bug-patterns/cost-scales-with-the-project.md` | bug-pattern | work proportional to the project for a request that is not — multiplier chains, and the guard that discards half-finished work |

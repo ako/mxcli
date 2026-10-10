@@ -1,10 +1,14 @@
 ---
 title: One Question, Two Answers
 category: bug-pattern
-last-synced: ced830e0
+last-synced: a20932c1
+covers:
+  - mdl/executor
 sources:
   - .claude/skills/fix-issue/findings/mdl-executor/
   - mdl/executor/validate_program.go
+  - mdl/executor/validate_duplicates.go
+  - mdl/executor/widget_attribute_scope.go
   - mdl/backend/backend.go
 ---
 
@@ -75,11 +79,39 @@ next rehearsal found phantoms on 66 scripts (#907). The remedy was the general
 one taken literally: diff now runs exec itself on a scratch copy and compares
 units, so there is no second answer left to drift.
 
+*A hand-kept list of statement kinds.* The most prolific variant found this
+cycle, because a `switch` over AST types is how everything in the executor is
+wired. `check`'s project tier resolves the module of every module-scoped
+`CREATE` — except the kinds whose `case` was never added, and the absence of a
+case is indistinguishable from a deliberate skip. The same thing happened five
+times over for "statements that carry an `ON ERROR` clause": one shared adapters
+table existed *precisely because* per-walk lists drift, its comment said so, and
+a fifth copy was still written. So for a check-tier gap, **grep the switch for
+the AST type before reading any resolver** — the missing `case` is usually the
+whole bug, and the resolver it would have called is already correct.
+
+**A guard that compares two hand-maintained lists only catches drift between
+them.** The test asserting that every create statement is project-checked
+compared the two switches *with each other*, so a doctype absent from both
+passed forever — fifteen of them did. A drift guard needs a third, independent
+source: the AST package's own declarations, `generated/metamodel`, a `go/parser`
+scan of the builders for the keys they read. The reliable version of this test is
+not "the lists agree" but "the list agrees with something nobody edits".
+
 **The tell is that the fix for the reported instance is obviously incomplete.**
 When a symptom's cause is "this switch was missing a case", the next question is
 how many other switches answer the same question — the answer has repeatedly been
 two, three or five. Patching the named one closes the report and leaves the class
 open, so the next instance arrives looking new.
+
+**Where one answer must be shared, make it a function of plain data.** The
+binding-scope rule for a widget attribute is the clean example: it takes the
+property's declared link, the enclosing entity and the resolved datasources as
+arguments and returns the entity and *why*, so `exec` feeds it the engine's live
+state, the validator feeds it the statically-known state, and neither re-derives
+the rule. A test asserts the exec error contains the check message verbatim,
+which is the cheapest way to keep two callers of one function honest about
+reporting the same verdict.
 
 **The durable remedy is to remove the second answer**, not to synchronise the two.
 Route both callers through one function; take the enumeration from the metamodel

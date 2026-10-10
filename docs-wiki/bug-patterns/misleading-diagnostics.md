@@ -2,6 +2,8 @@
 title: A Wrong Hint Is Worse Than No Hint
 category: bug-pattern
 last-synced: ced830e0
+covers:
+  - mdl/visitor
 sources:
   - .claude/skills/fix-issue/findings/mdl-visitor/
   - mdl/visitor/visitor.go

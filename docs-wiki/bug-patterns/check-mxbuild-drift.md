@@ -1,12 +1,18 @@
 ---
 title: When `mxcli check` and mxbuild Disagree
 category: bug-pattern
-last-synced: 038f810e
+last-synced: a20932c1
+covers:
+  - mdl/backend
+  - mdl/executor
+  - mdl/grammar
 sources:
   - .claude/skills/fix-issue/findings/mdl-executor/
   - .claude/skills/fix-issue/findings/mdl-backend/
   - .claude/skills/fix-issue/findings/mdl-grammar/
   - mdl/executor/validate_program.go
+  - mdl/executor/validate_page_button_context.go
+  - mdl/executor/oql_view_select_checks.go
   - docs/11-proposals/PROPOSAL_check_mxbuild_gap_heuristics.md
 ---
 
@@ -65,6 +71,29 @@ For any statement that writes an action, compare a Studio Pro-saved instance aga
 what the writer sets: a required property the grammar cannot express is a build
 failure waiting for its first user. Whether a property is required is cheap to settle
 across versions — write the action without it into a blank project per mxbuild.
+
+**A false refusal now costs more than a missing rule.** `exec` refuses to write
+when `check` reports an error, so a rule that fires on a legal construct does not
+merely add noise — it makes the construct unauthorable with that version of
+mxcli, and the user's reading is "this project cannot be built with mxcli". The
+instances are all over-generalisation from one reported shape: a guard on a
+widget's own row action judged it in the context its *parent* supplies; a
+control-bar rule never asked whether an ancestor data container already supplies
+an object; a path rule was built on a bare form Studio Pro never writes. Two
+things catch them before release — judge the rule against the widget or statement
+kinds its **own message** names, and run it over Studio Pro-authored content
+rather than over scripts mxcli wrote.
+
+**A refusal that looks like a false positive can be the only witness of a writer
+bug.** `check` validates the output of the same function the builder stores, so
+"check refuses describe output" sometimes means "exec would corrupt this" — an
+enumeration whose values Studio Pro names `_True`/`_False` was refused because
+the writer's own normaliser could not read a leading underscore. So classify
+before relaxing, and there are **three** answers, not two: our writer is wrong,
+our rule is wrong, or the stored model really is that way and Studio Pro
+tolerates what mxbuild would reject (a return value kept on a flow whose return
+type is `Nothing`). The third gets the narrowest fix available — keep the error
+for new code, exempt only a document the project already stores in that state.
 
 **Severity turns on what the builder's condition is actually about, and the
 intuitive reading is often the wrong one.** The empty-outcome rule looked like a
@@ -156,6 +185,24 @@ testable as a `.fail.mdl` fixture in CI. The severe end of that scale is
 
 Every rule here is justified by a measurement, so the measurement apparatus is
 part of the class.
+
+**Measure the matrix, not the message.** A CE's wording is a description of one
+case, and the rule needs the boundary. One page per widget kind x attribute type
+on a fresh app gave the whole table in a single mxbuild run; so did eight
+attribute types x eight variable types x two operators for a constraint-typing
+rule, and eight association shapes x three widgets for a grid-multiplicity one.
+The **controls are what decide the predicate**, not the failures: a comparison
+inside `CASE` builds, grouping by `r.ID` does not exempt `r.Name`, `Long` over
+`AutoNumber` is the one numeric declaration that is not an error. A rule written
+from the failing cases alone over-fires, and over-firing is the expensive
+direction (above).
+
+**`mx check` is phased, and two switches silently turn its checks off.** While
+any CE1613 stands, the later phases do not run — so re-measuring on a project
+that still has one unrelated bogus attribute reads as *clean* and retires a real
+rule. And at security level `Off` mxbuild does not run the access-rule checks at
+all: a probe there concludes there is no defect, which is how an access-rule
+measurement has to name its security level to mean anything.
 
 **mxbuild reports one error per microflow, so a second defect in the same document
 hides the one you are measuring.** An exemption justified by *measured: builds

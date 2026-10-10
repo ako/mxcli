@@ -54,6 +54,8 @@ load-bearing — it's how future syncs avoid re-stating canonical content.
 title: <concept name>
 category: architecture | mental-model | rationale | positioning | glossary | bug-pattern
 last-synced: <git short SHA at sync time>
+covers:                      # bug-pattern pages only; see below
+  - mdl/executor
 sources:
   - docs/11-proposals/<file>.md
   - docs/13-decisions/<file>.md
@@ -81,6 +83,23 @@ reference. Link out for specifics.>
 - [[other-wiki-page]] — related concept
 ```
 
+### `covers:` on a bug-pattern page
+
+The findings `area` paths this page digests. It is the **only** record of that,
+and `make digest-status` measures each area's backlog against the last sync of a
+page claiming it — so a page without `covers:` leaves its areas reading as
+entirely undigested, and the report names it.
+
+Claim what the page actually digests, not every area it mentions. Two signals
+were tried before this field existed and both were measured wrong: matching the
+area path against page text over-credits (a page citing one Go file from a
+package was credited with that package's whole findings area, zeroing 913
+records), and matching the findings shard in `sources:` under-credits (shards and
+`area` are different groupings — `mdl-other` alone holds `mdl/catalog`,
+`mdl/linter` and `mdl/exprcheck`).
+
+An area may be claimed by several pages; the newest of their syncs counts.
+
 ## Synthesis procedure
 
 For each page being synced:
@@ -95,7 +114,9 @@ For each page being synced:
    procedure, or status.
 4. **Update `last-synced:`** to the current `git rev-parse --short HEAD`.
 5. **Refresh `sources:`** to reflect what you actually read this run, not
-   what the previous run read.
+   what the previous run read. On a bug-pattern page, check `covers:` still
+   names every findings area the page digests — adding a new area to a page
+   without adding it here leaves that area reading as never digested.
 6. **Append a row to `docs-wiki/SYNC_LOG.md`** (see below). This is the last
    step and is non-optional.
 
@@ -153,5 +174,7 @@ Before creating `docs-wiki/<new>.md`:
 - [ ] No sentence duplicates content that lives in a canonical home
 - [ ] `last-synced:` updated to current HEAD SHA
 - [ ] `sources:` reflects what was actually read this run
+- [ ] `covers:` present and accurate on a bug-pattern page (`make digest-status`
+      lists any page making no claim)
 - [ ] `SYNC_LOG.md` row appended
 - [ ] `maintain-wiki/pages.md` updated if a new page was added
