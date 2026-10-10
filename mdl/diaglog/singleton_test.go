@@ -55,8 +55,16 @@ func TestInitIsOncePerProcess(t *testing.T) {
 }
 
 // Close is deferred by each command that holds a logger. With one shared logger
-// that must still produce exactly one session_end — and the FIRST close must not
-// end the session while the command is still running.
+// the process must still produce exactly one session_end — and a command's
+// close must not end the session while the command is still running.
+//
+// That second half is now enforced rather than hoped for: a command's Close
+// writes NOTHING, and the process's does. It used to be first-wins, so the
+// command's deferred close — which runs while the command returns, before cobra
+// hands its error to main — always won and recorded the run as clean. Every
+// failing invocation was reported that way, and before main closed on the error
+// path at all it had no duration either (PROPOSAL_agent_loop_efficiency.md
+// item 2d).
 func TestCloseWritesOneSessionEnd(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("MXCLI_LOG_DIR", dir)
@@ -67,8 +75,21 @@ func TestCloseWritesOneSessionEnd(t *testing.T) {
 	l.Close()
 	l.Close()
 
+	if n := sessionLines(t, dir, "session_end"); n != 0 {
+		t.Errorf("a command's Close wrote %d session_end record(s), want 0 — the "+
+			"process ends the session, after it knows how it ended", n)
+	}
+
+	CloseCurrentWithExit(1)
+	CloseCurrentWithExit(1) // idempotent: one process, one record
 	if n := sessionLines(t, dir, "session_end"); n != 1 {
 		t.Errorf("wrote %d session_end records, want exactly 1", n)
+	}
+	// sessionLines matches on the msg field, so count the attribute directly.
+	entries, _ := os.ReadDir(dir)
+	body, _ := os.ReadFile(dir + "/" + entries[0].Name())
+	if n := strings.Count(string(body), `"exit_code":1`); n != 1 {
+		t.Errorf("the one session_end carries %d exit codes, want 1:\n%s", n, body)
 	}
 }
 

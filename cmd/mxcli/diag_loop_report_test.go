@@ -338,3 +338,204 @@ func TestEndWithoutItsStartIsDropped(t *testing.T) {
 			rep.Unclosed)
 	}
 }
+
+// endAtWithExit is endAt for a session that closed with a non-zero exit code.
+func endAtWithExit(sec, code int) logRecord {
+	r := endAt(sec, 0, 0)
+	r.ExitCode = code
+	return r
+}
+
+// The reported symptom (PROPOSAL_agent_loop_efficiency.md, item 2d): "a boot
+// that is killed never writes a summary record, so its duration is not counted
+// at all. 26 of 30 and 27 of 34 `run` invocations are uncounted. The totals
+// above are floors."
+//
+// The measured shape, from mxcli-demo-2: 30 `run` invocations, 4 closed,
+// 838s between them, median 70.5s. Read naively that is 27% of the session's
+// mxcli time; the other 26 boots are ~31 minutes nobody could see.
+func TestUnclosedRunsSurfaceTheirUnmeasuredTime(t *testing.T) {
+	var recs []logRecord
+	// Four closed runs at 70s each: the population a median can come from.
+	for i := 0; i < 4; i++ {
+		recs = append(recs,
+			startAt(i*100, "subcommand", "run", "--local", "-p", "x.mpr"),
+			endAt(i*100+70, 0, 0))
+	}
+	// Twenty-six that vanished.
+	for i := 0; i < 26; i++ {
+		recs = append(recs, startAt(1000+i*100, "subcommand", "run", "--local", "-p", "x.mpr"))
+	}
+
+	rep := analyzeLoop(recs)
+	if rep.Unclosed != 26 {
+		t.Fatalf("unclosed = %d, want 26", rep.Unclosed)
+	}
+	// The measured total is still only the four that closed — that figure must
+	// not change, or the report starts asserting what it cannot measure.
+	if got := rep.WallSeconds; got != 280 {
+		t.Errorf("wall_seconds = %v, want 280 (the four closed runs)", got)
+	}
+	// What is new: the bill the report could not see. 26 x 70s.
+	if got := rep.UnmeasuredSeconds; got != 1820 {
+		t.Errorf("unmeasured_estimate_seconds = %v, want 1820 (26 unclosed x 70s median)", got)
+	}
+	// And it dwarfs the measured figure, which is the whole point of printing it.
+	if rep.UnmeasuredSeconds <= rep.WallSeconds {
+		t.Errorf("the unmeasured estimate (%v) should dominate the measured total (%v)",
+			rep.UnmeasuredSeconds, rep.WallSeconds)
+	}
+
+	var sb bytes.Buffer
+	renderLoopReport(rep, &sb)
+	out := sb.String()
+	if !strings.Contains(out, "Not measured") {
+		t.Errorf("the text report does not surface the unmeasured time:\n%s", out)
+	}
+	// The estimate has to read as an estimate.
+	if !strings.Contains(out, "~") && !strings.Contains(out, "≈") {
+		t.Errorf("the unmeasured figure is printed as if it were measured:\n%s", out)
+	}
+}
+
+// An estimate must never be folded into the measured total: `wall_seconds` is
+// the figure a before/after comparison is read from, and mixing a measurement
+// with an extrapolation is how ako/mxcli#620 shipped a field that lied.
+func TestUnmeasuredEstimateIsNotAddedToWallSeconds(t *testing.T) {
+	rep := analyzeLoop([]logRecord{
+		startAt(0, "subcommand", "run", "--local", "-p", "x.mpr"),
+		endAt(10, 0, 0),
+		startAt(20, "subcommand", "run", "--local", "-p", "x.mpr"), // never closes
+	})
+	if rep.WallSeconds != 10 {
+		t.Errorf("wall_seconds = %v, want 10", rep.WallSeconds)
+	}
+	if rep.UnmeasuredSeconds != 10 {
+		t.Errorf("unmeasured_estimate_seconds = %v, want 10", rep.UnmeasuredSeconds)
+	}
+	for _, s := range rep.ByVerb {
+		if s.Verb == "run" && s.TotalSec != 10 {
+			t.Errorf("run total_seconds = %v, want 10 (measured only)", s.TotalSec)
+		}
+	}
+}
+
+// With nothing closed there is no median to extrapolate from, and inventing one
+// would be worse than silence: the report says it cannot say.
+func TestUnmeasuredEstimateNeedsAClosedRunToExtrapolateFrom(t *testing.T) {
+	rep := analyzeLoop([]logRecord{
+		startAt(0, "subcommand", "run", "--local", "-p", "x.mpr"),
+		startAt(20, "subcommand", "run", "--local", "-p", "x.mpr"),
+	})
+	if rep.Unclosed != 2 {
+		t.Fatalf("unclosed = %d, want 2", rep.Unclosed)
+	}
+	if rep.UnmeasuredSeconds != 0 {
+		t.Errorf("unmeasured_estimate_seconds = %v, want 0 with no closed run to extrapolate from",
+			rep.UnmeasuredSeconds)
+	}
+	var sb bytes.Buffer
+	renderLoopReport(rep, &sb)
+	if out := sb.String(); !strings.Contains(out, "no closed run") {
+		t.Errorf("the report does not say why it cannot estimate:\n%s", out)
+	}
+}
+
+// A command that returns an error is a run that ENDED. Before this, main()
+// exited through os.Exit on that path, so the session_end was never written and
+// the run's duration vanished into `unclosed` — which is the larger half of
+// item 2d: every failing invocation of every command, not only a killed boot.
+func TestNonZeroExitIsClosedAndMeasured(t *testing.T) {
+	rep := analyzeLoop([]logRecord{
+		startAt(0, "subcommand", "exec", "a.mdl", "-p", "x.mpr"),
+		endAtWithExit(12, 1),
+	})
+	if rep.Unclosed != 0 {
+		t.Errorf("unclosed = %d, want 0 — the run ended, it did not vanish", rep.Unclosed)
+	}
+	if rep.ExitedNonZero != 1 {
+		t.Errorf("runs_exited_nonzero = %d, want 1", rep.ExitedNonZero)
+	}
+	if rep.WallSeconds != 12 {
+		t.Errorf("wall_seconds = %v, want 12 — a failed run's time is still time spent", rep.WallSeconds)
+	}
+	var sb bytes.Buffer
+	renderLoopReport(rep, &sb)
+	if out := sb.String(); !strings.Contains(out, "Exited non-zero: 1") {
+		t.Errorf("the report does not distinguish an error exit from a vanished run:\n%s", out)
+	}
+}
+
+// aliveAt builds a heartbeat record for pid.
+func aliveAt(sec, pid int) logRecord {
+	return logRecord{
+		Time: time.Date(2026, 9, 22, 12, 0, sec, 0, time.UTC),
+		Msg:  "session_alive",
+		PID:  pid,
+	}
+}
+
+func startAtPID(sec, pid int, args ...string) logRecord {
+	r := startAt(sec, "subcommand", args...)
+	r.PID = pid
+	return r
+}
+
+// The measured half of item 2d. `run --local` is a `Run:` command that exits
+// through os.Exit at every failure site, and a boot the agent kills writes
+// nothing at all — so closing the session on main's error path cannot reach it.
+// What can is a heartbeat: the last one before the process died is a MEASURED
+// lower bound on how long the boot lasted, and it needs no cooperation from any
+// of the 258 os.Exit sites.
+func TestUnclosedRunIsBoundedByItsLastHeartbeat(t *testing.T) {
+	rep := analyzeLoop([]logRecord{
+		startAtPID(0, 100, "run", "--local", "-p", "x.mpr"),
+		aliveAt(30, 100),
+		aliveAt(60, 100),
+		aliveAt(90, 100), // killed somewhere after this
+	})
+	if rep.Unclosed != 1 {
+		t.Fatalf("unclosed = %d, want 1", rep.Unclosed)
+	}
+	if rep.UnclosedFloorSeconds != 90 {
+		t.Errorf("unclosed_floor_seconds = %v, want 90 (the last heartbeat)", rep.UnclosedFloorSeconds)
+	}
+	// A floor is measured, so it must not also be estimated — double-counting
+	// the same run would inflate exactly the figure this exists to make honest.
+	if rep.UnmeasuredSeconds != 0 {
+		t.Errorf("unmeasured_estimate_seconds = %v, want 0: this run carries a measured floor",
+			rep.UnmeasuredSeconds)
+	}
+	// And it stays out of the pure measurement of the runs that closed.
+	if rep.WallSeconds != 0 {
+		t.Errorf("wall_seconds = %v, want 0 — no run closed", rep.WallSeconds)
+	}
+	var sb bytes.Buffer
+	renderLoopReport(rep, &sb)
+	if out := sb.String(); !strings.Contains(out, "Unclosed, at least") {
+		t.Errorf("the report does not surface the measured floor:\n%s", out)
+	}
+}
+
+// A heartbeat belongs to the process that wrote it. mxcli runs mxcli (`test`
+// starts three before a single test executes, ako/mxcli#629), so a heartbeat
+// paired by position instead of by pid would credit a child's liveness to its
+// parent, or to whatever was open at the time.
+func TestHeartbeatsArePairedByPID(t *testing.T) {
+	// The order is what makes this discriminating: the `run` starts LAST, so it
+	// is the most recently opened invocation when the exec's heartbeat arrives.
+	// Pairing by position would hand it to the run; only pairing by pid does not.
+	rep := analyzeLoop([]logRecord{
+		startAtPID(0, 200, "exec", "a.mdl", "-p", "x.mpr"),
+		startAtPID(10, 100, "run", "--local", "-p", "x.mpr"),
+		aliveAt(40, 200), // the exec's, not the run's
+	})
+	for _, s := range rep.ByVerb {
+		if s.Verb == "run" && s.FloorSec != 0 {
+			t.Errorf("run picked up %vs of floor from another process's heartbeat", s.FloorSec)
+		}
+		if s.Verb == "exec" && s.FloorSec != 40 {
+			t.Errorf("exec floor = %vs, want 40 — its own heartbeat went somewhere else", s.FloorSec)
+		}
+	}
+}

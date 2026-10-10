@@ -1,7 +1,7 @@
 ---
 title: A Wrong Hint Is Worse Than No Hint
 category: bug-pattern
-last-synced: ced830e0
+last-synced: a918689d
 covers:
   - mdl/visitor
 sources:
@@ -54,6 +54,33 @@ cannot compute values, so `[Seq = $Game/MoveSeq + 1]` is a limitation rather tha
 a syntax mistake; a bare `mismatched input '+'` reads as the latter. Naming the
 constraint turns a dead end into a redesign.
 
+**A bare parse error reads as a missing feature, and gets filed as one.**
+`Height: n` on a domain-model annotation produced `mismatched input 'Height'`,
+which was reported as mxcli failing to expose a property — and Mendix stores no
+annotation height at all: the note auto-sizes to its caption, and there is
+nowhere to write one. The honest fix is a hint naming the properties that *do*
+exist, which closes the report instead of opening a feature. Settling "does this
+property exist" needed four sources and **the generated metamodel was not
+enough**: it is a snapshot of one Mendix version, so a property added later is
+invisible to it. Mendix's own serializer (`mx dump-mpr`) and, decisively,
+`mx convert` — which rewrites the model to a new version and therefore has to
+know every key — are the cheap oracles.
+
+**When the grammar is right and the mistake is predictable from the line, the fix
+is a hint, not a grammar change.** An Atlas icon name with a hyphen
+(`Atlas_Core.Atlas.add-circle`) cannot be a qualified name, and quoting the whole
+thing would have required accepting a string where a reference belongs —
+breaking the rule that references are qualified names and needing its own
+resolution path. The grammar stayed; a hint keyed on the source line names the
+working spelling. This is the boundary with a capability gap: the question is not
+"is the input reasonable" but "is there a spelling that works".
+
+**A hint must stand down on a line that already failed.** Error recovery truncates
+a statement wherever it resynchronised, so a check that reads a statement's last
+tokens can report a missing terminator that is plainly present in the source —
+a second, phantom mistake stacked on the real one. See
+[[the-visitor-walks-a-failed-parse]].
+
 **The reachable-form question.** Several of these are not really about wording:
 the reader's next question is "then how *do* I write it?", and a hint that names
 the working spelling answers it. Where there is no working spelling, saying so is
@@ -66,3 +93,7 @@ still better than a token error — that is the boundary with
   their triggers and their controls
 - [[capability-gap-as-parse-error]] — when the honest hint is "you cannot"
 - [[keyword-collisions]] — the two kinds of reserved word, kept apart
+- [[the-visitor-walks-a-failed-parse]] — where recovery produces a crash rather
+  than a wrong message
+- [[visitor-wiring-gaps]] — where a runtime message contradicting the script is
+  the tell for a shape-disambiguated rule
