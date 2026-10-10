@@ -203,8 +203,8 @@ func writtenEqual(a, b any) bool {
 }
 
 // completeAsStored gives encoded contents the property set storage would give
-// them on the write (canon.CompletePropertySets, applied by the mpr writer to
-// every unit). A read-back that skipped it would compare a declared flow
+// them on the write (canon.StripUndeclaredProperties and
+// canon.CompletePropertySets, applied by the mpr writer to every unit). A read-back that skipped it would compare a declared flow
 // without those properties against a stored one with them — a difference on
 // every re-run wherever the comparison sees bytes, as it does for a raw
 // `call web service` payload (mendixlabs/mxcli#1373).
@@ -214,5 +214,9 @@ func (b *Backend) completeAsStored(contents []byte) []byte {
 		return contents
 	}
 	v := version.Version{Major: pv.MajorVersion, Minor: pv.MinorVersion, Patch: pv.PatchVersion}
+	if stripped, err := canon.StripUndeclaredProperties(contents, &v); err == nil {
+		// A refusal is the write's to report; the prediction keeps the bytes.
+		contents = stripped
+	}
 	return canon.CompletePropertySets(contents, &v)
 }
