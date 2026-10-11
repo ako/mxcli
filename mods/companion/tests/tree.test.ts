@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { TreeNode } from '../types'
-import { assumeDescribable, changesModel, nodeId, pageOf, parseDescribe, parseTree, pickMpr, touchesProjectFile, visibleRows } from '../hooks/tree'
+import { annotationRuns, assumeDescribable, changesModel, nodeId, pageOf, parseDescribe, parseTree, pickMpr, touchesProjectFile, visibleRows } from '../hooks/tree'
 
 const TREE: TreeNode[] = [
   {
@@ -134,5 +134,33 @@ describe('assumeDescribable (an mxcli older than the describable field)', () => 
     expect(assumeDescribable(TREE)).toEqual(TREE)
     const settings = assumeDescribable([{ label: 'Tmpl', type: 'pagetemplate', qualifiedName: 'M.Tmpl', describable: false }, ...TREE])
     expect(settings[0]!.describable).toBe(false)
+  })
+})
+
+describe('annotationRuns', () => {
+  const lines = [
+    'begin',
+    '  @start(-21, 200)',
+    '  @position(150, 200)',
+    '  retrieve $List from M.E;',
+    '  @position(340, 200)',
+    '  return;',
+    'end;',
+  ]
+
+  test('splits annotation lines from the statements around them, numbering from the page', () => {
+    expect(annotationRuns(lines, 10)).toEqual([
+      { kind: 'code', startLine: 10, text: 'begin' },
+      { kind: 'note', line: 11, text: '  @start(-21, 200)' },
+      { kind: 'note', line: 12, text: '  @position(150, 200)' },
+      { kind: 'code', startLine: 13, text: '  retrieve $List from M.E;' },
+      { kind: 'note', line: 14, text: '  @position(340, 200)' },
+      { kind: 'code', startLine: 15, text: '  return;\nend;' },
+    ])
+  })
+
+  test('an @ inside a statement or a doc comment is not an annotation', () => {
+    const runs = annotationRuns(['/**', ' * @param x the input', ' */', "log info 'mail @ noon';"], 1)
+    expect(runs).toEqual([{ kind: 'code', startLine: 1, text: "/**\n * @param x the input\n */\nlog info 'mail @ noon';" }])
   })
 })

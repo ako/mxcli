@@ -10,6 +10,7 @@ import type { EngineInterface as Engine, FsEntry, Register } from 'claude-code'
 
 import type { Project, Source, TreeNode } from '../types'
 import {
+  annotationRuns,
   assumeDescribable,
   changesModel,
   firstLine,
@@ -379,7 +380,15 @@ export const register: Register = (on, options) => {
           <Box flexDirection="column">
             <Text bold>{src.qn}</Text>
             {pg.above > 0 && pager('src-up', `▲ ${pg.above} lines`, () => void update($, sourceTop, () => Math.max(0, pg.first - pageRows + 2)))}
-            <Code source={lines.slice(pg.first, pg.end).join('\n')} language="sql" startLine={pg.first + 1} />
+            {annotationRuns(lines.slice(pg.first, pg.end), pg.first + 1).map(run =>
+              run.kind === 'code' ? (
+                <Code key={`code:${run.startLine}`} source={run.text} language="sql" startLine={run.startLine} />
+              ) : (
+                <Text key={`note:${run.line}`} dimColor wrap="truncate">
+                  {String(run.line).padStart(String(pg.end).length)} {run.text}
+                </Text>
+              ),
+            )}
             {pg.below > 0 && pager('src-down', `▼ ${pg.below} lines`, () => void update($, sourceTop, () => pg.end - 1))}
           </Box>
         )

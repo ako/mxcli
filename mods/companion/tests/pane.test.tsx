@@ -26,7 +26,7 @@ const PANE_PROPS = {
 
 // The world beneath the mod: one app here, and an mxcli that answers
 // project-tree and describe. `calls` records every argv it was run with.
-const world = (on: On, opts: { describeFails?: boolean; notPlaced?: string; tree?: string } = {}) => {
+const world = (on: On, opts: { describeFails?: boolean; notPlaced?: string; tree?: string; mdl?: string } = {}) => {
   const calls: string[][] = []
   const clock = mock.clock(on)
   on('fs.exists', () => ({ value: false }))
@@ -46,7 +46,7 @@ const world = (on: On, opts: { describeFails?: boolean; notPlaced?: string; tree
         ? { exitCode: 1, stdout: '', stderr: 'Error: not found\n', isStdoutTruncated: false, isStderrTruncated: false }
         : {
             exitCode: 0,
-            stdout: JSON.stringify({ name: 'Sales.ACT_Process', type: 'microflow', mdl: MDL, executable: true }),
+            stdout: JSON.stringify({ name: 'Sales.ACT_Process', type: 'microflow', mdl: opts.mdl ?? MDL, executable: true }),
             stderr: '',
             isStdoutTruncated: false,
             isStderrTruncated: false,
@@ -227,5 +227,23 @@ test('an mxcli older than the describable field still gets documents described',
   await ui.press({ key: rowKey('module:Sales', 'microflow:ACT_Process') })
   expect(calls.some(c => c[1] === 'describe')).toBe(true)
   expect(await ui.find({ type: 'Code' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('annotation lines are dimmed outside the code, so the statements stand out', async ($, on) => {
+  const mdl = 'mdl 1;\ncreate microflow Sales.ACT_Process ()\nbegin\n  @start(-21, 200)\n  @position(150, 200)\n  retrieve $L from Sales.Order;\n  @position(340, 200)\n  return;\nend;\n'
+  world(on, { mdl })
+  await $.command.run(RUN)
+  const ui = await $.ui.mount({ plugin: 'mxcli-companion', surface: 'terminal', component: 'Pane', requestId: 'mxcli-project', props: PANE_PROPS })
+  await ui.press({ key: rowKey('module:Sales') })
+  await ui.press({ key: rowKey('module:Sales', 'microflow:ACT_Process') })
+
+  const code = JSON.stringify(await ui.findAll({ type: 'Code' }))
+  expect(code).toContain('retrieve $L from Sales.Order;')
+  expect(code).not.toContain('@position')
+  const note = await ui.find({ type: 'Text', text: /@position\(150, 200\)/ })
+  expect(note).toBeDefined()
+  expect(JSON.stringify(note)).toContain('"dimColor":true')
+  expect(note?.text).toMatch(/^5 /)
   await ui.unmount()
 })

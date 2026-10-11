@@ -67,6 +67,36 @@ export const assumeDescribable = (tree: TreeNode[]): TreeNode[] => {
   return mark(tree)
 }
 
+// A run of a describe's lines as the pane draws it: statements in a `Code`
+// element, annotation lines (`@position(…)`, `@start(…)`, `@curve(…)`) dimmed
+// beside it, so the eye lands on the statements. MDL writes each annotation on
+// a line of its own, which is what makes the split safe.
+export type SourceRun =
+  | { kind: 'code'; startLine: number; text: string }
+  | { kind: 'note'; line: number; text: string }
+
+const isAnnotation = (line: string) => line.trimStart().startsWith('@')
+
+// annotationRuns splits `lines` (numbered from `firstLine`) into runs.
+export const annotationRuns = (lines: readonly string[], firstLine: number): SourceRun[] => {
+  const runs: SourceRun[] = []
+  let code: string[] = []
+  let codeStart = firstLine
+  lines.forEach((line, i) => {
+    const n = firstLine + i
+    if (isAnnotation(line)) {
+      if (code.length > 0) runs.push({ kind: 'code', startLine: codeStart, text: code.join('\n') })
+      code = []
+      runs.push({ kind: 'note', line: n, text: line })
+    } else {
+      if (code.length === 0) codeStart = n
+      code.push(line)
+    }
+  })
+  if (code.length > 0) runs.push({ kind: 'code', startLine: codeStart, text: code.join('\n') })
+  return runs
+}
+
 // parseTree reads `mxcli project-tree` output.
 export const parseTree = (stdout: string): TreeNode[] => {
   const start = stdout.indexOf('[')
