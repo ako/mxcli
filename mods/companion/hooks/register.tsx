@@ -8,18 +8,20 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface as Engine, FsEntry, Register } from 'claude-code'
 
-import type { Project, Source, TreeNode } from '../types'
+import type { Project, Source, TreeNode, WorkflowOffer, WorkflowRun } from '../types'
 import {
   assumeDescribable,
   changesModel,
   diagramView,
   firstLine,
+  gateLine,
   nodeId,
   pageOf,
   parseDescribe,
   parseTree,
   pickMpr,
   touchesProjectFile,
+  touchesWorkflow,
   visibleRows,
 } from './tree'
 
@@ -36,6 +38,11 @@ const sourceTop = atom({ plugin: 'mxcli-companion', key: 'sourceTop' } as const,
 // Whether the band above the prompt offers the Project pane: once per project,
 // until the person opens the pane or says not now.
 const welcome = atom({ plugin: 'mxcli-companion', key: 'welcome' } as const, false)
+// Prepared workflows, the open runs, and whether the person hid the offers.
+const workflows = atom({ plugin: 'mxcli-companion', key: 'workflows' } as const, [] as WorkflowOffer[])
+const runs = atom({ plugin: 'mxcli-companion', key: 'runs' } as const, [] as WorkflowRun[])
+const offersHidden = atom({ plugin: 'mxcli-companion', key: 'offersHidden' } as const, false)
+
 // How a diagram is shown, and whether the tree gives up its column to it.
 const diagram = atom({ plugin: 'mxcli-companion', key: 'diagram' } as const, { zoom: 'actual', x: 0 } as { zoom: 'fit' | 'actual'; x: number })
 const treeHidden = atom({ plugin: 'mxcli-companion', key: 'treeHidden' } as const, false)
@@ -238,6 +245,33 @@ const background = (work: Promise<unknown>) => {
   work.catch(() => undefined)
 }
 
+// refreshWorkflows reads the prepared workflows and the open runs from mxcli.
+// An mxcli without `workflow` fails both, and the band offers nothing.
+const refreshWorkflows = async ($: Engine) => {
+  const located = await locate($)
+  if (located.state !== 'loading') return
+  const list = await run($, ['workflow', 'list', '--json', '-p', located.mpr], DESCRIBE_TIMEOUT_MS)
+  const status = await run($, ['workflow', 'status', '--json', '-p', located.mpr], DESCRIBE_TIMEOUT_MS)
+  const parse = <T,>(out: { exitCode: number; stdout: string }): T[] => {
+    if (out.exitCode !== 0) return []
+    const at = out.stdout.indexOf('[')
+    try {
+      return at < 0 ? [] : (JSON.parse(out.stdout.slice(at)) as T[])
+    } catch {
+      return []
+    }
+  }
+  await update($, workflows, () => parse<WorkflowOffer>(list))
+  await update($, runs, () => parse<WorkflowRun>(status))
+}
+
+// startWorkflow puts the workflow's command in the prompt box: the workflow
+// needs the person's own words next (for vibe code, the change).
+const startWorkflow = async ($: Engine, offer: WorkflowOffer) => {
+  await retireWelcome($)
+  await $.prompt.fill({ text: `${offer.command} ` })
+}
+
 // The store outlives sessions and spans projects, so the key names the project.
 const startWelcome = async ($: Engine, cwd: string) => {
   welcomedKey = `welcomed:${cwd}`
@@ -272,6 +306,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'mxcli-project', description: 'Show the Mendix project structure and MDL source in a pane' })
     background(startWelcome($, e.cwd))
+    background(refreshWorkflows($))
     return next(e)
   })
 
@@ -279,15 +314,49 @@ export const register: Register = (on, options) => {
   // here and offer the pane. A band, not a pane, because a band needs no room
   // and shows unasked at any width.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey || !(await read($, welcome))) return next(e)
+    if (e.props.hasSurvey) return next(e)
     const { Box, Text, Button } = $.ui.resolve(e)
+    const offers = await read($, workflows)
+    const offerButtons = offers.map(o => (
+      <Button key={`workflow-${o.id}`} label={o.title} onPress={() => void startWorkflow($, o)} />
+    ))
+
+    // The first session in a project: say what is installed and offer it all.
+    if (await read($, welcome)) {
+      return (
+        <Box flexDirection="row" gap={1} flexWrap="wrap">
+          <Text>
+            <Text bold>mxcli companion</Text> is installed: the Project pane shows this app's structure and MDL
+            {offers.length > 0 ? ', and prepared workflows keep each change to the quality gates.' : '.'}
+          </Text>
+          <Button key="welcome-open" variant="primary" label="Open Project pane" onPress={() => void open($)} />
+          {offerButtons}
+          <Button key="welcome-dismiss" role="dismiss" label="Not now" onPress={() => void retireWelcome($)} />
+        </Box>
+      )
+    }
+
+    // A run in progress: its intent and where its gates stand.
+    const open_ = await read($, runs)
+    if (open_.length > 0) {
+      const r = open_[0]!
+      return (
+        <Box flexDirection="row" gap={1} flexWrap="wrap">
+          <Text bold>{r.title}</Text>
+          <Text>{r.intent}</Text>
+          <Text dimColor>{gateLine(r.last)}</Text>
+          {open_.length > 1 && <Text dimColor>(+{open_.length - 1} more open)</Text>}
+        </Box>
+      )
+    }
+
+    // Otherwise, the workflows on offer, until hidden for the session.
+    if (offers.length === 0 || (await read($, offersHidden))) return next(e)
     return (
       <Box flexDirection="row" gap={1} flexWrap="wrap">
-        <Text>
-          <Text bold>mxcli companion</Text> is installed: the Project pane shows this app's structure and MDL.
-        </Text>
-        <Button key="welcome-open" variant="primary" label="Open Project pane" onPress={() => void open($)} />
-        <Button key="welcome-dismiss" role="dismiss" label="Not now" onPress={() => void retireWelcome($)} />
+        <Text dimColor>Workflows:</Text>
+        {offerButtons}
+        <Button key="workflows-hide" role="dismiss" plain label="×" onPress={() => void update($, offersHidden, () => true)} />
       </Box>
     )
   })
@@ -297,6 +366,7 @@ export const register: Register = (on, options) => {
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const ran = await next(e)
     if (changesModel(e.command)) background(scheduleReload($))
+    if (touchesWorkflow(e.command)) background(refreshWorkflows($))
     return ran
   }).catch(($, e, next) => next(e)) // an observer: its failure must never cost the call
 
