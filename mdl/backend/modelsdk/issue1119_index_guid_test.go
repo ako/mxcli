@@ -147,6 +147,25 @@ func indexGUIDs(t *testing.T, b *Backend, dmID model.ID, entityName string) []st
 // edits the file (and the .mpr's ContentsHash) directly, below the writer.
 func patchIndexGUID(t *testing.T, proj string, dmID model.ID, entityName string) string {
 	t.Helper()
+	patchIndexGUIDsWith(t, proj, dmID, entityName, func(int) byte { return 0xAB })
+	return "abababababababababababababababab"
+}
+
+// patchAllIndexGUIDs is patchIndexGUID with a DISTINCT GUID per index (filled with
+// 0xC0, 0xC1, … in stored order), for tests that must tell the indexes apart. It
+// returns the GUIDs it wrote, in stored order, as indexGUIDs reports them.
+func patchAllIndexGUIDs(t *testing.T, proj string, dmID model.ID, entityName string) []string {
+	t.Helper()
+	n := patchIndexGUIDsWith(t, proj, dmID, entityName, func(i int) byte { return byte(0xC0 + i) })
+	out := make([]string, n)
+	for i := range out {
+		out[i] = strings.Repeat(hex.EncodeToString([]byte{byte(0xC0 + i)}), 16)
+	}
+	return out
+}
+
+func patchIndexGUIDsWith(t *testing.T, proj string, dmID model.ID, entityName string, fill func(n int) byte) int {
+	t.Helper()
 	path := unitFilePath(t, proj, entityName)
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -157,10 +176,6 @@ func patchIndexGUID(t *testing.T, proj string, dmID model.ID, entityName string)
 		t.Fatalf("unmarshal unit: %v", err)
 	}
 
-	seeded := make([]byte, 16)
-	for i := range seeded {
-		seeded[i] = 0xAB
-	}
 	patched := 0
 	var walk func(any)
 	walk = func(v any) {
@@ -177,7 +192,8 @@ func patchIndexGUID(t *testing.T, proj string, dmID model.ID, entityName string)
 			for i, e := range t2 {
 				if isIndex && e.Key == "GUID" {
 					if bin, ok := e.Value.(bson.Binary); ok {
-						t2[i].Value = bson.Binary{Subtype: bin.Subtype, Data: append([]byte{}, seeded...)}
+						seeded := bytes.Repeat([]byte{fill(patched)}, 16)
+						t2[i].Value = bson.Binary{Subtype: bin.Subtype, Data: seeded}
 						patched++
 					}
 				}
@@ -225,7 +241,7 @@ func patchIndexGUID(t *testing.T, proj string, dmID model.ID, entityName string)
 	if n != 1 {
 		t.Fatalf("ContentsHash update matched %d rows, want 1", n)
 	}
-	return "abababababababababababababababab"
+	return patched
 }
 
 // storedUnitIDHex renders a unit id the way the .mpr's Unit.UnitID blob holds

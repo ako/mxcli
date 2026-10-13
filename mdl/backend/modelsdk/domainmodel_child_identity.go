@@ -28,9 +28,9 @@ import (
 //
 // Pairing by name (not by list position) for attributes is deliberate: names are
 // unique within an entity, so the lookup does not depend on entityToGen and the
-// semantic list staying in lockstep. Indexes have no name, so they pair by
-// position — which holds because entityToGen appends one gen index per semantic
-// index in the same loop.
+// semantic list staying in lockstep. Indexes have no name, so their fallback is
+// position (carryIndexIdentity) — which holds because entityToGen appends one gen
+// index per semantic index in the same loop.
 //
 // THE SEMANTIC ID IS NOT ALWAYS THERE, and reading its absence as "a new member"
 // was a second instance of #1119 rather than a safe default.
@@ -118,6 +118,21 @@ func carryAttributeIdentity(ge, orig *genDm.Entity, entity *domainmodel.Entity) 
 	}
 }
 
+// carryIndexIdentity pairs each rebuilt index with the stored one it came from:
+// the stored $ID first, then position for whatever that left.
+//
+// "No ID means position" was not enough: the executor's CREATE OR MODIFY path mints
+// a FRESH ID for every declared index (buildEntityFromStmt), so the ID is present and
+// simply misses. Reading that miss as "a new index" re-minted the GUID, the write
+// guard refused it (mendixlabs/mxcli#1470) — the same mistake #1119 made for
+// attributes, which survive only because their fallback is by name.
+//
+// An index has no name, and the fallback is position rather than the column list on
+// purpose: canon.TransplantIDs reattaches the stored $IDs by aligning the index list
+// on $Type, which for nameless indexes is position. A GUID paired by columns onto a
+// reordered list would then sit under its neighbour's $ID and be refused as a moved
+// GUID. Position agrees with the transplant; a crosswise pairing costs an index
+// rebuild and no data — nothing the platform keys on rides on an index GUID.
 func carryIndexIdentity(ge, orig *genDm.Entity, entity *domainmodel.Entity) {
 	storedByID := map[string]*genDm.Index{}
 	var storedInOrder []*genDm.Index
@@ -132,34 +147,32 @@ func carryIndexIdentity(ge, orig *genDm.Entity, entity *domainmodel.Entity) {
 	}
 
 	rebuilt := ge.IndexesItems()
+	n := min(len(entity.Indexes), len(rebuilt))
 	claimed := make(map[string]bool, len(storedByID))
-	for i, sem := range entity.Indexes {
-		if i >= len(rebuilt) {
-			break
-		}
+	paired := make([]bool, n)
+	carry := func(i int, si *genDm.Index) {
 		gi, ok := rebuilt[i].(*genDm.Index)
-		if !ok || sem == nil {
-			continue
-		}
-		var si *genDm.Index
-		switch {
-		case sem.ID != "":
-			si = storedByID[string(sem.ID)]
-		case i < len(storedInOrder):
-			// The statement-declared case: no ID to pair on, and an index has no name
-			// either, so position is what is left. It is the same correspondence the
-			// ID-bearing branch already trusts, and it is the weaker one — a reordered
-			// or dropped index pairs the wrong way round. That costs an index rebuild
-			// and no data, because nothing the platform keys on rides on an index
-			// GUID; what a MISSING carry costs is the write, which the guard refuses.
-			si = storedInOrder[i]
-		}
-		if si == nil || claimed[string(si.ID())] {
-			continue
+		if !ok || si == nil || entity.Indexes[i] == nil || claimed[string(si.ID())] {
+			return
 		}
 		gi.SetID(si.ID())
 		gi.SetRaw(si.Raw())
 		claimed[string(si.ID())] = true
+		paired[i] = true
+	}
+
+	// Pass 1 — the stored $ID, which the ALTER paths round-trip.
+	for i := 0; i < n; i++ {
+		if sem := entity.Indexes[i]; sem != nil && sem.ID != "" {
+			carry(i, storedByID[string(sem.ID)])
+		}
+	}
+	// Pass 2 — position, for an index with no ID or one that matched nothing (the
+	// statement-declared case, whose ID is freshly minted).
+	for i := 0; i < n && i < len(storedInOrder); i++ {
+		if !paired[i] {
+			carry(i, storedInOrder[i])
+		}
 	}
 }
 

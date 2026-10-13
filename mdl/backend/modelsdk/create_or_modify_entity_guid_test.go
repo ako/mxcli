@@ -5,6 +5,8 @@ package modelsdkbackend
 import (
 	"testing"
 
+	"github.com/mendixlabs/mxcli/model"
+	mmpr "github.com/mendixlabs/mxcli/modelsdk/mpr"
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 )
 
@@ -234,5 +236,135 @@ func TestCreateOrModifyEntity_PreservesIndexGUIDsWithoutSemanticIDs(t *testing.T
 	}
 	if got[0] != seeded {
 		t.Errorf("index storage GUID changed %s -> %s", seeded, got[0])
+	}
+}
+
+// executorDeclaredEntity reshapes target the way buildEntityFromStmt shapes a
+// `CREATE OR MODIFY` statement: every attribute, index and segment gets a FRESH ID
+// (not an empty one), and each segment points at the fresh attribute ID. The test
+// above blanks the IDs instead, which the executor never does — a fresh ID misses
+// the stored-ID lookup, and that miss is mendixlabs/mxcli#1470.
+func executorDeclaredEntity(target *domainmodel.Entity) {
+	fresh := map[model.ID]model.ID{}
+	for _, a := range target.Attributes {
+		id := model.ID(mmpr.GenerateID())
+		fresh[a.ID] = id
+		a.ID = id
+	}
+	for _, idx := range target.Indexes {
+		idx.ID = model.ID(mmpr.GenerateID())
+		for _, ia := range idx.Attributes {
+			ia.ID = model.ID(mmpr.GenerateID())
+			ia.AttributeID = fresh[ia.AttributeID]
+		}
+	}
+}
+
+// seedIndexedEntity creates a persistent entity with attributes Code, Descr and
+// Extra and the given indexes (each a list of attribute positions), then patches
+// every index GUID away from its $ID — the Studio Pro shape; an mxcli-created index
+// has GUID == $ID and cannot fail these tests. Returns the seeded GUIDs in order.
+func seedIndexedEntity(t *testing.T, proj, entName string, indexes ...[]int) (model.ID, []string) {
+	t.Helper()
+	b := New()
+	if err := b.Connect(proj); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	dmID, _ := richestEntity(t, b)
+	if err := b.CreateEntity(dmID, &domainmodel.Entity{
+		Name:        entName,
+		Persistable: true,
+		Attributes: []*domainmodel.Attribute{
+			{Name: "Code", Type: &domainmodel.StringAttributeType{Length: 50}},
+			{Name: "Descr", Type: &domainmodel.StringAttributeType{Length: 50}},
+			{Name: "Extra", Type: &domainmodel.StringAttributeType{Length: 50}},
+		},
+	}); err != nil {
+		t.Fatalf("CreateEntity: %v", err)
+	}
+	stored := mustFindEntity(t, b, dmID, entName)
+	for _, cols := range indexes {
+		idx := &domainmodel.Index{}
+		for _, c := range cols {
+			idx.Attributes = append(idx.Attributes,
+				&domainmodel.IndexAttribute{AttributeID: stored.Attributes[c].ID, Ascending: true})
+		}
+		stored.Indexes = append(stored.Indexes, idx)
+	}
+	if err := b.UpdateEntity(dmID, stored); err != nil {
+		t.Fatalf("UpdateEntity (add indexes): %v", err)
+	}
+	if err := b.Disconnect(); err != nil {
+		t.Fatalf("disconnect: %v", err)
+	}
+	return dmID, patchAllIndexGUIDs(t, proj, dmID, entName)
+}
+
+// redeclareAndReadIndexGUIDs re-declares the entity through the executor's shape,
+// after letting reshape reorder or drop its indexes, and returns the index GUIDs
+// stored afterwards.
+func redeclareAndReadIndexGUIDs(t *testing.T, proj string, dmID model.ID, entName string, reshape func(*domainmodel.Entity)) []string {
+	t.Helper()
+	b := New()
+	if err := b.Connect(proj); err != nil {
+		t.Fatalf("reconnect: %v", err)
+	}
+	target := mustFindEntity(t, b, dmID, entName)
+	executorDeclaredEntity(target)
+	if reshape != nil {
+		reshape(target)
+	}
+	if err := b.UpdateEntity(dmID, target); err != nil {
+		t.Fatalf("UpdateEntity with executor-declared members: %v", err)
+	}
+	if err := b.Disconnect(); err != nil {
+		t.Fatalf("disconnect: %v", err)
+	}
+	b2 := New()
+	if err := b2.Connect(proj); err != nil {
+		t.Fatalf("reconnect: %v", err)
+	}
+	t.Cleanup(func() { _ = b2.Disconnect() })
+	return indexGUIDs(t, b2, dmID, entName)
+}
+
+// TestCreateOrModifyEntity_PreservesIndexGUIDWithFreshDeclaredID is #1470 as
+// reported: the entity re-declared with the same index. The declared index arrives
+// with a freshly minted ID, the ID pass misses, and before the fix that miss also
+// skipped the positional fallback (it ran only for an EMPTY ID) — so the index was
+// encoded GUID = $ID and the write guard refused the statement.
+func TestCreateOrModifyEntity_PreservesIndexGUIDWithFreshDeclaredID(t *testing.T) {
+	proj := copyFixture(t)
+	const entName = "CreateOrModifyIndexedFresh"
+	dmID, seeded := seedIndexedEntity(t, proj, entName, []int{0})
+
+	got := redeclareAndReadIndexGUIDs(t, proj, dmID, entName, nil)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 index after the re-declaration, got %d", len(got))
+	}
+	if got[0] != seeded[0] {
+		t.Errorf("index storage GUID changed %s -> %s", seeded[0], got[0])
+	}
+}
+
+// TestCreateOrModifyEntity_ReorderedIndexesAreStillWritten: a statement that lists
+// the indexes in a different order than they are stored. canon.TransplantIDs aligns a
+// nameless index list by position, so the carry must pair the same way — a carry by
+// column list would put each GUID under its neighbour's $ID and be refused. The
+// stored GUIDs all survive, positionally; a crosswise pairing of an index costs a
+// rebuild of that index and no data.
+func TestCreateOrModifyEntity_ReorderedIndexesAreStillWritten(t *testing.T) {
+	proj := copyFixture(t)
+	const entName = "CreateOrModifyIndexedReorder"
+	dmID, seeded := seedIndexedEntity(t, proj, entName, []int{0}, []int{1, 2})
+
+	got := redeclareAndReadIndexGUIDs(t, proj, dmID, entName, func(e *domainmodel.Entity) {
+		e.Indexes[0], e.Indexes[1] = e.Indexes[1], e.Indexes[0]
+	})
+	if len(got) != 2 {
+		t.Fatalf("expected 2 indexes, got %d", len(got))
+	}
+	if got[0] != seeded[0] || got[1] != seeded[1] {
+		t.Errorf("stored index GUIDs not kept: seeded %v, got %v", seeded, got)
 	}
 }
