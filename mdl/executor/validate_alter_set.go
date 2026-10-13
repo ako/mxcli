@@ -12,6 +12,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/backend"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/model"
+	"github.com/mendixlabs/mxcli/sdk/pages"
 )
 
 // `ALTER PAGE … SET <prop> ON <widget>` was the one widget-property position
@@ -159,9 +160,33 @@ func checkSetOp(ctx *ExecContext, p pageProbe, label string, op *ast.SetProperty
 			}
 			errs = append(errs, mdlerrors.NewValidation(fmt.Sprintf(
 				"%s: %v%s", label, err, declaredPropertyHint(p, op.Target, name))))
+			continue
+		}
+		for _, msg := range setImageRefErrors(ctx, p, op.Target, name, op.Properties[name], sc) {
+			errs = append(errs, mdlerrors.NewValidation(fmt.Sprintf("%s: %s", label, msg)))
 		}
 	}
 	return errs
+}
+
+// setImageRefErrors resolves the image a SET writes onto a legacy image viewer
+// — a static image's Image, a dynamic image's DefaultImage — as CREATE resolves
+// the same property (mendixlabs/mxcli#1464). The dry run only proves the key is
+// writable; the name it writes is a reference, and an unresolved one is CE1613
+// a build later. Only for the stored widget types whose key that is
+// (pages.ImageReferenceProperty), so a pluggable widget's `image` is untouched.
+func setImageRefErrors(ctx *ExecContext, p pageProbe, target ast.WidgetRef, name string, value any, sc *scriptContext) []string {
+	typer, ok := p.(widgetStorageTyper)
+	if !ok || target.Widget == "" || columnRefOf(target) != "" {
+		return nil
+	}
+	bsonType, _ := typer.WidgetStorageType(target.Widget)
+	key := pages.ImageReferenceProperty(bsonType)
+	img, isString := value.(string)
+	if key == "" || !strings.EqualFold(key, name) || !isString || strings.TrimSpace(img) == "" {
+		return nil
+	}
+	return resolveImageRefs(ctx, []string{img}, sc)
 }
 
 // scriptDeclaresMissing reports whether a dry-run failed only because the SET

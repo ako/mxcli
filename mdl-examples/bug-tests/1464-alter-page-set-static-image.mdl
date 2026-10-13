@@ -1,0 +1,20 @@
+-- mendixlabs/mxcli#1464: `alter page … set (Image: …)` on a static image was
+-- refused with `property "Image" is not a property of this built-in widget`,
+-- although CREATE writes the property and DESCRIBE prints it. The same held for
+-- `DefaultImage:` on a dynamic image.
+-- After the fix SET writes the image's qualified name, exactly as CREATE does,
+-- and `check --references` resolves it (a typo is reported, not built as CE1613).
+mdl 1;
+
+create module BugTest1464;
+
+create page BugTest1464.ImgPage (Title: 'Images', Layout: Atlas_Core.Atlas_Default) {
+  staticimage si1 (Image: 'Atlas_Core.Content.mendix')
+};
+
+alter page BugTest1464.ImgPage {
+  set (Image: 'Atlas_Core.Layout.logo') on si1
+};
+
+-- Expect: staticimage si1 (Image: 'Atlas_Core.Layout.logo')
+describe page BugTest1464.ImgPage;

@@ -3056,10 +3056,53 @@ func setRawWidgetPropertyMut(widget bson.D, propName string, value any) error {
 			return nil
 		}
 		return setPluggableWidgetPropertyMut(widget, propName, value)
+	case "image", "defaultimage":
+		// A legacy image viewer's image (mendixlabs/mxcli#1464). On any other
+		// widget — the pluggable Image above all — the key keeps its old route.
+		if handled, err := setLegacyImageRefMut(widget, propName, value); handled {
+			return err
+		}
+		return setPluggableWidgetPropertyMut(widget, propName, value)
 	default:
 		// Try as pluggable widget property
 		return setPluggableWidgetPropertyMut(widget, propName, value)
 	}
+}
+
+// setLegacyImageRefMut writes a static image's Image or a dynamic image's
+// DefaultImage: the qualified name of an image-collection entry as a plain
+// string ("" when unset), the key and shape CREATE writes and DESCRIBE reads
+// (pages.ImageReferenceProperty). It reports handled=false for any widget that
+// is not a legacy image viewer, so a pluggable widget's `image` key still
+// reaches the pluggable setter. `set Image` used to fall through to that setter
+// on a static image too, which refused it as "not a property of this built-in
+// widget" although CREATE writes it and DESCRIBE prints it
+// (mendixlabs/mxcli#1464).
+func setLegacyImageRefMut(widget bson.D, propName string, value any) (bool, error) {
+	typ := bsonnav.DGetString(widget, "$Type")
+	key := pages.ImageReferenceProperty(typ)
+	if key == "" {
+		return false, nil
+	}
+	if !strings.EqualFold(key, propName) {
+		other := "DefaultImage"
+		if key == "DefaultImage" {
+			other = "Image"
+		}
+		return true, fmt.Errorf("a %s has no %s property — its image is %s (%s is the other image viewer's)",
+			widgetTypeLabel(typ), propName, key, other)
+	}
+	s, isString := value.(string)
+	if !isString {
+		return true, fmt.Errorf("%s is the quoted qualified name of an image, e.g. 'MyModule.Images.logo', not %v",
+			key, value)
+	}
+	// Every stored viewer carries the key ("" when unset); one without it is
+	// refused rather than reported as altered with nothing written.
+	if !bsonnav.DSet(widget, key, strings.TrimSpace(s)) {
+		return true, fmt.Errorf("this %s stores no %s to set", widgetTypeLabel(typ), key)
+	}
+	return true, nil
 }
 
 // setWidgetFormattingMut sets one field of an input widget's

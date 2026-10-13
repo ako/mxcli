@@ -288,23 +288,29 @@ func validateWidgetReferences(ctx *ExecContext, widgets []*ast.WidgetV3, sc *scr
 	}
 
 	if len(refs.images) > 0 {
-		// The project's images plus the ones this script creates
-		// (mendixlabs/mxcli#1419). A nil set means the project could not be read,
-		// and stays nil: imageRefErrors then reports nothing rather than calling
-		// every other collection missing.
-		known, collections := buildImageQualifiedNames(ctx)
-		if known != nil && collections != nil {
-			for qn := range sc.imageCollections {
-				collections[qn] = true
-			}
-			for qn := range sc.images {
-				known[qn] = true
-			}
-		}
-		errors = append(errors, imageRefErrors(refs.images, known, collections)...)
+		errors = append(errors, resolveImageRefs(ctx, refs.images, sc)...)
 	}
 
 	return errors
+}
+
+// resolveImageRefs reports the image-collection references that resolve
+// neither against the project nor against what this script creates
+// (mendixlabs/mxcli#1419). A nil project set means the project could not be
+// read, and stays nil: imageRefErrors then reports nothing rather than calling
+// every other collection missing. Shared by CREATE's widget trees and ALTER
+// PAGE SET (mendixlabs/mxcli#1464), so the two resolve a name the same way.
+func resolveImageRefs(ctx *ExecContext, refs []string, sc *scriptContext) []string {
+	known, collections := buildImageQualifiedNames(ctx)
+	if known != nil && collections != nil && sc != nil {
+		for qn := range sc.imageCollections {
+			collections[qn] = true
+		}
+		for qn := range sc.images {
+			known[qn] = true
+		}
+	}
+	return imageRefErrors(refs, known, collections)
 }
 
 // widgetRefCollector collects qualified name references from a widget tree.

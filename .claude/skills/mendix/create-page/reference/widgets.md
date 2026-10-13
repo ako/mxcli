@@ -759,6 +759,17 @@ say it at all, so `describe page` marked every stored static image
 staticimage imgAllSelected (Image: 'MyFirstModule.Images.gallery')
 ```
 
+To repoint a stored one, `set` it in place — no REPLACE, so the widget keeps its
+id. `DefaultImage:` on a `dynamicimage` works the same way, and `check
+--references` resolves the name as it does for CREATE:
+
+```sql
+mdl 1;
+alter page MyFirstModule.Portal {
+  set (Image: 'MyFirstModule.Images.gear') on imgAllSelected;
+};
+```
+
 `WidthUnit:`, `HeightUnit:` (`pixels` | `percentage` | `auto`) and
 `Responsive: false` are written too. Leave them out for Studio Pro's defaults —
 auto units and a responsive image — which `describe page` also omits, so a
