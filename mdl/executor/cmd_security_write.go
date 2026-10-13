@@ -766,7 +766,7 @@ func execGrantMicroflowAccess(ctx *ExecContext, s *ast.GrantMicroflowAccessStmt)
 		return mdlerrors.NewBackend("list microflows", err)
 	}
 
-	for _, mf := range mfs {
+	for _, mf := range liveFirst(mfs, microflowExcluded) {
 		modID := h.FindModuleID(mf.ContainerID)
 		modName := h.GetModuleName(modID)
 		if modName != s.Microflow.Module || mf.Name != s.Microflow.Name {
@@ -833,7 +833,7 @@ func execRevokeMicroflowAccess(ctx *ExecContext, s *ast.RevokeMicroflowAccessStm
 		return mdlerrors.NewBackend("list microflows", err)
 	}
 
-	for _, mf := range mfs {
+	for _, mf := range liveFirst(mfs, microflowExcluded) {
 		modID := h.FindModuleID(mf.ContainerID)
 		modName := h.GetModuleName(modID)
 		if modName != s.Microflow.Module || mf.Name != s.Microflow.Name {
@@ -888,7 +888,7 @@ func execGrantNanoflowAccess(ctx *ExecContext, s *ast.GrantNanoflowAccessStmt) e
 		return mdlerrors.NewBackend("list nanoflows", err)
 	}
 
-	for _, nf := range nfs {
+	for _, nf := range liveFirst(nfs, nanoflowExcluded) {
 		modID := h.FindModuleID(nf.ContainerID)
 		modName := h.GetModuleName(modID)
 		if modName != s.Nanoflow.Module || nf.Name != s.Nanoflow.Name {
@@ -952,7 +952,7 @@ func execRevokeNanoflowAccess(ctx *ExecContext, s *ast.RevokeNanoflowAccessStmt)
 		return mdlerrors.NewBackend("list nanoflows", err)
 	}
 
-	for _, nf := range nfs {
+	for _, nf := range liveFirst(nfs, nanoflowExcluded) {
 		modID := h.FindModuleID(nf.ContainerID)
 		modName := h.GetModuleName(modID)
 		if modName != s.Nanoflow.Module || nf.Name != s.Nanoflow.Name {
@@ -1006,7 +1006,7 @@ func execGrantPageAccess(ctx *ExecContext, s *ast.GrantPageAccessStmt) error {
 		return mdlerrors.NewBackend("list pages", err)
 	}
 
-	for _, pg := range pages {
+	for _, pg := range liveFirst(pages, pageExcluded) {
 		modID := h.FindModuleID(pg.ContainerID)
 		modName := h.GetModuleName(modID)
 		if modName != s.Page.Module || pg.Name != s.Page.Name {
@@ -1073,7 +1073,7 @@ func execRevokePageAccess(ctx *ExecContext, s *ast.RevokePageAccessStmt) error {
 		return mdlerrors.NewBackend("list pages", err)
 	}
 
-	for _, pg := range pages {
+	for _, pg := range liveFirst(pages, pageExcluded) {
 		modID := h.FindModuleID(pg.ContainerID)
 		modName := h.GetModuleName(modID)
 		if modName != s.Page.Module || pg.Name != s.Page.Name {

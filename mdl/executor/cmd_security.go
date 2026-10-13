@@ -320,7 +320,7 @@ func listAccessOnMicroflow(ctx *ExecContext, name *ast.QualifiedName) error {
 		return mdlerrors.NewBackend("list microflows", err)
 	}
 
-	for _, mf := range mfs {
+	for _, mf := range liveFirst(mfs, microflowExcluded) {
 		modName := h.GetModuleName(h.FindModuleID(mf.ContainerID))
 		if modName == name.Module && mf.Name == name.Name {
 			if ctx.Format == FormatJSON {
@@ -366,7 +366,7 @@ func listAccessOnPage(ctx *ExecContext, name *ast.QualifiedName) error {
 		return mdlerrors.NewBackend("list pages", err)
 	}
 
-	for _, pg := range pages {
+	for _, pg := range liveFirst(pages, pageExcluded) {
 		modName := h.GetModuleName(h.FindModuleID(pg.ContainerID))
 		if modName == name.Module && pg.Name == name.Name {
 			if ctx.Format == FormatJSON {
@@ -417,7 +417,7 @@ func listAccessOnNanoflow(ctx *ExecContext, name *ast.QualifiedName) error {
 		return mdlerrors.NewBackend("list nanoflows", err)
 	}
 
-	for _, nf := range nfs {
+	for _, nf := range liveFirst(nfs, nanoflowExcluded) {
 		modName := h.GetModuleName(h.FindModuleID(nf.ContainerID))
 		if modName == name.Module && nf.Name == name.Name {
 			if ctx.Format == FormatJSON {

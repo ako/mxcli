@@ -392,7 +392,7 @@ func findPageByName(ctx *ExecContext, name ast.QualifiedName, h *ContainerHierar
 	if err != nil {
 		return nil, mdlerrors.NewBackend("list pages", err)
 	}
-	for _, p := range allPages {
+	for _, p := range liveFirst(allPages, pageExcluded) {
 		modID := h.FindModuleID(p.ContainerID)
 		modName := h.GetModuleName(modID)
 		if p.Name == name.Name && (name.Module == "" || modName == name.Module) {

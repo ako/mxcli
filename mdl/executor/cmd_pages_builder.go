@@ -417,7 +417,7 @@ func execDropPage(ctx *ExecContext, s *ast.DropPageStmt) error {
 		return mdlerrors.NewBackend("list pages", err)
 	}
 
-	for _, p := range pages {
+	for _, p := range liveFirst(pages, pageExcluded) {
 		modID := getModuleID(ctx, p.ContainerID)
 		modName := getModuleName(ctx, modID)
 		if modName == s.Name.Module && p.Name == s.Name.Name {

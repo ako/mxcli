@@ -5,6 +5,8 @@ package executor
 import (
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/model"
+	"github.com/mendixlabs/mxcli/sdk/microflows"
+	"github.com/mendixlabs/mxcli/sdk/pages"
 )
 
 // Excluded documents ("Exclude from project" in Studio Pro) make a document
@@ -106,3 +108,30 @@ func describedMapping[T any](ctx *ExecContext, name ast.QualifiedName,
 	}
 	return byName(name.Module, name.Name)
 }
+
+// liveFirst returns items with every non-excluded element ahead of every
+// excluded one, each group in its original order. A first-match loop over the
+// result resolves exactly what pickLive would — the live document when there is
+// one, otherwise the first excluded match — so a by-name command whose loop body
+// acts on the match (SHOW ACCESS, GRANT/REVOKE, DROP, ALTER PAGE) lands on the
+// same copy DESCRIBE shows (mendixlabs/mxcli#1469). Before it, those loops took
+// the first match in list order: GRANT VIEW edited an excluded twin while the
+// live page kept its old roles, and DROP PAGE could delete the live page.
+func liveFirst[T any](items []T, excluded func(T) bool) []T {
+	out := make([]T, 0, len(items))
+	for _, it := range items {
+		if !excluded(it) {
+			out = append(out, it)
+		}
+	}
+	for _, it := range items {
+		if excluded(it) {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+func pageExcluded(p *pages.Page) bool                { return p.Excluded }
+func microflowExcluded(m *microflows.Microflow) bool { return m.Excluded }
+func nanoflowExcluded(n *microflows.Nanoflow) bool   { return n.Excluded }
