@@ -125,7 +125,7 @@ func (ListenToWidgetSource) isDataSource() {}
 // AssociationSource retrieves data via association.
 type AssociationSource struct {
 	model.BaseElement
-	EntityPath      string `json:"entityPath"`                // "Module.Assoc" or "Module.Assoc/Module.DestEntity"
+	EntityPath      string `json:"entityPath"`                // "Module.Assoc/Module.DestEntity", one pair per hop joined by "/"
 	ContextVariable string `json:"contextVariable,omitempty"` // page or snippet parameter name (without $) — empty for $currentObject
 	// IsSnippetParameter puts ContextVariable in the SnippetParameter slot of
 	// the source's Forms$PageVariable instead of PageParameter.

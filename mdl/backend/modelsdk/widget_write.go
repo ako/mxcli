@@ -1594,21 +1594,33 @@ func dataViewContextAssociationSourceToGen(d *pages.AssociationSource) element.E
 	}
 	assignID(src)
 	src.SetForceFullObjects(false)
-	parts := strings.SplitN(d.EntityPath, "/", 2)
-	step := genDm.NewEntityRefStep()
-	assignID(step)
-	step.SetAssociationQualifiedName(parts[0])
-	if len(parts) == 2 {
-		step.SetDestinationEntityQualifiedName(parts[1])
-	}
-	ref := genDm.NewIndirectEntityRef()
-	assignID(ref)
-	ref.AddSteps(step)
-	src.SetEntityRef(ref)
+	src.SetEntityRef(associationEntityPathToGen(d.EntityPath))
 	if d.ContextVariable != "" {
 		src.SetSourceVariable(associationContextVariableToGen(d))
 	}
 	return src
+}
+
+// associationEntityPathToGen builds the DomainModels$IndirectEntityRef of an
+// association source's EntityPath: `Assoc/Dest[/Assoc/Dest…]`, one
+// EntityRefStep per pair (a trailing association without a destination leaves
+// it unset). Splitting at the first `/` only wrote a two-hop path as ONE step
+// whose DestinationEntity was "E1/A2/E2", and the project would not load
+// (mendixlabs/mxcli#1467). Shared by both association writers.
+func associationEntityPathToGen(entityPath string) element.Element {
+	parts := strings.Split(entityPath, "/")
+	ref := genDm.NewIndirectEntityRef()
+	assignID(ref)
+	for i := 0; i < len(parts); i += 2 {
+		step := genDm.NewEntityRefStep()
+		assignID(step)
+		step.SetAssociationQualifiedName(parts[i])
+		if i+1 < len(parts) {
+			step.SetDestinationEntityQualifiedName(parts[i+1])
+		}
+		ref.AddSteps(step)
+	}
+	return ref
 }
 
 // associationContextVariableToGen builds the Forms$PageVariable an association
@@ -1827,7 +1839,7 @@ func customWidgetDatabaseSourceToGen(d *pages.DatabaseSource) element.Element {
 }
 
 // associationSourceToGen builds a Forms$AssociationSource: an IndirectEntityRef
-// with one EntityRefStep (Association[/DestinationEntity]) and an optional
+// with one EntityRefStep per hop (Association[/DestinationEntity]) and an optional
 // page-parameter source variable ($currentObject leaves it empty). This is a
 // universal page data-source type — shared by DataView, ListView, and pluggable
 // widgets — mirroring the legacy sdk/mpr.serializeAssociationSource.
@@ -1838,17 +1850,7 @@ func associationSourceToGen(d *pages.AssociationSource) element.Element {
 	}
 	assignID(src)
 	src.SetForceFullObjects(false)
-	parts := strings.SplitN(d.EntityPath, "/", 2)
-	step := genDm.NewEntityRefStep()
-	assignID(step)
-	step.SetAssociationQualifiedName(parts[0])
-	if len(parts) == 2 {
-		step.SetDestinationEntityQualifiedName(parts[1])
-	}
-	ref := genDm.NewIndirectEntityRef()
-	assignID(ref)
-	ref.AddSteps(step)
-	src.SetEntityRef(ref)
+	src.SetEntityRef(associationEntityPathToGen(d.EntityPath))
 	if d.ContextVariable != "" {
 		src.SetSourceVariable(associationContextVariableToGen(d))
 	}

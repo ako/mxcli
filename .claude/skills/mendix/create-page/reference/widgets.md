@@ -386,6 +386,7 @@ column (caption: 'Actions') {
 | `datasource: selection widgetName` | Listen to selection from another widget |
 | `datasource: association path` | Retrieve by association from context (ByAssociation) |
 | `datasource: $currentObject/Module.Assoc` | Sugar for `association` — same semantics, reads more naturally |
+| `datasource: $Param/Module.A1/Module.E1/Module.A2/Module.E2` | Over several associations: one hop each, its destination entity optional (`$Param/Module.A1/Module.A2` derives it). `describe` prints every destination for more than one hop, since Studio Pro may store a specialization of an end |
 | `datasource: database from $Ctx/Module.Assoc/Module.Entity [where …] [sort by …] [search by …]` | **List view only.** A *database* retrieve of what the association reaches — keeps XPath, sort and search, which the association source above does not have. Name the entity after each association (it may be a specialization of the association's end) |
 
 > **A list widget needs an association that yields a list.** A list view, data grid or gallery over `$currentObject/M.Assoc` is CE8812 ("A grid association path must result in a list") when the association is a Reference followed from its FROM entity, or a Reference with owner Both from either end (one-to-one). Use a data view for the single object, or a ReferenceSet. `check` reports it as MDL-ASSOCDS01. The reverse of a default Reference (from the TO entity) is a list and fine.

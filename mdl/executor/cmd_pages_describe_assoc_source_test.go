@@ -34,7 +34,7 @@ func TestAssociationSourcePath(t *testing.T) {
 	}{
 		{"currentObject single hop", src("", step("M.Order_Customer")), "M.Order_Customer", "currentObject"},
 		{"page parameter", src("Order", step("M.Order_Lines")), "M.Order_Lines", "Order"},
-		{"two hops", src("", step("M.A_B"), step("M.B_C")), "M.A_B/M.B_C", "currentObject"},
+		{"two hops print each destination", src("", step("M.A_B"), step("M.B_C")), "M.A_B/M.Dest/M.B_C/M.Dest", "currentObject"},
 		{"no EntityRef → empty", map[string]any{"$Type": "Forms$AssociationSource"}, "", ""},
 	}
 	for _, tc := range tests {

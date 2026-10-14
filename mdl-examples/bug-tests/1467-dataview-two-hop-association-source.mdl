@@ -1,0 +1,53 @@
+mdl 1;
+-- ============================================================================
+-- mendixlabs/mxcli#1467: a data view over TWO associations from a page parameter
+-- ============================================================================
+--
+-- Symptom (before fix): the association path was split at its first `/`.
+--
+--   * Short form (what `describe page` printed), `$Order/A1/A2`: the second
+--     ASSOCIATION was stored as the destination entity —
+--       CE1613 "The selected entity 'I1467.Account_Flag' no longer exists."
+--   * Full form, `$Order/A1/E1/A2/E2`: one EntityRefStep whose
+--     DestinationEntity was the literal "E1/A2/E2" — the project would not load:
+--       "An error occurred when trying to set the 'DestinationEntity' property
+--        of a Entity ref step in a Page."
+--
+-- Fix: each hop is its own EntityRefStep {Association, DestinationEntity}; a hop
+-- may name its destination or leave it to be derived, so both forms (and
+-- mixtures) write the same two steps. Describe prints every destination for a
+-- multi-hop path, so its output re-executes to the same steps.
+-- ============================================================================
+
+create module I1467;
+create entity I1467.Order (OrderNo: String);
+create entity I1467.Account (Name: String);
+create entity I1467.Flag (Label: String);
+create association I1467.Order_Account from I1467.Order to I1467.Account;
+create association I1467.Account_Flag from I1467.Account to I1467.Flag owner Both;
+
+-- Form A: associations only.
+create page I1467.FlagShort (
+  Title: 'Flag (short)',
+  Layout: Atlas_Core.Atlas_Default,
+  Params: ( $Order: I1467.Order )
+) {
+  layoutgrid g { row { column (DesktopWidth: 12) {
+  dataview dvFlag (datasource: $Order/I1467.Order_Account/I1467.Account_Flag) {
+    textbox tbLabel (Label: 'Label', Attribute: Label)
+  }
+  } } }
+};
+
+-- Form B: every destination named.
+create page I1467.FlagFull (
+  Title: 'Flag (full)',
+  Layout: Atlas_Core.Atlas_Default,
+  Params: ( $Order: I1467.Order )
+) {
+  layoutgrid g { row { column (DesktopWidth: 12) {
+  dataview dvFlag (datasource: $Order/I1467.Order_Account/I1467.Account/I1467.Account_Flag/I1467.Flag) {
+    textbox tbLabel (Label: 'Label', Attribute: Label)
+  }
+  } } }
+};

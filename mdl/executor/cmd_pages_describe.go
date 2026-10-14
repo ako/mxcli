@@ -604,6 +604,8 @@ func associationSourcePath(ds map[string]any) (path, contextVar string) {
 	}
 	steps := getBsonArrayElements(entityRef["Steps"])
 	assocs := make([]string, 0, len(steps))
+	full := make([]string, 0, 2*len(steps))
+	allDest := true
 	for _, s := range steps {
 		sm, ok := s.(map[string]any)
 		if !ok {
@@ -614,6 +616,11 @@ func associationSourcePath(ds map[string]any) (path, contextVar string) {
 			return "", ""
 		}
 		assocs = append(assocs, assoc)
+		dest := extractString(sm["DestinationEntity"])
+		if dest == "" {
+			allDest = false
+		}
+		full = append(full, assoc, dest)
 	}
 	if len(assocs) == 0 {
 		return "", ""
@@ -628,6 +635,13 @@ func associationSourcePath(ds map[string]any) (path, contextVar string) {
 		} else if sp := extractString(sv["SnippetParameter"]); sp != "" {
 			contextVar = sp
 		}
+	}
+	// More than one hop prints every stored destination: associations alone
+	// leave each hop's entity to be re-derived, which re-executes to a
+	// different step whenever Studio Pro stored a specialization of an end
+	// (mendixlabs/mxcli#1467). A single hop keeps its short spelling.
+	if len(assocs) > 1 && allDest {
+		return strings.Join(full, "/"), contextVar
 	}
 	return strings.Join(assocs, "/"), contextVar
 }
