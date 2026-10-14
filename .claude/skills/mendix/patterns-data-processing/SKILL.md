@@ -11,13 +11,13 @@ description: "Patterns for loops, aggregates, batch processing and list transfor
 | lines | section |
 |---|---|
 | 27-106 | Loop Patterns |
-| 107-191 | Retrieve by Association |
-| 192-270 | Aggregate Patterns |
-| 271-361 | List Operations |
-| 362-405 | Batch Processing |
-| 406-462 | Data Transformation |
-| 463-496 | Error Handling in Loops |
-| 497-504 | Best Practices |
+| 107-199 | Retrieve by Association |
+| 200-278 | Aggregate Patterns |
+| 279-369 | List Operations |
+| 370-413 | Batch Processing |
+| 414-470 | Data Transformation |
+| 471-504 | Error Handling in Loops |
+| 505-512 | Best Practices |
 
 <!-- /skill-index -->
 # Data Processing Patterns
@@ -188,6 +188,14 @@ commit $Material;
 
 Reference sets only: on a plain Reference (or an attribute) mxbuild rejects
 Add/Remove with CE0033 and mxcli refuses it — set a Reference with `change`.
+
+Inside a `change`, `+=` and `-=` are the same Add and Remove members, so one
+activity can set attributes and append/remove in one go:
+
+```sql
+change $Material (Code = 'reworked', Module.Material_SkuRow += $NewRow,
+                  Module.Material_SkuRow -= $OldRow) commit;
+```
 
 ## Aggregate Patterns
 

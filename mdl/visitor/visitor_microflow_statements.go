@@ -1248,8 +1248,9 @@ func buildCommitClause(ctx parser.ICommitClauseContext) ast.CommitFlag {
 }
 
 // buildChangeObjectStatement converts CHANGE statement context to ChangeObjectStmt.
-// Grammar: CHANGE VARIABLE (LPAREN memberAssignmentList? RPAREN)?
+// Grammar: CHANGE VARIABLE (LPAREN changeMemberAssignmentList? RPAREN)?
 // Example: CHANGE $Product (Name = $NewName, ModifiedDate = [%CurrentDateTime%]);
+// Example: CHANGE $Order (Module.Order_Line += $Line, Module.Order_Line -= $Old);
 func buildChangeObjectStatement(ctx parser.IChangeObjectStatementContext) *ast.ChangeObjectStmt {
 	if ctx == nil {
 		return nil
@@ -1264,8 +1265,8 @@ func buildChangeObjectStatement(ctx parser.IChangeObjectStatementContext) *ast.C
 	}
 
 	// Get SET member assignments
-	if memberList := changeCtx.MemberAssignmentList(); memberList != nil {
-		stmt.Changes = buildMemberAssignmentList(memberList)
+	if memberList := changeCtx.ChangeMemberAssignmentList(); memberList != nil {
+		stmt.Changes = buildChangeMemberAssignmentList(memberList)
 	}
 	stmt.Commit = buildCommitClause(changeCtx.CommitClause())
 	stmt.RefreshInClient = changeCtx.REFRESH() != nil

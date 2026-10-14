@@ -1,0 +1,35 @@
+mdl 1;
+-- ============================================================================
+-- describe printed a false "NOT SHOWN: content" note under a slot it had shown
+-- ============================================================================
+--
+-- Symptom (before fix): describing the page below printed
+--     fieldset fieldset1 {
+--       template {
+--         dynamictext fsBody (Content: 'Body', RenderMode: paragraph)
+--       }
+--       -- NOT SHOWN: content — this widget stores content DESCRIBE cannot yet
+--       -- reproduce. Re-running this script would DROP it. …
+--     }
+-- The body WAS shown: since mendixlabs/mxcli#1400 the `content` slot is
+-- described under the definition's keyword `template`, and the note compared
+-- that keyword against `content`. Every widget with a top-level `content`
+-- slot (Fieldset, native Repeater, Accessibility Helper) got the note.
+--
+-- After fix: no note; describe -> exec round-trips the body.
+--
+-- Verify (any project with Atlas_Core and the Fieldset widget):
+--   mxcli exec not-shown-note-on-reproduced-content-slot.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe page MyFirstModule.NotShownProbe"   -- no NOT SHOWN line
+-- ============================================================================
+
+create page MyFirstModule.NotShownProbe (
+  title: 'Probe',
+  layout: Atlas_Core.Atlas_Default
+) {
+  pluggablewidget 'com.mendix.widget.web.fieldset.Fieldset' fieldset1 {
+    template {
+      dynamictext fsBody (content: 'Body', rendermode: paragraph)
+    }
+  }
+};

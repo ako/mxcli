@@ -149,6 +149,42 @@ func TestUnreconstructedContainers(t *testing.T) {
 	}
 }
 
+// A slot DESCRIBE reproduced must not be reported as lost, even when the
+// definition names it with a keyword other than the stored key. A Repeater's
+// `content` slot is emitted as `template` since mendixlabs/mxcli#1400, and the
+// note compared that keyword against `content` — so every repeater carried a
+// "NOT SHOWN: content" note over a body it had just printed.
+func TestUnreconstructedContainers_ReproducedSlotUnderDefinitionKeyword(t *testing.T) {
+	widget := map[string]any{
+		"Type": map[string]any{
+			"PropertyTypes": []any{
+				int32(3),
+				map[string]any{"$ID": "t1", "PropertyKey": "content"},
+			},
+		},
+		"Object": map[string]any{
+			"Properties": []any{
+				int32(3),
+				map[string]any{
+					"TypePointer": "t1",
+					"Value": map[string]any{
+						"Widgets": []any{int32(3), map[string]any{"$Type": "Forms$DynamicText"}},
+					},
+				},
+			},
+		},
+	}
+
+	reproduced := []rawChildSlot{{Keyword: "template", PropertyKey: "content"}}
+	if got := unreconstructedContainers(widget, nil, reproduced); len(got) != 0 {
+		t.Errorf("got %v, want none — the `content` slot was described as `template`", got)
+	}
+	// Control: the same slot, not reproduced, is still reported.
+	if got := unreconstructedContainers(widget, nil, nil); len(got) != 1 {
+		t.Errorf("got %v, want the unreproduced `content` slot reported", got)
+	}
+}
+
 // Nothing to report on a document with no containers at all.
 func TestUnreconstructedContainers_Empty(t *testing.T) {
 	if got := unreconstructedContainers(map[string]any{}, nil, nil); len(got) != 0 {

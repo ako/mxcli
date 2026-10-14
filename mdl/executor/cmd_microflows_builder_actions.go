@@ -360,14 +360,18 @@ func (fb *flowBuilder) addChangeObjectAction(s *ast.ChangeObjectStmt) model.ID {
 			s.Variable, entityQN, s.Variable, entityQN+"."+s.Changes[0].Attribute, s.Variable)
 	}
 
-	// Build MemberChange items for each SET assignment
+	// Build a MemberChange for each `=`, `+=` or `-=` member
 	for _, change := range s.Changes {
 		memberChange := &microflows.MemberChange{
 			BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
-			Type:        microflows.MemberChangeTypeSet,
+			Type:        memberChangeTypeOf(change.Op),
 			Value:       fb.memberExpressionToString(change.Value, entityQN, change.Attribute),
 		}
+		errorsBefore := len(fb.errors)
 		fb.resolveMemberChange(memberChange, change.Attribute, entityQN)
+		if memberChange.Type != microflows.MemberChangeTypeSet && len(fb.errors) == errorsBefore {
+			fb.checkAddRemoveMember(memberChange, s.Variable, change.Attribute)
+		}
 		action.Changes = append(action.Changes, memberChange)
 	}
 
@@ -395,57 +399,57 @@ func (fb *flowBuilder) addChangeObjectAction(s *ast.ChangeObjectStmt) model.ID {
 // addAssociationMemberChange builds `add|remove <value> to|from $Obj/Assoc`: a
 // Change object activity with one Add or Remove member, which is what Studio
 // Pro's Add/Remove buttons store for a reference set (mendixlabs/mxcli#1288).
-// It goes through addChangeObjectAction so the member resolves exactly as a
-// CHANGE member does, then sets the member's operation.
+// It is `change $Obj (Assoc += <value>)` (or `-=`) under another spelling, so
+// it goes through addChangeObjectAction and resolves and validates the member
+// exactly as that does.
 func (fb *flowBuilder) addAssociationMemberChange(op microflows.MemberChangeType, variable, association string, value ast.Expression, commit ast.CommitFlag, refresh bool, eh *ast.ErrorHandlingClause) model.ID {
-	errorsBefore := len(fb.errors)
-	objectsBefore := len(fb.objects)
-	id := fb.addChangeObjectAction(&ast.ChangeObjectStmt{
+	itemOp := ast.MemberAdd
+	if op == microflows.MemberChangeTypeRemove {
+		itemOp = ast.MemberRemove
+	}
+	return fb.addChangeObjectAction(&ast.ChangeObjectStmt{
 		Variable:        variable,
-		Changes:         []ast.ChangeItem{{Attribute: association, Value: value}},
+		Changes:         []ast.ChangeItem{{Attribute: association, Op: itemOp, Value: value}},
 		Commit:          commit,
 		RefreshInClient: refresh,
 		ErrorHandling:   eh,
 	})
-	// The change activity is the first object added: a custom handler appends
-	// its own activities after it.
-	if len(fb.objects) <= objectsBefore {
-		return id
+}
+
+// memberChangeTypeOf maps a CHANGE member's operator to the stored MemberChange
+// Type: `=` Set, `+=` Add, `-=` Remove (mendixlabs/mxcli#1473).
+func memberChangeTypeOf(op ast.MemberChangeOp) microflows.MemberChangeType {
+	switch op {
+	case ast.MemberAdd:
+		return microflows.MemberChangeTypeAdd
+	case ast.MemberRemove:
+		return microflows.MemberChangeTypeRemove
 	}
-	activity, ok := fb.objects[objectsBefore].(*microflows.ActionActivity)
-	if !ok {
-		return id
-	}
-	action, ok := activity.Action.(*microflows.ChangeObjectAction)
-	if !ok || len(action.Changes) != 1 {
-		return id
-	}
-	mc := action.Changes[0]
-	mc.Type = op
-	if len(fb.errors) != errorsBefore {
-		return id
-	}
-	// Add and Remove exist for reference sets only. Measured on 11.12.2: an
-	// Add member on an attribute or on a plain Reference fails `mx check` with
-	// CE0033 "The 'Type' property of this member cannot be 'Add'."
-	verb := "add … to"
-	if op == microflows.MemberChangeTypeRemove {
-		verb = "remove … from"
+	return microflows.MemberChangeTypeSet
+}
+
+// checkAddRemoveMember refuses an Add or Remove member that is not on a
+// reference set. Measured on 11.12.2: an Add member on an attribute or on a
+// plain Reference fails `mx check` with CE0033 "The 'Type' property of this
+// member cannot be 'Add'." — whether it was written `+=` or `add … to`.
+func (fb *flowBuilder) checkAddRemoveMember(mc *microflows.MemberChange, variable, member string) {
+	verb := "add (`+=` / `add … to`)"
+	if mc.Type == microflows.MemberChangeTypeRemove {
+		verb = "remove (`-=` / `remove … from`)"
 	}
 	if mc.AssociationQualifiedName == "" {
-		fb.addError("%s $%s/%s: %s is not an association — Add and Remove apply to reference-set members only "+
-			"(mxbuild: CE0033); set an attribute with `change $%s (%s = …)`", verb, variable, association, association, variable, association)
-		return id
+		fb.addError("%s on $%s/%s: %s is not an association — Add and Remove apply to reference-set members only "+
+			"(mxbuild: CE0033); set an attribute with `change $%s (%s = …)`", verb, variable, member, member, variable, member)
+		return
 	}
 	if dot := strings.Index(mc.AssociationQualifiedName, "."); dot > 0 {
 		info := fb.lookupAssociation(mc.AssociationQualifiedName[:dot], mc.AssociationQualifiedName[dot+1:])
 		if info != nil && info.Type != domainmodel.AssociationTypeReferenceSet {
-			fb.addError("%s $%s/%s: %s is a Reference, not a ReferenceSet — Add and Remove apply to reference sets only "+
+			fb.addError("%s on $%s/%s: %s is a Reference, not a ReferenceSet — Add and Remove apply to reference sets only "+
 				"(mxbuild: CE0033); set a reference with `change $%s (%s = …)`",
-				verb, variable, association, mc.AssociationQualifiedName, variable, mc.AssociationQualifiedName)
+				verb, variable, member, mc.AssociationQualifiedName, variable, mc.AssociationQualifiedName)
 		}
 	}
-	return id
 }
 
 // There is no branch limit. The 16 that used to be enforced here was the size of

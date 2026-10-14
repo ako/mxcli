@@ -65,6 +65,20 @@ func associationMemberChangeStatement(ctx *ExecContext, varName string, a *micro
 	return "", false
 }
 
+// memberChangeOperator is the CHANGE member operator for a stored MemberChange
+// Type: Add and Remove are `+=` and `-=`, so an activity mixing them with other
+// members re-executes to the same members (mendixlabs/mxcli#1473). Written as
+// `=` they would come back as set assignments that replace the reference set.
+func memberChangeOperator(t microflows.MemberChangeType) string {
+	switch t {
+	case microflows.MemberChangeTypeAdd:
+		return "+="
+	case microflows.MemberChangeTypeRemove:
+		return "-="
+	}
+	return "="
+}
+
 // isBareVariable reports whether s is a single `$Name` reference.
 func isBareVariable(s string) bool {
 	if len(s) < 2 || s[0] != '$' {
@@ -471,12 +485,8 @@ func formatAction(
 		}
 		if len(a.Changes) > 0 {
 			var members []string
-			var unspelled []string
 			var listQualified []string
 			for _, m := range a.Changes {
-				if m.Type == microflows.MemberChangeTypeAdd || m.Type == microflows.MemberChangeTypeRemove {
-					unspelled = append(unspelled, fmt.Sprintf("%s (%s)", m.AssociationQualifiedName, m.Type))
-				}
 				if isListQualifiedMember(m) {
 					listQualified = append(listQualified, m.AttributeQualifiedName+m.AssociationQualifiedName)
 				}
@@ -496,18 +506,9 @@ func formatAction(
 						memberName = parts[len(parts)-1]
 					}
 				}
-				members = append(members, fmt.Sprintf("%s = %s", memberName, escapeExpressionValue(ctx, describeExpr(ctx, m.Value))))
+				members = append(members, fmt.Sprintf("%s %s %s", memberName, memberChangeOperator(m.Type), escapeExpressionValue(ctx, describeExpr(ctx, m.Value))))
 			}
 			stmt := fmt.Sprintf("change $%s (%s)%s%s;", varName, strings.Join(members, ", "), commitModifier(a.Commit), refreshModifier(a.RefreshInClient))
-			if len(unspelled) > 0 {
-				// An Add/Remove has a spelling only as the activity's sole
-				// member (add/remove … $Obj/Assoc). Written as `=` it would
-				// re-execute as a set assignment, so say so rather than look
-				// like a faithful round trip (mendixlabs/mxcli#1288).
-				stmt += fmt.Sprintf(" -- WARNING: %s stored as Add/Remove, not a set assignment; "+
-					"re-executing this line replaces the set — split it into `add`/`remove … $%s/<Assoc>` statements",
-					strings.Join(unspelled, ", "), varName)
-			}
 			if len(listQualified) > 0 {
 				// Written over a list before mendixlabs/mxcli#1422: the bare
 				// name above is not what is stored, and mxbuild reports CE1613.

@@ -174,3 +174,78 @@ func TestAddRemoveOnReferenceIsRefused(t *testing.T) {
 		})
 	}
 }
+
+// mendixlabs/mxcli#1473: `change $Obj (Attr = …, Assoc += $X, Assoc -= $Y)`
+// builds one Change object activity whose members carry Set, Add and Remove —
+// the activity Studio Pro writes when one dialog mixes the three. The `+=` on
+// a Reference is refused for the same CE0033 the `add … to` form is.
+func TestChangeObjectMemberOperators(t *testing.T) {
+	newBuilder := func() *flowBuilder {
+		const (
+			modID   = model.ID("mod-sales")
+			orderID = model.ID("e-order")
+			lineID  = model.ID("e-line")
+		)
+		mb := &mock.MockBackend{
+			GetModuleByNameFunc: func(name string) (*model.Module, error) {
+				if name == "Sales" {
+					return &model.Module{BaseElement: model.BaseElement{ID: modID}, Name: "Sales"}, nil
+				}
+				return nil, fmt.Errorf("no module %q", name)
+			},
+			GetDomainModelFunc: func(id model.ID) (*domainmodel.DomainModel, error) {
+				return &domainmodel.DomainModel{
+					ContainerID: modID,
+					Entities: []*domainmodel.Entity{
+						{BaseElement: model.BaseElement{ID: orderID}, Name: "Order", Persistable: true},
+						{BaseElement: model.BaseElement{ID: lineID}, Name: "Line", Persistable: true},
+					},
+					Associations: []*domainmodel.Association{
+						{Name: "Order_Lines", ParentID: orderID, ChildID: lineID, Type: domainmodel.AssociationTypeReferenceSet},
+						{Name: "Order_MainLine", ParentID: orderID, ChildID: lineID, Type: domainmodel.AssociationTypeReference},
+					},
+				}, nil
+			},
+		}
+		return &flowBuilder{backend: mb, varTypes: map[string]string{"Order": "Sales.Order"}}
+	}
+
+	fb := newBuilder()
+	fb.addChangeObjectAction(&ast.ChangeObjectStmt{
+		Variable: "Order",
+		Changes: []ast.ChangeItem{
+			{Attribute: "Sales.Order_MainLine", Value: &ast.VariableExpr{Name: "Line"}},
+			{Attribute: "Sales.Order_Lines", Op: ast.MemberAdd, Value: &ast.VariableExpr{Name: "Line"}},
+			{Attribute: "Sales.Order_Lines", Op: ast.MemberRemove, Value: &ast.VariableExpr{Name: "Old"}},
+		},
+	})
+	if len(fb.errors) != 0 {
+		t.Fatalf("mixed change refused: %v", fb.errors)
+	}
+	action := lastChangeObjectAction(t, fb)
+	wantTypes := []microflows.MemberChangeType{microflows.MemberChangeTypeSet, microflows.MemberChangeTypeAdd, microflows.MemberChangeTypeRemove}
+	if len(action.Changes) != len(wantTypes) {
+		t.Fatalf("Changes = %d, want %d", len(action.Changes), len(wantTypes))
+	}
+	for i, want := range wantTypes {
+		if got := action.Changes[i].Type; got != want {
+			t.Errorf("Changes[%d].Type = %q, want %q", i, got, want)
+		}
+	}
+
+	for name, item := range map[string]ast.ChangeItem{
+		"reference": {Attribute: "Sales.Order_MainLine", Op: ast.MemberAdd, Value: &ast.VariableExpr{Name: "Line"}},
+		"attribute": {Attribute: "Number", Op: ast.MemberRemove, Value: &ast.LiteralExpr{Kind: ast.LiteralInteger, Value: int64(1)}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fb := newBuilder()
+			fb.addChangeObjectAction(&ast.ChangeObjectStmt{Variable: "Order", Changes: []ast.ChangeItem{item}})
+			if len(fb.errors) == 0 {
+				t.Fatal("+=/-= on a non-reference-set member built without an error; mxbuild answers CE0033")
+			}
+			if msg := strings.Join(fb.errors, "\n"); !strings.Contains(msg, "CE0033") {
+				t.Errorf("error does not name CE0033: %q", msg)
+			}
+		})
+	}
+}

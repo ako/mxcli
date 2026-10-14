@@ -1,0 +1,40 @@
+mdl 1;
+-- ============================================================================
+-- mendixlabs/mxcli#1473 — `change` with Add/Remove members next to others
+-- ============================================================================
+--
+-- Reported (mxcli v0.26, Mendix 11.12.4): a Change object activity whose
+-- reference-set member is set to Add or Remove in Studio Pro described as
+--   change $A (Test.A_B = $B); -- WARNING: Test.A_B (Add) stored as Add/Remove,
+--   not a set assignment; re-executing this line replaces the set — split it
+--   into `add`/`remove … $X/<Assoc>` statements
+-- "MDL only uses '=' in change statement, while there should be additional
+-- operators to support Add and Remove."
+--
+-- `+=` and `-=` are those operators: one Change object activity whose members
+-- carry Set, Add and Remove, exactly as Studio Pro's dialog stores them.
+-- DESCRIBE prints them back the same way, so the activity round-trips. A sole
+-- Add/Remove member still describes as `add … to` / `remove … from` (#1288).
+-- ============================================================================
+
+create module Bug1473;
+
+create or modify persistent entity Bug1473.A ( Code: String(50) );
+create or modify persistent entity Bug1473.B ( Name: String(50) );
+
+create or modify association Bug1473.A_B
+  from Bug1473.A to Bug1473.B type ReferenceSet storage table;
+
+create or modify microflow Bug1473.ACT_Rework ($A: Bug1473.A, $Old: Bug1473.B)
+returns Boolean
+begin
+  $New = create Bug1473.B (Name = 'new');
+  -- one activity: a Set, an Add and a Remove
+  change $A (Code = 'reworked', Bug1473.A_B += $New, Bug1473.A_B -= $Old) commit;
+
+  -- a list can be added in one member, as with `add … to`
+  $More = create list of Bug1473.B;
+  add $New to $More;
+  change $A (Code = 'more', Bug1473.A_B += $More);
+  return true;
+end;

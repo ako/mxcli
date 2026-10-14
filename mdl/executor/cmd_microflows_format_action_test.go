@@ -1586,20 +1586,44 @@ func TestFormatAction_ChangeObject_AssociationAddRemove(t *testing.T) {
 	}
 }
 
-// An activity mixing Add/Remove with other members has no single-statement
-// spelling. Describing the Add as `=` would be read back as a set assignment,
-// so the output must say so rather than look like a faithful round trip.
-func TestFormatAction_ChangeObject_MixedAddIsFlagged(t *testing.T) {
+// mendixlabs/mxcli#1473: an activity mixing Add/Remove with other members
+// used to describe its Add as `=` plus a trailing WARNING, because the only
+// Add/Remove spelling was the sole-member `add … to $Obj/Assoc`. `+=` and `-=`
+// are the member operators, so the activity describes as one statement that
+// re-executes to the same Add/Remove members.
+func TestFormatAction_ChangeObject_MixedAddRemoveUsesOperators(t *testing.T) {
 	e := newTestExecutor()
 	action := &microflows.ChangeObjectAction{
 		ChangeVariable: "Order",
 		Changes: []*microflows.MemberChange{
 			{AttributeQualifiedName: "Sales.Order.Number", Type: microflows.MemberChangeTypeSet, Value: "1"},
 			{AssociationQualifiedName: "Sales.Order_Line", Type: microflows.MemberChangeTypeAdd, Value: "$Line"},
+			{AssociationQualifiedName: "Sales.Order_OldLine", Type: microflows.MemberChangeTypeRemove, Value: "$Old"},
 		},
 	}
 	got := e.formatAction(action, nil, nil)
-	if !strings.Contains(got, "Sales.Order_Line") || !strings.Contains(got, "-- WARNING") {
-		t.Errorf("mixed Add not flagged: %q", got)
+	want := "change $Order (Number = 1, Sales.Order_Line += $Line, Sales.Order_OldLine -= $Old);"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// A sole Remove whose value is not a bare variable has no `remove … from`
+// spelling (that form takes a variable); it describes with `-=`, not `=`.
+func TestFormatAction_ChangeObject_RemoveExpressionUsesOperator(t *testing.T) {
+	e := newTestExecutor()
+	action := &microflows.ChangeObjectAction{
+		ChangeVariable: "Order",
+		Changes: []*microflows.MemberChange{
+			{AssociationQualifiedName: "Sales.Order_Line", Type: microflows.MemberChangeTypeRemove, Value: "$Lines"},
+		},
+	}
+	if got := e.formatAction(action, nil, nil); got != "remove $Lines from $Order/Sales.Order_Line;" {
+		t.Errorf("control: bare-variable remove = %q", got)
+	}
+	action.Changes[0].Value = "$Batch/Sales.Batch_Line"
+	got := e.formatAction(action, nil, nil)
+	if want := "change $Order (Sales.Order_Line -= $Batch/Sales.Batch_Line);"; got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }

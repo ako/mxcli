@@ -93,3 +93,59 @@ END;`
 		t.Fatal("ADD … TO $List REFRESH parsed; a Change list activity has no refresh setting")
 	}
 }
+
+// mendixlabs/mxcli#1473: the Add and Remove member changes have no spelling
+// inside a `change` with other members — MDL had only `=`. `+=` and `-=` are
+// those operators; `=` stays a set assignment.
+func TestChangeMemberAddRemoveOperators(t *testing.T) {
+	input := `CREATE MICROFLOW Sales.Rework ($Order: Sales.Order, $Line: Sales.Line, $Old: Sales.Line)
+RETURNS Boolean
+BEGIN
+  CHANGE $Order (Number = 1, Sales.Order_Line += $Line, Sales."Order_Line" -= $Old) COMMIT;
+  RETURN true;
+END;`
+	prog, errs := Build(input)
+	if len(errs) > 0 {
+		t.Fatalf("Parse errors: %v", errs)
+	}
+	mf := prog.Statements[0].(*ast.CreateMicroflowStmt)
+	ch, ok := mf.Body[0].(*ast.ChangeObjectStmt)
+	if !ok {
+		t.Fatalf("Body[0] = %T, want ChangeObjectStmt", mf.Body[0])
+	}
+	want := []struct {
+		attr string
+		op   ast.MemberChangeOp
+	}{
+		{"Number", ast.MemberSet},
+		{"Sales.Order_Line", ast.MemberAdd},
+		{"Sales.Order_Line", ast.MemberRemove},
+	}
+	if len(ch.Changes) != len(want) {
+		t.Fatalf("Changes = %+v", ch.Changes)
+	}
+	for i, w := range want {
+		if ch.Changes[i].Attribute != w.attr || ch.Changes[i].Op != w.op {
+			t.Errorf("Changes[%d] = %q op %v, want %q op %v", i, ch.Changes[i].Attribute, ch.Changes[i].Op, w.attr, w.op)
+		}
+	}
+	if ch.Commit != ast.CommitYes {
+		t.Errorf("commit dropped")
+	}
+}
+
+// A Create object activity's members are initial values: there is no set to
+// add to or remove from, so the operators belong to `change` only.
+func TestCreateRefusesAddRemoveOperators(t *testing.T) {
+	for _, op := range []string{"+=", "-="} {
+		input := `CREATE MICROFLOW Sales.New ($Line: Sales.Line)
+RETURNS Boolean
+BEGIN
+  $Order = CREATE Sales.Order (Sales.Order_Line ` + op + ` $Line);
+  RETURN true;
+END;`
+		if _, errs := Build(input); len(errs) == 0 {
+			t.Errorf("create with %s parsed without an error", op)
+		}
+	}
+}

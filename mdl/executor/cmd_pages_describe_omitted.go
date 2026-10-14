@@ -55,7 +55,7 @@ func unreconstructedContainers(w map[string]any, reconstructed []rawObjectList, 
 		return nil
 	}
 
-	done := make(map[string]bool, len(reconstructed)+len(slots))
+	done := make(map[string]bool, len(reconstructed))
 	for _, ol := range reconstructed {
 		if ol.Keyword != "" {
 			done[ol.Keyword] = true
@@ -63,9 +63,14 @@ func unreconstructedContainers(w map[string]any, reconstructed []rawObjectList, 
 	}
 	// A slot DESCRIBE now reproduces is not a loss, so it must not be named as
 	// one — otherwise the note would fire on exactly the case that was fixed.
+	// Slots are matched on the stored property key: the keyword they are
+	// emitted under comes from the widget definition (a Repeater's `content`
+	// is `template`, mendixlabs/mxcli#1400), which the keyword derived below
+	// does not reproduce.
+	doneKeys := make(map[string]bool, len(slots))
 	for _, cs := range slots {
-		if cs.Keyword != "" {
-			done[cs.Keyword] = true
+		if cs.PropertyKey != "" {
+			doneKeys[cs.PropertyKey] = true
 		}
 	}
 
@@ -102,7 +107,7 @@ func unreconstructedContainers(w map[string]any, reconstructed []rawObjectList, 
 			continue
 		}
 		key := keyMap[extractBinaryID(propMap["TypePointer"])]
-		if key == "" {
+		if key == "" || doneKeys[key] {
 			continue
 		}
 		// Report the MDL keyword the author would write, not the raw property

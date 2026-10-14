@@ -492,11 +492,25 @@ type FlowCurve struct {
 	To   *Position // control vector at the destination end
 }
 
-// ChangeItem represents a single assignment in CREATE/CHANGE: Attr = expr
+// ChangeItem represents a single assignment in CREATE/CHANGE: Attr = expr,
+// or in CHANGE also Assoc += expr / Assoc -= expr.
 type ChangeItem struct {
-	Attribute string     // Attribute name
-	Value     Expression // Value expression
+	Attribute string         // Attribute name
+	Op        MemberChangeOp // = (zero value), += or -=
+	Value     Expression     // Value expression
 }
+
+// MemberChangeOp is the operation a CHANGE member performs, matching Mendix's
+// MemberChange Type: Set assigns, Add and Remove append to or take from a
+// reference set (mendixlabs/mxcli#1473). The zero value is Set, which is what
+// `=` and every CREATE member mean.
+type MemberChangeOp int
+
+const (
+	MemberSet    MemberChangeOp = iota // =
+	MemberAdd                          // +=
+	MemberRemove                       // -=
+)
 
 // CommitFlag is the Commit setting on a create/change activity, matching Mendix's
 // Microflows$Commit enum. The zero value is CommitNo, which is Mendix's default and

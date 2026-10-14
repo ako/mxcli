@@ -396,7 +396,7 @@ createObjectStatement
 // CHANGE $Product (Name = $NewName, ModifiedDate = [%CurrentDateTime%]);
 // CHANGE $Product (Name = $NewName) COMMIT WITHOUT EVENTS REFRESH;
 changeObjectStatement
-    : CHANGE VARIABLE (LPAREN memberAssignmentList? RPAREN)? commitClause? REFRESH? onErrorClause?
+    : CHANGE VARIABLE (LPAREN changeMemberAssignmentList? RPAREN)? commitClause? REFRESH? onErrorClause?
     ;
 
 // The Commit flag on a create/change activity: Mendix's Microflows$Commit enum.
@@ -1198,6 +1198,19 @@ memberAssignmentList
 
 memberAssignment
     : memberAttributeName EQUALS expression
+    ;
+
+// Member assignments for CHANGE: `=` sets a member; `+=` and `-=` are the Add
+// and Remove member changes Studio Pro offers for a reference set, which have
+// no other spelling in an activity with more than one member
+// (mendixlabs/mxcli#1473). CREATE keeps memberAssignment: its members are
+// initial values, with no set to add to or remove from.
+changeMemberAssignmentList
+    : changeMemberAssignment (COMMA changeMemberAssignment)*
+    ;
+
+changeMemberAssignment
+    : memberAttributeName (EQUALS | PLUS EQUALS | MINUS EQUALS) expression
     ;
 
 // Allow keywords and qualified names as member attribute names
