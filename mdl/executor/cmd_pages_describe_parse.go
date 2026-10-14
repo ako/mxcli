@@ -205,6 +205,9 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 			if tabPage.TabCaption == "" {
 				tabPage.TabCaption = extractTextCaption(ctx, tpMap)
 			}
+			// Forms$TabPage carries its own visibility (#1465); it has no
+			// editability, so only the visibility half is read.
+			extractConditionalSettings(ctx, &tabPage, tpMap)
 			for _, tw := range getBsonArrayElements(tpMap["Widgets"]) {
 				if twMap, ok := tw.(map[string]any); ok {
 					tabPage.Children = append(tabPage.Children, parseRawWidget(ctx, twMap, inheritedCtx)...)

@@ -306,6 +306,9 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		// would report every property it has.
 		if def == nil && !isObjectListItem && !w.TypeIsGeneric && explicitWidgetID(w) == "" {
 			out = append(out, validateStaticWidgetUnknownProps(w, locationPrefix)...)
+			// #1465: the vocabulary above is a cross-widget union, so a key a
+			// tab page cannot store (CaptionParams, Class, Style) passes it.
+			out = append(out, validateTabPageProps(w, locationPrefix)...)
 			// #928: `editable:` on a widget Mendix gives no editability — same
 			// "silently dropped on write" family, but the flat property
 			// allow-list cannot see it because it is type-agnostic.

@@ -403,6 +403,11 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 				capText = &model.Text{Translations: map[string]string{model.AuthoringLanguage(): tp.Name}}
 			}
 			tpg.SetCaption(captionToGen(capText))
+			// A tab page's own visibility condition (mendixlabs/mxcli#1465);
+			// null otherwise, as Studio Pro writes it.
+			if tp.ConditionalVisibility != nil {
+				tpg.SetConditionalVisibilitySettings(conditionalVisibilityToGen(tp.ConditionalVisibility))
+			}
 			for _, c := range tp.Widgets {
 				cg, err := widgetToGen(c)
 				if err != nil {

@@ -389,6 +389,14 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		if w.TabCaption != "" {
 			props = append(props, fmt.Sprintf("Caption: %s", mdlQuote(ctx, w.TabCaption)))
 		}
+		// A tab page's visibility (#1465). Its Forms$TabPage has no Appearance,
+		// so appendAppearanceProps would print nothing else either.
+		if w.VisibleIf != "" {
+			props = append(props, widgetConditionMDL("Visible", w.VisibleIf))
+		}
+		if prop := visibleWhenProp(w); prop != "" {
+			props = append(props, prop)
+		}
 		if len(w.Children) > 0 {
 			formatWidgetProps(ctx.Output, prefix, header, props, " {\n")
 			for _, child := range w.Children {

@@ -316,6 +316,10 @@ func (pb *pageBuilder) buildTabContainerV3(w *ast.WidgetV3) (*pages.TabContainer
 }
 
 func (pb *pageBuilder) buildTabPageV3(w *ast.WidgetV3) (*pages.TabPage, error) {
+	// A key the vocabulary accepts and Forms$TabPage cannot hold (#1465).
+	if err := refuseTabPageDroppedProps(pb.ctx, w); err != nil {
+		return nil, err
+	}
 	tp := &pages.TabPage{
 		BaseElement: model.BaseElement{
 			ID:       model.ID(types.GenerateID()),
@@ -333,6 +337,18 @@ func (pb *pageBuilder) buildTabPageV3(w *ast.WidgetV3) (*pages.TabPage, error) {
 			},
 			Translations: map[string]string{pb.textLang(): caption},
 		}
+	}
+
+	// Visibility: a tab page bypasses buildWidgetV3, whose common tail applies
+	// it to every widget, so it is applied here — it used to be parsed and
+	// dropped, the tab always visible (mendixlabs/mxcli#1465).
+	tp.ConditionalVisibility = expressionVisibility(w)
+	if vw, ok := w.Properties["VisibleWhen"].(*ast.VisibleWhenV3); ok && vw != nil {
+		cvs, err := pb.visibleWhenSettings(w, vw)
+		if err != nil {
+			return nil, err
+		}
+		tp.ConditionalVisibility = cvs
 	}
 
 	// Build child widgets

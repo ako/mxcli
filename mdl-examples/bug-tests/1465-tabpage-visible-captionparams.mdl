@@ -1,0 +1,55 @@
+mdl 1;
+-- ============================================================================
+-- mendixlabs/mxcli#1465 — tab page Visible: and CaptionParams silently dropped
+-- ============================================================================
+--
+-- Symptom (before fix): on a `tabpage`, `CaptionParams` and `Visible:` passed
+-- check and exec and were not written: "The caption shows `Due · {1}`
+-- literally. `tpB` is always visible, and `ShowTabB` appears 0 times in the
+-- page unit." `Class:` on a tab page was lost the same way.
+--
+-- Root cause: tab pages are built by buildTabPageV3, outside buildWidgetV3,
+-- so the common tail that applies visibility never ran; the writer had no
+-- slot for it either. Forms$TabPage has a plain Texts$Text caption and no
+-- Appearance, so CaptionParams / Class / Style cannot be stored at all, and
+-- the cross-widget MDL-WIDGET07 vocabulary let them through.
+--
+-- After fix: `Visible:` (expression, `false`, or `Attr in (…)`) is written to
+-- Forms$TabPage.ConditionalVisibilitySettings and described back. Under
+-- `mdl 1;` CaptionParams / Class / Style on a tab page are refused
+-- (MDL-WIDGET44); without the header they warn (MDL-V1-TABPAGEPROP) and are
+-- dropped as before. Put parameterised text in a dynamictext inside the tab.
+--
+-- Verify (Mendix 11.13, testdata/pedapp copy):
+--   mxcli check 1465-tabpage-visible-captionparams.mdl -p app.mpr --references
+--   mxcli exec  1465-tabpage-visible-captionparams.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe page MyFirstModule.Bug1465Tabs"
+--   mxcli docker check -p app.mpr        -- no new errors
+-- ============================================================================
+
+create persistent entity MyFirstModule.Bug1465Holder (
+  DueCount: integer,
+  ShowTabB: boolean
+);
+
+create page MyFirstModule.Bug1465Tabs (
+  title: 'Tabs',
+  layout: Atlas_Core.Atlas_Default,
+  params: ( $Holder: MyFirstModule.Bug1465Holder )
+) {
+  dataview dv (datasource: $Holder) {
+    tabcontainer tc {
+      tabpage tpA (caption: 'Due') {
+        dynamictext due (content: 'Due: {1}', contentparams: ({1} = DueCount))
+      }
+      tabpage tpB (caption: 'Tab B', visible: $currentObject/ShowTabB) {
+        dynamictext b (content: 'B')
+      }
+      tabpage tpC (caption: 'Tab C', visible: ShowTabB in (false)) {
+        container styled (class: 'foo') {
+          dynamictext c (content: 'C')
+        }
+      }
+    }
+  }
+};

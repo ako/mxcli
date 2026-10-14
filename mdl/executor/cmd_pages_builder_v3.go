@@ -561,26 +561,8 @@ func applyConditionalSettings(widget pages.Widget, w *ast.WidgetV3) {
 	}
 	bw := bwg.GetBaseWidget()
 
-	if visibleIf := w.GetStringProp("VisibleIf"); visibleIf != "" {
-		// `Visible: [expr]` — bracket form, expression already rooted by the visitor.
-		bw.ConditionalVisibility = &pages.ConditionalVisibilitySettings{
-			BaseElement: model.BaseElement{
-				ID:       model.ID(types.GenerateID()),
-				TypeName: "Forms$ConditionalVisibilitySettings",
-			},
-			Expression: visibleIf,
-		}
-	} else if expr, ok := pages.StaticVisibleExpression(w.Properties["Visible"]); ok {
-		// `Visible: false` or `Visible: '<expr>'` — a page widget has no plain
-		// boolean Visible field, so route it through ConditionalVisibilitySettings
-		// (previously this value was parsed but never consumed → silently dropped).
-		bw.ConditionalVisibility = &pages.ConditionalVisibilitySettings{
-			BaseElement: model.BaseElement{
-				ID:       model.ID(types.GenerateID()),
-				TypeName: "Forms$ConditionalVisibilitySettings",
-			},
-			Expression: expr,
-		}
+	if cvs := expressionVisibility(w); cvs != nil {
+		bw.ConditionalVisibility = cvs
 	}
 
 	if editableIf := w.GetStringProp("EditableIf"); editableIf != "" {
@@ -600,6 +582,29 @@ func applyConditionalSettings(widget pages.Widget, w *ast.WidgetV3) {
 		// what makes the enum "Conditional", so honouring a plain `Editable` too
 		// would write an enum contradicting the element beside it.
 		bw.Editable = editable
+	}
+}
+
+// expressionVisibility is the ConditionalVisibilitySettings for an
+// expression-valued `Visible:`, or nil when there is none. The attribute form
+// (`Visible: Attr in (…)`) is visibleWhenSettings.
+func expressionVisibility(w *ast.WidgetV3) *pages.ConditionalVisibilitySettings {
+	expr := w.GetStringProp("VisibleIf") // `Visible: [expr]` — bracket form, expression already rooted by the visitor.
+	if expr == "" {
+		// `Visible: false` or `Visible: '<expr>'` — a page widget has no plain
+		// boolean Visible field, so route it through ConditionalVisibilitySettings
+		// (previously this value was parsed but never consumed → silently dropped).
+		var ok bool
+		if expr, ok = pages.StaticVisibleExpression(w.Properties["Visible"]); !ok {
+			return nil
+		}
+	}
+	return &pages.ConditionalVisibilitySettings{
+		BaseElement: model.BaseElement{
+			ID:       model.ID(types.GenerateID()),
+			TypeName: "Forms$ConditionalVisibilitySettings",
+		},
+		Expression: expr,
 	}
 }
 

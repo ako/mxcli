@@ -12,6 +12,6 @@ import "github.com/mendixlabs/mxcli/mdl/langver"
 func LanguageChanges() []langver.Change {
 	return []langver.Change{
 		actionSlotRefused, galleryClickRefused, flowRebuildRefused, boundaryDropAmbiguous,
-		remoteTypeChangeRefused, templateAttrBinding, viewAutoNumberRefused,
+		remoteTypeChangeRefused, templateAttrBinding, viewAutoNumberRefused, tabPagePropDropped,
 	}
 }

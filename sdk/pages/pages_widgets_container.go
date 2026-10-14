@@ -92,6 +92,10 @@ type TabPage struct {
 	Caption       *model.Text `json:"caption,omitempty"`
 	Widgets       []Widget    `json:"widgets,omitempty"`
 	RefreshOnShow bool        `json:"refreshOnShow,omitempty"`
+	// ConditionalVisibility is Forms$TabPage.ConditionalVisibilitySettings. A
+	// tab page is not a widget (no BaseWidget, no Appearance), so it carries
+	// its own (mendixlabs/mxcli#1465).
+	ConditionalVisibility *ConditionalVisibilitySettings `json:"conditionalVisibility,omitempty"`
 }
 
 // GetName returns the tab page's name.

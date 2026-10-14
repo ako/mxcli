@@ -43,9 +43,21 @@ func (pb *pageBuilder) applyVisibleWhen(widget pages.Widget, w *ast.WidgetV3) er
 	if !ok {
 		return mdlerrors.NewValidationf("%s %s: `Visible: %s in (…)` is not supported on this widget", w.Type, w.Name, vw.Attribute)
 	}
+	cvs, err := pb.visibleWhenSettings(w, vw)
+	if err != nil {
+		return err
+	}
+	bwg.GetBaseWidget().ConditionalVisibility = cvs
+	return nil
+}
+
+// visibleWhenSettings resolves `Visible: Attr in (…)` to the settings element,
+// for applyVisibleWhen and for a tab page, which is no widget but carries the
+// same setting (mendixlabs/mxcli#1465).
+func (pb *pageBuilder) visibleWhenSettings(w *ast.WidgetV3, vw *ast.VisibleWhenV3) (*pages.ConditionalVisibilitySettings, error) {
 	where := fmt.Sprintf("%s %s: Visible: %s in (…)", w.Type, w.Name, vw.Attribute)
 	if strings.Contains(vw.Attribute, "/") {
-		return mdlerrors.NewValidationf("%s: association paths are not supported — name an attribute of the data container's own entity", where)
+		return nil, mdlerrors.NewValidationf("%s: association paths are not supported — name an attribute of the data container's own entity", where)
 	}
 
 	// The entity is the data container's, or — qualified, Module.Entity.Attr —
@@ -61,7 +73,7 @@ func (pb *pageBuilder) applyVisibleWhen(widget pages.Widget, w *ast.WidgetV3) er
 	if name, rest, ok := namedObjectBinding(vw.Attribute); ok {
 		wv, paramEntity, isParam := pb.parameterVariable(name)
 		if !isParam || strings.Contains(rest, ".") {
-			return mdlerrors.NewValidationf("%s: `$%s` is not a parameter of this %s — `Visible: $Param.Attr in (…)` "+
+			return nil, mdlerrors.NewValidationf("%s: `$%s` is not a parameter of this %s — `Visible: $Param.Attr in (…)` "+
 				"reads an attribute of a page or snippet parameter; inside a data container name the attribute bare",
 				where, name, pb.documentKind())
 		}
@@ -69,15 +81,15 @@ func (pb *pageBuilder) applyVisibleWhen(widget pages.Widget, w *ast.WidgetV3) er
 	} else if parts := strings.Split(vw.Attribute, "."); len(parts) == 3 {
 		entity, attrName = parts[0]+"."+parts[1], parts[2]
 	} else if len(parts) != 1 {
-		return mdlerrors.NewValidationf("%s: name the attribute bare, as $Param.Attribute, or as Module.Entity.Attribute", where)
+		return nil, mdlerrors.NewValidationf("%s: name the attribute bare, as $Param.Attribute, or as Module.Entity.Attribute", where)
 	}
 	if entity == "" {
-		return mdlerrors.NewValidationf("%s: the attribute is read from the enclosing data container's object — place the widget inside a data container, or read it from a parameter ($Param.%s)", where, attrName)
+		return nil, mdlerrors.NewValidationf("%s: the attribute is read from the enclosing data container's object — place the widget inside a data container, or read it from a parameter ($Param.%s)", where, attrName)
 	}
 
 	declaring, ok := pb.declaringEntityFor(entity, attrName)
 	if !ok {
-		return mdlerrors.NewValidationf("%s: %s has no attribute %s", where, entity, attrName)
+		return nil, mdlerrors.NewValidationf("%s: %s has no attribute %s", where, entity, attrName)
 	}
 	attrQN := declaring + "." + attrName
 
@@ -88,11 +100,11 @@ func (pb *pageBuilder) applyVisibleWhen(widget pages.Widget, w *ast.WidgetV3) er
 	case *domainmodel.EnumerationAttributeType:
 		values, err := pb.enumerationValueNames(t.EnumerationRef)
 		if err != nil {
-			return mdlerrors.NewValidationf("%s: %v", where, err)
+			return nil, mdlerrors.NewValidationf("%s: %v", where, err)
 		}
 		all = append(values, emptyConditionValue)
 	default:
-		return mdlerrors.NewValidationf("%s: %s is not a Boolean or enumeration attribute — use an expression instead: `Visible: $currentObject/…`", where, attrQN)
+		return nil, mdlerrors.NewValidationf("%s: %s is not a Boolean or enumeration attribute — use an expression instead: `Visible: $currentObject/…`", where, attrQN)
 	}
 
 	visible := map[string]bool{}
@@ -103,7 +115,7 @@ func (pb *pageBuilder) applyVisibleWhen(widget pages.Widget, w *ast.WidgetV3) er
 		}
 		idx := indexFold(all, stored)
 		if idx < 0 {
-			return mdlerrors.NewValidationf("%s: %q is not a value of %s (values: %s)", where, v, attrQN,
+			return nil, mdlerrors.NewValidationf("%s: %q is not a value of %s (values: %s)", where, v, attrQN,
 				strings.Join(mdlValueNames(all), ", "))
 		}
 		visible[all[idx]] = true
@@ -113,7 +125,7 @@ func (pb *pageBuilder) applyVisibleWhen(widget pages.Widget, w *ast.WidgetV3) er
 	for _, v := range all {
 		conds = append(conds, pages.ValueCondition{Value: v, Visible: visible[v]})
 	}
-	bwg.GetBaseWidget().ConditionalVisibility = &pages.ConditionalVisibilitySettings{
+	return &pages.ConditionalVisibilitySettings{
 		BaseElement: model.BaseElement{
 			ID:       model.ID(types.GenerateID()),
 			TypeName: "Forms$ConditionalVisibilitySettings",
@@ -121,8 +133,7 @@ func (pb *pageBuilder) applyVisibleWhen(widget pages.Widget, w *ast.WidgetV3) er
 		Attribute:      attrQN,
 		Conditions:     conds,
 		SourceVariable: source,
-	}
-	return nil
+	}, nil
 }
 
 func indexFold(values []string, v string) int {
