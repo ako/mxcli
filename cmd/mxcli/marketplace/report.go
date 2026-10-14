@@ -33,8 +33,8 @@ type DiffResult struct {
 	Unknown        []UnreadableElement `json:"unknown,omitempty"`
 	UnchangedCount int                 `json:"unchangedCount"`
 	// Dependents are associations other modules own that reach into this one.
-	// Not local edits to the module — LocallyModified ignores them — but an
-	// update removes them (mendixlabs/mxcli#1502).
+	// Not local edits to the module — LocallyModified ignores them. An update
+	// keeps them while the entity they point at survives (mendixlabs/mxcli#1502).
 	Dependents []string `json:"dependents,omitempty"`
 
 	// Upgrade is populated when --to was given: what changes between the
@@ -141,7 +141,7 @@ func (d *DiffResult) WriteText(w io.Writer) error {
 	}
 
 	if len(d.Dependents) > 0 {
-		fmt.Fprintf(w, "\n  Reaching in from other modules (%d) — an update removes these; --save-edits keeps them:\n",
+		fmt.Fprintf(w, "\n  Reaching in from other modules (%d) — an update keeps these while their target entity exists:\n",
 			len(d.Dependents))
 		for _, e := range d.Dependents {
 			fmt.Fprintf(w, "    dependent %s\n", e)

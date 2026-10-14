@@ -11,10 +11,10 @@ import (
 )
 
 // An association another module owns, reaching into the module being replaced,
-// is deleted by the update (mendixlabs/mxcli#1502). The module itself is
-// unedited, so before the fix the gate let the update through without --force
-// and without naming what it was about to remove.
-func TestGateOnLocalEdits_RefusesWhenAnAssociationReachesIn(t *testing.T) {
+// is carried across by the update with its identity (mendixlabs/mxcli#1502's
+// follow-up). It is not an edit to the module and the update no longer discards
+// it, so it must not make an unedited module refuse to update.
+func TestGateOnLocalEdits_LetsAKeptAssociationThrough(t *testing.T) {
 	drift := &marketplace.Report{
 		Module: "Administration",
 		Findings: []marketplace.Finding{
@@ -25,28 +25,28 @@ func TestGateOnLocalEdits_RefusesWhenAnAssociationReachesIn(t *testing.T) {
 			MDL: "create or modify association MyFirstModule.Config_Account\nfrom MyFirstModule.Config to Administration.Account;",
 		}},
 	}
-
 	var out bytes.Buffer
-	err := gateOnLocalEdits(&out, drift, false, "")
-	if err == nil {
-		t.Fatal("update allowed without --force although it removes MyFirstModule.Config_Account")
-	}
-	if !strings.Contains(err.Error(), "MyFirstModule.Config_Account") {
-		t.Errorf("refusal does not name the association: %v", err)
-	}
-
-	out.Reset()
-	if err := gateOnLocalEdits(&out, drift, true, ""); err != nil {
-		t.Fatalf("--force must proceed: %v", err)
-	}
-	if !strings.Contains(out.String(), "MyFirstModule.Config_Account") {
-		t.Errorf("--force output does not name what is removed:\n%s", out.String())
-	}
-
-	// Control: the same report without the dependent passes the gate, so the
-	// refusal above is the dependent's doing and nothing else's.
-	drift.Dependents = nil
 	if err := gateOnLocalEdits(&out, drift, false, ""); err != nil {
-		t.Fatalf("control: an unedited module with no dependents must pass the gate: %v", err)
+		t.Fatalf("an unedited module with an association into it must update without --force: %v", err)
+	}
+}
+
+// The summary names what happened to each one: kept is a count, lost names the
+// association and the entity the new version removed.
+func TestReportUpdate_NamesKeptAndLostAssociations(t *testing.T) {
+	var out bytes.Buffer
+	reportUpdate(&out, &marketplace.UpdateResult{
+		Module: "Administration", FromVersion: "4.3.2", ToVersion: "4.5.0",
+		DependentsKept: []string{"MyFirstModule.Config_Account"},
+		DependentsLost: []string{"MyFirstModule.Audit_Legacy (Administration.Legacy is not in the new version)"},
+	})
+	got := out.String()
+	for _, want := range []string{
+		"1 association(s) from other modules into Administration kept",
+		"MyFirstModule.Audit_Legacy (Administration.Legacy is not in the new version)",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary lacks %q:\n%s", want, got)
+		}
 	}
 }

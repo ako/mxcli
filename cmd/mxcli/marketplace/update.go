@@ -57,8 +57,9 @@ func SaveEdits(dir string, rep *Report) (written []string, unsaved []string, err
 		}
 	}
 	// Associations other modules own that reach into this one. They are not
-	// edits to the module, but the update deletes them (Snapshot.Dependents),
-	// so they are saved by the same rules as an edit.
+	// edits to the module, and the update keeps them while their target entity
+	// survives (RestoreDependentAssociations); they are saved anyway, by the
+	// same rules as an edit, for the case where it does not.
 	var dependents []Element
 	for _, d := range rep.Dependents {
 		if ok, why := d.Conclusive(); !ok {
@@ -102,12 +103,14 @@ func SaveEdits(dir string, rep *Report) (written []string, unsaved []string, err
 		name := filepath.Join(dir, safeFileName(ElementKey{
 			Type: d.Key.Type, Name: strings.ReplaceAll(d.Key.Name, ".", "_")})+".mdl")
 		header := fmt.Sprintf("-- %s, as it stands in your project before the update.\n"+
-			"-- It belongs to another module, but reaches into %s, and replacing %s\n"+
-			"-- removes it along with the entity it points at.\n"+
+			"-- It belongs to another module but reaches into %s. The update keeps it,\n"+
+			"-- identity and all, unless the new version drops the entity it points at;\n"+
+			"-- replay this only if the update reports it removed.\n"+
 			"-- Replay with: mxcli exec %s -p <project.mpr>\n"+
-			"-- Note: replaying creates it anew, with a new GUID. The runtime keys stored\n"+
-			"-- data on an element's GUID, so do not count on its existing links surviving.\n\n",
-			d.Key, rep.Module, rep.Module, name)
+			"-- Note: replaying creates it anew, with a new GUID, and the runtime keys an\n"+
+			"-- association's stored links on its GUID: the links it held are lost\n"+
+			"-- (measured, docs/11-proposals/data/marketplace-upgrade/GUID_IDENTITY.md).\n\n",
+			d.Key, rep.Module, name)
 		if err := os.WriteFile(name, []byte(header+body+"\n"), 0o644); err != nil {
 			return written, unsaved, fmt.Errorf("write %s: %w", name, err)
 		}
@@ -160,11 +163,12 @@ type UpdateResult struct {
 	// "the package wanted a different version" is the fact that was missing.
 	FilesSkipped    []SkippedFile
 	ForcedOverEdits []string
-	// DependentsRemoved names the associations other modules owned that reached
-	// into this one, which the update deleted along with the entities they
-	// pointed at (mendixlabs/mxcli#1502). Filled by the caller from the drift
-	// report; empty when no baseline was compared.
-	DependentsRemoved []string
+	// DependentsKept / DependentsLost are the cross-module associations other
+	// modules own that point into this one. DROP MODULE removes them; the
+	// update puts each back with its stored $ID and GUID when the new version
+	// still has the entity it points at, and reports it lost when it does not.
+	DependentsKept []string
+	DependentsLost []string
 }
 
 // SkippedFile is one bundled file InstallPackageFiles chose not to write.
@@ -199,6 +203,12 @@ func PerformUpdate(mprPath, referenceMpr, targetMpk, moduleName, fromVersion, to
 	if err != nil {
 		return nil, fmt.Errorf("record role grants: %w", err)
 	}
+	// Other modules' associations into this one go with the drop below; record
+	// them as stored so they come back with the GUIDs the database keys on.
+	dependents, err := CaptureDependentAssociations(mprPath, moduleName)
+	if err != nil {
+		return nil, fmt.Errorf("record associations other modules have into %s: %w", moduleName, err)
+	}
 
 	if err := execStatements(mprPath, "drop module "+moduleName+";", newBackend); err != nil {
 		return nil, fmt.Errorf("remove the installed module: %w", err)
@@ -216,6 +226,10 @@ func PerformUpdate(mprPath, referenceMpr, targetMpk, moduleName, fromVersion, to
 	restored, dropped, err := RestoreRoleGrants(mprPath, moduleName, grants, newBackend)
 	if err != nil {
 		return nil, fmt.Errorf("restore role grants: %w", err)
+	}
+	depsKept, depsLost, err := RestoreDependentAssociations(mprPath, moduleName, dependents)
+	if err != nil {
+		return nil, fmt.Errorf("restore associations other modules have into %s: %w", moduleName, err)
 	}
 	if err := StampMarketplaceVersion(mprPath, moduleName, toVersion, toVersionID); err != nil {
 		return nil, fmt.Errorf("record the installed version: %w", err)
@@ -244,6 +258,8 @@ func PerformUpdate(mprPath, referenceMpr, targetMpk, moduleName, fromVersion, to
 		SecurityErr:     secErr,
 		FilesInstalled:  files,
 		FilesSkipped:    skippedFiles,
+		DependentsKept:  depsKept,
+		DependentsLost:  depsLost,
 	}, nil
 }
 

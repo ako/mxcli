@@ -81,3 +81,38 @@ identity.
   statements would.
 - **Not associations.** Association `GUID`s were observed in the model but their
   join-table identity was not exercised.
+
+## Associations — measured 2026-10-14
+
+Run on Mendix **11.6.6** (the vendored `testdata/expr-checker` app, PostgreSQL,
+`mxcli run --local`), closing the gap above. Subject: a cross-module
+association `MyFirstModule.Config_Account` from a local `Config` entity to
+`Administration.Account` (Reference, column storage), with its `GUID` set to
+`15 02 15 02 aa bb cc dd 11 22 33 44 55 66 77 88` — distinct from its `$ID`, as
+a Studio Pro-authored element's is (an mxcli-created one has `GUID == $ID`,
+which would hide a re-mint).
+
+The runtime keys it the same way as an entity:
+
+```sql
+select id, table_name, child_column_name from mendixsystem$association
+ where association_name = 'MyFirstModule.Config_Account';
+-- 02150215-bbaa-ddcc-1122-334455667788 | myfirstmodule$config | myfirstmodule$config_account
+```
+
+— the model's `GUID` with the .NET field order undone. The column carries a real
+foreign key (`frn_myfirstmodule$config_myfirstmodule$config_account`), so the
+seed is a real `Account` (4242) and a `Config` row linking to it.
+
+| Run | Model change | `mendixsystem$association.id` | `config_account` of the seeded row |
+|---|---|---|---|
+| 1 | — (baseline, seeded) | `02150215-…` | 4242 |
+| 2 | none (**control**) | `02150215-…` | **4242** |
+| 3 | `marketplace update` of Administration, association carried across (`$ID` and `GUID` kept) | `02150215-…` | **4242** |
+| 4 | association dropped and re-created from MDL — what replaying `--save-edits` output does | `64fef841-…` (new `GUID`) | **NULL** |
+
+Run 4 keeps the `Config` row and loses the link: the runtime treats the
+re-created association as a new one. So an association's `GUID` is its
+database identity exactly as an entity's is, and re-creating one from MDL is
+not a rescue for its data. This is why `PerformUpdate` puts back the stored
+element (`RestoreDependentAssociations`) instead of relying on a replay.

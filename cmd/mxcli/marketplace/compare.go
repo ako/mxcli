@@ -39,10 +39,11 @@ type Finding struct {
 type Report struct {
 	Module   string
 	Findings []Finding
-	// Dependents are elements of OTHER modules that the update destroys: the
-	// cross-module associations that reach into this module by name. They are
-	// not edits to the module and are not counted by LocallyModified, but
-	// replacing the module deletes them all the same — see
+	// Dependents are elements of OTHER modules that depend on this one: the
+	// cross-module associations that reach into it by name. They are not edits
+	// to the module and are not counted by LocallyModified. The update carries
+	// them across (RestoreDependentAssociations); they are reported so a user
+	// can see what lies outside the module and still rides on it — see
 	// Snapshot.Dependents (mendixlabs/mxcli#1502).
 	Dependents []Element
 }

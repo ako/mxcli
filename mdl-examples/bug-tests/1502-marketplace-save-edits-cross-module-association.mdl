@@ -11,17 +11,21 @@ mdl 1;
 -- every other domain model to remove the cross-module associations that reach
 -- a deleted entity by name. Studio Pro then reports the missing association.
 --
--- After fix: `marketplace diff` lists it under "Reaching in from other
--- modules", `marketplace update` refuses without --force and names it, and
--- --save-edits writes association-MyFirstModule_Config_Account.mdl, which
--- replays after the update.
+-- After fix: `marketplace update` carries the association across with its
+-- stored $ID and GUID, so `mx check` stays at 0 errors (with the restore
+-- disabled: CE1613 "The selected association 'MyFirstModule.Config_Account' no
+-- longer exists." at the Config access rule) and the runtime keeps its links
+-- (a re-created association comes back NULL — GUID_IDENTITY.md,
+-- "Associations"). It is reported as lost only when the new version drops
+-- Administration.Account. `marketplace diff` lists it under "Reaching in from
+-- other modules", and --save-edits still writes
+-- association-MyFirstModule_Config_Account.mdl.
 --
 -- Usage (on a project with Administration installed from the marketplace):
 --   mxcli exec mdl-examples/bug-tests/1502-marketplace-save-edits-cross-module-association.mdl -p app.mpr
 --   mxcli marketplace diff 23513 -p app.mpr
---   mxcli marketplace update 23513 -p app.mpr --to <version> --save-edits ./local-edits
---   mxcli marketplace update 23513 -p app.mpr --to <version> --force
---   mxcli exec ./local-edits/association-MyFirstModule_Config_Account.mdl -p app.mpr
+--   mxcli marketplace update 23513 -p app.mpr --to <version>
+--   mxcli docker check -p app.mpr          # 0 errors; the association is still there
 -- ============================================================================
 
 create persistent entity MyFirstModule.Config (

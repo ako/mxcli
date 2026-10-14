@@ -129,13 +129,14 @@ type Snapshot struct {
 	// into this one, keyed by qualified name (they are not this module's, so the
 	// unqualified-name convention of Elements does not apply).
 	//
-	// They are captured because replacing the module destroys them: DROP MODULE
-	// deletes this module's entities, and DeleteEntity cascades into every other
-	// domain model to remove the cross-module associations that reach a deleted
-	// entity by name. The association belongs to the user's module, so it is
-	// nobody's "edit" to this one — which is how --save-edits came to save every
-	// change the update would discard except the one it was certain to
-	// (mendixlabs/mxcli#1502).
+	// They are captured because replacing the module puts them at risk: DROP
+	// MODULE deletes this module's entities, and DeleteEntity cascades into
+	// every other domain model to remove the cross-module associations that
+	// reach a deleted entity by name. The association belongs to the user's
+	// module, so it is nobody's "edit" to this one — which is how --save-edits
+	// came to save every change the update would discard except the one it was
+	// certain to (mendixlabs/mxcli#1502). PerformUpdate now carries them across
+	// itself; this is what `diff` and --save-edits report.
 	Dependents []Element
 }
 

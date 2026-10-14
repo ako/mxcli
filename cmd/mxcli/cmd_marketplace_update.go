@@ -34,10 +34,10 @@ any. Use --save-edits to write them out as re-executable MDL first, and --force
 to proceed. Studio Pro discards them without asking; this at least tells you what
 they were.
 
-Associations that OTHER modules own and that point into this module are removed
-with it, because they reach entities the update deletes. They count as local work
-here too: the update refuses over them, and --save-edits writes each one as
-association-<Module>_<Name>.mdl to replay afterwards.
+Associations that OTHER modules own and that point into this module are carried
+across with their identity intact, as long as the new version still has the entity
+they point at; one whose entity is gone is reported as lost. --save-edits also
+writes each one as association-<Module>_<Name>.mdl.
 
 This does not roll back. Work on a copy or have the project in version control:
 if a step fails partway, the module has already been removed.`,
@@ -182,9 +182,6 @@ func runMarketplaceUpdate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("%w\n\nThe project may be mid-update — %s could be missing. Restore from version control",
 			err, moduleName)
 	}
-	if drift != nil {
-		res.DependentsRemoved = drift.DependentNames()
-	}
 	reportUpdate(out, res)
 	return nil
 }
@@ -195,9 +192,6 @@ func runMarketplaceUpdate(cmd *cobra.Command, args []string) error {
 func gateOnLocalEdits(out io.Writer, drift *marketplace.Report, force bool, saveEdits string) error {
 	result := marketplace.NewDiffResult("", "", "", drift)
 	edited := append(append([]string{}, result.Modified...), result.OnlyInstalled...)
-	// Associations other modules own that reach into this one. Not edits to the
-	// module, but the update deletes them just the same (mendixlabs/mxcli#1502).
-	edited = append(edited, result.Dependents...)
 
 	if len(edited) == 0 {
 		if !result.Verified {
@@ -214,11 +208,6 @@ func gateOnLocalEdits(out io.Writer, drift *marketplace.Report, force bool, save
 
 	if !force {
 		msg := fmt.Sprintf("refusing to update: %d element(s) have been changed locally and the update would discard them:\n", len(edited))
-		if len(result.Dependents) > 0 {
-			msg = fmt.Sprintf("refusing to update: the update would discard %d local element(s) "+
-				"(%d association(s) in other modules reach into %s and are removed with it):\n",
-				len(edited), len(result.Dependents), drift.Module)
-		}
 		for _, e := range edited {
 			msg += "    " + e + "\n"
 		}
@@ -251,6 +240,26 @@ func reportSavedEdits(out io.Writer, dir string, written, unsaved []string) {
 		fmt.Fprintf(out, "\n  Could not be saved (%d) — these edits are not recoverable this way:\n", len(unsaved))
 		for _, u := range unsaved {
 			fmt.Fprintf(out, "    %s\n", u)
+		}
+	}
+}
+
+// reportDependents says what happened to the associations other modules own
+// that point into the updated module. The drop removes them; the update puts
+// them back with their stored identity (mendixlabs/mxcli#1502). A kept one is
+// worth a line because it is a change outside the module that `diff-local`
+// will not show — the unit was rewritten to what it already held. A lost one
+// names its target, because that is what the new version removed.
+func reportDependents(out io.Writer, r *marketplace.UpdateResult) {
+	if len(r.DependentsKept) > 0 {
+		fmt.Fprintf(out, "  %d association(s) from other modules into %s kept, with their identity.\n",
+			len(r.DependentsKept), r.Module)
+	}
+	if len(r.DependentsLost) > 0 {
+		fmt.Fprintf(out, "\n  Associations from other modules removed (%d) — the new version no longer has\n"+
+			"  the entity they point at:\n", len(r.DependentsLost))
+		for _, d := range r.DependentsLost {
+			fmt.Fprintf(out, "    %s\n", d)
 		}
 	}
 }
@@ -301,13 +310,7 @@ func reportUpdate(out io.Writer, r *marketplace.UpdateResult) {
 			fmt.Fprintf(out, "    %s\n", g)
 		}
 	}
-	if len(r.DependentsRemoved) > 0 {
-		fmt.Fprintf(out, "\n  Removed from other modules (%d) — they reached into %s; replay them from --save-edits:\n",
-			len(r.DependentsRemoved), r.Module)
-		for _, d := range r.DependentsRemoved {
-			fmt.Fprintf(out, "    %s\n", d)
-		}
-	}
+	reportDependents(out, r)
 	reportSecurityReconcile(out, r)
 	// A newer module's pages reference widget definitions the project has not
 	// resynced, so `mx check` reports CE0463 until it is told to. Measured on

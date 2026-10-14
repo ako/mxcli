@@ -9,8 +9,12 @@ import (
 	"strings"
 	"testing"
 
+	modelsdk "github.com/mendixlabs/mxcli"
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/executor"
+	"github.com/mendixlabs/mxcli/model"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // A local module that links to a marketplace module's entity owns that link: a
@@ -47,24 +51,162 @@ func describeAssoc(t *testing.T, mprPath, qualified string) (string, bool) {
 	return sink.String(), true
 }
 
-// The mechanism, and the control for the test below: an update of Administration
-// removes a local module's association into it. Without this the save test could
-// pass against a fixture where nothing was ever at risk.
-func TestPerformUpdate_RemovesCrossModuleAssociationsIntoTheModule(t *testing.T) {
+// storedCrossAssoc returns the stored element of a cross-module association, or
+// nil when no domain model holds one by that name.
+func storedCrossAssoc(t *testing.T, mprPath, name string) (unitID string, elem bson.D) {
+	t.Helper()
+	r, err := modelsdk.Open(mprPath)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer r.Disconnect()
+	units, err := r.ListRawUnitsByType("DomainModels$DomainModel")
+	if err != nil {
+		t.Fatalf("list domain models: %v", err)
+	}
+	for _, u := range units {
+		var doc bson.D
+		if err := bson.Unmarshal(u.Contents, &doc); err != nil {
+			t.Fatalf("decode %s: %v", u.ID, err)
+		}
+		for _, x := range crossAssociationsOf(doc) {
+			if xd, ok := x.(bson.D); ok && xd.Map()["Name"] == name {
+				return string(u.ID), xd
+			}
+		}
+	}
+	return "", nil
+}
+
+// giveStudioProGUID rewrites the association's GUID to a value distinct from
+// its $ID. mxcli mints GUID == $ID, so on an mxcli-created element a write path
+// that re-minted the GUID from the $ID would reproduce the stored value and the
+// test could not tell (CLAUDE.md, "Before trusting any GUID test"). A Studio
+// Pro-authored element has a GUID of its own; this makes the subject one.
+func giveStudioProGUID(t *testing.T, mprPath, name string) []byte {
+	t.Helper()
+	unitID, _ := storedCrossAssoc(t, mprPath, name)
+	if unitID == "" {
+		t.Fatalf("no stored cross association %s", name)
+	}
+	r, err := modelsdk.Open(mprPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := r.GetRawUnitBytes(model.ID(unitID))
+	r.Disconnect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc bson.D
+	if err := bson.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	guid := []byte{0x15, 0x02, 0x15, 0x02, 0xaa, 0xbb, 0xcc, 0xdd, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}
+	for _, x := range crossAssociationsOf(doc) {
+		xd, ok := x.(bson.D)
+		if !ok || xd.Map()["Name"] != name {
+			continue
+		}
+		for i, e := range xd {
+			if e.Key == "GUID" {
+				xd[i].Value = primitive.Binary{Subtype: e.Value.(primitive.Binary).Subtype, Data: guid}
+			}
+		}
+	}
+	enc, err := bson.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := modelsdk.OpenForWriting(mprPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Disconnect()
+	if err := w.UpdateRawUnitOwningStorageGUIDs(unitID, enc); err != nil {
+		t.Fatalf("set GUID: %v", err)
+	}
+	return guid
+}
+
+func binaryOf(t *testing.T, d bson.D, key string) []byte {
+	t.Helper()
+	b, ok := d.Map()[key].(primitive.Binary)
+	if !ok {
+		t.Fatalf("%s is not binary in %v", key, d)
+	}
+	return b.Data
+}
+
+// The update must not cost a local module its association into the updated
+// one. DROP MODULE removes it (DeleteEntity's cross-module cascade), and
+// replaying it from --save-edits mints a new GUID — the database's identity for
+// the association — so the update carries the stored element across instead,
+// $ID and GUID unchanged.
+func TestPerformUpdate_KeepsCrossModuleAssociationsIntoTheModule(t *testing.T) {
 	target := copyFixture(t)
 	execMDL(t, target, crossModuleAssocMDL)
-	if _, ok := describeAssoc(t, target, crossModuleAssoc); !ok {
-		t.Fatalf("control: %s was not created", crossModuleAssoc)
+	guid := giveStudioProGUID(t, target, "Config_Account")
+	unitBefore, before := storedCrossAssoc(t, target, "Config_Account")
+	if before == nil || !bytes.Equal(binaryOf(t, before, "GUID"), guid) {
+		t.Fatalf("control: the association does not carry the distinct GUID: %v", before)
+	}
+	if bytes.Equal(binaryOf(t, before, "GUID"), binaryOf(t, before, "$ID")) {
+		t.Fatal("control: GUID == $ID, so a re-mint would go undetected")
 	}
 
-	if _, err := PerformUpdate(target, copyFixture(t), emptyMpk(t), "Administration",
-		"4.3.2", "4.3.3", "00000000-0000-0000-0000-000000000000", testBackend); err != nil {
+	res, err := PerformUpdate(target, copyFixture(t), emptyMpk(t), "Administration",
+		"4.3.2", "4.3.3", "00000000-0000-0000-0000-000000000000", testBackend)
+	if err != nil {
 		t.Fatalf("PerformUpdate: %v", err)
 	}
-	if out, ok := describeAssoc(t, target, crossModuleAssoc); ok {
-		t.Fatalf("expected the update to remove %s (it reaches a dropped entity); it survived:\n%s\n"+
-			"if the update now preserves it, the save below is no longer the only rescue — revisit #1502",
-			crossModuleAssoc, out)
+
+	unitAfter, after := storedCrossAssoc(t, target, "Config_Account")
+	if after == nil {
+		t.Fatalf("the update removed %s — mendixlabs/mxcli#1502's follow-up", crossModuleAssoc)
+	}
+	if unitAfter != unitBefore {
+		t.Errorf("association moved from unit %s to %s", unitBefore, unitAfter)
+	}
+	for _, key := range []string{"GUID", "$ID", "ParentPointer"} {
+		if !bytes.Equal(binaryOf(t, before, key), binaryOf(t, after, key)) {
+			t.Errorf("%s changed across the update: %x -> %x", key, binaryOf(t, before, key), binaryOf(t, after, key))
+		}
+	}
+	if got := after.Map()["Child"]; got != "Administration.Account" {
+		t.Errorf("Child = %v; want Administration.Account", got)
+	}
+	if out, ok := describeAssoc(t, target, crossModuleAssoc); !ok {
+		t.Errorf("DESCRIBE cannot read the kept association: %s", out)
+	}
+	if len(res.DependentsKept) != 1 || res.DependentsKept[0] != crossModuleAssoc || len(res.DependentsLost) != 0 {
+		t.Errorf("kept %v, lost %v; want kept [%s]", res.DependentsKept, res.DependentsLost, crossModuleAssoc)
+	}
+}
+
+// When the new version no longer has the entity the association points at,
+// there is nothing to point it at: putting it back would leave a by-name
+// reference to a missing entity (CE1613). It stays removed and is reported.
+func TestPerformUpdate_ReportsACrossModuleAssociationWhoseTargetIsGone(t *testing.T) {
+	target := copyFixture(t)
+	execMDL(t, target, crossModuleAssocMDL)
+
+	ref := copyFixture(t)
+	execMDL(t, ref, "rename entity Administration.Account to AccountV2;")
+
+	res, err := PerformUpdate(target, ref, emptyMpk(t), "Administration",
+		"4.3.2", "4.3.3", "00000000-0000-0000-0000-000000000000", testBackend)
+	if err != nil {
+		t.Fatalf("PerformUpdate: %v", err)
+	}
+	if _, after := storedCrossAssoc(t, target, "Config_Account"); after != nil {
+		t.Errorf("association restored although Administration.Account is gone: %v", after)
+	}
+	if len(res.DependentsLost) != 1 || !strings.HasPrefix(res.DependentsLost[0], crossModuleAssoc) {
+		t.Errorf("lost = %v; want %s reported", res.DependentsLost, crossModuleAssoc)
+	}
+	if len(res.DependentsKept) != 0 {
+		t.Errorf("kept = %v; want none", res.DependentsKept)
 	}
 }
 
@@ -118,13 +260,11 @@ func TestSaveEdits_SavesCrossModuleAssociationsIntoTheModule(t *testing.T) {
 		t.Fatalf("saved file does not recreate the association:\n%s", body)
 	}
 
-	// The file is only a rescue if it replays: update, then exec it.
-	if _, err := PerformUpdate(target, copyFixture(t), emptyMpk(t), "Administration",
-		"4.3.2", "4.3.3", "00000000-0000-0000-0000-000000000000", testBackend); err != nil {
-		t.Fatalf("PerformUpdate: %v", err)
-	}
+	// The file is only a rescue if it replays. The update now keeps the
+	// association, so take it away by hand and replay onto that.
+	execMDL(t, target, "drop association MyFirstModule.Config_Account;")
 	if _, ok := describeAssoc(t, target, crossModuleAssoc); ok {
-		t.Fatal("control: the update was expected to remove the association")
+		t.Fatal("control: the association was not dropped")
 	}
 	execMDL(t, target, string(body))
 	out, ok := describeAssoc(t, target, crossModuleAssoc)
