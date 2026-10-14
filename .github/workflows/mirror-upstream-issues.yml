@@ -1,0 +1,53 @@
+name: Mirror Upstream Issues
+
+# Copies open mendixlabs/mxcli issues into this fork so the issue-triage
+# routine (.claude/skills/issue-triage/) can classify them. Runs here rather
+# than in the routine: a cloud session cannot attach two repos named mxcli.
+#
+# Mirrors are created with github.token on purpose: events it causes do not
+# start other workflows, so ai-issue-review.yml does not fire once per mirror.
+# Seeding with a personal token (e.g. running mirror.py locally) would.
+
+on:
+  schedule:
+    - cron: '7 * * * *'  # hourly, off the top of the hour
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Print what would be written, write nothing'
+        type: boolean
+        default: true
+      max_create:
+        description: 'Cap on new mirrors this run'
+        type: number
+        default: 40
+
+permissions:
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: mirror-upstream-issues
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    # Only the fork mirrors; this file travels upstream with fork PRs.
+    if: github.repository == 'ako/mxcli'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          sparse-checkout: .claude/skills/issue-triage
+
+      - name: Mirror
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          MAX_CREATE: ${{ inputs.max_create || 40 }}
+        run: |
+          args=(--upstream mendixlabs/mxcli --fork "${{ github.repository }}" --max-create "$MAX_CREATE")
+          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          python3 -I .claude/skills/issue-triage/mirror.py "${args[@]}" | tee /tmp/summary.txt
+          { echo '```json'; tail -1 /tmp/summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
