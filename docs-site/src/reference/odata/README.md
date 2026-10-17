@@ -86,6 +86,23 @@ Two more consequences:
   neither. `CE6630` fires in both directions here, so this follows the contract
   rather than a fixed answer.
 
+### Navigation properties become associations
+
+Each navigation property whose target is also imported becomes an association.
+A navigation property with a `Partner` is one end of a bidirectional
+relationship, and Mendix does not accept its ends as separate associations
+(`CE6618` "Navigation '…' is not available in the OData service"):
+
+| Navigation | Association |
+|------------|-------------|
+| No `Partner` | One per navigation property — `Reference`, or `ReferenceSet` for a collection |
+| One-to-many pair (`Lines` / `ParentBuffer`) | One `Reference` from the single-valued end, naming both navigation properties |
+| Many-to-many or one-to-one pair | None. Mendix offers no such navigation; the import lists the pair as not imported |
+
+A re-import of a module that an earlier mxcli version imported the old way lists
+the associations that fail with `CE6618` as `drop association …;` lines. Run them,
+then run the import again.
+
 ## Contract Browsing Statements
 
 Browse available assets from cached service contracts without network access.

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- mendixlabs/mxcli#1231: every navigation shape that decides whether an
+     imported association builds. Partner is the line, not multiplicity. -->
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
+  <edmx:DataServices>
+    <Schema Namespace="Demo" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+      <EntityType Name="Buffer">
+        <Key><PropertyRef Name="Id"/></Key>
+        <Property Name="Id" Type="Edm.Int64" Nullable="false"/>
+        <Property Name="Label" Type="Edm.String"/>
+        <!-- one-to-many, partnered: one association, from Line -->
+        <NavigationProperty Name="Lines" Type="Collection(Demo.Line)" Partner="ParentBuffer"/>
+        <!-- many-to-many, partnered: Mendix offers no form of it -->
+        <NavigationProperty Name="CapacityTypes" Type="Collection(Demo.CapacityType)" Partner="Buffers"/>
+        <!-- one-to-one, partnered: likewise -->
+        <NavigationProperty Name="Twin" Type="Demo.Twin" Partner="TwinBuffer"/>
+        <!-- many, unpartnered: a ReferenceSet that builds clean -->
+        <NavigationProperty Name="Peers" Type="Collection(Demo.Buffer)"/>
+      </EntityType>
+      <EntityType Name="Line">
+        <Key><PropertyRef Name="Id"/></Key>
+        <Property Name="Id" Type="Edm.Int64" Nullable="false"/>
+        <NavigationProperty Name="ParentBuffer" Type="Demo.Buffer" Partner="Lines"/>
+      </EntityType>
+      <EntityType Name="CapacityType">
+        <Key><PropertyRef Name="Id"/></Key>
+        <Property Name="Id" Type="Edm.Int64" Nullable="false"/>
+        <NavigationProperty Name="Buffers" Type="Collection(Demo.Buffer)" Partner="CapacityTypes"/>
+      </EntityType>
+      <EntityType Name="Twin">
+        <Key><PropertyRef Name="Id"/></Key>
+        <Property Name="Id" Type="Edm.Int64" Nullable="false"/>
+        <NavigationProperty Name="TwinBuffer" Type="Demo.Buffer" Partner="Twin"/>
+      </EntityType>
+      <EntityContainer Name="Container">
+        <EntitySet Name="Buffers" EntityType="Demo.Buffer"/>
+        <EntitySet Name="Lines" EntityType="Demo.Line"/>
+        <EntitySet Name="CapacityTypes" EntityType="Demo.CapacityType"/>
+        <EntitySet Name="Twins" EntityType="Demo.Twin"/>
+      </EntityContainer>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

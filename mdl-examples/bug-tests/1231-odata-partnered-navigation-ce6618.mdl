@@ -1,0 +1,46 @@
+mdl 1;
+-- Bug mendixlabs/mxcli#1231 (ako/mxcli#1289): importing OData entities with
+-- *-to-* navigation properties creates associations that fail with CE6618.
+--
+-- Symptom, verbatim: "mxcli creates ReferenceSet associations automatically (one
+-- per *-to-* navigation property on the imported entity). … These associations
+-- are invalid for external entities and mxbuild rejects them with CE6618."
+--
+-- Measured on mxbuild 11.12.1, the line is the navigation's PARTNER, not its
+-- multiplicity. An unpartnered collection (Peers) builds clean. Every partnered
+-- end imported as its own association is CE6618 "Navigation 'Lines' from
+-- external entity 'Buffer' to 'Line' is not available in the OData service":
+--
+--   one-to-many  (Lines/ParentBuffer)  ONE association from Line, naming both
+--                                      ends, BothDirections        -> 0 errors
+--   many-to-many (CapacityTypes/Buffers) no form builds: one association, two,
+--   one-to-one   (Twin/TwinBuffer)       or Owner Both all give CE6618
+--
+-- So the import now pairs the one-to-many ends, skips the other two and says so,
+-- and on re-import names (as `drop association …;` lines) any association an
+-- earlier mxcli made the old way. Before the fix this script built with 6x
+-- CE6618; after it, 0 errors.
+--
+-- Run it (MetadataUrl resolves relative to the project directory):
+--
+--   mkdir -p /path/to/app/mdl-examples/odata-local-metadata
+--   cp mdl-examples/odata-local-metadata/partner-navigation-metadata.xml /path/to/app/mdl-examples/odata-local-metadata/
+--   mxcli exec mdl-examples/bug-tests/1231-odata-partnered-navigation-ce6618.mdl -p app.mpr
+--   mxcli docker check -p app.mpr
+
+create module Issue1231;
+
+create constant Issue1231.SvcUrl
+  ( Type: string, DefaultValue: 'http://localhost:18765/' );
+
+create consumed odata service Issue1231.Svc (
+  ODataVersion: OData4,
+  MetadataUrl: './mdl-examples/odata-local-metadata/partner-navigation-metadata.xml',
+  ServiceUrl: '@Issue1231.SvcUrl'
+);
+
+-- Expect: "Created 2 navigation associations" (ParentBuffer, Peers) and a report
+-- naming the many-to-many and one-to-one pairs as not imported.
+create external entities from Issue1231.Svc into Issue1231;
+
+list associations in Issue1231;

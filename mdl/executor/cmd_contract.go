@@ -1166,6 +1166,22 @@ func createNavigationAssociations(
 	// association name (== nav-property name) is the fallback skip signal.
 	existingAssocs, existingNav := indexExistingAssociations(dm)
 
+	// The association an earlier import made for a navigation property, keyed
+	// like existingNav, so a partnered end imported the old way can be named.
+	navAssoc := make(map[assocKey]*domainmodel.Association)
+	entityName := make(map[model.ID]string, len(dm.Entities))
+	for _, ent := range dm.Entities {
+		entityName[ent.ID] = ent.Name
+	}
+	for _, a := range dm.Associations {
+		if p, ok := entityName[a.ParentID]; ok && a.RemoteParentNavigationProperty != "" {
+			navAssoc[assocKey{p, a.RemoteParentNavigationProperty}] = a
+		}
+	}
+	// Partnered navigations Mendix does not offer, and associations from an
+	// earlier import that map a partnered end the way that is CE6618.
+	var unavailable, stale []string
+
 	count := 0
 	for _, schema := range doc.Schemas {
 		for _, et := range schema.EntityTypes {
@@ -1202,6 +1218,55 @@ func createNavigationAssociations(
 				// stored as Rest$ODataEntityTypeSource (Persistable=false).
 				if parentEnt.Persistable && !childEnt.Persistable {
 					continue
+				}
+
+				// A navigation property with a Partner is one END of a
+				// bidirectional relationship, and Mendix does not treat the ends
+				// separately (mendixlabs/mxcli#1231). Measured on 11.12.1, with
+				// importing each end as its own association as the baseline —
+				// CE6618 "Navigation 'Lines' from external entity 'Buffer' to
+				// 'Line' is not available in the OData service" on every end:
+				//
+				//	one-to-many    ONE association, from the single-valued end,
+				//	               naming both properties          0 errors
+				//	many-to-many   no form builds — one association, two, or
+				//	one-to-one     Owner Both: CE6618 on both ends
+				//
+				// So a one-to-many pair is created once, by its single-valued end
+				// (it holds the reference, so it is the FROM entity), and the
+				// other two are not created at all and are reported instead.
+				// The unpartnered collection navigations beside them in the same
+				// contract build clean, which is what makes Partner the line.
+				partner := partnerNavigation(np, parentQN, typeByQualified[targetTypeName])
+				if partner != nil {
+					partnerMany := strings.HasPrefix(partner.Type, "Collection(")
+					if isMany == partnerMany {
+						if prior := navAssoc[assocKey{parentEnt.Name, np.Name}]; prior != nil {
+							stale = append(stale, prior.Name)
+						}
+						// Once per pair: from the end that sorts first.
+						if parentQN+"/"+np.Name <= targetTypeName+"/"+partner.Name {
+							kind := "many-to-many"
+							if !isMany {
+								kind = "one-to-one"
+							}
+							unavailable = append(unavailable, fmt.Sprintf("%s.%s / %s.%s (%s)",
+								parentEnt.Name, np.Name, childEnt.Name, partner.Name, kind))
+						}
+						continue
+					}
+					if isMany {
+						// The single-valued end creates the association; one
+						// an earlier import made from this end is CE6618.
+						if prior := navAssoc[assocKey{parentEnt.Name, np.Name}]; prior != nil {
+							stale = append(stale, prior.Name)
+						}
+						continue
+					}
+					if prior := navAssoc[assocKey{parentEnt.Name, np.Name}]; prior != nil &&
+						prior.RemoteChildNavigationProperty == "" {
+						stale = append(stale, prior.Name)
+					}
 				}
 
 				// Re-import dedup: if this nav property already has an
@@ -1263,6 +1328,28 @@ func createNavigationAssociations(
 					CreatableFromParent:            creatable,
 					UpdatableFromParent:            updatable,
 				}
+				if partner != nil {
+					// The child end's capabilities come from the TARGET's entity
+					// set, exactly as the parent end's come from the source's.
+					creatableFromChild := true
+					updatableFromChild := true
+					if es, ok := esByType[targetTypeName]; ok {
+						creatableFromChild = es.Insertable != nil && *es.Insertable
+						updatableFromChild = es.Updatable != nil && *es.Updatable
+					}
+					if r, ok := restrictionsByType[targetTypeName]; ok {
+						if r.nonInsertable[partner.Name] {
+							creatableFromChild = false
+						}
+						if r.nonUpdatable[partner.Name] {
+							updatableFromChild = false
+						}
+					}
+					assoc.RemoteChildNavigationProperty = partner.Name
+					assoc.Navigability2 = "BothDirections"
+					assoc.CreatableFromChild = creatableFromChild
+					assoc.UpdatableFromChild = updatableFromChild
+				}
 				assoc.ID = model.ID(types.GenerateID())
 
 				if err := ctx.Backend.CreateAssociation(dm.ID, assoc); err != nil {
@@ -1271,11 +1358,57 @@ func createNavigationAssociations(
 				}
 				existingAssocs[assocKey{parentEnt.Name, assocName}] = true
 				existingNav[assocKey{parentEnt.Name, np.Name}] = true
+				if partner != nil {
+					existingNav[assocKey{childEnt.Name, partner.Name}] = true
+				}
 				count++
 			}
 		}
 	}
+
+	if len(unavailable) > 0 {
+		sort.Strings(unavailable)
+		fmt.Fprintf(ctx.Output, "\n  %d partnered navigation pair(s) not imported — Mendix does not offer a\n", len(unavailable))
+		fmt.Fprintf(ctx.Output, "  bidirectional many-to-many or one-to-one navigation, and an association\n")
+		fmt.Fprintf(ctx.Output, "  for either end fails the build with CE6618:\n")
+		for _, u := range unavailable {
+			fmt.Fprintf(ctx.Output, "    %s\n", u)
+		}
+	}
+	if len(stale) > 0 {
+		sort.Strings(stale)
+		fmt.Fprintf(ctx.Output, "\n  %d association(s) from an earlier import map one end of a partnered\n", len(stale))
+		fmt.Fprintf(ctx.Output, "  navigation separately, which fails the build with CE6618. Drop them and\n")
+		fmt.Fprintf(ctx.Output, "  re-run this import:\n")
+		prefix := ""
+		if mod := moduleNameOfDomainModel(ctx, dm); mod != "" {
+			prefix = mod + "."
+		}
+		for _, name := range stale {
+			fmt.Fprintf(ctx.Output, "    drop association %s%s;\n", prefix, name)
+		}
+	}
 	return count
+}
+
+// partnerNavigation returns the navigation property on the target type that np
+// names as its Partner, provided it points back at np's own type — or nil when
+// np is one-directional. A Partner that does not lead back is malformed
+// metadata, and treating it as one-directional is what Mendix can still map.
+func partnerNavigation(np *types.EdmNavigationProperty, ownerQN string, target *types.EdmEntityType) *types.EdmNavigationProperty {
+	if np.Partner == "" || target == nil {
+		return nil
+	}
+	for _, other := range target.NavigationProperties {
+		if other.Name != np.Partner || other.ContainsTarget {
+			continue
+		}
+		back := strings.TrimSuffix(strings.TrimPrefix(other.Type, "Collection("), ")")
+		if back == ownerQN {
+			return other
+		}
+	}
+	return nil
 }
 
 // indexExistingAssociations builds the two lookup tables the re-import dedup
@@ -1308,6 +1441,11 @@ func indexExistingAssociations(dm *domainmodel.DomainModel) (byName, byNav map[a
 		byName[assocKey{p, a.Name}] = true
 		if a.RemoteParentNavigationProperty != "" {
 			byNav[assocKey{p, a.RemoteParentNavigationProperty}] = true
+		}
+		// A partnered pair is one association; its other end is reached from
+		// the child entity under the child navigation property.
+		if c, ok := parentName[a.ChildID]; ok && a.RemoteChildNavigationProperty != "" {
+			byNav[assocKey{c, a.RemoteChildNavigationProperty}] = true
 		}
 	}
 	return byName, byNav
