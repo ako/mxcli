@@ -1,0 +1,47 @@
+mdl 1;
+-- Bug mendixlabs/mxcli#1386 (ako/mxcli#1311): a message definition member over a
+-- one-to-one association gets the wrong occurrence.
+--
+-- Symptom, verbatim: "[CE6524] The domain model has changed and is no longer
+-- consistent with the message definition. ... Details: - The occurrence of
+-- 'Shop.CustomerProfile_Customer' has changed"
+--
+-- Cause: resolveAssociationCardinality (mdl/executor/cmd_messagedefinitions.go)
+-- made every reverse traversal a list (MaxOccurs -1). A Reference owned by BOTH
+-- ends is one-to-one, so from the TO side it is a single object (1) as well.
+-- CREATE, CREATE OR MODIFY (re-executing describe output) and ALTER … ADD MEMBER
+-- all resolve through it.
+--
+-- Measured on mxbuild 11.12.1: before the fix this script gives 2 errors (CE6524
+-- on each Customer definition; the forward Profile definition was already right),
+-- after it 0. Run it:
+--
+--   mxcli exec mdl-examples/bug-tests/1386-message-definition-one-to-one-occurrence.mdl -p app.mpr
+--   mxcli docker check -p app.mpr
+
+create module Shop1386;
+create entity Shop1386.Customer ( Name: String(100) );
+create entity Shop1386.CustomerProfile ( Notes: String(200) );
+create association Shop1386.CustomerProfile_Customer
+  from Shop1386.CustomerProfile to Shop1386.Customer type Reference owner Both;
+
+-- Reverse (Customer is the TO end) — the reported shape — and forward.
+create message definition collection Shop1386.MD_Customer {
+  definition Customer for Shop1386.Customer as 'Customers' {
+    Name,
+    Shop1386.CustomerProfile_Customer/Shop1386.CustomerProfile { Notes }
+  }
+  definition Profile for Shop1386.CustomerProfile as 'Profiles' {
+    Notes,
+    Shop1386.CustomerProfile_Customer/Shop1386.Customer { Name }
+  }
+};
+
+-- The ALTER path resolves the same way.
+create message definition collection Shop1386.MD_Alter {
+  definition Customer for Shop1386.Customer as 'Customers' { Name }
+};
+alter message definition Shop1386.MD_Alter.Customer
+  add member Shop1386.CustomerProfile_Customer/Shop1386.CustomerProfile { Notes };
+
+describe message definition collection Shop1386.MD_Customer;

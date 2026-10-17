@@ -290,9 +290,10 @@ func buildMessageMember(ctx *ExecContext, m *ast.MessageMemberDef, holderQN, col
 // It is a function of the direction of traversal AND the association's type,
 // and the second half was learned the hard way (ako/mxcli-rest FINDINGS #60).
 //
-//	                 forward (holder is FROM)   reverse (holder is TO)
-//	Reference                  1                        -1
-//	ReferenceSet              -1                        -1
+//	                       forward (holder is FROM)   reverse (holder is TO)
+//	Reference                        1                        -1
+//	Reference, Owner Both            1                         1
+//	ReferenceSet                    -1                        -1
 //
 // The reverse is always a list: many holders point at one target, so from the
 // target's side the element repeats. The forward direction is where the type
@@ -309,6 +310,11 @@ func buildMessageMember(ctx *ExecContext, m *ast.MessageMemberDef, holderQN, col
 // error behind it — mxbuild reports CE6524 "The occurrence of '...' has
 // changed" on the definition, plus CE0295 on any object mapping element bound
 // to it. Measured on ako/mxcli-rest at 11.13.0 against a 0-error baseline.
+//
+// The one-to-one row is the same rule seen from the other side: Owner Both on a
+// Reference means each target has at most one holder, so the reverse is single
+// too. Storing -1 there is CE6524 on the definition (mendixlabs/mxcli#1386);
+// measured on 11.12.1, where 1 is what clears it.
 //
 // An association that connects the two entities in NEITHER direction is refused
 // rather than defaulted. A wrong cardinality is worse than a refusal: for a
@@ -330,7 +336,11 @@ func resolveAssociationCardinality(ctx *ExecContext, assocQN, holderQN, targetQN
 		return 1, nil
 	case toQN == holderQN && fromQN == targetQN:
 		// The reverse: many holders point at one target, so from the target's
-		// side the element repeats.
+		// side the element repeats — unless the Reference is owned by both
+		// ends, which makes it one-to-one and single this way too.
+		if assoc.Type == domainmodel.AssociationTypeReference && assoc.Owner == domainmodel.AssociationOwnerBoth {
+			return 1, nil
+		}
 		return -1, nil
 	}
 	return 0, mdlerrors.NewValidation(fmt.Sprintf(

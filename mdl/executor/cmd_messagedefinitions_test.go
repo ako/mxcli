@@ -58,9 +58,19 @@ func mdFixture(t *testing.T) (*ExecContext, *model.MessageDefinitionCollection) 
 		Type: domainmodel.AssociationTypeReferenceSet}
 	tags.ID = nextID("tags")
 
+	profile := &domainmodel.Entity{Name: "CustomerProfile", Persistable: true}
+	profile.ID = nextID("profile")
+	profile.Attributes = []*domainmodel.Attribute{mkAttr("Notes", &domainmodel.StringAttributeType{})}
+
+	// One-to-one: a Reference owned by BOTH ends, so each Customer has at most
+	// one profile as surely as each profile has one Customer.
+	oneToOne := &domainmodel.Association{Name: "CustomerProfile_Customer", ParentID: profile.ID, ChildID: customer.ID,
+		Type: domainmodel.AssociationTypeReference, Owner: domainmodel.AssociationOwnerBoth}
+	oneToOne.ID = nextID("o2o")
+
 	dm := &domainmodel.DomainModel{ContainerID: mod.ID,
-		Entities:     []*domainmodel.Entity{base, order, customer, tag},
-		Associations: []*domainmodel.Association{assoc, tags},
+		Entities:     []*domainmodel.Entity{base, order, customer, tag, profile},
+		Associations: []*domainmodel.Association{assoc, tags, oneToOne},
 	}
 	dm.ID = nextID("dm")
 	h := mkHierarchy(mod)
@@ -196,6 +206,46 @@ func TestReferenceSetIsAListInBothDirections(t *testing.T) {
 	}
 	if got := c.Definitions[0].Root.Children[0].MaxOccurs; got != -1 {
 		t.Errorf("Tag -> Order MaxOccurs = %d, want -1 (the reverse of a set)", got)
+	}
+}
+
+// mendixlabs/mxcli#1386: "When a message definition exposes a one-to-one
+// association (`TYPE Reference OWNER Both`), mxcli stores an occurrence for that
+// element that differs from what Studio Pro derives" — mx check then reports
+// CE6524 "The occurrence of 'Shop.CustomerProfile_Customer' has changed".
+//
+// The reverse of a Reference is a list only because many holders can point at
+// one target. Owner Both makes it one-to-one, so from the TO side it is one
+// object too.
+func TestOneToOneAssociationIsSingleInBothDirections(t *testing.T) {
+	// The reported shape: Customer is the TO entity, reaching its profile.
+	c, err := runCreate(t, mdCreate(&ast.MessageDefinitionDef{
+		Name:    "Customer",
+		Entity:  ast.QualifiedName{Module: "Sales", Name: "Customer"},
+		Members: []*ast.MessageMemberDef{assocMember("CustomerProfile_Customer", "CustomerProfile", attrMember("Notes"))},
+	}))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	child := c.Definitions[0].Root.Children[0]
+	if child.MaxOccurs != 1 {
+		t.Errorf("Customer -> CustomerProfile MaxOccurs = %d, want 1: a one-to-one association is single from the TO side too (CE6524)", child.MaxOccurs)
+	}
+	if child.ExposedItemName != "" {
+		t.Errorf("ExposedItemName = %q, want empty for a single object", child.ExposedItemName)
+	}
+
+	// Forward was already single and must stay so.
+	c, err = runCreate(t, mdCreate(&ast.MessageDefinitionDef{
+		Name:    "Profile",
+		Entity:  ast.QualifiedName{Module: "Sales", Name: "CustomerProfile"},
+		Members: []*ast.MessageMemberDef{assocMember("CustomerProfile_Customer", "Customer", attrMember("Name"))},
+	}))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if got := c.Definitions[0].Root.Children[0].MaxOccurs; got != 1 {
+		t.Errorf("CustomerProfile -> Customer MaxOccurs = %d, want 1", got)
 	}
 }
 
