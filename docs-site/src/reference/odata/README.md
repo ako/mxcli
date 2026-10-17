@@ -46,6 +46,12 @@ CREATE EXTERNAL ENTITIES FROM Module.Service ENTITIES (Customer, Order);
 CREATE OR MODIFY EXTERNAL ENTITIES FROM Module.Service;
 ```
 
+Each entity is named after its OData **entity type**, as Studio Pro names it: an
+entity type `Part` exposed as entity set `Parts` becomes `Module.Part`. The entity
+set is kept as the entity's remote entity set. A re-import finds an entity by the
+service and entity set it maps first, so an entity that an earlier mxcli version
+named after the set (`Module.Parts`) is updated in place and keeps its name.
+
 ### Complex types are flattened
 
 The Mendix domain model has no complex types. A property typed as an OData

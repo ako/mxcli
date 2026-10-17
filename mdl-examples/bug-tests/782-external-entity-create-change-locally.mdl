@@ -47,13 +47,13 @@ create consumed odata service Issue782.Sample (
 create external entities from Issue782.Sample into Issue782;
 
 -- (1) The entity must read back as external at all.
-describe external entity Issue782.Products;
+describe external entity Issue782.Product;
 
 -- The reported flow: turn the flag on, and it must stick.
-alter entity Issue782.Products set ( AllowCreateChangeLocally: true );
-describe external entity Issue782.Products;
+alter entity Issue782.Product set ( AllowCreateChangeLocally: true );
+describe external entity Issue782.Product;
 
 -- (2) A re-import refreshes the contract-derived capabilities but must not reset
 -- the local-changes flag.
 create or modify external entities from Issue782.Sample into Issue782;
-describe external entity Issue782.Products;
+describe external entity Issue782.Product;

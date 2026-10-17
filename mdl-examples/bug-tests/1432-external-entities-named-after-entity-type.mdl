@@ -1,0 +1,46 @@
+mdl 1;
+-- Bug mendixlabs/mxcli#1432 (ako/mxcli#1319): `create external entities from
+-- M.Client into M` names entities after the entity set, not the entity type.
+--
+-- Symptom, verbatim: "Bulk external-entity creation names each entity after the
+-- OData entity set (`Parts`), while Studio Pro names it after the entity type
+-- (`Part`). A script that refers to the Studio Pro name then fails."
+--
+-- Cause: createExternalEntities (mdl/executor/cmd_contract.go) chose the entity
+-- set name for every top-level entity. The single-entity path
+-- (`describe contract entity … format mdl`) already used the type name, so the
+-- two disagreed with each other as well as with Studio Pro.
+--
+-- An entity an older mxcli imported under the set name is still found on
+-- re-import — by service and entity set, not by name — and keeps its name, so
+-- the `create or modify` below updates rather than duplicates.
+--
+-- Manual verification (needs a project; the metadata file ships with the repo,
+-- and MetadataUrl resolves relative to the project directory):
+--
+--   mkdir -p /path/to/app/mdl-examples/odata-local-metadata
+--   cp mdl-examples/odata-local-metadata/sample-metadata.xml /path/to/app/mdl-examples/odata-local-metadata/
+--   mxcli exec mdl-examples/bug-tests/1432-external-entities-named-after-entity-type.mdl -p app.mpr
+--
+-- Expect `Issue1432.Product` and `Issue1432.Category` (entity sets Products,
+-- Categories). Before the fix they were Issue1432.Products and
+-- Issue1432.Categories, and the describe below failed with "entity does not exist".
+
+create module Issue1432;
+
+create constant Issue1432.SvcUrl
+  ( Type: string, DefaultValue: 'https://services.odata.org/V4/Northwind/Northwind.svc/' );
+
+create consumed odata service Issue1432.Sample (
+  ODataVersion: OData4,
+  MetadataUrl: './mdl-examples/odata-local-metadata/sample-metadata.xml',
+  ServiceUrl: '@Issue1432.SvcUrl'
+);
+
+create external entities from Issue1432.Sample into Issue1432;
+
+describe external entity Issue1432.Product;
+describe external entity Issue1432.Category;
+
+-- A re-import updates the same two entities: 0 created, 2 updated.
+create or modify external entities from Issue1432.Sample into Issue1432;

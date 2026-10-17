@@ -374,7 +374,7 @@ const trippinShapedContract = `<?xml version="1.0" encoding="utf-8"?>
 // while the SAME `Address` reached through `Person.HomeAddress`, typed `Location`
 // directly, is accepted — so the line is inheritance, not the path syntax.
 func TestCreateExternalEntities_DoesNotFlattenInheritedComplexProperties(t *testing.T) {
-	airport, out := importOne(t, trippinShapedContract, "Airports")
+	airport, out := importOne(t, trippinShapedContract, "Airport")
 	got := attrByName(airport)
 
 	if _, ok := got["Location_Address"]; ok {
@@ -388,7 +388,7 @@ func TestCreateExternalEntities_DoesNotFlattenInheritedComplexProperties(t *test
 	// The control: the SAME leaf name reached through a non-derived complex type
 	// must still be imported. Without this the test passes against a build that
 	// stopped flattening altogether.
-	person, _ := importOne(t, trippinShapedContract, "People")
+	person, _ := importOne(t, trippinShapedContract, "Person")
 	if _, ok := attrByName(person)["HomeAddress_Address"]; !ok {
 		t.Error("HomeAddress_Address is missing — Location is not derived, so it must flatten")
 	}
@@ -402,7 +402,7 @@ func TestCreateExternalEntities_DoesNotFlattenInheritedComplexProperties(t *test
 //
 // `!strings.HasPrefix(t, "Edm.")` is not enough — GeographyPoint passes it.
 func TestCreateExternalEntities_SkipsUnsupportedLeafTypes(t *testing.T) {
-	airport, out := importOne(t, trippinShapedContract, "Airports")
+	airport, out := importOne(t, trippinShapedContract, "Airport")
 	if _, ok := attrByName(airport)["Location_Loc"]; ok {
 		t.Error("Location_Loc was imported as an attribute — Edm.GeographyPoint is CE6622")
 	}
@@ -423,13 +423,13 @@ func TestCreateExternalEntities_SkipsUnsupportedLeafTypes(t *testing.T) {
 //	Person   (entity set People)      HomeAddress_Address  Filterable True
 //	Employee (derived, no entity set) HomeAddress_Address  Filterable False
 func TestCreateExternalEntities_FlattenedFilterabilityFollowsTheEntitySet(t *testing.T) {
-	person, _ := importOne(t, trippinShapedContract, "People")
+	person, _ := importOne(t, trippinShapedContract, "Person")
 	top := attrByName(person)["HomeAddress_Address"]
 	if top == nil {
-		t.Fatal("People.HomeAddress_Address missing")
+		t.Fatal("Person.HomeAddress_Address missing")
 	}
 	if !top.Filterable || !top.Sortable {
-		t.Errorf("People.HomeAddress_Address Filterable=%v Sortable=%v, want both true — "+
+		t.Errorf("Person.HomeAddress_Address Filterable=%v Sortable=%v, want both true — "+
 			"the set is queryable and the contract restricts nothing (CE6630 in the other direction)",
 			top.Filterable, top.Sortable)
 	}

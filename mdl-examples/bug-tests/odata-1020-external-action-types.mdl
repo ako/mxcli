@@ -68,7 +68,7 @@ create consumed odata service Ext.TripPin (
   ServiceUrl: @Ext.SvcUrl
 );
 
--- Imports BOTH kinds of entity: the entity-set-backed one (People) and the
+-- Imports BOTH kinds of entity: the entity-set-backed one (Person) and the
 -- action's return type (Airport), which has no entity set and is stored as
 -- Rest$ODataEntityTypeSource.
 create external entities from Ext.TripPin into Ext;

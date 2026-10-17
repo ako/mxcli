@@ -204,12 +204,12 @@ const derivedTypeMetadata = `<?xml version="1.0" encoding="utf-8"?>
 func TestCreateExternalEntities_DerivedTypeKeyStaysUpdatable(t *testing.T) {
 	all, _ := importComplexTypeContract(t, derivedTypeMetadata)
 
-	top := all["People"]
+	top := all["Person"]
 	if top == nil {
-		t.Fatalf("top-level entity People not created; got %v", entityNamesOf(all))
+		t.Fatalf("top-level entity Person not created; got %v", entityNamesOf(all))
 	}
 	if k := attrByName(top)["UserName"]; k == nil {
-		t.Fatal("People.UserName missing")
+		t.Fatal("Person.UserName missing")
 	} else if k.Updatable {
 		t.Error("top-level key is Updatable=true — CE6630 " +
 			`"'UserName' is marked Updatable=False in the OData service, but True in the app."`)

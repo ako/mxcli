@@ -560,9 +560,9 @@ create consumed odata service TripPinClient."TripPinApiClient" (
 
 /**
  * Level 10.2: Bulk import all entity types from the TripPin contract.
- * Creates one external entity per OData entity type. Top-level entity
- * sets (Airlines, Airports, People) use the set name; derived/contained
- * types (Flight, PlanItem, Trip, etc.) use the type name.
+ * Creates one external entity per OData entity type, named after the
+ * entity TYPE the way Studio Pro names it: the People set becomes Person,
+ * Airlines Airline, Airports Airport (mendixlabs/mxcli#1432).
  */
 create external entities from TripPinClient."TripPinApiClient";
 

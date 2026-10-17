@@ -103,7 +103,7 @@ func TestCreateNavigationAssociations_NoDuplicateOnReimport(t *testing.T) {
 		Schemas:    []*types.EdmSchema{{Namespace: "NS", EntityTypes: []*types.EdmEntityType{person}}},
 		EntitySets: []*types.EdmEntitySet{{Name: "People", EntityType: "NS.Person"}},
 	}
-	people := &domainmodel.Entity{Name: "People", Persistable: true}
+	people := &domainmodel.Entity{Name: "Person", Persistable: true}
 	people.ID = model.ID("ent-people")
 	dm := &domainmodel.DomainModel{Entities: []*domainmodel.Entity{people}}
 	dm.ID = model.ID("dm-1")

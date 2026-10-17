@@ -526,11 +526,6 @@ func createExternalEntities(ctx *ExecContext, s *ast.CreateExternalEntitiesStmt)
 		return mdlerrors.NewBackend("get domain model", err)
 	}
 
-	// Index existing entities by name for upsert
-	existing := make(map[string]*domainmodel.Entity)
-	for _, ent := range dm.Entities {
-		existing[ent.Name] = ent
-	}
 	// What new entities are placed against: the module as read, plus every
 	// entity this import creates, so they clear each other as well.
 	placed := &domainmodel.DomainModel{
@@ -568,15 +563,20 @@ func createExternalEntities(ctx *ExecContext, s *ast.CreateExternalEntitiesStmt)
 			}
 			isTopLevel := entitySetName != ""
 
-			// Mendix entity name: entity set name when present (e.g. "People"),
-			// otherwise the type name (e.g. "PlanItem", "Flight", "Trip").
+			// Mendix entity name: the entity TYPE name, as Studio Pro names it
+			// ("Part" for entity set "Parts", "Person" for "People"). Naming it
+			// after the set broke every script written against Studio Pro's name
+			// (mendixlabs/mxcli#1432). An entity an older mxcli imported under
+			// the set name is still found, by its remote identity, and keeps the
+			// name pages and microflows already use.
+			existingEntity := importedEntityFor(dm, serviceRef, entitySetName, et.Name)
 			mendixName := et.Name
-			if isTopLevel {
-				mendixName = entitySetName
+			if existingEntity != nil {
+				mendixName = existingEntity.Name
 			}
 
 			// Apply entity name filter (matched against type name OR entity set name)
-			if len(filterSet) > 0 && !filterSet[strings.ToLower(et.Name)] && !filterSet[strings.ToLower(mendixName)] {
+			if len(filterSet) > 0 && !filterSet[strings.ToLower(et.Name)] && !filterSet[strings.ToLower(entitySetName)] {
 				continue
 			}
 
@@ -808,7 +808,7 @@ func createExternalEntities(ctx *ExecContext, s *ast.CreateExternalEntitiesStmt)
 				attrs = append(attrs, attr)
 			}
 
-			if existingEntity, ok := existing[mendixName]; ok {
+			if existingEntity != nil {
 				if !s.CreateOrModify {
 					fmt.Fprintf(ctx.Output, "  SKIPPED: %s.%s (already exists; use create or modify to update)\n", targetModule, mendixName)
 					skipped++
@@ -921,15 +921,8 @@ func createPrimitiveCollectionNPEs(
 	// Lookup parent Mendix entity by EDMX type qualified name.
 	parentByQN := make(map[string]*domainmodel.Entity)
 	for qn, et := range typeByQualified {
-		mendixName := et.Name
-		if es := esMap[qn]; es != "" {
-			mendixName = es
-		}
-		for _, ent := range dm.Entities {
-			if ent.Name == mendixName {
-				parentByQN[qn] = ent
-				break
-			}
+		if ent := importedEntityFor(dm, serviceRef, esMap[qn], et.Name); ent != nil {
+			parentByQN[qn] = ent
 		}
 	}
 
@@ -1051,6 +1044,26 @@ func isInheritedProperty(et *types.EdmEntityType, propName string, byQN map[stri
 	return true
 }
 
+// importedEntityFor returns the entity an import of this OData entity type
+// writes to: the one already mapped to the same entity set of the same service,
+// else the one carrying the type's name.
+//
+// The remote identity comes first because mxcli once named a top-level entity
+// after its entity SET (mendixlabs/mxcli#1432). Matching on the name alone would
+// make a re-import of such a module create a type-named twin mapping the same
+// set, and renaming the old one would break everything written against it.
+func importedEntityFor(dm *domainmodel.DomainModel, serviceRef, entitySetName, typeName string) *domainmodel.Entity {
+	if entitySetName != "" {
+		for _, ent := range dm.Entities {
+			if ent.Source == "Rest$ODataRemoteEntitySource" &&
+				ent.RemoteServiceName == serviceRef && ent.RemoteEntitySet == entitySetName {
+				return ent
+			}
+		}
+	}
+	return findEntityByName(dm, typeName)
+}
+
 // findEntityByName returns a domain model entity by name, or nil if not found.
 func findEntityByName(dm *domainmodel.DomainModel, name string) *domainmodel.Entity {
 	for _, ent := range dm.Entities {
@@ -1136,20 +1149,10 @@ func createNavigationAssociations(
 		esByType[es.EntityType] = es
 	}
 	// Build a lookup from EDMX type qualified name → existing Mendix entity.
-	// An entity type matches by its EntitySet name when present, otherwise by
-	// its bare type name.
 	mendixByType := make(map[string]*domainmodel.Entity)
 	for qn, et := range typeByQualified {
-		entitySetName := esMap[qn]
-		mendixName := et.Name
-		if entitySetName != "" {
-			mendixName = entitySetName
-		}
-		for _, ent := range dm.Entities {
-			if ent.Name == mendixName {
-				mendixByType[qn] = ent
-				break
-			}
+		if ent := importedEntityFor(dm, serviceRef, esMap[qn], et.Name); ent != nil {
+			mendixByType[qn] = ent
 		}
 	}
 
