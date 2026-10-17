@@ -1,0 +1,53 @@
+-- ako/mxcli#1456 (mendixlabs/mxcli#1559): inside a custom error handler,
+-- `describe microflow` dropped everything after an `if … end if;` and printed a
+-- loop as its bare header. Rebuilding the description (drop + create) rerouted
+-- the handler's merge into the main flow, so a failed call went on with the
+-- main path; the loop shape did not parse.
+--
+-- Expected: both descriptions contain the whole handler — `log … 'after';
+-- return -1;` after `end if;`, and the loop with its body and `end loop;`.
+mdl 1;
+create module MyModule;
+create persistent entity MyModule.Order (Number: String(20));
+create persistent entity MyModule.Result (Message: String(200));
+
+create microflow MyModule.Ping ($Code: Integer) returns Integer
+begin
+  return $Code;
+end;
+
+create microflow MyModule.Order_Notify ($Flag: Boolean) returns Integer
+begin
+  $Response = call rest service get 'https://example.com/orders' (
+    Timeout: 30,
+  ) returns response
+    on error without rollback begin
+      if $Flag then
+        log info node 'MyModule' 'one';
+      else
+        log warning node 'MyModule' 'two';
+      end if;
+      log info node 'MyModule' 'after';
+      return -1;
+    end error;
+  log info node 'MyModule' 'done';
+  return 1;
+end;
+
+create microflow MyModule.Order_Collect () returns List of MyModule.Result
+begin
+  retrieve $Orders from MyModule.Order;
+  $Results = create list of MyModule.Result;
+  $Code = call microflow MyModule.Ping(Code = 1)
+    on error without rollback begin
+      loop $Order in $Orders begin
+        $Item = create MyModule.Result (Message = $Order/Number);
+        add $Item to $Results;
+      end loop;
+      return $Results;
+    end error;
+  return $Results;
+end;
+
+describe microflow MyModule.Order_Notify;
+describe microflow MyModule.Order_Collect;

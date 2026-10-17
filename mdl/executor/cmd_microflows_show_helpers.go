@@ -2816,7 +2816,19 @@ func collectErrorHandlerStatementSpans(
 			return
 		}
 
-		if stmt := formatActivity(ctx, obj, entityNames, microflowNames); stmt != "" {
+		if loop, isLoop := obj.(*microflows.LoopedActivity); isLoop {
+			// The header alone is not a statement: without `begin … end loop;`
+			// the description did not parse (ako/mxcli#1456).
+			start := len(statements)
+			if stmt := formatActivity(ctx, obj, entityNames, microflowNames); stmt != "" {
+				notes(obj, indentStr)
+				statements = append(statements, indentStr+stmt)
+			}
+			statements = append(statements, indentStr+"begin")
+			emitLoopBody(ctx, loop, flowsByOrigin, flowsByDest, entityNames, microflowNames, &statements, indent, nil, 0, annotationsByTarget)
+			statements = append(statements, indentStr+loopEndKeyword(loop)+";")
+			spans = append(spans, errorHandlerSpan{id: id, start: start, end: len(statements) - 1})
+		} else if stmt := formatActivity(ctx, obj, entityNames, microflowNames); stmt != "" {
 			start := len(statements)
 			notes(obj, indentStr)
 			statements = append(statements, indentStr+stmt)
@@ -2848,12 +2860,41 @@ func findErrorHandlerSplitMergePoints(
 	return result
 }
 
+// firstReachableErrorHandlerMerge finds where the handler starting at startID
+// joins something else: the first merge with a way in from outside the
+// handler. A merge every way into which lies inside the handler — the one
+// closing an `if` in the handler body — joins nothing but the handler's own
+// branches, and stopping there dropped everything after `end if;` (ako/mxcli#1456).
+// A merge with one way in is the degenerate case of the same rule.
 func firstReachableErrorHandlerMerge(
 	startID model.ID,
 	activityMap map[model.ID]microflows.MicroflowObject,
 	flowsByOrigin map[model.ID][]*microflows.SequenceFlow,
 	incoming map[model.ID]int,
 ) model.ID {
+	inHandler := make(map[model.ID]bool)
+	for queue := []model.ID{startID}; len(queue) > 0; queue = queue[1:] {
+		id := queue[0]
+		if id == "" || inHandler[id] {
+			continue
+		}
+		inHandler[id] = true
+		for _, flow := range findNormalFlows(flowsByOrigin[id]) {
+			queue = append(queue, flow.DestinationID)
+		}
+	}
+	joinsOutside := make(map[model.ID]bool)
+	for originID, flows := range flowsByOrigin {
+		if inHandler[originID] {
+			continue
+		}
+		for _, f := range flows {
+			if f != nil {
+				joinsOutside[f.DestinationID] = true
+			}
+		}
+	}
+
 	visited := make(map[model.ID]bool)
 	queue := []model.ID{startID}
 	for len(queue) > 0 {
@@ -2863,7 +2904,7 @@ func firstReachableErrorHandlerMerge(
 			continue
 		}
 		visited[id] = true
-		if _, isMerge := activityMap[id].(*microflows.ExclusiveMerge); isMerge && !isNoOpMerge(id, activityMap, incoming) {
+		if _, isMerge := activityMap[id].(*microflows.ExclusiveMerge); isMerge && !isNoOpMerge(id, activityMap, incoming) && joinsOutside[id] {
 			return id
 		}
 		for _, flow := range findNormalFlows(flowsByOrigin[id]) {
