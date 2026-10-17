@@ -29,6 +29,21 @@ The tree reloads by itself when the agent changes the model (`mxcli exec`, a
 writing `-c` one-liner, `new`, `rename`, `marketplace`). Press **Refresh** after
 changing the app elsewhere, for example in Studio Pro.
 
+## Workflows
+
+Prepared workflows hold each change to quality gates that mxcli checks. The
+first is **Vibe code**: describe a change in a sentence and it lands with
+security, a clean build, tests and a short change note.
+
+- Start one from the banner, or type `/workflow-vibe <the change>`; `/workflows`
+  lists them. The commands work in every Claude Code session, including the web,
+  where the banner does not show.
+- While a run is open, the banner shows its intent and where its gates stand.
+- Under the hood: `mxcli workflow start | check | note | close | status`. A run
+  is a file in `docs/brain/workflows/`; `check` records what each gate answered,
+  and `close` is refused while a blocking gate fails. Security findings that were
+  there before the change do not block it; new ones do.
+
 ## Getting it
 
 `mxcli init` writes the companion to `.claude/skills/mxcli-companion/` in a project

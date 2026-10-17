@@ -28,6 +28,18 @@ export type Project =
   | { state: 'loaded'; mpr: string; tree: TreeNode[]; loadedMs: number; tookMs: number }
   | { state: 'failed'; mpr: string; error: string }
 
+// A prepared workflow, as `mxcli workflow list --json` describes it.
+export type WorkflowOffer = { id: string; title: string; summary: string; command: string }
+
+// An open workflow run, as `mxcli workflow status --json` describes it.
+export type WorkflowRun = {
+  id: string
+  title: string
+  intent: string
+  last: { gate: string; status: string }[] | null
+  blocked: string[] | null
+}
+
 declare module 'claude-code' {
   interface PluginState {
     'mxcli-companion': {
@@ -38,6 +50,9 @@ declare module 'claude-code' {
       treeTop: number
       sourceTop: number
       welcome: boolean
+      workflows: WorkflowOffer[]
+      runs: WorkflowRun[]
+      offersHidden: boolean
       diagram: { zoom: 'fit' | 'actual'; x: number }
       treeHidden: boolean
     }
