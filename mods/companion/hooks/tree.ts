@@ -100,6 +100,16 @@ export const diagramView = (svg: string, view: DiagramZoom, columnPx: number) =>
   return { svg: newHead + rest, canPan: true, atStart: x <= 0, atEnd: x >= maxX, width: vw, height: Math.round(h) }
 }
 
+// touchesWorkflow is a Bash command running `mxcli workflow …`: the open runs
+// may have changed, so the band re-reads them.
+export const touchesWorkflow = (command: string): boolean => /(^|[\s/;&|(])mxcli\s+(.*\s)?workflow\b/.test(command)
+
+// gateLine renders a run's last gate results as one short line.
+export const gateLine = (last: readonly { gate: string; status: string }[] | null): string =>
+  last === null || last.length === 0
+    ? 'not checked yet'
+    : last.map(r => `${r.status === 'pass' ? '✓' : r.status === 'warn' ? '!' : '✗'} ${r.gate}`).join('  ')
+
 // parseTree reads `mxcli project-tree` output.
 export const parseTree = (stdout: string): TreeNode[] => {
   const start = stdout.indexOf('[')

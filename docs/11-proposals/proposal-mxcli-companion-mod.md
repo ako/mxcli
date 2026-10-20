@@ -170,6 +170,11 @@ reports changes on stdout. It answers umbrella open questions 3 and 4.
 
 ### 5.3 Start band and workflows
 
+Specified in its own proposal, with the vibe-code workflow built as the
+prototype: [proposal-mxcli-companion-workflows.md](proposal-mxcli-companion-workflows.md).
+The sketch below is the starting point it refined: workflows got a
+`workflow.json` beside their skill instead of frontmatter, and gates.
+
 **Where workflows live:** as skills in `.claude/skills/mendix/`, shipped by
 `init` like every other skill, so one file is both the agent's procedure and the
 thing the UI offers. A skill becomes a workflow by declaring it in frontmatter:

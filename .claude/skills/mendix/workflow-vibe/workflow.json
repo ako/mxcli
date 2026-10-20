@@ -1,0 +1,82 @@
+{
+  "id": "vibe",
+  "title": "Vibe code",
+  "summary": "Describe a change in a sentence; it lands with security, a build, tests and a change note checked",
+  "command": "/workflow-vibe",
+  "skill": "workflow-vibe",
+  "gates": [
+    {
+      "id": "intent",
+      "title": "Intent",
+      "kind": "intent",
+      "blocking": true
+    },
+    {
+      "id": "security",
+      "title": "Security",
+      "kind": "lint",
+      "blocking": true,
+      "rules": [
+        "SEC",
+        "MPR007"
+      ],
+      "args": [
+        "lint",
+        "-p",
+        "{mpr}",
+        "--format",
+        "json"
+      ],
+      "hint": "grant the new entities, microflows and pages to the right roles (manage-security skill)"
+    },
+    {
+      "id": "build",
+      "title": "Builds",
+      "kind": "command",
+      "blocking": true,
+      "args": [
+        "docker",
+        "check",
+        "-p",
+        "{mpr}"
+      ],
+      "hint": "fix the errors mx check reports (the validate-project command)"
+    },
+    {
+      "id": "tests",
+      "title": "Tests",
+      "kind": "command",
+      "blocking": true,
+      "requiresPath": "tests",
+      "args": [
+        "test",
+        "tests/",
+        "-p",
+        "{mpr}",
+        "--local",
+        "--db-type",
+        "hsqldb"
+      ],
+      "hint": "add or fix a test in tests/ for the logic you changed (test-microflows skill)"
+    },
+    {
+      "id": "quality",
+      "title": "Quality",
+      "kind": "score",
+      "args": [
+        "report",
+        "-p",
+        "{mpr}",
+        "--format",
+        "json"
+      ],
+      "hint": "see what lowered the score: mxcli report -p <app>.mpr (assess-quality skill)"
+    },
+    {
+      "id": "note",
+      "title": "Change note",
+      "kind": "note",
+      "blocking": true
+    }
+  ]
+}
