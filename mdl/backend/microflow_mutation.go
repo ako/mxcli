@@ -66,6 +66,12 @@ type MicroflowMutator interface {
 	// Move sets where the top-level node target is drawn, and nothing else:
 	// its flows keep their ends, sides and curves (ako/mxcli#818).
 	Move(target model.ID, to model.Point) error
+	// Pin says the script states that a node is drawn at the point at — a
+	// stored node, or one a fragment places there. An insert or replace that
+	// would move the node drawn there to make room is refused instead, so the
+	// stored flow keeps saying what the script says (mendixlabs/mxcli#1598,
+	// case 6).
+	Pin(at model.Point) error
 	// SetHeader writes the document properties of declared — a
 	// *microflows.Microflow or *microflows.Nanoflow built from the statement,
 	// with every property it does not state carried from the stored one — onto

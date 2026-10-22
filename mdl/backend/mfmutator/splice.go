@@ -69,6 +69,8 @@ type Mutator struct {
 	// removed holds the $IDs of every element an operation took out, so Save
 	// can prove that nothing still points at one of them.
 	removed map[string]bool
+	// pinned are the points the script states a node is drawn at (Pin).
+	pinned map[point]bool
 }
 
 var _ backend.MicroflowMutator = (*Mutator)(nil)
@@ -341,7 +343,16 @@ func (m *Mutator) makeRoom(g *graph, fb *fragmentBox, f flowRef, x, y *node) (en
 	b := y.pos.get(ax) - s*y.size.get(ax)/2
 	need := fb.length(ax) + 2*minGap
 	if deficit := need - s*(b-a); deficit > 0 {
-		m.shift(g, ax, s, float64(a+b)/2, s*deficit, "")
+		cut := float64(a+b) / 2
+		if p := m.pinnedPast(g, ax, s, cut, ""); p != nil {
+			blocked := ", and making it would move " + describeNode(p) + ","
+			if p == y {
+				blocked = ","
+			}
+			return 0, 0, fmt.Errorf("the inserted statements need %dpx more room than there is between %s and %s%s "+
+				"which the script draws where it is; %s", deficit, describeNode(x), describeNode(y), blocked, roomAdvice)
+		}
+		m.shift(g, ax, s, cut, s*deficit, "")
 		b += s * deficit
 	}
 
@@ -422,7 +433,12 @@ func (m *Mutator) Replace(target model.ID, frag *backend.MicroflowFragment) erro
 		// past target moves along by the difference.
 		near := x.pos.get(ax) - s*x.size.get(ax)/2
 		if extra := fb.length(ax) - x.size.get(ax); extra > 0 {
-			m.shift(g, ax, s, float64(x.pos.get(ax)), s*extra, x.id)
+			cut := float64(x.pos.get(ax))
+			if p := m.pinnedPast(g, ax, s, cut, x.id); p != nil {
+				return fmt.Errorf("the replacing statements are %dpx longer than %s, and making room for them would move %s, "+
+					"which the script draws where it is; %s", extra, describeNode(x), describeNode(p), roomAdvice)
+			}
+			m.shift(g, ax, s, cut, s*extra, x.id)
 		}
 		centre := point{}
 		centre = centre.set(ax, near+s*fb.length(ax)/2)
@@ -700,6 +716,17 @@ func (m *Mutator) Move(target model.ID, to model.Point) error {
 	return nil
 }
 
+// Pin records that the script states a node is drawn at at
+// (mendixlabs/mxcli#1598, case 6). A point rather than a node: the node there
+// may be one a later fragment places, at the position its statement states.
+func (m *Mutator) Pin(at model.Point) error {
+	if m.pinned == nil {
+		m.pinned = map[point]bool{}
+	}
+	m.pinned[point{at.X, at.Y}] = true
+	return nil
+}
+
 // bodyFlows returns the flows that run inside loop's body, at any depth. They
 // are stored in the unit's Flows list, not in the loop, so taking the loop out
 // has to take them too; left behind they would point at removed objects.
@@ -860,16 +887,37 @@ func (m *Mutator) markRemoved(v any) {
 // so no curve changes. skip is a node that is about to be removed.
 func (m *Mutator) shift(g *graph, ax axis, s int, cut float64, delta int, skip string) {
 	for _, n := range g.order {
-		if n.loop != "" || n.id == skip {
-			continue
-		}
-		if float64(s)*(float64(n.pos.get(ax))-cut) <= 0 {
+		if !shifted(n, ax, s, cut, skip) {
 			continue
 		}
 		n.pos = n.pos.set(ax, n.pos.get(ax)+delta)
 		dSet(n.doc, "RelativeMiddlePoint", n.pos.String())
 	}
 }
+
+// shifted reports whether shift moves n: a top-level node past the cut.
+func shifted(n *node, ax axis, s int, cut float64, skip string) bool {
+	return n.loop == "" && n.id != skip && float64(s)*(float64(n.pos.get(ax))-cut) > 0
+}
+
+// pinnedPast returns the first node shift would move that is drawn at a point
+// the script states (Pin), or nil. Moving it would make the stored flow say
+// something other than the script — a later fragment placed at its own stated
+// position would be left behind on the wrong side of a node that moved, and
+// re-running the script would move the node back (mendixlabs/mxcli#1598,
+// case 6) — so the caller refuses instead.
+func (m *Mutator) pinnedPast(g *graph, ax axis, s int, cut float64, skip string) *node {
+	for _, n := range g.order {
+		if m.pinned[n.pos] && shifted(n, ax, s, cut, skip) {
+			return n
+		}
+	}
+	return nil
+}
+
+// roomAdvice is the way out of a refused shift.
+const roomAdvice = "state @position on the new statements, where there is room for them, or leave unstated the positions " +
+	"of what comes after them (@position, @merge, a note's position:) so that it can move along"
 
 // checkIntegrity is the rule-1 guard: no binary anywhere in the unit may
 // still name an element that was removed, and no two elements may share an

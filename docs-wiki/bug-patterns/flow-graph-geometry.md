@@ -94,6 +94,15 @@ translated into the gap; anything that is not on the line (a note) must not
 size the gap, and anything the script placed absolutely must not be
 translated.
 
+**Making room is a move the script did not ask for.** Shifting the row after
+a gap is consistent only while nothing past the gap has a stated position:
+once the script says -299 and the store says 40, the next run must move it back
+or refuse, so "shift everything consistently" can never re-run Unchanged. A
+node at a stated point is pinned instead, and a shift that would move one is
+refused with the room it needs — under mdl 1 only, because under mdl 0 a
+refusal becomes a whole-flow rebuild, which loses more than the shift did.
+Check a splice fix by re-running the same script, not by describing once.
+
 ## See also
 
 - [fix-issue findings](../../.claude/skills/fix-issue/findings/) — the formulas,
