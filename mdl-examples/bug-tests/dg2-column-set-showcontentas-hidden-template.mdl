@@ -1,0 +1,28 @@
+mdl 1;
+-- `alter page … set (ShowContentAs: attribute) on dg column(Name)` on a column
+-- created as dynamicText left the column's dynamicText template filled. Data
+-- grid 2 hides it unless showContentAs is "dynamicText", CREATE stores a hidden
+-- template null, and the project as stored failed with CE0463 at the grid
+-- (11.13.0, `mxcli docker check --no-update-widgets`; the default check
+-- normalises widgets and hides it).
+--
+-- Expected: the describe below shows the Name column without ShowContentAs /
+-- Content, and `docker check --no-update-widgets` reports 0 errors. Switching
+-- back needs the text in the same statement:
+--   set (ShowContentAs: dynamicText, dynamicText: 'Item') on dg column(Name)
+
+create module BugDg2Tmpl;
+
+create persistent entity BugDg2Tmpl.Item (Name: string(50));
+
+create page BugDg2Tmpl.P (title: 'P', layout: Atlas_Core.Atlas_Default) {
+  datagrid dg (DataSource: database BugDg2Tmpl.Item) {
+    column (Attribute: Name, Caption: 'Name', ShowContentAs: dynamicText, Content: 'Item {1}', ContentParams: ({1} = Name))
+  }
+};
+
+alter page BugDg2Tmpl.P {
+  set (ShowContentAs: attribute) on dg column(Name)
+};
+
+describe page BugDg2Tmpl.P;

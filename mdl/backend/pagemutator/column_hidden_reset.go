@@ -29,7 +29,9 @@ import (
 
 // ResetHiddenColumnProperties brings a grid column back in line with its
 // widget's visibility rules after a SET: every primitive property a rule now
-// hides is reset to its declared default. A property the statement itself named
+// hides is reset to its declared default, a text template it hides is nulled,
+// and one it reveals is given its default text or, with none declared, refused
+// unless the statement sets it. A property the statement itself named
 // (setProps, by MDL name) is never silently reset — holding a non-default value
 // while hidden, it is refused instead, as MDL-WIDGET10 refuses it on create.
 //
@@ -53,7 +55,7 @@ func (m *Mutator) ResetHiddenColumnProperties(gridRef, columnRef string, rules [
 		}
 	}
 	return resetHiddenItemProps(col.widget, col.colPropKeys, col.colPropKinds, defaults,
-		primitiveValuesByKey(grid.widget, buildPropKeyMap(grid.widget)), listKey, rules, explicit, nil)
+		primitiveValuesByKey(grid.widget, buildPropKeyMap(grid.widget)), listKey, rules, explicit, m.newTemplate)
 }
 
 // ResetHiddenItemProperties is ResetHiddenColumnProperties for an object-list
@@ -116,7 +118,7 @@ func resetHiddenItemProps(item bson.D, itemKeys, itemKinds, defaults, widgetValu
 				// for it, in the statement that reveals it.
 				if defaults[key] == "" {
 					return nil, fmt.Errorf(
-						"property %q is shown under this item's new configuration but holds no text — set it in the "+
+						"property %q is shown under its new configuration but holds no text — set it in the "+
 							"same statement, e.g. `set (…, %s: '…') on <item>`", key, key)
 				}
 				if tmpl := newTemplate(); tmpl != nil {

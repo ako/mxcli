@@ -374,6 +374,10 @@ func (m *Mutator) SetColumnProperty(gridRef string, columnRef string, prop strin
 	if err != nil {
 		return err
 	}
+	// A template CREATE stored null (the column was not in dynamicText mode)
+	// gets one before its text is written; whether it may be shown is the
+	// reset pass's to decide afterwards.
+	m.ensureItemTemplate(result, prop)
 	return setColumnPropertyMut(result.widget, result.colPropKeys, result.colPropKinds, prop, value)
 }
 
