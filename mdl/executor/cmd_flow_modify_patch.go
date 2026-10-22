@@ -5,6 +5,7 @@ package executor
 import (
 	"bytes"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -32,6 +33,10 @@ import (
 //     moves that node, and only it: its flows keep their ends, sides and
 //     curves (no reconnection), and nothing around it moves. A position the
 //     script leaves out keeps what is stored, as before;
+//   - a node the script draws at a stated position stays there: a fragment
+//     that needs more room than the stated positions leave is refused, rather
+//     than everything after it moved along, which left the stored flow saying
+//     something other than the script (mendixlabs/mxcli#1598, case 6);
 //   - two nodes nobody placed follow the node they were derived from, because
 //     mxcli's own layout put them there and nothing else says where they go:
 //     a start event where the layout derives it follows the first statement
@@ -56,10 +61,13 @@ const endSpacing = HorizontalSpacing + HorizontalSpacing/2
 // patch opens the stored flow and applies the moves and the splice
 // operations. The moves go first, so a fragment the script places next to a
 // moved node is joined to it where it now is, and again after the operations,
-// so a node an insert shifted to make room is still drawn where the script
-// says (a move sets a position, so applying it twice is applying it once).
+// so a node no one placed that follows another (followingEnd) is drawn where
+// the script says even if an insert shifted it to make room (a move sets a
+// position, so applying it twice is applying it once). Between the two, every
+// point the script states a node at is pinned, so an operation that would
+// have to move one to make room is refused (mendixlabs/mxcli#1598, case 6).
 func patch(ctx *ExecContext, a *alterFlowContext, ops []*ast.AlterFlowOperation, targets []mfmutator.Candidate,
-	moves []flowMove) (backend.MicroflowMutator, error) {
+	moves []flowMove, stated []model.Point) (backend.MicroflowMutator, error) {
 	mut, err := ctx.Backend.OpenMicroflowForMutation(a.mf.ID)
 	if err != nil {
 		return nil, err
@@ -74,6 +82,11 @@ func patch(ctx *ExecContext, a *alterFlowContext, ops []*ast.AlterFlowOperation,
 	}
 	if err := move(); err != nil {
 		return nil, err
+	}
+	for _, p := range stated {
+		if err := mut.Pin(p); err != nil {
+			return nil, err
+		}
 	}
 	if err := a.applyTo(ctx, mut, ops, targets); err != nil {
 		return nil, err
@@ -136,6 +149,69 @@ func (pd *patchDiff) movedNode(d, s ast.MicroflowStatement) error {
 	}
 	pd.moves = append(pd.moves, flowMove{id: c.ID, to: model.Point{X: da.Position.X, Y: da.Position.Y}, what: describeAt(s)})
 	return nil
+}
+
+// statedPoints are the canvas points the declared flow states a node is drawn
+// at: each statement's @position, an if's @merge, the @start, every note's
+// position and every parameter's. The splice pins whatever is drawn at one, so
+// that making room for a fragment does not move a node away from where the
+// script draws it (mendixlabs/mxcli#1598, case 6). A loop body is left out:
+// its positions are relative to the loop box, and the splice moves no node
+// inside one.
+func statedPoints(d *flowDecl) []model.Point {
+	var out []model.Point
+	add := func(p *ast.Position) {
+		if p != nil {
+			out = append(out, model.Point{X: p.X, Y: p.Y})
+		}
+	}
+	for _, p := range d.params {
+		add(p.Position)
+	}
+	var walk func(rv reflect.Value)
+	walk = func(rv reflect.Value) {
+		switch rv.Kind() {
+		case reflect.Interface:
+			if !rv.IsNil() {
+				walk(rv.Elem())
+			}
+		case reflect.Pointer:
+			if rv.IsNil() {
+				return
+			}
+			switch v := rv.Interface().(type) {
+			case *ast.ActivityAnnotations:
+				add(v.Position)
+				add(v.Merge)
+				add(v.Start)
+				for _, notes := range [][]ast.MicroflowAnnotation{v.Notes, v.FreeNotes} {
+					for _, n := range notes {
+						add(n.Position)
+					}
+				}
+				return
+			case *ast.LoopStmt:
+				walk(reflect.ValueOf(v.Annotations))
+				return
+			case *ast.WhileStmt:
+				walk(reflect.ValueOf(v.Annotations))
+				return
+			}
+			walk(rv.Elem())
+		case reflect.Struct:
+			for i := 0; i < rv.NumField(); i++ {
+				if rv.Type().Field(i).IsExported() {
+					walk(rv.Field(i))
+				}
+			}
+		case reflect.Slice, reflect.Array:
+			for i := 0; i < rv.Len(); i++ {
+				walk(rv.Index(i))
+			}
+		}
+	}
+	walk(reflect.ValueOf(d.body))
+	return out
 }
 
 // redrawn is the refusal for a statement whose connectors the script draws

@@ -254,6 +254,11 @@ func init() {
 			"- THE ALIAS IS A MODULE-LEVEL NAME. It cannot collide with an entity or\n" +
 			"  enumeration in the same module, case-insensitively — Mendix: \"Duplicate\n" +
 			"  name … Entities, associations and enumerations cannot share names.\"\n\n" +
+			"On a page the association is ONE-WAY: a data source can follow it from the\n" +
+			"view entity only. From the entity it points at (`database from\n" +
+			"$currentObject/M.Totals_Meter/M.Totals`) mxbuild reports CE8812 \"Entity\n" +
+			"'M.Meter' has no association 'M.Totals_Meter'\" (MDL-ASSOCDS02). Query the\n" +
+			"view entity instead: `database M.Totals where [M.Totals_Meter = $currentObject]`.\n\n" +
 			"The alternative is often better: CAST the id to a string and keep it as a\n" +
 			"plain attribute. That is one SQL statement instead of two and materialises\n" +
 			"no objects in the client, and the id is still there to look the real object\n" +

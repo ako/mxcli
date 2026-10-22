@@ -12,27 +12,27 @@ description: "The warm Docker-free dev loop, `mxcli run --local` — model chang
 |---|---|
 | 40-47 | Overview |
 | 48-60 | When to Use This Skill |
-| 61-116 | Usage |
-| 117-129 | How apply is chosen |
-| 130-195 | Prerequisites |
-| 196-213 | The intended loop |
-| 214-238 | Editing themes (SCSS) — rebuild, never clear caches |
-| 239-265 | `--watch` waits for a write to finish before it builds |
-| 266-294 | "My edit didn't show up" — stale process, not stale cache |
-| 295-324 | Flags |
-| 325-378 | Metrics and OpenTelemetry |
-| 379-436 | Pages render in the browser |
-| 437-454 | Pixel-perfect page loop |
-| 455-475 | Debugging a server-side error |
-| 476-496 | "Sign in failed" that is not about the password |
-| 497-529 | The same licence also stops the app after a few hours |
-| 530-609 | External browser preview (`--hub`) |
-| 610-618 | Validation checklist |
-| 619-658 | Constant values come from a configuration |
-| 659-662 | Warm local dev loop (`mxcli run --local [--watch] [--screenshot]`) |
-| 663-666 | External browser preview (`mxcli run --hub <url>` + `mxcli tunnel-hub`) |
-| 667-670 | Tunnel-hub GitHub authentication (opt-in, gated on `--github-oauth-client-id`; absent = today's open hub) |
-| 671-673 | Runtime metrics + settings passthrough (`mxcli run --local --metrics` / `--runtime-setting Key=Value`) |
+| 61-118 | Usage |
+| 119-131 | How apply is chosen |
+| 132-201 | Prerequisites |
+| 202-219 | The intended loop |
+| 220-247 | Editing themes (SCSS) — rebuild, never clear caches |
+| 248-274 | `--watch` waits for a write to finish before it builds |
+| 275-303 | "My edit didn't show up" — stale process, not stale cache |
+| 304-334 | Flags |
+| 335-388 | Metrics and OpenTelemetry |
+| 389-446 | Pages render in the browser |
+| 447-464 | Pixel-perfect page loop |
+| 465-485 | Debugging a server-side error |
+| 486-506 | "Sign in failed" that is not about the password |
+| 507-539 | The same licence also stops the app after a few hours |
+| 540-619 | External browser preview (`--hub`) |
+| 620-628 | Validation checklist |
+| 629-668 | Constant values come from a configuration |
+| 669-672 | Warm local dev loop (`mxcli run --local [--watch] [--screenshot]`) |
+| 673-676 | External browser preview (`mxcli run --hub <url>` + `mxcli tunnel-hub`) |
+| 677-680 | Tunnel-hub GitHub authentication (opt-in, gated on `--github-oauth-client-id`; absent = today's open hub) |
+| 681-683 | Runtime metrics + settings passthrough (`mxcli run --local --metrics` / `--runtime-setting Key=Value`) |
 
 <!-- /skill-index -->
 # Warm Local Dev Loop — `mxcli run --local`
@@ -104,8 +104,10 @@ What each one does, precisely:
   returns the first build made from that source or newer. A change the loop applied
   **before** you called `wait` is reported at once — it never waits for a "next"
   change that already happened. With nothing changed it reports the last build.
-  A failure prints the CE codes / SCSS error lines; on 11.14 the second-build defect
-  is reported as a failure with its explanation, never as a hang. A run started
+  A failure prints the CE codes / SCSS error lines, never a hang. Where mxbuild
+  writes the client itself (11.12.5, 11.14) its serve process only builds
+  completely once, so the loop restarts it per change (one line says so; ~25–30 s
+  instead of ~5 s, still a hot reload). A run started
   without `--watch` never applies a change: `wait` says so and exits 1.
 - **`run stop`** asks the run to shut down (it removes `--test-endpoint`, turns the
   debugger off), waits until it is gone, then sweeps the run's process session, so an
@@ -143,6 +145,10 @@ association catalog only at startup; behavioural changes are hot-reloaded.
     permits only that target — the devcontainer default. Both are non-interactive,
     so a run never blocks on a password prompt; where sudo is unavailable the
     user-owned cluster still carries it.
+    On **Windows** the installer always gives `postgres` a password and there is no
+    sudo: pass `--db-admin-user postgres --db-admin-password <pw>` (or set
+    `PGPASSWORD` for postgres). The admin login is used only to create the role and
+    database, and is refused without `--ensure-db`.
     The user-owned cluster persists across sessions; its server log is
     `~/.mxcli/postgres/server.log`. Stop it with
     `pg_ctl -D "$HOME/.mxcli/postgres/data" stop`. To remove it, stop it first and
@@ -219,7 +225,10 @@ the loop rebuilds and hot-applies. Without `--watch`, nothing is watched, so the
 does nothing until you restart `run --local` (or re-run with `--watch`). `mxbuild
 --serve` recompiles the theme on its next build and correctly picks up SCSS content
 changes, so **never** `rm -rf theme-cache/ .mendix-cache/ deployment/` — clearing
-caches is a red herring.
+caches is a red herring. The one stale state is the serve process's own: after a
+Sass error it reports `[CE6093]` with that *first* error on every later build, even
+once fixed. `--watch` restarts `mxbuild --serve` when a theme failure follows
+another (one line says so), so the error you see after that is the current one.
 
 A **theme compile error fails the build step, before the runtime starts** — the
 error text is in the serve `/build` output (printed by `run --local`), not a
@@ -303,6 +312,7 @@ run's process session), and `run status` reports them. Do **not**
 | `--watch` | off | Rebuild + hot-apply on each change |
 | `--web-client-timeout` | `$MXCLI_WEB_CLIENT_TIMEOUT`, else `5m` | Limit for one web client bundle build; on timeout the tail of `deployment/log/web-client-build.log` is printed |
 | `--ensure-db` | off | Provision local Postgres + app database if missing |
+| `--db-admin-user` / `--db-admin-password` | postgres / — | Superuser login for `--ensure-db` when it has a password (Windows); only with `--ensure-db` |
 | `--app-port` / `--admin-port` / `--serve-port` | 8080 / 8090 / 6543 | Ports |
 | `--listen-addr` | `127.0.0.1` | IP the app binds to. `0.0.0.0` (or `::`) makes it reachable from other machines; the network URLs are printed once it runs. If the app builds absolute URLs (SSO redirects, email links), pair it with `--runtime-setting ApplicationRootUrl=http://<host>:<port>/` (or a real host in the configuration): the runtime does not derive one from the bind address — a warning says so. The M2EE admin API always stays on loopback |
 | `--db-host` / `--db-name` / `--db-user` / `--db-password` | 127.0.0.1:5432 / derived / mendix / mendix | Database; bracket IPv6 endpoints (`[::1]:5432`) |

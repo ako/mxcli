@@ -43,9 +43,10 @@ stopped: pid 30133 in 300ms
 returns the first build made from that source or newer — so a change the loop
 applied *before* `wait` was called is reported at once rather than waited for, and
 `mxcli exec x.mdl && mxcli run wait` is a correct one-call chain. With nothing
-changed it reports the last build. On Mendix 11.14, where every serve build after
-the first fails ([below](#--watch-on-mendix-1114)), `wait` reports that failure with
-its explanation; it never hangs on it. A run started without `--watch` never applies
+changed it reports the last build. On Mendix versions whose serve process only
+builds completely once ([below](#--watch-when-mxbuild-writes-the-client-11125-1114)),
+the loop restarts that process per change; if even the fresh one fails, `wait`
+reports the failure with its explanation — it never hangs on it. A run started without `--watch` never applies
 a change, and `wait` says so (exit 1).
 
 `run status|wait|stop` also work on a foreground `run --local` started in another
@@ -100,6 +101,12 @@ again` when it happens, so a browser test knows to sign in before its next step.
     `~/.mxcli/postgres/server.log`. Stop it with
     `pg_ctl -D "$HOME/.mxcli/postgres/data" stop`. To remove it, stop it first and
     then delete `~/.mxcli/postgres` (this permanently deletes its databases).
+    A server whose `postgres` superuser has a password — **every Windows install**,
+    where the installer always sets one — needs that login:
+    `--ensure-db --db-admin-user postgres --db-admin-password <password>`, or set
+    `PGPASSWORD` (or a `.pgpass` entry) for `postgres`, which keeps the password off
+    the command line. The admin login only creates the role and database; the app
+    still connects as `--db-user`.
   - Otherwise create it once yourself; without `--ensure-db`, `run --local` stops with
     an actionable message if the DB is unreachable:
 
@@ -127,6 +134,7 @@ would make Studio Pro 11.13 fail to open it — a branch with no upstream, or
 | `--watch` | off | Rebuild + hot-apply on every project change |
 | `--web-client-timeout` | `$MXCLI_WEB_CLIENT_TIMEOUT`, else `5m` | Limit for one web client bundle build (e.g. `10m`); on timeout the tail of `deployment/log/web-client-build.log` is printed |
 | `--ensure-db` | off | Provision local Postgres + the app database if missing (fresh-session bootstrap) |
+| `--db-admin-user` / `--db-admin-password` | postgres / — | Superuser login `--ensure-db` creates the role and database with when it has a password (Windows). Only with `--ensure-db`; never passed to the runtime |
 | `--setup` | off | Prepare prerequisites (cache MxBuild+runtime, ensure DB) and exit without booting — for a SessionStart hook |
 | `--app-port` | 8080 | App HTTP port |
 | `--admin-port` | 8090 | M2EE admin API port |
@@ -359,6 +367,15 @@ clear (verified: one `/build` after an `main.scss` content edit changes
 
 - **With `--watch`** — just save the `.scss`; the theme source is watched and the loop
   rebuilds and hot-applies automatically.
+  One exception, in `mxbuild --serve` itself: after a theme **error**, the same serve
+  process keeps reporting that first Sass error — as `[CE6093] The theme could not be
+  compiled`, quoting a line no longer in the file — on every later build, even once the
+  SCSS compiles (measured on 11.12.5; the bundled Dart Sass compiles the same source
+  cleanly). So when a theme failure follows another one, the loop restarts
+  `mxbuild --serve` and builds once more, printing *"the theme error may be stale …
+  restarting mxbuild --serve"*. A theme error that survives the restart is the source's
+  own, and is the one reported. The fresh build cannot tell a theme-only change from a
+  model change, so that apply restarts the runtime.
 - **Without `--watch`** — nothing watches anything, so a save changes nothing in the
   running app. Trigger a rebuild: restart `run --local`, or use `--watch`.
 
@@ -446,54 +463,52 @@ the deployment's own `web/index.html` rather than from the model setting, since
 the deployment is what gets served and the two disagree right after the setting
 is changed.
 
-### `--watch` on Mendix 11.14
+### `--watch` when mxbuild writes the client (11.12.5, 11.14)
 
-**`--watch` is not usable on 11.14 yet.** It starts and the app boots, but every
-*rebuild* fails inside mxbuild:
+Where mxbuild bundles the client itself, the **first** build in an `mxbuild --serve`
+process is the only complete one: it does not leave behind the client source
+(`web/pages/`, `web/layouts/`) or the bundler config its own incremental build
+needs. Every later build in the same process then goes one of two ways:
+
+- **A change that regenerates a page or layout fails** inside mxbuild:
+
+  ```
+  Could not find a part of the path '…/deployment/web/pages/MyModule.Home_Web.js'
+  ```
+
+  (on 11.14 a change that touches no page fails too, with
+  `Cannot find module '…/deployment/web/rollup.config.mjs'`).
+- **Any other change — even no change at all — succeeds with an incomplete
+  bundle** (11.12.5): `deployment/web/dist` is replaced by a monolithic `index.js`
+  and one chunk, with no `pages/` and no `widgets.css`. The reload is reported as
+  applied and every page fails to load.
+
+Measured against mxbuild 11.12.5 over its own HTTP API, no watch loop involved:
+
+| Build | `restartRequired` | `dist/` after it |
+|---|---|---|
+| 1, cold | true | 13 pages, `widgets.css`, 5.6 KB `index.js` |
+| 2, same process, model unchanged | false | 0 pages, no `widgets.css`, 683 KB `index.js` |
+| 3, same process, after `rm -rf web/dist` | false | same as 2 |
+| 4, same process, after `rm -rf web/` | build fails | — |
+| 5, fresh process | true | complete again |
+
+Nothing done to the deployment helps (also measured on 11.14: switching the app
+bundler to Rspack, deleting `deployment/`, restoring the bundler config), and a
+fresh process always does — a one-shot `mxbuild --target=deploy` run twice into
+the same directory succeeds both times. So under `--watch` mxcli **restarts
+`mxbuild --serve` and builds again** when a build fails this way or leaves
+`dist/` without its pages, and says so in one line:
 
 ```
-Could not find a part of the path '…/deployment/web/pages/MyModule.Home_Web.js'
+mxbuild --serve's incremental build left web/dist without dist/pages (13 page modules) and dist/widgets.css (…); restarting mxbuild --serve for a full build...
 ```
 
-or, when the change did not touch any page:
-
-```
-Compilation of the app bundle failed.
-Cannot find module '…/deployment/web/rollup.config.mjs'
-  imported from …/modeler/tools/node/rollup-runner.mjs
-```
-
-The first build in an `mxbuild --serve` process does not leave the deployment in a
-state its own incremental build can continue from — neither the bundler's config
-file nor `web/pages/`/`web/layouts/` survive it — so the first build succeeds and
-every later one fails. Measured against mxbuild 11.14.0 over its own HTTP API with
-no mxcli involved: the same `/build` request POSTed twice, model untouched between
-them, goes Success then Failure.
-
-No remedy from outside the process works, and three were measured:
-
-| Attempt | Result |
-|---|---|
-| Switch *App > Settings > Runtime > App bundler* to Rspack | Identical failure, naming `rspack.config.mjs` |
-| Delete `deployment/` and start over | Next second build fails the same way |
-| Restore the config (it exists for ~1.5s mid-build) | Rebuilds fine **while the model is unchanged**; fails as soon as a page changes |
-
-That last one is the interesting near-miss: the config carries nothing
-model-specific, so it can be captured and put back — but doing so only rescues the
-case a warm loop never needs. There are two regressions here, and the second one
-(the per-document client export) has no external fix. `run --local` prints an
-explanation when it sees either, so the failure does not read as a corrupt
-`deployment/`.
-
-For contrast, a one-shot `mxbuild --target=deploy` run twice into the same
-deployment directory succeeds both times — it is the serve process, not the 11.14
-deployment shape.
-
-Until mxbuild closes this, use a restart per change:
-
-```bash
-mxcli run --local --screenshot -p app.mpr
-```
+A change then costs ~25–30 s instead of ~5 s. It is still hot-applied: the
+incremental build's `restartRequired` is kept, because a fresh process's first
+build reports `true` even for an unchanged model, and taking it would restart the
+runtime — dropping every browser session — on every change. Measured end to end
+on 11.12.5; on 11.14 the same restart applies to the same failure shape.
 
 ## Pixel-perfect page loop
 

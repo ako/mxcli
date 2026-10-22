@@ -42,6 +42,11 @@ type DBConfig struct {
 	Name     string
 	User     string
 	Password string
+	// AdminUser/AdminPassword are a superuser login for --ensure-db to create
+	// the role and database with, when no passwordless path exists (mendixlabs/mxcli#1485).
+	// They are never passed to the runtime.
+	AdminUser     string
+	AdminPassword string
 }
 
 // IsFileBased reports whether this is the runtime's built-in file database, which

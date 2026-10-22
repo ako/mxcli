@@ -97,7 +97,13 @@ refused it (there is no enclosing object) or wrote a binding with no source
 variable: a different document. The cure for a refusal that fires on
 Studio Pro-authored content is usually a **spelling for the stored shape**, not
 a looser guard — and the survey that finds them is over the slot combinations
-the corpus actually stores, not over the ones the report mentions.
+the corpus actually stores, not over the ones the report mentions. The spelling
+has to reach every path that writes the slot: a pluggable property authored by
+its own key goes through the expression grammar, so `$Ctx.EventData` there was
+refused as an expression while the mapped keys took it. In the meantime the
+qualified name stood in for it, and a describer that prints that "faithfully"
+round-trips byte for byte into a binding that is CE7247. Faithful output is not
+evidence until the shape it re-creates has been through mx check.
 
 **Both halves or neither.** A describer that emits a path the builder cannot
 consume turns silent corruption into a build error, and a builder taught a form

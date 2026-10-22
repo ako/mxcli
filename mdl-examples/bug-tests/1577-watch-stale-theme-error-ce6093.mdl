@@ -1,0 +1,31 @@
+-- ============================================================================
+-- Bug test: mendixlabs/mxcli#1577 — `run --local --watch`: after a SCSS error
+-- is fixed, every following build still fails with CE6093 and the old Sass
+-- error until a restart
+-- ============================================================================
+--
+-- Reported: build #2 fails "An error occurred while compiling Theme files"
+-- (correct); after the fix, build #3 fails "[CE6093] The theme could not be
+-- compiled: Error: Undefined variable." quoting the removed line, and so does
+-- every later build until `mxcli run restart`.
+--
+-- Cause, in mxbuild --serve (measured on 11.12.5 over its /build API): the
+-- process keeps its first theme error; a fresh process compiles the same source.
+-- Fixed in serveRecovery (cmd/mxcli/docker/serve_recovery.go): a theme failure
+-- that follows another in the same serve process restarts it and builds once
+-- more; a failure that survives the restart is reported as the current one.
+--
+-- To verify (Mendix 11.12.5; a blank app from
+-- `mxcli new App --version 11.12.5 --theme none --layout none --skip-init`):
+--   mxcli exec mdl-examples/bug-tests/1577-watch-stale-theme-error-ce6093.mdl -p App.mpr
+--   mxcli run --local --watch --detach --db-type hsqldb -p App.mpr
+--   printf '.probe2 { color: $does-not-exist; }\n' > themesource/bug1577/web/main.scss
+--   mxcli run wait -p App.mpr     # failed: ... compiling Theme files (correct)
+--   printf '.probe2 { color: #123456; }\n' > themesource/bug1577/web/main.scss
+--   mxcli run wait -p App.mpr     # applied: build #3 (was: failed, [CE6093])
+--   curl -s http://127.0.0.1:8080/theme.compiled.css | grep -c 123456   # 1
+-- ============================================================================
+
+mdl 1;
+
+create module Bug1577;

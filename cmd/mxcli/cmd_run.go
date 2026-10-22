@@ -203,6 +203,8 @@ Examples:
 		dbName, _ := cmd.Flags().GetString("db-name")
 		dbUser, _ := cmd.Flags().GetString("db-user")
 		dbPassword, _ := cmd.Flags().GetString("db-password")
+		dbAdminUser, _ := cmd.Flags().GetString("db-admin-user")
+		dbAdminPassword, _ := cmd.Flags().GetString("db-admin-password")
 		screenshot, _ := cmd.Flags().GetBool("screenshot")
 		pageCheck, _ := cmd.Flags().GetBool("page-check")
 		screenshotPath, _ := cmd.Flags().GetString("screenshot-path")
@@ -275,11 +277,13 @@ Examples:
 			TraceService:       traceService,
 			TraceOTLP:          traceOTLP,
 			DB: docker.DBConfig{
-				Type:     dbType,
-				Host:     dbHost,
-				Name:     dbName,
-				User:     dbUser,
-				Password: dbPassword,
+				Type:          dbType,
+				Host:          dbHost,
+				Name:          dbName,
+				User:          dbUser,
+				Password:      dbPassword,
+				AdminUser:     dbAdminUser,
+				AdminPassword: dbAdminPassword,
 			},
 			Stdout: os.Stdout,
 			Stderr: os.Stderr,
@@ -398,6 +402,8 @@ func init() {
 	runCmd.Flags().String("db-name", "", "Database name (default derived from the project name)")
 	runCmd.Flags().String("db-user", "", "Database user (default mendix)")
 	runCmd.Flags().String("db-password", "", "Database password (default mendix)")
+	runCmd.Flags().String("db-admin-user", "", "PostgreSQL superuser --ensure-db creates the role and database with, when it has a password (e.g. every Windows install). Default postgres when --db-admin-password is given")
+	runCmd.Flags().String("db-admin-password", "", "Password for --db-admin-user, used only by --ensure-db and never passed to the runtime. PGPASSWORD or a .pgpass file for postgres works too, and keeps it off the command line")
 	runCmd.Flags().Bool("screenshot", false, "Capture a Playwright screenshot after boot and each applied change")
 	runCmd.Flags().Bool("page-check", false, "Print a text verdict for each page (title, headings, error banners, row count, console errors) instead of reading a screenshot — far cheaper, and it reports console errors a PNG cannot show")
 	runCmd.Flags().String("screenshot-path", "", "Screenshot output PNG (default <projectDir>/.mxcli/run-local.png)")

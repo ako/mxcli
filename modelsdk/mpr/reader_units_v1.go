@@ -65,6 +65,15 @@ func (r *Reader) listUnitsByTypeV1(typeName string) ([]rawUnit, error) {
 	if typeName == "" {
 		return r.listAllUnitsV1()
 	}
+	return r.listUnitsByTypeV1In(typeName, "")
+}
+
+// listUnitsByTypeV1In is listUnitsByTypeV1 for a non-empty typeName,
+// restricted to one container ("" for any) before any blob is read.
+func (r *Reader) listUnitsByTypeV1In(typeName, containerID string) ([]rawUnit, error) {
+	if typeName == "" {
+		return nil, fmt.Errorf("listUnitsByTypeV1In: empty type name")
+	}
 
 	metas, err := r.scanUnitMetaV1()
 	if err != nil {
@@ -84,18 +93,23 @@ func (r *Reader) listUnitsByTypeV1(typeName string) ([]rawUnit, error) {
 		}
 	}()
 	var units []rawUnit
+	// Formatting a UUID costs more than the rest of the row, so the container
+	// is compared only for units of the wanted type.
+	inContainer := func(m v1UnitMeta) bool {
+		return containerID == "" || blobToUUID(m.containerBlob) == containerID
+	}
 	for _, m := range metas {
 		var contents []byte
 		var unitType string
 		if m.overlaid {
 			contents = m.held
 			unitType = getTypeFromContents(contents)
-			if unitType != typeName {
+			if unitType != typeName || !inContainer(m) {
 				continue
 			}
 		} else {
 			unitType = r.v1Types[m.key].typ
-			if unitType != typeName {
+			if unitType != typeName || !inContainer(m) {
 				continue
 			}
 			if stmt == nil {

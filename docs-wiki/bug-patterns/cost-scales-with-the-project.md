@@ -1,11 +1,15 @@
 ---
 title: Cost That Scales With the Project, Not the Request
 category: bug-pattern
-last-synced: a20932c1
+last-synced: f2d8dc9b
 covers:
   - mdl/executor
+  - modelsdk/mpr
 sources:
   - .claude/skills/fix-issue/findings/mdl-executor/
+  - .claude/skills/fix-issue/findings/modelsdk/
+  - modelsdk/mpr/reader_units_v2.go
+  - modelsdk/mpr/reader_units_v1.go
   - mdl/executor/untimed_work.go
   - mdl/executor/cmd_microflows_derived_layout_backend.go
   - mdl/executor/cmd_microflows_derived_layout.go
@@ -63,6 +67,27 @@ and the search moves to per-construct work multiplied by something. A `SIGQUIT`
 goroutine dump at a few moments, showing the same frame each time, plus one
 hand-timed call, settled that case before any profile was taken.
 
+It held a fourth time on a module dump that timed out: a statement-scoped read
+cache cut its unit-file reads by five and its wall time by nothing. The reads
+were not the cost; the profile put two thirds of it in decoding every microflow
+of the project once per described flow.
+
+**A decorator that embeds an interface hides what it wraps.** The memo the
+layout rounds read through embeds `FullBackend`, so every optional capability
+of the real backend — a by-name lookup that decodes one flow instead of all of
+them — failed its type assertion inside the span and took the slow fallback.
+Nothing errs and nothing is wrong, only slow. Whenever `ctx.Backend` is swapped
+for a wrapper, grep the `ctx.Backend.(…)` assertions the span can reach, and
+forward the ones that matter.
+
+**An index keyed by content cannot go stale.** The cheapest cache for "what
+type is this unit" is the one keyed by the hash the storage already keeps:
+MPR v2's `ContentsHash`, v1's blob length. It needs no invalidation, survives
+writes and processes, and turns "every listing reads the project" into "every
+listing reads what changed". A cache keyed by identity needs an invalidation
+story for every write path and every other process; one keyed by content needs
+only that the key is kept honest, which the storage already promises.
+
 **Assert counts, not wall time.** Every fix in this class is guarded by a
 counter — split/merge analyses per describe, builds per plan, `IsRule` calls per
 describe, project listings per lookup, backend `List*` calls per check — because
@@ -108,7 +133,7 @@ backend once.
 
 ## See also
 
-- [fix-issue findings](../../.claude/skills/fix-issue/findings/) — the four
+- [fix-issue findings](../../.claude/skills/fix-issue/findings/) — the
   multiplier chains, with their before/after counts
 - [[scripts-that-cannot-rerun]] — the `create or modify` design whose comparisons
   are what repeats the build

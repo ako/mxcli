@@ -182,6 +182,31 @@ func (sc *scriptContext) recordEntityAttrs(s *ast.CreateEntityStmt) {
 // switches over the same statement types, so a case added to one and not the
 // other is collected on one path only — which is how this rule first shipped
 // firing against stored associations but not script-declared ones.
+func (sc *scriptContext) recordViewAssociations(s *ast.CreateViewEntityStmt) {
+	// A view entity's associations are its `<alias>.ID as <Name>` columns: the
+	// view entity is the FROM end, the selected entity the TO end, and the
+	// association lives in the view's module (oql_view_associations.go).
+	//
+	// They are registered exactly as a script's CREATE ASSOCIATION is, so every
+	// checker that resolves association names sees them. Without that, the
+	// constraint `[M.Stats_Customer = $currentObject]` on the view entity — the
+	// remedy MDL-ASSOCDS02 names — was refused as naming "neither an attribute
+	// nor an association" whenever the view came from the same script.
+	for _, col := range viewAssociationColumns(s.Query.RawQuery) {
+		to := parseQN(col.Entity)
+		if to.Module == "" {
+			continue
+		}
+		name := ast.QualifiedName{Module: s.Name.Module, Name: col.Name}
+		sc.recordAssociation(&ast.CreateAssociationStmt{
+			Name: name, Parent: s.Name, Child: to, Type: ast.AssocReference, Owner: ast.OwnerDefault,
+		})
+		shape := sc.associationShapes[strings.ToLower(name.String())]
+		shape.view = true
+		sc.associationShapes[strings.ToLower(name.String())] = shape
+	}
+}
+
 func (sc *scriptContext) recordAssociation(s *ast.CreateAssociationStmt) {
 	if s.Name.Module == "" || s.Name.Name == "" {
 		return
@@ -246,6 +271,7 @@ func (sc *scriptContext) collectSingle(stmt ast.Statement) {
 		if s.Name.Module != "" {
 			sc.entities[s.Name.String()] = true
 			sc.viewEntities[s.Name.String()] = true
+			sc.recordViewAssociations(s)
 		}
 	case *ast.CreateExternalEntityStmt:
 		if s.Name.Module != "" {

@@ -23,12 +23,25 @@ mdl 1;
 --      view over a page parameter put the parameter's NAME in scope instead of
 --      its entity, so the two could not be compared.
 --
+-- Follow-up: the qualified form was itself the wrong shape. Stored as the
+-- AttributeRef alone, mx check reports
+--   [CE7247] "Attribute 'MyFirstModule.ChartContext.EventData' is not an
+--   attribute of entity 'MyFirstModule.ChartEntry'." at Custom chart 'chart1'
+-- What Studio Pro stores for an attribute of another page parameter is the
+-- AttributeRef plus a SourceVariable naming the parameter — spelled
+-- `$Ctx.EventData`, which a generic attribute key refused as MDL-WIDGET42.
+-- It is now written as that pair (mx check: 0 errors on 11.12.5), DESCRIBE
+-- prints it back as `$Ctx.EventData`, and the qualified name of an entity the
+-- property does not bind to is refused, naming CE7247 and `$Param.EventData`.
+--
 -- Usage:
 --   mxcli exec mdl-examples/bug-tests/1591-pluggable-attribute-outside-data-view-entity.mdl -p app.mpr
+--   mxcli docker check -p app.mpr                       → 0 errors
 --   mxcli -p app.mpr -c "describe page BugTest1591.ChartPage"
---     → eventDataAttribute: BugTest1591.ChartContext.EventData
---   Changing that line to `eventDataAttribute: EventData` is now refused by
---   check: "`EventData` is not an attribute of BugTest1591.ChartEntry …".
+--     → eventDataAttribute: $Ctx.EventData
+--   Changing that line to `eventDataAttribute: EventData` is refused by check:
+--   "`EventData` is not an attribute of BugTest1591.ChartEntry …"; to
+--   `BugTest1591.ChartContext.EventData`, by check as CE7247.
 -- ============================================================================
 
 create module BugTest1591;
@@ -45,7 +58,7 @@ create page BugTest1591.ChartPage (
     customchart chart1 (
       dataAttribute: JsonData,
       layoutAttribute: JsonLayout,
-      eventDataAttribute: BugTest1591.ChartContext.EventData
+      eventDataAttribute: $Ctx.EventData
     )
   }
 };

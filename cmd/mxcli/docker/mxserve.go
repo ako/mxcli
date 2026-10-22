@@ -174,6 +174,9 @@ type ServeServer struct {
 	Port int
 	cmd  *exec.Cmd
 	log  *syncBuffer
+	// opts are the resolved options it was started with, so Restart starts
+	// the same mxbuild with the same JDK on the same port.
+	opts ServeOptions
 }
 
 // verifyMxBuildCache checks the mxbuild cache is complete: the sibling runtime/
@@ -294,7 +297,9 @@ func StartServe(opts ServeOptions) (*ServeServer, error) {
 		return nil, fmt.Errorf("starting mxbuild --serve: %w", err)
 	}
 
-	s := &ServeServer{Host: host, Port: port, cmd: cmd, log: log}
+	resolved := opts
+	resolved.MxBuildPath, resolved.JavaHome, resolved.Host, resolved.Port = mxbuildPath, javaHome, host, port
+	s := &ServeServer{Host: host, Port: port, cmd: cmd, log: log, opts: resolved}
 
 	readyTimeout := opts.ReadyTimeout
 	if readyTimeout == 0 {
@@ -403,6 +408,21 @@ func (s *ServeServer) alive() bool {
 		return false
 	}
 	return processAlive(s.cmd.Process)
+}
+
+// Restart replaces the serve process with a fresh one started from the same
+// options, in place, so every holder of this *ServeServer — including the
+// caller's deferred Stop — follows it. Its first build is cold. See
+// serve_recovery.go for why the watch loop needs one.
+func (s *ServeServer) Restart() error {
+	_ = s.Stop()
+	s.cmd = nil // a failed start below must not leave Stop signalling a reaped pid
+	next, err := StartServe(s.opts)
+	if err != nil {
+		return err
+	}
+	s.cmd, s.log = next.cmd, next.log
+	return nil
 }
 
 // Log returns the captured mxbuild --serve output (for diagnostics).

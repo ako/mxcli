@@ -663,9 +663,32 @@ func (e *PluggableWidgetEngine) Build(def *WidgetDefinition, w *ast.WidgetV3) (*
 			// re-applies a property authored by its schema key AFTER every
 			// datasource has run, so the shared context here is always the LAST
 			// datasource's entity, which is what #647 wrote for every name.
+			if name, rest, named := namedObjectBinding(strVal); named {
+				// `$Param.Attr`: the attribute of a page or snippet parameter,
+				// whatever encloses the widget — the AttributeRef plus a
+				// SourceVariable naming the parameter, as on a mapped key.
+				// Written as the qualified name alone it is CE7247
+				// (mendixlabs/mxcli#1591).
+				wv, entity, err := e.parameterBinding(w, propName, strVal, name)
+				if err != nil {
+					return nil, err
+				}
+				where := fmt.Sprintf("widget `%s` property `%s`", w.Name, propName)
+				if err := e.pageBuilder.rejectAssociationAsAttributeOn(w, name, rest, entity, where); err != nil {
+					return nil, err
+				}
+				builder.SetAttribute(propName, e.pageBuilder.resolveAttributePathForEntity(rest, entity))
+				builder.SetSourceVariable(propName, &wv)
+				break
+			}
 			attrPath := ""
 			scope := e.bindingScopeFor(propName)
 			if strings.Count(strVal, ".") >= 2 {
+				// Qualified: stored as written, so an attribute of an entity
+				// other than the bound one is refused (CE7247).
+				if err := e.refuseMisboundAttribute(w, propName, strVal, scope); err != nil {
+					return nil, err
+				}
 				attrPath = strVal
 			} else if scope.Entity != "" {
 				if err := e.refuseMisboundAttribute(w, propName, strVal, scope); err != nil {
@@ -1502,6 +1525,9 @@ func (e *PluggableWidgetEngine) resolveMapping(mapping PropertyMapping, w *ast.W
 		// GenerateDefJSON orders first). Fall back to the generic single
 		// `Attribute:` keyword for single-attribute widgets (ComboBox, filters).
 		attr := namedPropValue(mapping, w)
+		if raw, _, ok := namedPropRaw(mapping, w); ok && attr == "" {
+			attr, _ = parameterAttributeValue(raw)
+		}
 		if attr == "" && e.isPrimaryAttributeMapping(mapping) {
 			// The bare `Attribute:` keyword names ONE attribute — the widget's
 			// primary one. Applying it to every attribute-typed mapping wrote the

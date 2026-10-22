@@ -139,6 +139,12 @@ func hashTree(t *testing.T, dir string) map[string]string {
 			return err
 		}
 		rel, _ := filepath.Rel(dir, p)
+		// .mxcli holds mxcli's own caches — the catalog, the unit-type index
+		// any listing may refresh — not the project, as mdl/scriptdiff's
+		// snapshot treats it.
+		if d.IsDir() && rel == ".mxcli" {
+			return filepath.SkipDir
+		}
 		if d.IsDir() {
 			// A directory a created unit needed must go when it is rolled back.
 			out[rel+"/"] = "dir"

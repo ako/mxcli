@@ -228,6 +228,16 @@ These properties are available on most widget types:
 | `Visible` | Visibility expression | `Visible: '$showField'` |
 | `DesignProperties` | Atlas design properties | `DesignProperties: ('Spacing top': 'Large')` |
 
+### Attributes of a Page or Snippet Parameter
+
+A bare attribute name binds to the enclosing data container's object. To bind
+an attribute of a page or snippet **parameter** instead, whatever container the
+widget is in, write `$Param.Attr`. This works for a pluggable widget's
+attribute property set by its own key too, such as a Custom chart's
+`eventDataAttribute: $Ctx.EventData`. The qualified name of another entity's
+attribute (`Module.Other.Attr`) is refused, because stored without the
+parameter it is mx check CE7247.
+
 ## Parameters
 
 `module.Name`

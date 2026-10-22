@@ -1,0 +1,35 @@
+mdl 1;
+-- ============================================================================
+-- Bug: a splice making room moved the flow's parameters along with the row
+-- (ako/mxcli#1547)
+-- ============================================================================
+--
+-- The second statement inserts a log before the first one, so the splice
+-- makes room by moving everything after the start event along. Before the fix
+-- that included the two parameters, which mxcli draws on a row above the flow
+-- (x 200 and 300, y 53): both moved right, and from then on describe printed a
+-- @position on each that no script ever stated, the row drifting further with
+-- every insert.
+--
+-- Fixed: a parameter is not on the line the room is made on, so it stays
+-- where it is. Studio Pro authors draw a parameter above the start event, and
+-- inserting an activity in Studio Pro moves nothing.
+--
+-- Verify: exec, then
+--   mxcli -p app.mpr -c "describe microflow MyFirstModule.ACT_ParamRow"
+-- Expected: the parameters carry no @position (they are still on the derived
+-- row), and the new log is first.
+-- ============================================================================
+
+create or modify microflow MyFirstModule.ACT_ParamRow ($Name: String, $Count: Integer)
+begin
+  log info node 'Probe' 'first ' + $Name;
+  log info node 'Probe' 'second ' + toString($Count);
+end;
+
+create or modify microflow MyFirstModule.ACT_ParamRow ($Name: String, $Count: Integer)
+begin
+  log info node 'Probe' 'inserted';
+  log info node 'Probe' 'first ' + $Name;
+  log info node 'Probe' 'second ' + toString($Count);
+end;

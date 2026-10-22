@@ -231,6 +231,12 @@ func (o *LocalRunOptions) applyDatabaseDefaults() error {
 	if o.DB.Name == "" {
 		o.DB.Name = deriveDBName(o.ProjectPath)
 	}
+	// The admin login only provisions; nothing else would use it, so accepting
+	// it alone would suggest it had been applied.
+	if (o.DB.AdminUser != "" || o.DB.AdminPassword != "") && !o.EnsureDB {
+		return fmt.Errorf("--db-admin-user/--db-admin-password are used only by --ensure-db, " +
+			"to create the role and database — add --ensure-db")
+	}
 	if IsFileBasedDBType(kind) {
 		// The built-in database is a file: it has no host or credentials, and
 		// accepting them would imply a connection that never happens.
@@ -1397,6 +1403,8 @@ func watchAndApply(opts LocalRunOptions, serve *ServeServer, rt *LocalRuntime, b
 		DeployDir: opts.DeployDir, MxBuildPath: mxbuildPath, Timeout: opts.WebClientTimeout, Stdout: opts.Stdout,
 	})
 
+	builds := &serveRecovery{serve: serve, deployDir: opts.DeployDir, out: w}
+
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigCh)
@@ -1478,8 +1486,11 @@ func watchAndApply(opts LocalRunOptions, serve *ServeServer, rt *LocalRuntime, b
 			// change that makes mxbuild recreate web/ (a domain model change) fails
 			// until the bundler lets go; the supervisor stops it, rebuilds, and
 			// starts a fresh one on the new web/ (#1342).
+			// The build goes through serveRecovery, which restarts mxbuild --serve
+			// when a build leaves state only a fresh process clears — e.g. an
+			// "applied" reload whose dist/ lost every page (mendixlabs/mxcli#1580).
 			build, freshBundle, err := bundler.BuildReleasingWebDir(func() (*BuildResult, error) {
-				return serve.Build(BuildRequest{Target: TargetDeploy, ProjectFilePath: opts.ProjectPath})
+				return builds.Build(BuildRequest{Target: TargetDeploy, ProjectFilePath: opts.ProjectPath})
 			})
 			if err != nil {
 				fmt.Fprintf(opts.Stderr, "  build error: %v\n", err)

@@ -367,7 +367,7 @@ func TestResolveSuperuser(t *testing.T) {
 		dir, logPath := newStubPATH(t)
 		writeStub(t, dir, "psql", `echo "$@" >> "`+logPath+`"`)
 		writeStub(t, dir, "sudo", `echo sudo >> "`+logPath+`"`)
-		su, err := resolveSuperuser("127.0.0.1", "5432")
+		su, err := resolveSuperuser("127.0.0.1", "5432", dbAdmin{})
 		if err != nil || su.sudo {
 			t.Fatalf("su=%+v err=%v", su, err)
 		}
@@ -387,7 +387,7 @@ func TestResolveSuperuser(t *testing.T) {
 case " $* " in *" -h "*) exit 1;; esac
 case " $* " in *" -p 5544 "*) exit 0;; esac
 exit 1`)
-		su, err := resolveSuperuser("127.0.0.1", "5544")
+		su, err := resolveSuperuser("127.0.0.1", "5544", dbAdmin{})
 		if err != nil || !su.sudo {
 			t.Fatalf("su=%+v err=%v", su, err)
 		}
@@ -400,7 +400,7 @@ exit 1`)
 	t.Run("unavailable", func(t *testing.T) {
 		dir, _ := newStubPATH(t)
 		writeStub(t, dir, "psql", "exit 1")
-		if _, err := resolveSuperuser("127.0.0.1", "5432"); err == nil {
+		if _, err := resolveSuperuser("127.0.0.1", "5432", dbAdmin{}); err == nil {
 			t.Fatal("expected an error")
 		}
 	})
@@ -410,7 +410,7 @@ func TestResolveSuperuser_RefusesRemoteHost(t *testing.T) {
 	dir, logPath := newStubPATH(t)
 	writeStub(t, dir, "psql", `echo psql >> "`+logPath+`"; exit 0`)
 	writeStub(t, dir, "sudo", `echo sudo >> "`+logPath+`"; exit 0`)
-	if _, err := resolveSuperuser("db.example.com", "5432"); err == nil ||
+	if _, err := resolveSuperuser("db.example.com", "5432", dbAdmin{}); err == nil ||
 		!strings.Contains(err.Error(), "non-local") {
 		t.Fatalf("expected remote provisioning to be refused, got %v", err)
 	}
@@ -691,7 +691,7 @@ func TestResolveSuperuser_PrefersClusterSocket(t *testing.T) {
 	writeStub(t, dir, "psql", `echo "$@" >> "`+logPath+`"`) // exits 0
 	writeStub(t, dir, "sudo", `echo sudo >> "`+logPath+`"`)
 
-	su, err := resolveSuperuser("127.0.0.1", "5432")
+	su, err := resolveSuperuser("127.0.0.1", "5432", dbAdmin{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -953,7 +953,7 @@ case " $* " in
 esac
 exit 1`)
 
-	su, err := resolveSuperuser("127.0.0.1", "5432")
+	su, err := resolveSuperuser("127.0.0.1", "5432", dbAdmin{})
 	if err != nil {
 		t.Fatalf("a root-only sudoers policy must still reach postgres: %v", err)
 	}
@@ -1013,5 +1013,105 @@ exit 1`)
 	if !strings.Contains(err.Error(), "Operation not permitted") {
 		t.Fatalf("the readiness timeout must carry what the service manager "+
 			"actually said, got:\n%v", err)
+	}
+}
+
+// The Windows PostgreSQL installer always gives `postgres` a password, and
+// there is no sudo, so none of the passwordless paths can work
+// (mendixlabs/mxcli#1485). Explicit admin credentials must be used — over TCP,
+// as the named user, with the password in the environment rather than argv.
+func TestResolveSuperuser_UsesAdminCredentials(t *testing.T) {
+	dir, logPath := newStubPATH(t)
+	t.Setenv("PGPASSWORD", "")
+	writeStub(t, dir, "psql", `echo "$@ PGPASSWORD=$PGPASSWORD" >> "`+logPath+`"
+case " $* " in *" -U pgadmin "*) [ "$PGPASSWORD" = "s3cret" ] && exit 0;; esac
+echo 'psql: error: password authentication failed for user "postgres"' >&2
+exit 2`)
+
+	su, err := resolveSuperuser("127.0.0.1", "5432", dbAdmin{User: "pgadmin", Password: "s3cret"})
+	if err != nil {
+		t.Fatalf("explicit admin credentials must provision a password-protected "+
+			"Windows install: %v", err)
+	}
+	cmd := su.psql("-tAc", "select 1")
+	for _, a := range cmd.Args {
+		if strings.Contains(a, "s3cret") {
+			t.Fatalf("the admin password must not appear in argv: %#v", cmd.Args)
+		}
+	}
+	want := []string{"-h", "127.0.0.1", "-p", "5432", "-U", "pgadmin"}
+	if got := strings.Join(cmd.Args, " "); !strings.Contains(got, strings.Join(want, " ")) {
+		t.Fatalf("admin psql must connect over TCP as the admin user, got %q", got)
+	}
+}
+
+// Without credentials the refusal is the reported symptom. It must at least say
+// how to get past it, rather than only list what was tried.
+func TestEnsureDatabase_NoSuperuserErrorNamesTheWayOut(t *testing.T) {
+	dir, _ := newStubPATH(t)
+	writeStub(t, dir, "psql", "exit 2")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	db := DBConfig{
+		Type: "PostgreSQL", Host: listener.Addr().String(), Name: "shopapp", User: "mendix", Password: "app-secret",
+	}
+	err = EnsureDatabase(&db, io.Discard)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	for _, want := range []string{"--db-admin-user", "--db-admin-password", "PGPASSWORD",
+		"CREATE ROLE mendix", "CREATE DATABASE shopapp OWNER mendix"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error must name %q as a way out, got:\n%v", want, err)
+		}
+	}
+	if strings.Contains(err.Error(), "app-secret") {
+		t.Fatalf("the hint must not echo the app password into logs:\n%v", err)
+	}
+}
+
+// Wrong admin credentials must be reported as such, not folded into the generic
+// "no superuser" text — the user supplied them and needs to know they failed.
+func TestResolveSuperuser_ReportsRejectedAdminCredentials(t *testing.T) {
+	dir, _ := newStubPATH(t)
+	writeStub(t, dir, "psql", `echo 'psql: error: password authentication failed for user "pgadmin"' >&2; exit 2`)
+	_, err := resolveSuperuser("127.0.0.1", "5432", dbAdmin{User: "pgadmin", Password: "wrong"})
+	if err == nil || !strings.Contains(err.Error(), "password authentication failed") ||
+		!strings.Contains(err.Error(), "pgadmin") {
+		t.Fatalf("expected the admin connection's own failure, got: %v", err)
+	}
+}
+
+// The admin password reaches EnsureDatabase through DBConfig, and is never the
+// app's password: the role check must still run as the admin.
+func TestEnsureDatabase_ProvisionsWithAdminCredentials(t *testing.T) {
+	dir, logPath := newStubPATH(t)
+	t.Setenv("PGPASSWORD", "")
+	// The app login fails until "provisioning" has happened; the admin login
+	// works only with its own password.
+	marker := filepath.Join(dir, "provisioned")
+	writeStub(t, dir, "psql", `echo "$@ PGPASSWORD=$PGPASSWORD" >> "`+logPath+`"
+case " $* " in
+  *" -U pgadmin "*) [ "$PGPASSWORD" = "s3cret" ] || exit 2
+     case " $* " in *" -f - "*) : > "`+marker+`";; esac
+     exit 0;;
+  *" -U mendix "*) [ -f "`+marker+`" ] && exit 0; exit 2;;
+esac
+exit 2`)
+	// A server is "running" — the Windows service is — so nothing is started.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	db := DBConfig{
+		Type: "PostgreSQL", Host: listener.Addr().String(), Name: "app", User: "mendix", Password: "mendix",
+		AdminUser: "pgadmin", AdminPassword: "s3cret",
+	}
+	if err := EnsureDatabase(&db, io.Discard); err != nil {
+		t.Fatalf("EnsureDatabase with admin credentials: %v\ncalls:\n%s", err, readCalls(t, logPath))
 	}
 }

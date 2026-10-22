@@ -64,6 +64,9 @@ func scalarPropertyText(w *ast.WidgetV3, key string, raw any, op string) (string
 		if op == "expression" {
 			return v.Text, nil
 		}
+		if text, ok := parameterAttributeValue(v); ok && op == "attribute" {
+			return text, nil // `$Param.Attr`, not an expression
+		}
 		return "", expressionInScalarPropertyError(w, key, op, v.Text)
 	case *ast.DataSourceV3:
 		src, hasSrc := w.ExpressionSource(key)

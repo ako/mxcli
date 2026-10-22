@@ -376,6 +376,22 @@ alter microflow MyModule.GetCode {
 };
 ```
 
+### 13. Inserting Where the Script States Every Position
+
+`describe` output states `@position` on every statement. Under `mdl 1;`, `create or
+modify` never moves a node the script draws at a stated position: a statement inserted
+**without** `@position` into a gap too small for it is refused, naming the room it needs
+and the node in the way (mendixlabs/mxcli#1598). Moving the rest of the row along would
+leave the stored flow saying something other than the script, so the next run would move
+it back. Either:
+
+- give the new statements an `@position` where there is room for them, or
+- leave the positions of what comes after them unstated (`@position`, `@merge`, a note's
+  `position:`), so the splice can move it along — the second run of that script is then
+  Unchanged.
+
+A headerless (mdl 0) script still moves the row along, as it always did.
+
 ## Implicit Variable Creation (CE0111 Duplicate Variable)
 
 These statements **implicitly create a new variable** with the name on the left side:

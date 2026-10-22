@@ -1,0 +1,39 @@
+-- ============================================================================
+-- Bug test: mendixlabs/mxcli#1580 — `run --local --watch`: a hot reload after a
+-- model change leaves deployment/web/dist without pages/ and widgets.css, so
+-- every page 404s
+-- ============================================================================
+--
+-- Reported: after `create or modify microflow …`, `mxcli run wait` prints
+-- "applied: build #2 via reload in 4.3s", `deployment/web/dist` holds only
+-- `chunks` and `index.js`, and GET /dist/pages/<Module>.<Page>.js returns 404.
+--
+-- Cause, in mxbuild --serve (measured on 11.12.5 over its HTTP API): only the
+-- first build in a serve process bundles the client completely. Every later
+-- one — even with the model unchanged — replaces dist/ with a monolithic
+-- index.js and no pages/widgets.css, or, when a page changes, fails with
+-- "Could not find a part of the path '…/web/pages/…'". A fresh process always
+-- builds completely. Fixed in serveRecovery (cmd/mxcli/docker/serve_recovery.go):
+-- the watch loop restarts mxbuild --serve and builds once more, keeping the
+-- incremental build's restartRequired so the change is still a reload.
+--
+-- To verify (Mendix 11.12.5; a blank app from
+-- `mxcli new App --version 11.12.5 --theme none --layout none --skip-init`):
+--   mxcli run --local --watch --detach --db-type hsqldb -p App.mpr
+--   mxcli exec mdl-examples/bug-tests/1580-watch-reload-drops-dist-pages.mdl -p App.mpr
+--   mxcli run wait -p App.mpr          # applied: build #2 via reload
+--   ls deployment/web/dist             # pages/ and widgets.css present
+--   mxcli playwright check -p App.mpr  # OK, 0 console errors
+-- The run log shows "restarting mxbuild --serve for a full build...".
+-- Before the fix: dist/ = chunks index.js, and the page check FAILs with an
+-- error banner and failed requests. Re-running adds nothing; to repeat, change
+-- the returned string.
+-- ============================================================================
+
+mdl 1;
+
+create module Bug1580;
+
+create or modify microflow Bug1580.MF_Watch () returns String as $R begin
+  return 'x';
+end;

@@ -77,6 +77,12 @@ func validateWidgetExpressionValuesIn(w *ast.WidgetV3, def *WidgetDefinition, it
 		switch {
 		case op == "expression":
 			continue
+		case isExpr && isParameterAttributeText(text) && (op == "attribute" || !known):
+			// `$Param.Attr` reads an attribute of a page or snippet parameter
+			// (mendixlabs/mxcli#1591); exec resolves the parameter. It is no
+			// Mendix expression (that is `$Param/Attr`), so a key whose kind is
+			// out of sight — no project, no schema — is not refused as one.
+			continue
 		case op == "image" && isImageObjectVariable(text):
 			// `Image: $currentObject` binds the object in context (#1476).
 			continue

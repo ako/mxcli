@@ -36,6 +36,10 @@ type assocShape struct {
 	from, to string
 	refSet   bool
 	owner    string // "Default", "Both", or "" when not one of the measured two
+	// view marks an association a view entity derives from its OQL (an
+	// OqlViewAssociationSource): `from` is the view entity, and a page cannot
+	// follow it from `to` (MDL-ASSOCDS02, validate_view_assoc_reverse.go).
+	view bool
 }
 
 func astOwnerName(o ast.OwnerType) string {
@@ -91,14 +95,16 @@ func checkAssociationShapes(ctx *ExecContext, sc *scriptContext) map[string]asso
 						if from, to := byID[a.ParentID], byID[a.ChildID]; from != "" && to != "" {
 							qn := mod + "." + a.Name
 							out[strings.ToLower(qn)] = assocShape{qn: qn, from: from, to: to,
-								refSet: a.Type == domainmodel.AssociationTypeReferenceSet, owner: sdkOwnerName(a.Owner)}
+								refSet: a.Type == domainmodel.AssociationTypeReferenceSet, owner: sdkOwnerName(a.Owner),
+								view: a.Source == domainmodel.OqlViewAssociationSource}
 						}
 					}
 					for _, a := range dm.CrossAssociations {
 						if from := byID[a.ParentID]; from != "" && a.ChildRef != "" {
 							qn := mod + "." + a.Name
 							out[strings.ToLower(qn)] = assocShape{qn: qn, from: from, to: a.ChildRef,
-								refSet: a.Type == domainmodel.AssociationTypeReferenceSet, owner: sdkOwnerName(a.Owner)}
+								refSet: a.Type == domainmodel.AssociationTypeReferenceSet, owner: sdkOwnerName(a.Owner),
+								view: a.Source == domainmodel.OqlViewAssociationSource}
 						}
 					}
 				}

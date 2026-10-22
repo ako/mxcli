@@ -1,0 +1,36 @@
+-- mendixlabs/mxcli#1624 (ako/mxcli#1556): `describe module --all` could not
+-- cover a large module.
+--
+-- Symptom: for a module with 229 microflows, after 5 minutes
+-- `statement timed out`; with MXCLI_EXEC_TIMEOUT=40m it stopped at 10,000
+-- output lines with "output line limit exceeded ... statement aborted",
+-- truncated mid-flow.
+--
+-- Fix: a module dump is bounded by the module, so neither the default
+-- wall-clock limit nor the default line limit applies to it (an explicit
+-- MXCLI_EXEC_TIMEOUT / MXCLI_OUTPUT_LINE_LIMIT still does, and the line limit
+-- is now configurable for every statement). The time went into describing each
+-- microflow: its layout derivation rebuilt the flow through a read memo that
+-- hid the backend's by-name lookup, so every described flow decoded every
+-- microflow in the project. Measured on testdata/pedapp with this module grown
+-- to 400 flows: 66.9 s and exit 1 at 10,025 lines before, 5.7 s and all 12,810
+-- lines after, the first 10,000 byte-identical.
+--
+-- To reproduce at scale, repeat the microflow below a few hundred times under
+-- different names, then:
+--   mxcli -p app.mpr -c "describe module Dump with all"
+
+mdl 1;
+
+create module Dump;
+
+create persistent entity Dump.Item (Name: String(100), Qty: Integer, Done: Boolean);
+
+create microflow Dump.MF_1 ($Name: String) returns Boolean as $r
+begin
+  $I1 = create Dump.Item (Name = $Name, Qty = 1, Done = false);
+  if $I1/Qty > 3 then
+    change $I1 (Done = true);
+  end if;
+  return true;
+end;

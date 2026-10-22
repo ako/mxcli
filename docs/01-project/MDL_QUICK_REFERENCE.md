@@ -1971,7 +1971,9 @@ Name the widget the way you write it in a page body. The target is stored as the
 | Setup mxcli | `mxcli setup mxcli [--os linux]` | Download platform-specific mxcli binary |
 | LSP server | `mxcli lsp --stdio` | Language server for VS Code |
 
-Set `MXCLI_EXEC_TIMEOUT` to override the per-statement execution timeout (default 5m) used by `mxcli exec` (for example `MXCLI_EXEC_TIMEOUT=12m` or `MXCLI_EXEC_TIMEOUT=900`). `REFRESH CATALOG` is exempt from the default guard — it runs without a wall-clock limit on large projects — unless you set `MXCLI_EXEC_TIMEOUT` explicitly (which then applies to it too, letting you cap it).
+Set `MXCLI_EXEC_TIMEOUT` to override the per-statement execution timeout (default 5m) used by `mxcli exec` (for example `MXCLI_EXEC_TIMEOUT=12m` or `MXCLI_EXEC_TIMEOUT=900`). `REFRESH CATALOG` and `DESCRIBE MODULE … WITH ALL` are exempt from the default guard — they run without a wall-clock limit on large projects and modules — unless you set `MXCLI_EXEC_TIMEOUT` explicitly (which then applies to them too, letting you cap them).
+
+Set `MXCLI_OUTPUT_LINE_LIMIT` to override the per-statement output limit (default 10,000 lines; `0` for none). A statement that passes it is aborted with its output truncated. `DESCRIBE MODULE … WITH ALL` is exempt from the default limit — its output is bounded by the module — unless you set `MXCLI_OUTPUT_LINE_LIMIT` explicitly.
 
 ## ANTLR4 Parser Architecture
 

@@ -182,8 +182,9 @@ func getPageNames(ctx *ExecContext, h *ContainerHierarchy) map[model.ID]string {
 }
 
 const (
-	// maxOutputLines is the per-statement line limit. Statements that produce more
-	// lines than this are aborted to prevent runaway output from infinite loops.
+	// maxOutputLines is the default per-statement line limit. Statements that
+	// produce more lines than this are aborted to prevent runaway output from
+	// infinite loops. MXCLI_OUTPUT_LINE_LIMIT overrides it (effectiveOutputLineLimit).
 	maxOutputLines = 10_000
 	// defaultExecuteTimeout is the maximum wall-clock time allowed for a single
 	// statement when MXCLI_EXEC_TIMEOUT is not set.
@@ -218,11 +219,11 @@ func configuredExecuteTimeout() time.Duration {
 
 // effectiveExecuteTimeout returns the wall-clock timeout to apply to a single
 // statement. An explicit MXCLI_EXEC_TIMEOUT always wins (so users can both raise
-// and cap the limit). Otherwise, known bounded-but-slow statements — currently
-// REFRESH CATALOG, which on a large project legitimately runs past the default
-// 5m — are exempt from the guard (returns 0 = no wall-clock limit); the per-
-// statement output-line guard still bounds runaway output. The guard exists to
-// abort runaway loops, which a deterministic catalog build is not. See #651.
+// and cap the limit). Otherwise, known bounded-but-slow statements — REFRESH
+// CATALOG, which on a large project legitimately runs past the default 5m, and
+// DESCRIBE MODULE … WITH ALL on a large module (#1624) — are exempt from the
+// guard (returns 0 = no wall-clock limit). The guard exists to abort runaway
+// loops, which a deterministic catalog build or module dump is not. See #651.
 func effectiveExecuteTimeout(stmt ast.Statement) time.Duration {
 	if os.Getenv("MXCLI_EXEC_TIMEOUT") != "" {
 		return configuredExecuteTimeout()
@@ -236,12 +237,38 @@ func effectiveExecuteTimeout(stmt ast.Statement) time.Duration {
 // isExemptFromExecuteTimeout reports whether a statement is a known long-running
 // but bounded operation that should not be capped by the default wall-clock guard.
 func isExemptFromExecuteTimeout(stmt ast.Statement) bool {
-	switch stmt.(type) {
+	switch s := stmt.(type) {
 	case *ast.RefreshCatalogStmt:
 		return true
 	default:
-		return false
+		return isModuleDump(s)
 	}
+}
+
+// isModuleDump reports whether stmt is `describe module M with all`. Its work
+// and its output are bounded by the module, not by anything that can run away,
+// so neither default guard applies to it — on a module of 229 microflows it
+// hit both, and could not be described at all (mendixlabs/mxcli#1624).
+func isModuleDump(stmt ast.Statement) bool {
+	d, ok := stmt.(*ast.DescribeStmt)
+	return ok && d.ObjectType == ast.DescribeModule && d.WithAll
+}
+
+// effectiveOutputLineLimit returns the line limit for one statement; 0 means
+// none. An explicit MXCLI_OUTPUT_LINE_LIMIT — a number of lines, 0 for no
+// limit — applies to every statement, as MXCLI_EXEC_TIMEOUT does; otherwise a
+// module dump has no limit and everything else the default.
+func effectiveOutputLineLimit(stmt ast.Statement) int {
+	if raw := os.Getenv("MXCLI_OUTPUT_LINE_LIMIT"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n >= 0 {
+			return n
+		}
+		return maxOutputLines
+	}
+	if isModuleDump(stmt) {
+		return 0
+	}
+	return maxOutputLines
 }
 
 // BackendFactory creates a new backend instance for connecting to a project.
@@ -368,7 +395,16 @@ func (e *Executor) Execute(stmt ast.Statement) error {
 
 	// Reset per-statement line counter.
 	if e.guard != nil {
-		e.guard.reset()
+		e.guard.reset(effectiveOutputLineLimit(stmt))
+	}
+
+	// A describe writes nothing, and the describers look the same documents up
+	// again and again — a module dump describes every document of the module,
+	// each one listing the folders, the flows and the domain models anew — so
+	// the statement reads each unit file once (mendixlabs/mxcli#1624). A write
+	// would empty the cache, as it does in check's passes.
+	if _, ok := stmt.(*ast.DescribeStmt); ok {
+		defer e.CacheUnitReads()()
 	}
 
 	// Enforce the wall-clock timeout with a timer that skips untimed work.

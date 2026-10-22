@@ -51,3 +51,16 @@ func TestPrepareLocalAppDatabase_RefusesEnsureDBForFileDatabase(t *testing.T) {
 		t.Fatalf("prepareLocalAppDatabase err = %v, want a refusal naming the file database", err)
 	}
 }
+
+// The admin login exists only to provision. Without --ensure-db nothing reads
+// it, so it is refused rather than silently ignored (mendixlabs/mxcli#1485).
+func TestApplyDatabaseDefaults_AdminLoginNeedsEnsureDB(t *testing.T) {
+	o := LocalRunOptions{ProjectPath: "/proj/App.mpr", DB: DBConfig{AdminPassword: "s3cret"}}
+	if err := o.applyDatabaseDefaults(); err == nil || !strings.Contains(err.Error(), "--ensure-db") {
+		t.Fatalf("applyDatabaseDefaults err = %v, want a refusal naming --ensure-db", err)
+	}
+	o = LocalRunOptions{ProjectPath: "/proj/App.mpr", EnsureDB: true, DB: DBConfig{AdminPassword: "s3cret"}}
+	if err := o.applyDatabaseDefaults(); err != nil {
+		t.Fatalf("with --ensure-db the admin login is accepted, got %v", err)
+	}
+}

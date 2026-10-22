@@ -337,6 +337,8 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 			out = append(out, validateWidgetExpressionValues(w, nil, mapping, true, locationPrefix)...)
 		} else {
 			out = append(out, validateWidgetExpressionValuesIn(w, def, nil, isObjectListItem, embedded, locationPrefix)...)
+			// An Expression property's value of the wrong kind (MDL-WIDGET49).
+			out = append(out, validateWidgetExpressionReturnTypes(w, def, embedded, locationPrefix)...)
 		}
 		// A generic widget type that resolved to nothing is already reported as
 		// MDL-WIDGET25 (the kind is wrong). Validating its properties on top of

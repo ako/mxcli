@@ -1,0 +1,27 @@
+-- mendixlabs/mxcli#1603 (ako/mxcli#1513): on MPR v2, `describe` of one
+-- document opened every unit file in mprcontents/ first.
+--
+-- Symptom: on a blank Mendix 10.24.18 app (394 unit files after this script),
+--   mxcli exec this.mdl -p App/App.mpr
+--   touch -a -t 200001010000 $(find App/mprcontents -type f)
+--   mxcli -p App/App.mpr -c "describe microflow Probe.ACT_Do"
+--   find App/mprcontents -type f -atime -1 | wc -l
+-- printed 393: every listing typed each unit by reading its file, and every
+-- write made the next listing do it again.
+--
+-- Fix: unit types are indexed by the Unit table's ContentsHash and persisted
+-- to .mxcli/unit-types.idx, so only a unit whose hash is new is opened. Measured
+-- on testdata/pedapp (375 unit files) with strace: distinct .mxunit files
+-- opened by the describe 375 -> 117, the rest being the folders, microflows,
+-- modules and domain models the describe itself reads.
+--
+-- Expected: both statements succeed; the count above is far below the total.
+
+mdl 1;
+
+create module Probe;
+
+create microflow Probe.ACT_Do() returns Boolean as $r
+begin
+  return true;
+end;

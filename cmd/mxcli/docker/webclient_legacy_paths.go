@@ -53,8 +53,11 @@ import (
 // deployment state 11.14's cold build no longer produces, and supplying the
 // missing directories only moves the failure to exporting two pluggable widgets
 // that ship with a blank app. Across 2' and 3', web/dist/index.js never moved
-// off its cold-build timestamp. Nothing outside the process fixes that half,
-// which is why this file reports rather than repairs.
+// off its cold-build timestamp. Nothing done to the deployment fixes that half.
+// A fresh serve process does — its first build is the one that succeeds — so
+// the watch loop now restarts mxbuild --serve on this shape (serve_recovery.go,
+// which also measured it on 11.12.5), and this hint is only printed when the
+// build on the fresh process fails as well.
 //
 // The controls that place this in mxbuild rather than here: a one-shot
 // `mxbuild --target=deploy` run TWICE into the same deployment directory
@@ -138,11 +141,12 @@ func hintText(what string) string {
 	return fmt.Sprintf(
 		"  This is not a problem with your model, and deployment/ is not corrupt:\n"+
 			"  %s.\n"+
-			"  On Mendix 11.14 the first build in a serve process succeeds and every later\n"+
-			"  one fails this way — measured with the model untouched between two identical\n"+
-			"  builds, and with either app bundler, so switching bundlers does not help.\n"+
+			"  On Mendix 11.12.5 and 11.14 the first build in a serve process succeeds and\n"+
+			"  every later one fails this way — measured with the model untouched between two\n"+
+			"  identical builds, and with either app bundler, so switching bundlers does not help.\n"+
 			"  Deleting deployment/ does not either: the next second build fails the same way.\n"+
-			"  Until mxbuild closes this, drop --watch and restart per change:\n"+
+			"  mxcli already retried on a fresh mxbuild --serve; if this persists, drop --watch\n"+
+			"  and restart per change:\n"+
 			"    mxcli run --local --screenshot\n",
 		what)
 }

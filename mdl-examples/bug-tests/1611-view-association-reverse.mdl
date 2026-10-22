@@ -1,0 +1,72 @@
+mdl 1;
+-- ============================================================================
+-- mendixlabs/mxcli#1611 A — a page following a view entity's association from
+-- the entity it points at (CE8812)
+-- ============================================================================
+--
+-- Reported (v0.27.0, Mendix 11.12.5): a view entity M.Stats selects `e.ID as
+-- Stats_Owner`; on a page over an Owner,
+--   listview lv (DataSource: DATABASE FROM $currentObject/M.Stats_Owner/M.Stats)
+-- passed `check --references` and exec, then mx check failed CE8812 "Entity
+-- 'M.Owner' has no association 'M.Stats_Owner'".
+--
+-- A view entity's association is one-way for a page. Measured on 11.14.0, one
+-- page per shape: following it from the entity it points at is CE8812 in a list
+-- view, data grid, gallery and data view, in the database form and the
+-- in-memory form, and as a second hop. Following it from the view entity, the
+-- constrained query below, and a microflow association retrieve all built at
+-- 0 errors. `check` now reports the refused shapes as MDL-ASSOCDS02.
+--
+-- This file is the shape that must PASS, with the view entity created in the
+-- same script. The constrained query used to be refused by check in that case,
+-- because the script's view associations were known to no checker. This file:
+-- 0 errors from check and from mxbuild. With the list view's data source
+-- changed to `DATABASE FROM $currentObject/Bug1611.Totals_Customer/Bug1611.Totals`:
+-- MDL-ASSOCDS02 from check, CE8812 from mxbuild.
+-- ============================================================================
+
+CREATE MODULE Bug1611;
+
+CREATE OR MODIFY PERSISTENT ENTITY Bug1611.Customer ( Name: String(100) );
+CREATE OR MODIFY PERSISTENT ENTITY Bug1611.Purchase ( Amount: Integer );
+CREATE OR MODIFY ASSOCIATION Bug1611.Purchase_Customer FROM Bug1611.Purchase TO Bug1611.Customer;
+
+CREATE OR MODIFY VIEW ENTITY Bug1611.Totals ( Total: Integer ) AS (
+  from Bug1611.Purchase as p
+  join p/Bug1611.Purchase_Customer/Bug1611.Customer as c
+  group by c.ID
+  select c.ID as Totals_Customer, sum(p.Amount) as Total
+);
+
+-- From the customer: query the view entity, constrained on its association.
+CREATE OR MODIFY PAGE Bug1611.Customer_Totals (
+  Params: ($Customer: Bug1611.Customer),
+  Title: 'Totals',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  dataview dvCustomer (DataSource: $Customer) {
+    listview lvTotals (DataSource: DATABASE Bug1611.Totals WHERE [Bug1611.Totals_Customer = $currentObject]) {
+      dynamictext txtTotal (Content: 'total')
+    }
+  }
+};
+
+-- From the view entity: the association followed the way it points.
+CREATE OR MODIFY PAGE Bug1611.Totals_Customer (
+  Params: ($Totals: Bug1611.Totals),
+  Title: 'Customer',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  dataview dvTotals (DataSource: $Totals) {
+    dataview dvCustomer (DataSource: $currentObject/Bug1611.Totals_Customer) {
+      dynamictext txtName (Content: 'customer')
+    }
+  }
+};
+
+-- A microflow may retrieve over it from the customer.
+CREATE OR MODIFY MICROFLOW Bug1611.ACT_CustomerTotals ($Customer: Bug1611.Customer)
+BEGIN
+  RETRIEVE $Totals FROM $Customer/Bug1611.Totals_Customer;
+  RETRIEVE $Constrained FROM Bug1611.Totals WHERE Bug1611.Totals_Customer = $Customer;
+END;

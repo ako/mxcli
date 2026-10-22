@@ -69,7 +69,7 @@ Choose the mode by who owns the microflow ([choose-edit-mode](../choose-edit-mod
   (targets from `describe microflow X with handles`). `create or modify` of `describe`
   output patches too: unchanged writes nothing; a statement (even one whose handler returns), guard
   clause, `return` value, `if` condition, header clause, parameter (added/retyped; removed only if unused) or stated `@position`/`@start` change is
-  patched in place (a move keeps the node's flows), as is a loop-body activity with new values. A redrawn
+  patched in place (a move keeps the node's flows), as is a loop-body activity with new values ([an insert needing room past a stated `@position`](reference/pitfalls.md#13-inserting-where-the-script-states-every-position)). A redrawn
   `@anchor`/`@curve`, other loop-body change, error handler or other `return` added/taken away rebuilds under
   mdl 0 (`MDL-V1-REBUILD`: IDs renumbered, merges and curves lost) and is refused under `mdl 1;`. **To add,
   remove or reorder in a loop body, `alter … replace` the whole loop** ([pitfalls](reference/pitfalls.md#11-changing-something-inside-a-loop-body)). **To rebuild deliberately, `drop` and `create` in ONE script** — the grants carry only within it ([pitfalls](reference/pitfalls.md#drop--create-is-still-a-new-document)).

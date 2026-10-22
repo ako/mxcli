@@ -132,12 +132,16 @@ func (ix attributeIndex) declares(entityQN, attr string) (found, known bool) {
 // wrote Entity.Missing and the first word of it was mx check's CE1613
 // (mendixlabs/mxcli#1591).
 //
-// Nothing is refused where the question cannot be answered: a qualified name or
-// path, a scope the rule did not decide (scopeShared), or a model the index
-// cannot read.
+// A qualified name is judged by foreignQualifiedAttributeError.
+//
+// Nothing is refused where the question cannot be answered: a path, a scope the
+// rule did not decide (scopeShared), or a model the index cannot read.
 func misboundAttributeError(where, attr string, scope bindingScope, outer string, dsEntities map[string]string, ix attributeIndex) error {
-	if attr == "" || strings.ContainsAny(attr, "./$") || scope.Kind == scopeShared || scope.Entity == "" {
+	if attr == "" || strings.ContainsAny(attr, "/$") || scope.Kind == scopeShared || scope.Entity == "" {
 		return nil
+	}
+	if strings.Contains(attr, ".") {
+		return foreignQualifiedAttributeError(where, attr, scope, ix)
 	}
 	if found, known := ix.declares(scope.Entity, attr); found || !known {
 		return nil
@@ -173,4 +177,41 @@ func misboundAttributeError(where, attr string, scope bindingScope, outer string
 			"it is an attribute of %s. Bind an attribute of %s here, or give the value to the property "+
 			"the widget links to that entity",
 		where, attr, scope.Entity, scope.describe(), strings.Join(candidates, " and "), scope.Entity)
+}
+
+// foreignQualifiedAttributeError refuses a qualified attribute whose entity is
+// neither the one the property binds to nor a generalization of it. The writer
+// stores a qualified name as written, with no SourceVariable, and Mendix reads
+// it against the bound object: mx check CE7247 "Attribute
+// 'MyFirstModule.ChartContext.EventData' is not an attribute of entity
+// 'MyFirstModule.ChartEntry'" (mendixlabs/mxcli#1591, 11.12.5). An attribute of
+// another object is read through a parameter, `$Param.Attr` — what Studio Pro
+// stores for that binding.
+//
+// An inherited attribute is qualified with the entity that declares it, which is
+// on the bound entity's generalization chain, so it passes. A chain the index
+// cannot follow, or an entity it does not hold, is not judged.
+func foreignQualifiedAttributeError(where, attr string, scope bindingScope, ix attributeIndex) error {
+	owner := attributeEntity(attr)
+	if strings.Count(attr, ".") != 2 || ix.owners == nil {
+		return nil
+	}
+	if _, held := ix.owners[owner]; !held {
+		return nil
+	}
+	seen := map[string]bool{}
+	for cur := scope.Entity; cur != "" && !seen[cur]; cur = ix.parents[cur] {
+		if strings.EqualFold(cur, owner) {
+			return nil
+		}
+		if _, held := ix.owners[cur]; !held {
+			return nil
+		}
+		seen[cur] = true
+	}
+	return mdlerrors.NewValidationf(
+		"%s: `%s` is an attribute of %s, not of %s, the entity this property binds to (%s), "+
+			"and writing it is CE7247 \"… is not an attribute of entity %s\". Bind an attribute of %s here, "+
+			"or read the other object through a page or snippet parameter: `$Param.%s`",
+		where, attr, owner, scope.Entity, scope.describe(), scope.Entity, scope.Entity, shortAttributeName(attr))
 }

@@ -169,6 +169,37 @@ func TestLCSStatements_ExactMatchWinsOverAMove(t *testing.T) {
 	}
 }
 
+// mendixlabs/mxcli#1598, case 6: a new `if` inserted before a stored one that
+// is restated with a change in its branch. The new if is the stored one but
+// for its condition, and the restated if is the stored one but for its
+// branch; both counted the same, and the tie went to the earlier pair, so the
+// new if took over the stored decision (its condition set in place) and the
+// restated if was inserted as a new node — on top of it, at the position the
+// script states. The same condition is the closer match.
+func TestLCSStatements_TheSameConditionWinsOverAChangedOne(t *testing.T) {
+	stored := parseFlowBody(t, `  @position(-500, 200)
+  log info node 'N' 'first';
+  @position(-299, 200)
+  if $In = 'x' then
+    @position(-124, 100)
+    log info node 'N' 'a';
+  end if;`).Body
+	declared := parseFlowBody(t, `  @position(-500, 200)
+  log info node 'N' 'first';
+  if $In = 'y' then
+    log info node 'N' 'new';
+  end if;
+  @position(-299, 200)
+  if $In = 'x' then
+    @position(-124, 100)
+    log info node 'N' 'b';
+  end if;`).Body
+	pairs := lcsStatements(declared, stored)
+	if len(pairs) != 2 || pairs[0] != [2]int{0, 0} || pairs[1] != [2]int{2, 1} {
+		t.Fatalf("pairs %v, want [[0 0] [2 1]]: the restated if paired with the stored one, the new if inserted", pairs)
+	}
+}
+
 // mendixlabs/mxcli#1505: Studio Pro stores a multi-line note with CRLF line
 // breaks and describe prints those bytes as they are. An editor that turns
 // them into LF changed nothing anyone can see on the canvas, yet the free

@@ -1,0 +1,40 @@
+mdl 1;
+-- ============================================================================
+-- mendixlabs/mxcli#1611 B — a drop-down filter's defaultValue of the wrong kind
+-- (CE0117)
+-- ============================================================================
+--
+-- Reported (v0.27.0, Mendix 11.12.5):
+--   column (Attribute: IsActive) { dropdownfilter ddf (defaultValue: 'true') }
+-- passed check and exec, then mx check failed CE0117 "Error(s) in expression."
+--
+-- defaultValue is an Expression returning a String, and a quoted MDL value on
+-- an expression property IS the expression's text: 'true' stores the Boolean
+-- expression `true`. Measured on 11.14.0, one filter per value: 'true',
+-- 'false', '1' (in a String and in an Integer column), '1.5' and 'abc' are
+-- CE0117; '''true''', '''abc''', '''tru''', 'empty' and '''a'' + ''b''' build.
+-- check now reports the refused values as MDL-WIDGET49, with or without a
+-- project.
+--
+-- This file is the shape that must PASS: the option as a String literal inside
+-- the quotes. As written: 0 errors from check and from mxbuild. With the first
+-- filter's defaultValue changed to 'true': MDL-WIDGET49 from check, CE0117 from
+-- mxbuild.
+-- ============================================================================
+
+CREATE MODULE Bug1611Ddf;
+
+CREATE OR MODIFY PERSISTENT ENTITY Bug1611Ddf.Task (
+  Title: String(100),
+  IsActive: Boolean DEFAULT true
+);
+
+CREATE OR MODIFY PAGE Bug1611Ddf.Task_Overview (
+  Title: 'Tasks',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  datagrid dgTasks (DataSource: DATABASE Bug1611Ddf.Task) {
+    column (Attribute: IsActive) { dropdownfilter ddfActive (defaultValue: '''true''') }
+    column (Attribute: Title) { textfilter tfTitle }
+  }
+};

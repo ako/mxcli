@@ -410,6 +410,8 @@ column (caption: 'Actions') {
 
 > **A list widget needs an association that yields a list.** A list view, data grid or gallery over `$currentObject/M.Assoc` is CE8812 ("A grid association path must result in a list") when the association is a Reference followed from its FROM entity, or a Reference with owner Both from either end (one-to-one). Use a data view for the single object, or a ReferenceSet. `check` reports it as MDL-ASSOCDS01. The reverse of a default Reference (from the TO entity) is a list and fine.
 
+> **A view entity's association is one-way for a page.** The association a view entity derives from its OQL (`select c.ID as Stats_Customer`) can be followed from the view entity only. A data source that follows it from the entity it points at, in any widget and at any hop (`database from $currentObject/M.Stats_Customer/M.Stats`, `$currentObject/M.Stats_Customer`), is CE8812 "Entity 'M.Customer' has no association 'M.Stats_Customer'". Query the view entity instead: `datasource: database M.Stats where [M.Stats_Customer = $currentObject]`. `check` reports it as MDL-ASSOCDS02. A microflow `retrieve … from $Cust/M.Stats_Customer` is accepted.
+
 **With WHERE and SORT BY (inline in DataSource):**
 ```sql
 datagrid dgActive (
@@ -709,6 +711,18 @@ custom attribute (Studio Pro's "Attribute config: Custom"); listing two is refus
 (MDL-WIDGET47) — use a `textfilter` for several. A bare `dropdownfilter f` takes the
 attribute of the Data grid 2 column it sits in ("Auto"), so in a **gallery's**
 `filter { … }` bar, which has no column, the attribute must be named.
+
+`defaultValue:` preselects an option. It is an **expression returning a String**, and a
+quoted MDL value is the expression's text, so the option goes in as a String literal
+inside the quotes, even for a Boolean column:
+
+```sql
+column (Attribute: IsActive) { dropdownfilter ddfActive (defaultValue: '''true''') }
+```
+
+`defaultValue: 'true'` stores the Boolean expression `true`, and `'1'` or a bare name
+like `'Open'` fail the same way: mxbuild reports CE0117 "Error(s) in expression." `check`
+reports it as MDL-WIDGET49. `'empty'` (no preselection) is fine.
 
 Filter by an **association** instead of an attribute — the options are the
 associated objects. Giving the filter a `datasource:` (the OPTION list) selects

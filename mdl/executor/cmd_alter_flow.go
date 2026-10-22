@@ -551,7 +551,7 @@ func (a *alterFlowContext) fragmentBuilder(ctx *ExecContext) *flowBuilder {
 		varTypes:     varTypes,
 		declaredVars: declared,
 		measurer:     &layoutMeasurer{varTypes: varTypes},
-		backend:      ctx.Backend,
+		backend:      flowBuildBackend(ctx.Backend),
 		hierarchy:    hierarchy,
 		restServices: restServices,
 		isNanoflow:   a.stmt.Nanoflow,

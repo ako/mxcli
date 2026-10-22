@@ -11,21 +11,21 @@ description: "Nanoflow syntax in MDL — shared with microflows, but client-side
 | lines | section |
 |---|---|
 | 35-44 | When to Use This Skill |
-| 45-78 | Changing an Existing Nanoflow |
-| 79-97 | When to Use a Nanoflow vs a Microflow |
-| 98-112 | Key Differences from Microflows |
-| 113-136 | Nanoflow Structure |
-| 137-145 | Naming Convention |
-| 146-214 | Supported Activities |
-| 215-481 | Real-World Patterns |
-| 482-552 | NanoflowCommons JavaScript Actions Reference |
-| 553-591 | Disallowed Activities |
-| 592-595 | Return Type Restrictions |
-| 596-640 | Error Handling in Nanoflows |
-| 641-648 | Security (GRANT/REVOKE) |
-| 649-661 | Management Commands |
-| 662-672 | Common Mistakes |
-| 673-687 | Validation Checklist |
+| 45-81 | Changing an Existing Nanoflow |
+| 82-100 | When to Use a Nanoflow vs a Microflow |
+| 101-115 | Key Differences from Microflows |
+| 116-139 | Nanoflow Structure |
+| 140-148 | Naming Convention |
+| 149-217 | Supported Activities |
+| 218-484 | Real-World Patterns |
+| 485-555 | NanoflowCommons JavaScript Actions Reference |
+| 556-594 | Disallowed Activities |
+| 595-598 | Return Type Restrictions |
+| 599-643 | Error Handling in Nanoflows |
+| 644-651 | Security (GRANT/REVOKE) |
+| 652-664 | Management Commands |
+| 665-675 | Common Mistakes |
+| 676-690 | Validation Checklist |
 
 <!-- /skill-index -->
 # Mendix Nanoflow Skill
@@ -58,7 +58,10 @@ Choose the mode by who owns the nanoflow ([choose-edit-mode](../choose-edit-mode
   the stored end event or decision, and a body without a trailing `return` means the stored end. The
   header (documentation, return type, parameters added, retyped or — when unused —
   removed) is set on the stored document, and a stated `@position` or `@start` moves the
-  stored node, keeping its flows. A change it cannot patch — anything inside a loop body
+  stored node, keeping its flows. Under `mdl 1;` a node at a stated position is never moved
+  to make room: a statement inserted without `@position` where the gap is too small is refused, naming
+  the node in the way — give the new statements an `@position`, or leave `@position` and
+  `@merge` off the statements after them. A change it cannot patch — anything inside a loop body
   or error handler, a redrawn `@anchor`/`@curve`, any other `return` added or taken away —
   rebuilds the whole nanoflow under mdl 0
   (warning `MDL-V1-REBUILD`: element IDs renumbered, merges removed, curves reset) and

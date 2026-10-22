@@ -1,0 +1,32 @@
+-- mendixlabs/mxcli#1616 (ako/mxcli#1549): every member assignment of a
+-- `create` action made exec and check decode the domain model of every module.
+--
+-- Symptom: 10 microflows of 20 `create MyFirstModule.Sale (A1 = …, … A8 = …)`
+-- took 14.2 s on a fresh app and 293.8 s after 30 modules × 20 entities were
+-- added (`check --references` alone 72 s); the same flows with no member
+-- assignments took 3.0 s. Each `create microflow` logged 19–29 s.
+--
+-- Fix: GetDomainModel(module) reads and decodes that module's domain model
+-- only (and follows a generalization chain into another module only when it
+-- has to), and one flow build reads modules and domain models through a memo,
+-- so a flow's member assignments cost one lookup per module, not one project
+-- scan each. Measured on testdata/pedapp: 160 member assignments cost 4001 extra
+-- unit-file reads before, 11 after.
+--
+-- Expected: both statements succeed; the second costs about what the first
+-- does with the member assignments left out.
+
+mdl 1;
+
+create persistent entity MyFirstModule.Sale (
+  A1: String(100), A2: String(100), A3: String(100), A4: String(100),
+  A5: Integer, A6: Integer, A7: Boolean, A8: DateTime
+);
+
+create microflow MyFirstModule.ACT_CreateSales () returns Boolean as $r
+begin
+  $S1 = create MyFirstModule.Sale (A1 = 'a', A2 = 'b', A3 = 'c', A4 = 'd', A5 = 1, A6 = 2, A7 = true, A8 = [%CurrentDateTime%]);
+  $S2 = create MyFirstModule.Sale (A1 = 'a', A2 = 'b', A3 = 'c', A4 = 'd', A5 = 1, A6 = 2, A7 = true, A8 = [%CurrentDateTime%]);
+  $S3 = create MyFirstModule.Sale (A1 = 'a', A2 = 'b', A3 = 'c', A4 = 'd', A5 = 1, A6 = 2, A7 = true, A8 = [%CurrentDateTime%]);
+  return true;
+end;

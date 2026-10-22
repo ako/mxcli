@@ -20,6 +20,11 @@ import (
 //
 // It lives only for one derivation, which writes nothing, so nothing it caches
 // can go stale. Everything it does not override is the real backend.
+//
+// One `create microflow` build is the same kind of span (flowBuildBackend):
+// the builder only reads, and asked for a module and its domain model once per
+// member assignment of every `create` action, each a project listing
+// (mendixlabs/mxcli#1616).
 type layoutCheckBackend struct {
 	backend.FullBackend
 
@@ -28,12 +33,15 @@ type layoutCheckBackend struct {
 	nanoflows    *memoResult[[]*microflows.Nanoflow]
 	domainModels *memoResult[[]*domainmodel.DomainModel]
 
-	moduleByName map[string]memoResult[*model.Module]
-	domainModel  map[model.ID]memoResult[*domainmodel.DomainModel]
-	rawUnit      map[[2]string]memoResult[*types.RawUnitInfo]
-	javaAction   map[string]memoResult[*javaactions.JavaAction]
-	jsAction     map[string]memoResult[*types.JavaScriptAction]
-	isRule       map[string]memoResult[bool]
+	microflowHeaders *memoResult[[]types.DocumentHeader]
+
+	moduleByName    map[string]memoResult[*model.Module]
+	microflowsNamed map[string]memoResult[[]*microflows.Microflow]
+	domainModel     map[model.ID]memoResult[*domainmodel.DomainModel]
+	rawUnit         map[[2]string]memoResult[*types.RawUnitInfo]
+	javaAction      map[string]memoResult[*javaactions.JavaAction]
+	jsAction        map[string]memoResult[*types.JavaScriptAction]
+	isRule          map[string]memoResult[bool]
 }
 
 type memoResult[T any] struct {
@@ -41,15 +49,30 @@ type memoResult[T any] struct {
 	err   error
 }
 
+// flowBuildBackend is the backend one flow build reads through: memoised for
+// that build, which writes nothing (the flow is stored after the builder is
+// done). A nil backend stays nil — the builder checks for it — and one that is
+// already memoised is not wrapped again.
+func flowBuildBackend(b backend.FullBackend) backend.FullBackend {
+	if b == nil {
+		return nil
+	}
+	if _, ok := b.(*layoutCheckBackend); ok {
+		return b
+	}
+	return newLayoutCheckBackend(b)
+}
+
 func newLayoutCheckBackend(b backend.FullBackend) *layoutCheckBackend {
 	return &layoutCheckBackend{
-		FullBackend:  b,
-		moduleByName: map[string]memoResult[*model.Module]{},
-		domainModel:  map[model.ID]memoResult[*domainmodel.DomainModel]{},
-		rawUnit:      map[[2]string]memoResult[*types.RawUnitInfo]{},
-		javaAction:   map[string]memoResult[*javaactions.JavaAction]{},
-		jsAction:     map[string]memoResult[*types.JavaScriptAction]{},
-		isRule:       map[string]memoResult[bool]{},
+		FullBackend:     b,
+		moduleByName:    map[string]memoResult[*model.Module]{},
+		microflowsNamed: map[string]memoResult[[]*microflows.Microflow]{},
+		domainModel:     map[model.ID]memoResult[*domainmodel.DomainModel]{},
+		rawUnit:         map[[2]string]memoResult[*types.RawUnitInfo]{},
+		javaAction:      map[string]memoResult[*javaactions.JavaAction]{},
+		jsAction:        map[string]memoResult[*types.JavaScriptAction]{},
+		isRule:          map[string]memoResult[bool]{},
 	}
 }
 
@@ -84,6 +107,48 @@ func (b *layoutCheckBackend) ListNanoflows() ([]*microflows.Nanoflow, error) {
 
 func (b *layoutCheckBackend) ListDomainModels() ([]*domainmodel.DomainModel, error) {
 	return memoOnce(&b.domainModels, b.FullBackend.ListDomainModels)
+}
+
+// ListMicroflowsNamed and ListMicroflowHeaders keep the real backend's
+// microflowLookup visible through the memo. The memo embeds the FullBackend
+// interface, so without them a type assertion on it fails and microflowsNamed
+// falls back to ListMicroflows: describing a microflow rebuilds it to derive
+// its layout, and that decoded every microflow of the project once per
+// described flow — the bulk of a module dump's time (mendixlabs/mxcli#1624).
+func (b *layoutCheckBackend) ListMicroflowsNamed(name string) ([]*microflows.Microflow, error) {
+	return memoKeyed(b.microflowsNamed, name, func() ([]*microflows.Microflow, error) {
+		if l, ok := b.FullBackend.(microflowLookup); ok {
+			return l.ListMicroflowsNamed(name)
+		}
+		all, err := b.ListMicroflows()
+		if err != nil {
+			return nil, err
+		}
+		var out []*microflows.Microflow
+		for _, mf := range all {
+			if mf.Name == name {
+				out = append(out, mf)
+			}
+		}
+		return out, nil
+	})
+}
+
+func (b *layoutCheckBackend) ListMicroflowHeaders() ([]types.DocumentHeader, error) {
+	return memoOnce(&b.microflowHeaders, func() ([]types.DocumentHeader, error) {
+		if l, ok := b.FullBackend.(microflowLookup); ok {
+			return l.ListMicroflowHeaders()
+		}
+		all, err := b.ListMicroflows()
+		if err != nil {
+			return nil, err
+		}
+		out := make([]types.DocumentHeader, len(all))
+		for i, mf := range all {
+			out[i] = types.DocumentHeader{ID: mf.ID, ContainerID: mf.ContainerID, Name: mf.Name, Excluded: mf.Excluded}
+		}
+		return out, nil
+	})
 }
 
 func (b *layoutCheckBackend) GetModuleByName(name string) (*model.Module, error) {

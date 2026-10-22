@@ -44,6 +44,9 @@ type embeddedWidgetSchema struct {
 	// types maps a lower-cased key to its declared type ("Expression",
 	// "TextTemplate", "Boolean", …).
 	types map[string]string
+	// returns maps a lower-cased Expression key to its declared return type
+	// ("String", "Boolean", …); absent when the template declares none.
+	returns map[string]string
 	// slotAccepts are the widget types an item's widgets slot routes, by slot
 	// key (a column's `filter` → textfilter, …); empty for a widget's own schema.
 	slotAccepts map[string][]string
@@ -143,7 +146,7 @@ func loadEmbeddedSchema(widgetID, listKey string) *embeddedWidgetSchema {
 	var schema *embeddedWidgetSchema
 	if tmpl, err := widgets.GetTemplate(widgetID); err == nil && tmpl != nil {
 		if propTypes := embeddedTemplatePropertyTypes(tmpl.Type, listKey); len(propTypes) > 0 {
-			schema = &embeddedWidgetSchema{Title: tmpl.Name, Version: tmpl.Version, types: map[string]string{}}
+			schema = &embeddedWidgetSchema{Title: tmpl.Name, Version: tmpl.Version, types: map[string]string{}, returns: map[string]string{}}
 			if listKey != "" {
 				schema.Title += " column"
 				schema.slotAccepts = itemSlotAcceptedChildTypes[widgetID][listKey]
@@ -156,6 +159,11 @@ func loadEmbeddedSchema(widgetID, listKey string) *embeddedWidgetSchema {
 				kind := ""
 				if vt, ok := pt["ValueType"].(map[string]any); ok {
 					kind, _ = vt["Type"].(string)
+					if rt, ok := vt["ReturnType"].(map[string]any); ok && kind == "Expression" {
+						if ret, _ := rt["Type"].(string); ret != "" {
+							schema.returns[strings.ToLower(key)] = ret
+						}
+					}
 				}
 				schema.Names = append(schema.Names, key)
 				schema.types[strings.ToLower(key)] = kind

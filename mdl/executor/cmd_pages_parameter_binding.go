@@ -20,7 +20,10 @@
 package executor
 
 import (
+	"regexp"
 	"strings"
+
+	"github.com/mendixlabs/mxcli/mdl/ast"
 )
 
 // namedObjectBinding splits `$name.rest` into name (without the "$") and rest.
@@ -36,6 +39,20 @@ func namedObjectBinding(s string) (name, rest string, ok bool) {
 		return "", "", false
 	}
 	return name, rest, true
+}
+
+// parameterAttributeValue is the `$Param.Attr` text of a pluggable widget
+// property authored by its own key. Unlike `Attribute:`, a generic key's value
+// goes through the expression grammar, so `eventDataAttribute: $Ctx.EventData`
+// arrives as an *ast.WidgetExpressionV3 — which every attribute property used
+// to refuse as MDL-WIDGET42 (mendixlabs/mxcli#1591). Anything other than that
+// one shape is still an expression.
+func parameterAttributeValue(raw any) (string, bool) {
+	e, ok := raw.(*ast.WidgetExpressionV3)
+	if !ok || !isParameterAttributeText(e.Text) {
+		return "", false
+	}
+	return e.Text, true
 }
 
 // namedObjectBindingKinds are the widgets whose `Attribute: $name.Attr` may
@@ -96,4 +113,14 @@ func customWidgetPropertyParameter(w map[string]any, propertyKey string) string 
 // `$Param.Attr`, the attribute's own name quoted when it is a keyword.
 func parameterAttributeMDL(name, attrQN string) string {
 	return "$" + name + "." + mdlIdent(shortAttributeName(attrQN))
+}
+
+// parameterAttributeTextRe is `$Param.Attr` and nothing more: one variable,
+// one attribute name (quoted when it is a keyword). namedObjectBinding alone
+// takes `$Ctx.Name + 'x'` too, which is an expression.
+var parameterAttributeTextRe = regexp.MustCompile(`^\$[A-Za-z_][A-Za-z0-9_]*\.(?:[A-Za-z_][A-Za-z0-9_]*|"[A-Za-z_][A-Za-z0-9_]*")$`)
+
+// isParameterAttributeText reports whether text is the `$Param.Attr` shape.
+func isParameterAttributeText(text string) bool {
+	return parameterAttributeTextRe.MatchString(text)
 }

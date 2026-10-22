@@ -1301,14 +1301,19 @@ func extractExplicitProperties(ctx *ExecContext, w map[string]any, enclosingEnti
 		// Check for AttributeRef (attribute binding)
 		if attrRef, ok := value["AttributeRef"].(map[string]any); ok && attrRef != nil {
 			if attr := extractString(attrRef["Attribute"]); attr != "" {
-				value := describeAttr(ctx, attr)
-				if schemas[typePointerID].DataSourceProperty == "" && strings.Contains(enclosing, ".") &&
+				described := describeAttr(ctx, attr)
+				if param := parameterSourceName(value["SourceVariable"]); param != "" && attrRef["EntityRef"] == nil {
+					// Read from a page or snippet parameter: `$Param.Attr`. The
+					// qualified name re-executes without the SourceVariable —
+					// CE7247 (mendixlabs/mxcli#1591).
+					described = parameterAttributeMDL(param, attr)
+				} else if schemas[typePointerID].DataSourceProperty == "" && strings.Contains(enclosing, ".") &&
 					!strings.EqualFold(attributeEntity(attr), enclosing) {
-					value = attr
+					described = attr
 				}
 				result = append(result, rawExplicitProp{
 					Key:   propKey,
-					Value: value,
+					Value: described,
 					IsRef: true,
 				})
 				continue

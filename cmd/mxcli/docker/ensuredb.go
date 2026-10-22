@@ -3,6 +3,7 @@
 package docker
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -269,7 +270,10 @@ func EnsureDatabase(db *DBConfig, w io.Writer) error {
 	}
 
 	// Ensure the role and database exist (needs a local superuser).
-	su, err := resolveSuperuser(host, port)
+	su, err := resolveSuperuser(host, port, dbAdmin{User: db.AdminUser, Password: db.AdminPassword})
+	if errors.Is(err, errNoSuperuser) {
+		return fmt.Errorf("%w%s", err, noSuperuserHint(*db))
+	}
 	if err != nil {
 		return err
 	}
@@ -621,14 +625,27 @@ func waitTCP(hostPort string, timeout time.Duration) error {
 	return fmt.Errorf("%s did not accept connections within %s", hostPort, timeout)
 }
 
+// dbAdmin is a PostgreSQL superuser login supplied by the user
+// (--db-admin-user/--db-admin-password). A server whose superuser has a password
+// — every Windows install, where the installer always sets one, and there is no
+// sudo either — can be provisioned no other way (mendixlabs/mxcli#1485).
+type dbAdmin struct{ User, Password string }
+
+func (a dbAdmin) given() bool { return a.User != "" || a.Password != "" }
+
 // superuser is how we reach a PostgreSQL superuser to provision the role and
 // database: a direct `psql -U postgres` against the user-owned cluster (over its
-// private socket), or `sudo -u postgres psql` over the system cluster's default
-// Unix socket. The latter preserves the peer-auth path used by Debian/Ubuntu.
+// private socket), `sudo -u postgres psql` over the system cluster's default
+// Unix socket (the peer-auth path used by Debian/Ubuntu), or the user's own
+// admin login over TCP.
 type superuser struct {
 	host, port string
-	sock       string // Unix-socket dir for the user-owned cluster; preferred over TCP
-	sudo       bool
+	// user is the role to connect as; empty means postgres. password, when set,
+	// reaches psql through PGPASSWORD, never argv, where any local user could
+	// read it from the process list.
+	user, password string
+	sock           string // Unix-socket dir for the user-owned cluster; preferred over TCP
+	sudo           bool
 	// viaRoot reaches the postgres account through root instead of directly.
 	// Devcontainers built from mcr.microsoft.com/devcontainers/base grant their
 	// non-root user sudo to root ONLY (`vscode ALL=(root) NOPASSWD:ALL`), so
@@ -674,7 +691,7 @@ func (s superuser) psql(args ...string) *exec.Cmd {
 	if host != "" {
 		base = append(base, "-h", host)
 	}
-	base = append(base, "-p", s.port, "-U", "postgres", "-d", "postgres")
+	base = append(base, "-p", s.port, "-U", s.psqlUser(), "-d", "postgres")
 	if s.sudo {
 		// -n prevents sudo from opening /dev/tty for a password; psql's -w above
 		// independently prevents a database-password prompt. Omit -h to retain the
@@ -688,19 +705,36 @@ func (s superuser) psql(args ...string) *exec.Cmd {
 		cmd.Env = withoutPostgresTargetEnv(os.Environ())
 		return cmd
 	}
-	return exec.Command("psql", append(base, args...)...)
+	cmd := exec.Command("psql", append(base, args...)...)
+	if s.password != "" {
+		cmd.Env = append(os.Environ(), "PGPASSWORD="+s.password)
+	}
+	return cmd
 }
 
-// resolveSuperuser picks a working superuser path: a direct connection (the
-// user-owned initdb cluster over its trust socket, or a plain loopback cluster —
-// the only paths that work without elevation on Arch) or `sudo -u postgres` for
-// a system cluster.
-func resolveSuperuser(host, port string) (superuser, error) {
+// resolveSuperuser picks a working superuser path: the user's own admin login
+// when one is given, otherwise a direct connection (the user-owned initdb cluster
+// over its trust socket, or a plain loopback cluster — the only paths that work
+// without elevation on Arch) or `sudo -u postgres` for a system cluster.
+func resolveSuperuser(host, port string, admin dbAdmin) (superuser, error) {
 	if !isLocalHost(host) {
 		return superuser{}, fmt.Errorf("refusing to use a local PostgreSQL superuser for non-local host %q", host)
 	}
+	if admin.given() {
+		// Explicit credentials are the only path tried: falling back to sudo
+		// after they fail would hide that the user's own login was rejected.
+		su := superuser{host: host, port: port, user: admin.User, password: admin.Password}
+		out, err := su.psql("-tAc", "select 1").CombinedOutput()
+		if err != nil {
+			return superuser{}, fmt.Errorf("connecting as PostgreSQL admin %q at %s: %w\n%s",
+				su.psqlUser(), net.JoinHostPort(host, port), err, strings.TrimSpace(string(out)))
+		}
+		return su, nil
+	}
 	// Prefer our cluster's private socket (trust); fall back to a plain
 	// loopback connection for a pre-existing cluster a user pointed us at.
+	// That one also succeeds with a password from PGPASSWORD or a .pgpass file,
+	// which psql reads on its own.
 	candidates := []superuser{{host: host, port: port}}
 	if _, _, sockDir, err := userClusterDirs(); err == nil {
 		candidates = append([]superuser{{host: host, port: port, sock: sockDir}}, candidates...)
@@ -720,9 +754,33 @@ func resolveSuperuser(host, port string) (superuser, error) {
 			}
 		}
 	}
-	return superuser{}, fmt.Errorf("no local PostgreSQL superuser available to create the " +
-		"role/database (tried a direct 'psql -U postgres' connection over the cluster socket " +
-		"and TCP, and non-interactive 'sudo -u postgres' both directly and via root)")
+	return superuser{}, errNoSuperuser
+}
+
+// errNoSuperuser is resolveSuperuser's refusal when nothing was given and no
+// passwordless path works. EnsureDatabase adds the way out, which needs the
+// app's database and role names.
+var errNoSuperuser = fmt.Errorf("no local PostgreSQL superuser available to create the " +
+	"role/database (tried a direct 'psql -U postgres' connection over the cluster socket " +
+	"and TCP, and non-interactive 'sudo -u postgres' both directly and via root)")
+
+// noSuperuserHint is the way past errNoSuperuser: the superuser's password (a
+// Windows install always has one), or the two statements to run by hand. The
+// app password is not echoed — this text lands in logs.
+func noSuperuserHint(db DBConfig) string {
+	return fmt.Sprintf("\n  If the postgres superuser has a password (the Windows installer always sets one),\n"+
+		"  pass it: --db-admin-user postgres --db-admin-password <password> (or set PGPASSWORD).\n"+
+		"  Or create the role and database yourself as a superuser, then rerun:\n"+
+		"    CREATE ROLE %s WITH LOGIN PASSWORD '<--db-password>' CREATEDB;\n"+
+		"    CREATE DATABASE %s OWNER %s;", db.User, db.Name, db.User)
+}
+
+// psqlUser is the role this superuser connects as.
+func (s superuser) psqlUser() string {
+	if s.user == "" {
+		return "postgres"
+	}
+	return s.user
 }
 
 // ensureRole creates the app login role if it does not already exist.

@@ -42,6 +42,16 @@ type Reader struct {
 	unitCache      []cachedUnit
 	unitCacheValid bool
 
+	// v2Types is MPR v2's unit-type index (reader_units_v2.go): ContentsHash
+	// → $Type, loaded from .mxcli/ on first use. v2Hashes is every hash the
+	// Unit table held at the last rebuild — what a persisted index keeps.
+	// v2TypesMu guards these and the unit cache rebuild.
+	v2TypesMu     sync.Mutex
+	v2Types       map[string]string
+	v2TypesLoaded bool
+	v2TypesDirty  bool
+	v2Hashes      map[string]struct{}
+
 	// contentCache stores raw BSON bytes per unit ID (MPR v2 only).
 	// Populated on first read while caching is on (EnableContentCache, or a
 	// CacheUnitReads scope); cleared by InvalidateCache, which every write
@@ -210,6 +220,9 @@ func (r *Reader) ListUnitHashes() (map[string]string, error) {
 
 // Close closes the reader and releases resources.
 func (r *Reader) Close() error {
+	r.v2TypesMu.Lock()
+	r.persistUnitTypeIndex()
+	r.v2TypesMu.Unlock()
 	if r.db != nil && r.ownsDB {
 		return r.db.Close()
 	}

@@ -11,6 +11,7 @@ sources:
   - cmd/mxcli/docker/webclient_supervisor.go
   - cmd/mxcli/docker/webclient_watch.go
   - cmd/mxcli/docker/webclient_pages.go
+  - cmd/mxcli/docker/serve_recovery.go
   - cmd/mxcli/devloop_admin.go
 ---
 
@@ -87,6 +88,20 @@ universal recovery**: its first build is a full bundle of the current source, so
 it covers a dead watcher, missing pages, dangling chunks and a `dist/` someone
 else deleted. Reproducing it needs no patience — kill the runner process and the
 dead-watcher state is there in seconds.
+
+**The same holds for `mxbuild --serve`, and its state is worse hidden.** On the
+versions where mxbuild writes `web/dist` itself, only a serve process's first build
+bundles completely — every later one, *even with the model unchanged*, replaced the
+bundle with one that has no pages, and reported success. The same process also
+kept its first Sass error as CE6093 after the SCSS was fixed. Both were settled by
+driving the serve `/build` API from a small harness with no watch loop: the
+unchanged-model second build is the row that rules out "something in the change"
+and every repair applied to the deployment at once, and a fresh process is the row
+that fixes it. So the loop restarts the serve process on those shapes — but must
+keep the *incremental* build's `restartRequired`, because a cold build always says
+"restart" and taking it would drop every session per change. An earlier hint had
+concluded "nothing outside the process fixes it" — true of the deployment, false of
+the process; check which "outside" a negative result actually covered.
 
 **The tools the loop drives have their own idea of what is being watched.**
 mxbuild's page plugin globs `web/pages` once, at bundler start, and matches later

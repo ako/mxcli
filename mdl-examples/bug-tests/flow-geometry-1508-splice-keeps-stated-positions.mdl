@@ -1,0 +1,110 @@
+mdl 1;
+-- ============================================================================
+-- Bug: an inserted if moved every stated node after it, but not the
+-- statements replaced in its neighbour's branch
+-- (ako/mxcli#1508, case 6; mendixlabs/mxcli#1598)
+-- ============================================================================
+--
+-- NF_Do is drawn with a @position on every statement. The reported
+-- restatement (below, commented out) keeps every @position, adds an if/else
+-- after the declare without one, changes the JS argument and binds the call's
+-- result. Before the fix it was spliced in as
+--
+--   Modified nanoflow: MyFirstModule.NF_Do (spliced: 1 inserted, 1 replaced, 1 dropped)
+--
+-- with `if $Flag` moved -299 -> 40, its merge 186 -> 525 and the return
+-- 530 -> 869 to make room, while the two replaced calls stayed at the
+-- positions the script states, (-124, 100) and (60, 100): left of their own
+-- decision. Re-running the script was refused ("the connectors of the If at
+-- (40, 200) are redrawn"). With a plain `if` (no else) the new if took over the
+-- stored decision and the restated `if $Flag` was drawn on top of it.
+--
+-- Fixed: under mdl 1 a node the script draws at a stated position is not
+-- moved to make room. The reported restatement is refused, naming the room it
+-- needs and what is in the way (a headerless script still makes room as
+-- before: under mdl 0 the refusal would fall back to a whole-flow rebuild,
+-- ADR-0011):
+--
+--   the inserted statements need 339px more room than there is between the
+--   ActionActivity at (-500, 200) and the ExclusiveSplit '$Flag' at
+--   (-299, 200), which the script draws where it is; state @position on the
+--   new statements, where there is room for them, or leave unstated the
+--   positions of what comes after them (@position, @merge, a note's
+--   position:) so that it can move along.
+--
+-- The restatement that leaves those positions unstated (the last statement of
+-- this file) is spliced: everything after the declare moves along by the same
+-- amount, the replaced calls with their decision.
+--
+-- Verify: exec, then
+--   mxcli -p app.mpr -c "describe nanoflow MyFirstModule.NF_Do"
+-- Expected: both calls are drawn right of `if $Flag` and left of its merge,
+-- and the last statement, run again on its own, reports
+--   Unchanged nanoflow: MyFirstModule.NF_Do
+-- Uncomment the reported restatement to see the refusal.
+-- ============================================================================
+
+create javascript action MyFirstModule.JS_Do(Msg: String) returns Boolean platform web as $$
+return Promise.resolve(true);
+$$;
+
+create or modify microflow MyFirstModule.SUB_Check() returns Boolean as $R
+begin
+  declare $R Boolean = true;
+  return $R;
+end;
+
+create or modify nanoflow MyFirstModule.NF_Do ($Flag: Boolean) returns Boolean as $Out
+begin
+  @position(-500, 200)
+  declare $Out Boolean = false;
+  @position(-299, 200)
+  @merge(186, 200)
+  if $Flag then
+    @position(-124, 100)
+    call javascript action MyFirstModule.JS_Do(Msg = 'a');
+    @position(60, 100)
+    call microflow MyFirstModule.SUB_Check();
+  end if;
+  @position(530, 200)
+  return $Out;
+end;
+
+-- The reported restatement: refused, nothing written.
+-- create or modify nanoflow MyFirstModule.NF_Do ($Flag: Boolean) returns Boolean as $Out
+-- begin
+--   @position(-500, 200)
+--   declare $Out Boolean = false;
+--   if $Out then
+--     log info node 'Probe' 'x';
+--   else
+--     log info node 'Probe' 'y';
+--   end if;
+--   @position(-299, 200)
+--   @merge(186, 200)
+--   if $Flag then
+--     @position(-124, 100)
+--     call javascript action MyFirstModule.JS_Do(Msg = 'b');
+--     @position(60, 100)
+--     $Ok = call microflow MyFirstModule.SUB_Check();
+--   end if;
+--   @position(530, 200)
+--   return $Out;
+-- end;
+
+-- The same change with the positions after the insert left unstated: spliced.
+create or modify nanoflow MyFirstModule.NF_Do ($Flag: Boolean) returns Boolean as $Out
+begin
+  @position(-500, 200)
+  declare $Out Boolean = false;
+  if $Out then
+    log info node 'Probe' 'x';
+  else
+    log info node 'Probe' 'y';
+  end if;
+  if $Flag then
+    call javascript action MyFirstModule.JS_Do(Msg = 'b');
+    $Ok = call microflow MyFirstModule.SUB_Check();
+  end if;
+  return $Out;
+end;
