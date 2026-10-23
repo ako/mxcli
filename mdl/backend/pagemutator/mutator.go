@@ -263,17 +263,32 @@ func (m *Mutator) SetWidgetAction(widgetRef string, action pages.ClientAction) e
 	// property list and throws on one it does not know, while mxbuild's
 	// deserializer tolerates it — so a silent write here builds clean and fails
 	// to open.
-	if bsonnav.DGet(result.widget, "Action") == nil {
-		return fmt.Errorf("widget %q (%s) has no Action property — Action can only be set on a widget that "+
-			"performs an on-click action, such as a button or a clickable container",
+	key := clickActionKey(result.widget)
+	if key == "" {
+		return fmt.Errorf("widget %q (%s) has no on-click action — Action can only be set on a widget that "+
+			"performs one: a button, a container, a list view or an image",
 			widgetRef, widgetTypeName(result.widget))
 	}
 	serialized := m.deps.SerializeClientAction(action)
 	if serialized == nil {
 		return fmt.Errorf("unsupported action type %T", action)
 	}
-	bsonnav.DSet(result.widget, "Action", serialized)
+	bsonnav.DSet(result.widget, key, serialized)
 	return nil
+}
+
+// clickActionKey is the property a built-in widget stores its one on-click
+// action in, or "" when it has none. The name differs by type, and MDL spells
+// all of them `Action:` (mendixlabs/mxcli#1592): a button's is Action, a
+// container's OnClickAction, a list view's and an image's ClickAction. The
+// stored document decides, so a widget is never given a key its type lacks.
+func clickActionKey(widget bson.D) string {
+	for _, key := range []string{"Action", "OnClickAction", "ClickAction"} {
+		if bsonnav.DGet(widget, key) != nil {
+			return key
+		}
+	}
+	return ""
 }
 
 // SetWidgetNamedAction writes an action into a pluggable widget's action slot

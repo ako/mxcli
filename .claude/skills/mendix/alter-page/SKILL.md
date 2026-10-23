@@ -212,7 +212,7 @@ so a silent write would build cleanly and then fail to open.
 
 | Property | Widget Types | Value Type | Example |
 |----------|-------------|------------|---------|
-| `Action` | Widgets with an on-click action (ACTIONBUTTON, LINKBUTTON, clickable containers) | Any `create page` action expression | `set (Action: call microflow M.ACT_Go) on btnSave` |
+| `Action` | Widgets with an on-click action (ACTIONBUTTON, LINKBUTTON, CONTAINER, LISTVIEW, images) | Any `create page` action expression | `set (Action: call microflow M.ACT_Go) on btnSave` |
 | `'<slotKey>'` | Pluggable widgets — any **action-typed** property (File Uploader `createFileAction`, DataGrid 2 `onSelectionChange`, …) | Any `create page` action expression | `set ('createFileAction': call microflow M.ACT_Create) on fileUploader1` — refused, naming the widget's action slots, if the key is not action-typed |
 | `caption` | ACTIONBUTTON, LINKBUTTON | String | `set (caption: 'Submit') on btnSave` |
 | `content` | DYNAMICTEXT | String | `set (content: 'New Heading') on txtTitle` |

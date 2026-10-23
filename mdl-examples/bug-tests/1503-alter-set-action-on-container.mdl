@@ -1,0 +1,32 @@
+mdl 1;
+-- `alter page … set (Action: …) on card1` on a container created with an
+-- on-click action was refused: "widget card1 (Forms$DivContainer) has no
+-- Action property". A container stores its click action as OnClickAction, a
+-- list view as ClickAction; SET looked only for "Action"
+-- (mendixlabs/mxcli#1592, ako/mxcli#1503).
+--
+-- Expected: both alters succeed, describe shows ACT_OpenNew on card1 and lv1,
+-- and `mxcli docker check --no-update-widgets` reports 0 errors.
+
+create module BugSetAction;
+
+create persistent entity BugSetAction.Tile (Title: string(100));
+
+create microflow BugSetAction.ACT_OpenOld () begin end;
+create microflow BugSetAction.ACT_OpenNew () begin end;
+
+create page BugSetAction.P (title: 'P', layout: Atlas_Core.Atlas_Default) {
+  container card1 (Action: call microflow BugSetAction.ACT_OpenOld) {
+    dynamictext txt1 (Content: 'Open')
+  }
+  listview lv1 (DataSource: database BugSetAction.Tile, Action: call microflow BugSetAction.ACT_OpenOld) {
+    dynamictext t2 (Content: 'Tile')
+  }
+};
+
+alter page BugSetAction.P {
+  set (Action: call microflow BugSetAction.ACT_OpenNew) on card1;
+  set (Action: call microflow BugSetAction.ACT_OpenNew) on lv1;
+};
+
+describe page BugSetAction.P;
