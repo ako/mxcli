@@ -1,0 +1,48 @@
+mdl 1;
+-- ako/mxcli#1671 — RENAME CONSTANT left every use of the constant inside an
+-- expression naming the old one.
+--
+-- An expression always writes a constant as @Module.Name, so the rename's
+-- reference sweep — which rewrote a stored string only when it equalled the
+-- old qualified name or started with it — never matched one, not even a
+-- constant that was the whole expression. The rename printed no reference
+-- count at all, and mx check reported:
+--
+--   [error] [CE1613] "The selected constant 'Bug1671.C_Root' no longer exists."
+--           at Create variable activity / Log message activity / End event
+--
+-- RENAME ENUMERATION had the smaller version: an enumeration value inside a
+-- longer expression ($S = Bug1671.Status.Open and …) kept its old name (CE0117),
+-- while a value that was the whole expression was renamed. A cross-module
+-- MOVE CONSTANT had the same gap through the sweep's other primitive.
+--
+--   mxcli exec mdl-examples/bug-tests/rename-1671-constant-in-expressions.mdl -p app.mpr
+--   mx check app.mpr
+--   mxcli -p app.mpr -c "describe microflow Bug1671.UseConstants"
+--
+-- Expected: 0 errors; describe shows @Bug1671.C_Base, @Bug1671.C_Max and
+-- Bug1671.State.Open everywhere, except inside the string literal of the last
+-- RETURN, which keeps the old names verbatim (a literal is data, not a
+-- reference). The rename reports "Updated 3 reference(s)".
+
+create module if not exists Bug1671;
+
+create or modify constant Bug1671.C_Root (Type: String, DefaultValue: 'https://example.com');
+create or modify constant Bug1671.C_Limit (Type: Integer, DefaultValue: '10');
+create or modify enumeration Bug1671.Status (Open 'Open', Closed 'Closed');
+
+create or modify microflow Bug1671.UseConstants () returns String
+begin
+  declare $Url String = @Bug1671.C_Root + '/orders';
+  declare $Max Integer = @Bug1671.C_Limit * 2;
+  log info node 'Bug1671' 'root is ' + @Bug1671.C_Root;
+  declare $S enum Bug1671.Status = Bug1671.Status.Open;
+  if $S = Bug1671.Status.Open and $Max > @Bug1671.C_Limit then
+    return @Bug1671.C_Root;
+  end if;
+  return 'literal mentions Bug1671.C_Root, @Bug1671.C_Root and Bug1671.Status.Open';
+end;
+
+rename constant Bug1671.C_Root to C_Base;
+rename constant Bug1671.C_Limit to C_Max;
+rename enumeration Bug1671.Status to State;

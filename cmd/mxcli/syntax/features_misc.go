@@ -1192,9 +1192,10 @@ RENAME MODULE OldModule TO NewModule [DRY RUN];
 -- rewritten (Module.Old -> Module.New, Module.Old.Attr -> Module.New.Attr).
 -- That covers calls, page and microflow parameters, show-page actions,
 -- navigation, security, attribute types, association ends.
--- A name inside free text — a microflow expression, an XPath string — is not
--- such a string and is left as it was; build or 'mxcli docker check' reports
--- what remains.
+-- Inside an expression or XPath, a constant (@Module.Old) and an enumeration
+-- value (Module.Old.Value) are rewritten too; text in a string literal is not.
+-- Any other name inside free text is left as it was; build or
+-- 'mxcli docker check' reports what remains.
 --
 -- RENAME JAVA ACTION also renames the .java source file and the class in it
 -- (class, constructor, toString); the user and extra code are left as written.

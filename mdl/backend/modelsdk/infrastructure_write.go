@@ -230,6 +230,12 @@ func replaceQNInValueCounted(v any, oldName, newName string, count *int) any {
 			*count++
 			return newName + val[len(oldName):]
 		}
+		// A reference inside an expression: @Module.Constant, or an
+		// enumeration value in a longer expression (ako/mxcli#1671).
+		if rewritten, n := types.RewriteExpressionReferences(val, oldName, newName); n > 0 {
+			*count += n
+			return rewritten
+		}
 		return val
 	case bson.D:
 		return replaceQNInDocCounted(val, oldName, newName, count)
@@ -285,13 +291,19 @@ func replaceQNInValue(v any, oldName, newName string) (any, bool) {
 }
 
 // replaceQualifiedNameRef rewrites s when it equals oldName or is prefixed
-// "oldName." (so "Mod.Old.Param" → "Mod.New.Param"), matching the legacy logic.
+// "oldName." (so "Mod.Old.Param" → "Mod.New.Param"), matching the legacy logic,
+// and otherwise rewrites the references to oldName inside it as an expression —
+// @Module.Constant, or an enumeration value in a longer expression — which a
+// cross-module move of a constant left naming the old module (ako/mxcli#1671).
 func replaceQualifiedNameRef(s, oldName, newName string) (any, bool) {
 	if s == oldName {
 		return newName, true
 	}
 	if strings.HasPrefix(s, oldName+".") {
 		return newName + s[len(oldName):], true
+	}
+	if rewritten, n := types.RewriteExpressionReferences(s, oldName, newName); n > 0 {
+		return rewritten, true
 	}
 	return s, false
 }
