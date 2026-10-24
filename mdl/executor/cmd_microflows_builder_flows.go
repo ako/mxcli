@@ -936,8 +936,23 @@ func (fb *flowBuilder) addErrorHandlerFlow(sourceActivityID model.ID, sourceX in
 				applyUserAnchors(flow, nil, thisAnchor)
 				fb.flows = append(fb.flows, flow)
 			} else {
-				flow := newHorizontalFlow(lastErrID, actID)
-				applyUserAnchors(flow, prevOwnAnchor, thisAnchor)
+				// A compound statement that left its exit pending — an `if`
+				// without `else` whose THEN returns has no merge — hands the
+				// next edge its case and @anchor, as every other body loop
+				// takes them. Drawn plain, the decision's FALSE edge was stored
+				// as NoCase: CE0079 at the decision, CE0773 at the flow
+				// (ako/mxcli#1455).
+				var flow *microflows.SequenceFlow
+				if lastErrCase != "" {
+					flow = newHorizontalFlowWithCase(lastErrID, actID, lastErrCase)
+				} else {
+					flow = newHorizontalFlow(lastErrID, actID)
+				}
+				originAnchor, destAnchor := prevOwnAnchor, thisAnchor
+				if prevOwnAnchor == nil && lastErrAnchor != nil {
+					originAnchor, destAnchor = pendingFlowAnchors(nil, lastErrAnchor, thisAnchor)
+				}
+				applyUserAnchors(flow, originAnchor, destAnchor)
 				errBuilder.flows = append(errBuilder.flows, flow)
 			}
 			prevOwnAnchor = thisAnchor

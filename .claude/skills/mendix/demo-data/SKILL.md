@@ -15,12 +15,12 @@ description: "Seed a Mendix app's PostgreSQL database directly, bypassing the ru
 | 43-76 | Step 1: Get Database Settings |
 | 77-103 | Step 2: Connect to the Database |
 | 104-165 | Step 3: Understand the Mendix ID System |
-| 166-253 | Step 4: Check Association Storage and Optimistic Locking |
-| 254-355 | Step 5: Insert Demo Data |
-| 356-401 | Important Caveats |
-| 402-447 | Quick Reference |
-| 448-494 | Automated Alternative: IMPORT FROM |
-| 495-499 | Related Skills |
+| 166-260 | Step 4: Check Association Storage and Optimistic Locking |
+| 261-362 | Step 5: Insert Demo Data |
+| 363-408 | Important Caveats |
+| 409-454 | Quick Reference |
+| 455-501 | Automated Alternative: IMPORT FROM |
+| 502-506 | Related Skills |
 
 <!-- /skill-index -->
 # Skill: Connect to Application Database and Generate Demo Data

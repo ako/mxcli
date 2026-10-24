@@ -1,0 +1,89 @@
+mdl 1;
+-- ako/mxcli#1455 (mendixlabs/mxcli#1558) — an `if` without `else` inside a
+-- custom error handler, whose THEN ends in RETURN, loses its FALSE case.
+--
+-- Such an `if` has no merge: its FALSE edge is left pending, as the case the
+-- NEXT edge must carry. Every body loop took that case except the one that
+-- builds an error handler's body, which drew the next edge plain. The decision
+-- left on `true` and NoCase, and mx check failed:
+--
+--   [error] [CE0079] "The 'false' condition value should be configured in
+--           properties for an outgoing sequence flow." at Decision '$Flag'
+--   [error] [CE0773] "Value must be of type Boolean." at Sequence flow
+--
+-- check and exec passed, and describe read the NoCase edge back as an `else`.
+-- The same `if` in the main flow was always stored with true/false.
+--
+--   mxcli exec mdl-examples/bug-tests/error-handler-1455-if-in-handler.mdl -p app.mpr
+--   mx check app.mpr
+--
+-- Expected: 0 errors (was two CE0079 + two CE0773 per pair of handlers), and
+-- re-running the script reports every document unchanged.
+
+create module if not exists Bug1455;
+
+-- Control: the same `if` in the main flow.
+create or modify microflow Bug1455.Target ($Flag: Boolean) returns Integer
+begin
+  if $Flag then
+    return 1;
+  end if;
+  return -1;
+end;
+
+-- The report's first shape: a microflow call's handler.
+create or modify microflow Bug1455.CallWithHandler ($Flag: Boolean) returns Integer
+begin
+  $Value = call microflow Bug1455.Target(Flag = $Flag)
+    on error without rollback begin
+      if $Flag then
+        return 1;
+      end if;
+      return -1;
+    end error;
+  return $Value;
+end;
+
+-- The report's second shape: a REST call's handler.
+create or modify microflow Bug1455.RestWithHandler () returns Integer
+begin
+  $Response = call rest service get 'https://example.com/x' (
+    Timeout: 30,
+  ) returns response
+    on error without rollback begin
+      if $latestHttpResponse != empty then
+        return $latestHttpResponse/StatusCode;
+      end if;
+      return -1;
+    end error;
+  return $Response/StatusCode;
+end;
+
+-- Two guards in a row: the second is entered on the first one's FALSE edge.
+create or modify microflow Bug1455.TwoGuards ($Flag: Boolean, $Flag2: Boolean) returns Integer
+begin
+  $Value = call microflow Bug1455.Target(Flag = $Flag)
+    on error without rollback begin
+      if $Flag then
+        return 1;
+      end if;
+      if $Flag2 then
+        return 2;
+      end if;
+      return -1;
+    end error;
+  return $Value;
+end;
+
+-- A handler that falls through after the guard.
+create or modify microflow Bug1455.FallThrough ($Flag: Boolean)
+begin
+  $Value = call microflow Bug1455.Target(Flag = $Flag)
+    on error without rollback begin
+      if $Flag then
+        return;
+      end if;
+      log warning node 'Bug1455' 'call failed';
+    end error;
+  log info node 'Bug1455' 'end';
+end;
