@@ -524,6 +524,27 @@ declare $Label string = 'Customer: ' + $Customer/Name;
 declare $Label string = if $Customer/Name != empty then 'Customer: ' + $Customer/Name else 'Customer: ';
 ```
 
+### 19. A Brace in a Template Is a Placeholder or `{{`
+
+In a template's text a `{` opens a numbered placeholder or is escaped as `{{`; a `}`
+needs no escape. `{number}`, `{}`, `{ 1 }` and an unescaped JSON object fail the build
+with CE0712 (CE0713/0714/0716/0717/0720 for the other malformed placeholders), in every
+template slot — log, show message, validation feedback, send email, a REST call's URL and
+body, a Java action's text template, workflow texts, a dynamic text and a button caption.
+`check` reports it as MDL-TEMPLATE02 with mxbuild's code (ako/mxcli#1397).
+
+```mdl
+-- ❌ WRONG: CE0712 — a name is not a placeholder, and the JSON brace is not escaped
+log info node 'Orders' 'Item {number} not found';
+$R = call rest service post 'https://example.com/x' (Body: template '{"name": "{1}"}' with ({1} = $Name)) returns String;
+
+-- ✅ CORRECT
+log info node 'Orders' 'Item {1} not found' with ({1} = $Number);
+$R = call rest service post 'https://example.com/x' (Body: template '{{"name": "{1}"}' with ({1} = $Name)) returns String;
+```
+
+An expression is not a template: in `'{name} = ' + $Name` the brace is plain text.
+
 ## Implicit Variable Creation (CE0111 Duplicate Variable)
 
 These statements **implicitly create a new variable** with the name on the left side:
