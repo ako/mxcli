@@ -641,6 +641,7 @@ func (v *microflowValidator) checkExprFunctions(label string, expr ast.Expressio
 	for _, h := range exprcheck.BuiltinCallHints(src, v.varKinds) {
 		v.addViolation(h.Code, linter.SeverityError, label+": "+h.Problem, h.Fix)
 	}
+	v.checkRegexTrailingBackslash(label, src)
 }
 
 // checkDivisionSlash flags `/` used as an arithmetic division operator, which

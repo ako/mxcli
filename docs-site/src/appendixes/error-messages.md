@@ -519,6 +519,23 @@ $R = call rest service post 'https://example.com/items' (
 ) returns String;
 ```
 
+### MDL-REGEX01: A regular expression that ends in a lone backslash
+
+```
+return: the regular expression of replaceAll, '\', ends in an unescaped backslash — it
+builds, and the call fails each time it runs [MDL-REGEX01]
+```
+
+**Cause:** The second argument of `replaceAll`, `replaceFirst` and `isMatch` is a regular
+expression. One that ends in a lone `\` builds — MxBuild does not read the pattern — and
+fails every time it runs: the runtime throws `PatternSyntaxException "Unescaped trailing
+backslash"`, a nanoflow `"\ at end of pattern"`. A warning, since the build accepts it. The
+replacement (third argument) is literal text on both sides, so a backslash or `$` in it is
+inserted as written and is never reported.
+
+**Solution:** Match a backslash with `\\` — `'\\'` under `mdl 1;`, `'\\\\'` without the
+header, where `\\` is one backslash. See `mxcli syntax microflow expressions`.
+
 ### MDL-JSONNUM01: A locale-dependent number in hand-built JSON
 
 ```
