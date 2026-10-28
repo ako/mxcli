@@ -249,7 +249,7 @@ func TestSpliceRerun_StudioProDecisionConditionSetInPlace(t *testing.T) {
 	if err := h.exec("mdl 1;\n" + edited); err != nil {
 		t.Fatalf("exec: %v\n%s", err, h.out.String())
 	}
-	if !strings.Contains(h.out.String(), "(spliced: 1 replaced)") {
+	if !strings.Contains(h.out.String(), "(spliced: 1 edited in place)") {
 		t.Errorf("want the condition set, got:\n%s", h.out.String())
 	}
 	after := h.flowUnit(t, "ChangePassword")
@@ -356,7 +356,7 @@ func TestSpliceRerun_ReplaceEndingInGuard(t *testing.T) {
 	if err := h.exec("mdl 1;\n" + edited); err != nil {
 		t.Fatalf("exec: %v\n%s", err, h.out.String())
 	}
-	if !strings.Contains(h.out.String(), "(spliced: 1 replaced)") {
+	if !strings.Contains(h.out.String(), "(spliced: 1 replaced with new element IDs)") {
 		t.Errorf("want one replace, got:\n%s", h.out.String())
 	}
 	after := h.flowUnit(t, "ShowPasswordForm")
@@ -397,7 +397,7 @@ end;
 	if err := h.exec("mdl 1;\n" + guarded); err != nil {
 		t.Fatalf("guard: %v\n%s", err, h.out.String())
 	}
-	if !strings.Contains(h.out.String(), "(spliced: 1 replaced)") {
+	if !strings.Contains(h.out.String(), "(spliced: 1 replaced with new element IDs)") {
 		t.Errorf("want one replace, got:\n%s", h.out.String())
 	}
 	requireDecisionCases(t, h.flowUnit(t, "Grow_Last"))

@@ -137,8 +137,8 @@ func TestPedAppSpliceParity_AuthoredSpellings(t *testing.T) {
 		if err := h.exec("mdl 1;\n" + edited); err != nil {
 			t.Fatalf("exec an edited constraint: %v\n%s", err, h.out.String())
 		}
-		if !strings.Contains(h.out.String(), "Modified microflow: MyFirstModule.SpliceParity (spliced: 1 replaced)") {
-			t.Errorf("an edited constraint must be spliced in as one replaced retrieve:\n%s", h.out.String())
+		if !strings.Contains(h.out.String(), "Modified microflow: MyFirstModule.SpliceParity (spliced: 1 edited in place)") {
+			t.Errorf("an edited constraint must be spliced in as one retrieve edited in place:\n%s", h.out.String())
 		}
 		if len(created.diff(h.snapshot())) == 0 {
 			t.Error("an edited constraint wrote nothing")

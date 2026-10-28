@@ -64,8 +64,8 @@ func TestSpliceRerun_CommitWithEventsIsTheStoredCommit(t *testing.T) {
 			if err := h.exec(edited); err != nil {
 				t.Fatalf("change: %v\n%s", err, h.out.String())
 			}
-			if !strings.Contains(h.out.String(), "(spliced: 1 replaced)") {
-				t.Errorf("change: want one statement replaced:\n%s", h.out.String())
+			if !strings.Contains(h.out.String(), "(spliced: 1 edited in place)") {
+				t.Errorf("change: want one statement edited in place:\n%s", h.out.String())
 			}
 			if len(before.diff(h.snapshot())) == 0 {
 				t.Fatal("change: the real change wrote nothing")

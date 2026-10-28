@@ -114,7 +114,7 @@ func TestCreateOrModify_EditInsideLoopBody(t *testing.T) {
 	if err := agreeExec(t, exec, edited); err != nil {
 		t.Fatalf("an expression edit inside a loop body is refused: %v", err)
 	}
-	if !strings.Contains(out.String(), "Modified microflow: MyFirstModule.LoopEdit (spliced: 1 replaced)") {
+	if !strings.Contains(out.String(), "Modified microflow: MyFirstModule.LoopEdit (spliced: 1 edited in place)") {
 		t.Errorf("want the edit reported as one splice, got:\n%s", out.String())
 	}
 	desc := describeFlow(t, exec, "LoopEdit")
@@ -122,8 +122,9 @@ func TestCreateOrModify_EditInsideLoopBody(t *testing.T) {
 		t.Errorf("the edit was not written:\n%s", desc)
 	}
 
-	// Everything but the replaced activity keeps its $ID and its place: the
-	// loop, its other activity, and the flow around it.
+	// Every object keeps its $ID and its place: the loop, its other
+	// activity, and the edited activity itself, which is the stored one
+	// with a new expression (ako/mxcli#1761) — the same kind of activity.
 	after := flowObjectIDs(loopEditFlowOf(t, exec, "LoopEdit").ObjectCollection)
 	var gone, added []model.ID
 	for id := range before {
@@ -138,11 +139,8 @@ func TestCreateOrModify_EditInsideLoopBody(t *testing.T) {
 			t.Errorf("object %s moved from %v to %v", id, q, p)
 		}
 	}
-	if len(gone) != 1 || len(added) != 1 {
-		t.Fatalf("want exactly the edited activity replaced, got %d gone, %d added", len(gone), len(added))
-	}
-	if before[gone[0]] != after[added[0]] {
-		t.Errorf("the replacement is drawn at %v, the activity it replaces at %v", after[added[0]], before[gone[0]])
+	if len(gone) != 0 || len(added) != 0 {
+		t.Fatalf("want the edited activity kept, got %d gone, %d added", len(gone), len(added))
 	}
 
 	// The re-run is a fixed point.
@@ -200,8 +198,8 @@ func TestCreateOrModify_EditInsideLoopBody(t *testing.T) {
 		if err := agreeExec(t, exec, src); err != nil {
 			t.Fatalf("refused: %v", err)
 		}
-		if !strings.Contains(out.String(), "2 replaced") {
-			t.Errorf("want two in-place replaces, got:\n%s", out.String())
+		if !strings.Contains(out.String(), "2 edited in place") {
+			t.Errorf("want two in-place edits, got:\n%s", out.String())
 		}
 		desc := describeFlow(t, exec, "LoopEdit")
 		if !strings.Contains(desc, "'still in loop'") || !strings.Contains(desc, "'start'") {

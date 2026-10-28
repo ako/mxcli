@@ -95,8 +95,8 @@ func TestFlowModify_SplicedMembersAreQualified(t *testing.T) {
 			case err != nil:
 				t.Errorf("%s: exec: %v", label, err)
 				continue
-			case !strings.Contains(h.out.String(), "(spliced: 1 replaced)"):
-				t.Errorf("%s: want one statement replaced by a splice, got:\n%s", label, h.out.String())
+			case !strings.Contains(h.out.String(), "(spliced: 1 edited in place)"):
+				t.Errorf("%s: want one statement edited in place by a splice, got:\n%s", label, h.out.String())
 			}
 			spliced := flowMembers(t, h.flowUnit(t, "T885_Flow"))
 			for _, m := range spliced {

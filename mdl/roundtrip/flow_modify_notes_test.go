@@ -197,8 +197,8 @@ end;
 		t.Fatalf("exec 1: %v\n%s", err, h.out.String())
 	}
 	for _, want := range []string{
-		"Modified microflow: MyFirstModule.Rerun_Rollback (spliced: 1 replaced)",
-		"Modified nanoflow: MyFirstModule.Rerun_RollbackNf (spliced: 1 replaced)",
+		"Modified microflow: MyFirstModule.Rerun_Rollback (spliced: 1 edited in place)",
+		"Modified nanoflow: MyFirstModule.Rerun_RollbackNf (spliced: 1 edited in place)",
 	} {
 		// The control is in the same line: the change itself is written.
 		if !strings.Contains(h.out.String(), want) {

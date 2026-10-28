@@ -58,15 +58,16 @@ func TestCreateOrModify_ListOperationWhereBareMemberIsItsStoredActivity(t *testi
 			if strings.Contains(out.String(), "MDL-V1-REBUILD") {
 				t.Errorf("the change fell back to rebuilding the flow:\n%s", out.String())
 			}
-			if !strings.Contains(out.String(), "Modified microflow: MyFirstModule.ListOpWhere (spliced: 1 replaced)") {
-				t.Errorf("want only the changed declare replaced, got:\n%s", out.String())
+			if !strings.Contains(out.String(), "Modified microflow: MyFirstModule.ListOpWhere (spliced: 1 edited in place)") {
+				t.Errorf("want only the changed declare edited, got:\n%s", out.String())
 			}
 			if got := describeFlow(t, exec, "ListOpWhere"); !strings.Contains(got, "declare $N Integer = 1;") {
 				t.Errorf("the change was not written:\n%s", got)
 			}
 
-			// Only the declare is new: the find, the filter and the rest keep
-			// their $IDs and places.
+			// Nothing is new: the find, the filter and the rest keep their
+			// $IDs and places, and so does the declare, edited in place
+			// (ako/mxcli#1761).
 			after := flowObjectIDs(loopEditFlowOf(t, exec, "ListOpWhere").ObjectCollection)
 			var gone, added []model.ID
 			for id := range before {
@@ -81,8 +82,8 @@ func TestCreateOrModify_ListOperationWhereBareMemberIsItsStoredActivity(t *testi
 					t.Errorf("object %s moved from %v to %v", id, q, p)
 				}
 			}
-			if len(gone) != 1 || len(added) != 1 {
-				t.Errorf("want exactly the declare replaced (1 gone, 1 new), got %d gone, %d new", len(gone), len(added))
+			if len(gone) != 0 || len(added) != 0 {
+				t.Errorf("want every object kept (0 gone, 0 new), got %d gone, %d new", len(gone), len(added))
 			}
 		})
 	}
@@ -103,8 +104,8 @@ func TestCreateOrModify_ListOperationWhereChangedPredicateIsAChange(t *testing.T
 		if err := agreeExec(t, exec, strings.Replace(listOpWhereFlow, c.from, c.to, 1)); err != nil {
 			t.Fatalf("%s → %s: %v", c.from, c.to, err)
 		}
-		if !strings.Contains(out.String(), "(spliced: 1 replaced)") {
-			t.Errorf("%s → %s: want the operation replaced, got:\n%s", c.from, c.to, out.String())
+		if !strings.Contains(out.String(), "(spliced: 1 edited in place)") {
+			t.Errorf("%s → %s: want the operation edited, got:\n%s", c.from, c.to, out.String())
 		}
 		// Back to the stored statement for the next case.
 		if err := agreeExec(t, exec, listOpWhereFlow); err != nil {

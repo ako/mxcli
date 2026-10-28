@@ -187,7 +187,7 @@ func modifyFlowInPlace(ctx *ExecContext, d *flowDecl) (handled bool, err error) 
 		containerID = to
 	}
 
-	switch summary := patchSummary(ops, moves, set); {
+	switch summary := patchSummary(ops, a.edited, moves, set); {
 	case summary != "":
 		ctx.ReportMutation("Modified", "%s: %s (%s)", d.kind(), d.name, summary)
 	case moved:
@@ -1029,6 +1029,17 @@ func (pd *patchDiff) gap(ins []ast.MicroflowStatement, stored []ast.MicroflowSta
 			}
 		}
 	}
+	// A run of activities each changed in its own place is that many changes
+	// of one activity, so each can be edited in place (ako/mxcli#1761) rather
+	// than the run being replaced as a whole.
+	if pairwiseSameKind(ins, del) {
+		for i := range ins {
+			if err := pd.gap(ins[i:i+1], stored, si+i, si+i+1); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	cands := make([]mfmutator.Candidate, len(del))
 	for i, st := range del {
 		c, err := pd.loc.locate(st)
@@ -1453,6 +1464,16 @@ func (pd *patchDiff) bodyGap(lc mfmutator.Candidate, at ast.MicroflowStatement, 
 			return nil
 		}
 	}
+	// A run of activities each changed in its own place: one at a time, as
+	// at top level (ako/mxcli#1761).
+	if pairwiseSameKind(ins, del) {
+		for i := range ins {
+			if err := pd.bodyGap(lc, at, ins[i:i+1], stored, si+i, si+i+1); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	if i, j, ok := loopPair(ins, del); ok {
 		if err := pd.bodyGap(lc, at, ins[:i], stored, si, si+j); err != nil {
 			return err
@@ -1606,6 +1627,24 @@ func replaceableInPlace(declared, stored ast.MicroflowStatement) bool {
 			sa = &ast.ActivityAnnotations{}
 		}
 		if !declaredMatches(da, sa) {
+			return false
+		}
+	}
+	return true
+}
+
+// pairwiseSameKind reports whether a run of more than one changed statement
+// is each declared statement standing where the stored one of the same kind
+// stood: as many of each, every pair the same kind of plain activity (not a
+// decision, a loop, a return, a break or continue, nor one with an error
+// handler). Each pair is then a change of one activity, which the splice
+// edits in place when the activity stays the same kind (ako/mxcli#1761).
+func pairwiseSameKind(ins, del []ast.MicroflowStatement) bool {
+	if len(ins) < 2 || len(ins) != len(del) {
+		return false
+	}
+	for i := range ins {
+		if statementKind(ins[i]) != statementKind(del[i]) || notPlainInBody(ins[i]) != "" || notPlainInBody(del[i]) != "" {
 			return false
 		}
 	}
@@ -1988,15 +2027,23 @@ func targetLabel(c mfmutator.Candidate) string {
 }
 
 // patchSummary says what a patch did, e.g. "spliced: 1 inserted, 2 moved;
-// set: ExportLevel", or "" when it did nothing.
-func patchSummary(ops []*ast.AlterFlowOperation, moves []flowMove, set []string) string {
-	var ins, rep, drop int
+// set: ExportLevel", or "" when it did nothing. A replace that edited its
+// stored node in place (edited) — which keeps its $ID, and so reads in Studio
+// Pro's version control as that node changed — is told apart from one that
+// put new elements in its place, which reads as one removed and another added
+// (ako/mxcli#1761).
+func patchSummary(ops []*ast.AlterFlowOperation, edited map[*ast.AlterFlowOperation]bool, moves []flowMove, set []string) string {
+	var ins, edit, rep, drop int
 	for _, op := range ops {
 		switch op.Op {
 		case ast.AlterFlowInsertAfter, ast.AlterFlowInsertBefore:
 			ins++
 		case ast.AlterFlowReplace, ast.AlterFlowReplaceBody:
-			rep++
+			if edited[op] {
+				edit++
+			} else {
+				rep++
+			}
 		case ast.AlterFlowDrop:
 			drop++
 		}
@@ -2005,7 +2052,7 @@ func patchSummary(ops []*ast.AlterFlowOperation, moves []flowMove, set []string)
 	for _, p := range []struct {
 		n    int
 		verb string
-	}{{ins, "inserted"}, {rep, "replaced"}, {drop, "dropped"}, {len(moves), "moved"}} {
+	}{{ins, "inserted"}, {edit, "edited in place"}, {rep, "replaced with new element IDs"}, {drop, "dropped"}, {len(moves), "moved"}} {
 		if p.n > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", p.n, p.verb))
 		}

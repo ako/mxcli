@@ -11,7 +11,7 @@
 -- To reproduce: exec this file, then add `@annotation 'guard'` on the line
 -- before `if` (or `@annotation 'the end'` before `return 'done';`) and exec it
 -- again. The second run reports `Modified microflow: BugTest1517.F (spliced:
--- 1 replaced)`; the decision and the end event keep their $IDs and flows, and
+-- 1 edited in place)`; the decision and the end event keep their $IDs and flows, and
 -- the note is drawn where a full build would draw it. A third run writes
 -- nothing. A note shared with another activity (`id:`) is still refused.
 

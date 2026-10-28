@@ -47,8 +47,16 @@ type MicroflowMutator interface {
 	InsertAfter(target model.ID, frag *MicroflowFragment) error
 	// InsertBefore splices frag onto the one flow that enters target.
 	InsertBefore(target model.ID, frag *MicroflowFragment) error
-	// Replace puts frag in target's place and removes target.
+	// Replace puts frag in target's place and removes target. A target
+	// replaced by one activity of the same kind — the same activity and
+	// action — is edited instead: the new content is written onto the stored
+	// activity, which keeps its $ID and those of the elements under it that
+	// pair up (ako/mxcli#1761).
 	Replace(target model.ID, frag *MicroflowFragment) error
+	// EditedInPlace reports whether a Replace of target edited the stored
+	// activity, keeping its identity, rather than putting new elements in
+	// its place — what the report of the change says.
+	EditedInPlace(target model.ID) bool
 	// Drop removes target and joins its incoming flows to its successor. A
 	// decision of the shape `alter … insert` produces goes with its paths and
 	// its merge (ako/mxcli#1694); any other decision is refused.

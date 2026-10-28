@@ -96,10 +96,12 @@ func TestSpliceDecision1694_ReRunTakesTheInsertedDecisionOut(t *testing.T) {
 		})
 	}
 
-	// The control for the $ID assertion: an activity the script does change
-	// shows up as one $ID gone and one added, so the comparison sees churn
-	// where there is some. (A rebuild is no control here: a flow dropped and
-	// created again in one session gets its stored identities back.)
+	// The control for the $ID assertion: an activity the script replaces by
+	// another kind shows up as one $ID gone and one added, so the comparison
+	// sees churn where there is some. (A rebuild is no control here: a flow
+	// dropped and created again in one session gets its stored identities
+	// back; nor is a changed log text, which edits the stored activity in
+	// place and keeps its $ID, ako/mxcli#1761.)
 	t.Run("control: a replaced activity is churn", func(t *testing.T) {
 		const name = "D1694Control"
 		original := fmt.Sprintf(dec1694Flow, name)
@@ -107,7 +109,7 @@ func TestSpliceDecision1694_ReRunTakesTheInsertedDecisionOut(t *testing.T) {
 			t.Fatal(err)
 		}
 		before := flowObjectIDs(loopEditFlowOf(t, exec, name).ObjectCollection)
-		if err := agreeExec(t, exec, strings.Replace(original, "'start'", "'begin'", 1)); err != nil {
+		if err := agreeExec(t, exec, strings.Replace(original, "log info node 'X' 'start';", "commit $F;", 1)); err != nil {
 			t.Fatal(err)
 		}
 		if missing, extra := sameIDs(before, flowObjectIDs(loopEditFlowOf(t, exec, name).ObjectCollection)); missing != 1 || extra != 1 {

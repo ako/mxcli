@@ -188,7 +188,9 @@ func respelledTwice(t *testing.T, h *harness, label, header, flow, setup, script
 	}
 
 	// Control: a real change outside any loop body is written, and
-	// moves nothing it does not change.
+	// moves nothing it does not change. The changed statement is the
+	// same kind of activity, so it is edited in place and keeps its $ID
+	// too (ako/mxcli#1761).
 	edited := strings.Replace(script, from, to, 1)
 	if edited == script {
 		t.Fatalf("%s: the script has no %q", label, from)
@@ -198,8 +200,8 @@ func respelledTwice(t *testing.T, h *harness, label, header, flow, setup, script
 	if err := h.exec(header + edited); err != nil {
 		t.Fatalf("%s: control: %v\n%s", label, err, h.out.String())
 	}
-	if !strings.Contains(h.out.String(), "(spliced: 1 replaced)") {
-		t.Errorf("%s: control: want one statement replaced:\n%s", label, h.out.String())
+	if !strings.Contains(h.out.String(), "(spliced: 1 edited in place)") {
+		t.Errorf("%s: control: want one statement edited in place:\n%s", label, h.out.String())
 	}
 	if len(before.diff(h.snapshot())) == 0 {
 		t.Fatalf("%s: control: the real change wrote nothing", label)
@@ -209,19 +211,19 @@ func respelledTwice(t *testing.T, h *harness, label, header, flow, setup, script
 	for id, p := range stored {
 		q, ok := after[id]
 		if !ok {
-			continue // the replaced activity
+			continue
 		}
 		kept++
 		if q != p {
 			t.Errorf("%s: control: the unchanged %s moved from %s to %s", label, id, p, q)
 		}
 	}
-	if kept != len(stored)-1 || len(after) != len(stored) {
-		t.Errorf("%s: control: %d of %d stored objects kept, %d after; want all but the replaced one",
+	if kept != len(stored) || len(after) != len(stored) {
+		t.Errorf("%s: control: %d of %d stored objects kept, %d after; want every one, the edited activity too",
 			label, kept, len(stored), len(after))
 	}
 	if !samePositions(stored, after) {
-		t.Errorf("%s: control: the replacement is not drawn where the replaced activity was", label)
+		t.Errorf("%s: control: the edited activity is not drawn where it was", label)
 	}
 	// The twice-exec rule for the change.
 	second := h.snapshot()
