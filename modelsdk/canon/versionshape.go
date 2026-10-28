@@ -38,6 +38,10 @@ import (
 //     CE6050 "The selected entity must be configured with a page parameter".
 //   - ForceFullObjects, declared on the abstract Forms$DataSource from 10.8.0:
 //     every data source carried it, and the floor never saw it.
+//   - Settings$ConstantValue: a Settings$SharedValue under SharedOrPrivateValue
+//     from 10.9.0; before, the value as a flat Value string, `{$ID, $Type,
+//     ConstantId, Value}` (`mx convert` 9.24.30, which empties the nested form
+//     it does not know).
 //   - Workflows$ PersistentId, from 10.21.0 on the workflow and on the abstract
 //     WorkflowActivity, Outcome and BoundaryEvent (ako/mxcli#1163). Workflows
 //     exist from 9.0; `mx convert` 9.24.30 strips every one. The workflow's
@@ -59,9 +63,10 @@ func LowerToProjectShape(contents []byte, pv *version.Version) ([]byte, error) {
 		namedParameter:  !PropertyDeclared("Forms$EntityPathSource", "SourceVariable", *pv),
 		noFullObjects:   !PropertyDeclared("Forms$DataSource", "ForceFullObjects", *pv),
 		noPersistentID:  !PropertyDeclared("Workflows$Workflow", "PersistentId", *pv),
+		flatConstant:    !PropertyDeclared("Settings$ConstantValue", "SharedOrPrivateValue", *pv),
 	}
 	if !l.flatDesignProps && !l.boolEditable && !l.textPlaceholder && !l.namedParameter && !l.noFullObjects &&
-		!l.noPersistentID {
+		!l.noPersistentID && !l.flatConstant {
 		return contents, nil
 	}
 	var doc bson.D
@@ -82,6 +87,7 @@ type shapeLowering struct {
 	pv                                             version.Version
 	flatDesignProps, boolEditable, textPlaceholder bool
 	namedParameter, noFullObjects, noPersistentID  bool
+	flatConstant                                   bool
 	changed                                        bool
 }
 
@@ -111,6 +117,10 @@ func (l *shapeLowering) walk(v any) (any, error) {
 			}
 		case l.textPlaceholder && placeholderWidgets[typ]:
 			if err = l.lowerPlaceholder(x, typ); err != nil {
+				return nil, err
+			}
+		case l.flatConstant && typ == "Settings$ConstantValue":
+			if x, err = l.lowerConstantValue(x); err != nil {
 				return nil, err
 			}
 		}
@@ -269,6 +279,32 @@ func (l *shapeLowering) dropForceFullObjects(d bson.D, typ string) (bson.D, erro
 	}
 	l.changed = true
 	return append(append(bson.D{}, d[:i]...), d[i+1:]...), nil
+}
+
+// lowerConstantValue replaces a constant override's nested SharedOrPrivateValue
+// with the flat Value older versions store, in its place. A flat Value already
+// beside it (the overlay clears one to "" when it writes the nested form) takes
+// the nested value. A private value — kept on the developer's workstation, which
+// the flat form cannot say — is refused.
+func (l *shapeLowering) lowerConstantValue(d bson.D) (bson.D, error) {
+	i := shapeIndex(d, "SharedOrPrivateValue")
+	if i < 0 {
+		return d, nil
+	}
+	inner, _ := d[i].Value.(bson.D)
+	if t, _ := shapeString(inner, "$Type"); t == "Settings$PrivateValue" {
+		constant, _ := shapeString(d, "ConstantId")
+		return nil, fmt.Errorf("constant %q has a private value in this configuration, which Mendix introduced in 10.9 "+
+			"(this project is %s): a constant value there is shared, stored in the model", constant, l.pv)
+	}
+	value, _ := shapeString(inner, "Value")
+	l.changed = true
+	if j := shapeIndex(d, "Value"); j >= 0 {
+		d[j].Value = value
+		return append(append(bson.D{}, d[:i]...), d[i+1:]...), nil
+	}
+	d[i] = bson.E{Key: "Value", Value: value}
+	return d, nil
 }
 
 // dropPersistentID removes a workflow element's PersistentId below 10.21, where

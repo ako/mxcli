@@ -343,9 +343,11 @@ func SetWebUISettings(ws *model.WebUISettings, raw map[string]any) map[string]an
 
 // ConstantValues rebuilds a configuration's ConstantValues list, updating each
 // override in the slot it is already stored in so its value shape survives.
-// Studio Pro and mxbuild only read the nested SharedOrPrivateValue; a flat "Value"
-// is a legacy shape mxcli's reader tolerates but the platform ignores, so writing
-// every override flat made all constant overrides look empty in Studio Pro.
+// From Mendix 10.9 Studio Pro and mxbuild only read the nested
+// SharedOrPrivateValue, so writing every override flat made all constant
+// overrides look empty in Studio Pro. Below 10.9 the flat "Value" is the only
+// shape: a new override is still built nested here, and the write lowers it
+// (canon.LowerToProjectShape, ako/mxcli#1163).
 func ConstantValues(cvs []*model.ConstantValue, raw any) bson.A {
 	rawValues := ArrayElements(raw)
 	byConstant := make(map[string]map[string]any, len(rawValues))

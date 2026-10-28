@@ -164,6 +164,77 @@ func TestNormalize_WorkflowPersistentIDsBelowMendix10_21(t *testing.T) {
 	}
 }
 
+// settingsWithConstantValue is the project settings unit as `alter settings
+// constant … in configuration` writes a new override: the value nested in a
+// Settings$SharedValue (or a Settings$PrivateValue, which holds none). flat is
+// the empty flat Value the overlay leaves beside a nested one, "-" for none.
+func settingsWithConstantValue(valueType, value, flat string) bson.D {
+	inner := bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: valueType}}
+	if valueType == "Settings$SharedValue" {
+		inner = append(inner, bson.E{Key: "Value", Value: value})
+	}
+	cv := bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Settings$ConstantValue"},
+		{Key: "ConstantId", Value: "M.ServerUrl"}, {Key: "SharedOrPrivateValue", Value: inner}}
+	if flat != "-" {
+		cv = append(cv, bson.E{Key: "Value", Value: flat})
+	}
+	config := bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Settings$ServerConfiguration"},
+		{Key: "ConstantValues", Value: bson.A{int32(3), cv}}, {Key: "Name", Value: "Default"}}
+	part := bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Settings$ConfigurationSettings"},
+		{Key: "Configurations", Value: bson.A{int32(3), config}}}
+	return bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Settings$ProjectSettings"},
+		{Key: "Settings", Value: bson.A{int32(2), part}}}
+}
+
+// A configuration's constant override is a flat Value string below 10.9 and a
+// Settings$SharedValue under SharedOrPrivateValue from it (mendixmodelsdk:
+// Value deleted, SharedOrPrivateValue introduced 10.9.0). `mx convert` 9.24.30
+// turns the nested form into `{$ID, $Type, ConstantId, Value: ""}` — it does
+// not know the nested value, so the override silently became empty, and mxcli
+// refused it ("cannot store Settings$ConstantValue.SharedOrPrivateValue
+// (Mendix 10.9.0+)").
+func TestNormalize_ConstantValueIsFlatBelowMendix10_9(t *testing.T) {
+	for _, tt := range []struct {
+		v    *version.ProjectVersion
+		flat bool
+	}{
+		{pv(9, 24, 30), true},
+		{pv(10, 8, 0), true},
+		{pv(10, 9, 0), false},
+		{pv(11, 13, 0), false}, // control
+	} {
+		for _, flat := range []string{"-", ""} {
+			d, err := normalizeShape(t, tt.v, settingsWithConstantValue("Settings$SharedValue", "kafka:9092", flat))
+			if err != nil {
+				t.Errorf("%d.%d: a constant override is refused: %v", tt.v.MajorVersion, tt.v.MinorVersion, err)
+				continue
+			}
+			cv := find(d, "Settings$ConstantValue")
+			if !tt.flat {
+				if _, ok := get(cv, "SharedOrPrivateValue"); !ok {
+					t.Errorf("%d.%d: SharedOrPrivateValue was lowered: %v", tt.v.MajorVersion, tt.v.MinorVersion, keysOf(cv))
+				}
+				continue
+			}
+			if got := strings.Join(keysOf(cv), ","); got != "$ID,$Type,ConstantId,Value" {
+				t.Errorf("%d.%d: constant value keys = %s, want $ID,$Type,ConstantId,Value", tt.v.MajorVersion, tt.v.MinorVersion, got)
+			}
+			if v, _ := get(cv, "Value"); v != "kafka:9092" {
+				t.Errorf("%d.%d: Value = %v, want kafka:9092", tt.v.MajorVersion, tt.v.MinorVersion, v)
+			}
+		}
+	}
+}
+
+// A private value lives on the developer's workstation, which a flat Value
+// cannot say: refused, naming the constant, not written as an empty override.
+func TestNormalize_RefusesAPrivateConstantValueBelowMendix10_9(t *testing.T) {
+	_, err := normalizeShape(t, pv(9, 24, 30), settingsWithConstantValue("Settings$PrivateValue", "", "-"))
+	if err == nil || !strings.Contains(err.Error(), "M.ServerUrl") {
+		t.Errorf("a private constant value on 9.24 was not refused naming the constant: %v", err)
+	}
+}
+
 // Studio Pro's property set for a workflow on 9.24 includes the two state-change
 // event handlers Mendix removed in 11.0: `mx convert` 9.24.30 adds both as null
 // to a workflow mxcli wrote, as 10.24.24 does — a property-name difference
