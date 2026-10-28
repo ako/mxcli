@@ -53,6 +53,12 @@ import (
 //     WorkflowActivity, Outcome and BoundaryEvent (ako/mxcli#1163). Workflows
 //     exist from 9.0; `mx convert` 9.24.30 strips every one. The workflow's
 //     own was refused; the others slipped past the floor.
+//   - Workflows$EndOfParallelSplitPathActivity, a TYPE introduced in 10.21.0,
+//     which ends every parallel split path mxcli writes (ako/mxcli#1163).
+//     Before, a path is its activities and nothing more (Studio Pro 9.4.0, the
+//     Marketplace's "Example project workflow extension" 2.0.0), and a project
+//     holding the marker does not load (TypeCacheUnknownTypeException). The
+//     floor checks property versions, never a type's own.
 //
 // It runs on every unit write, before the floor, so no writer needs to know
 // these shapes. What the older shape cannot hold — a design property value
@@ -72,9 +78,10 @@ func LowerToProjectShape(contents []byte, pv *version.Version) ([]byte, error) {
 		noPersistentID:  !PropertyDeclared("Workflows$Workflow", "PersistentId", *pv),
 		flatConstant:    !PropertyDeclared("Settings$ConstantValue", "SharedOrPrivateValue", *pv),
 		variableArgs:    !PropertyDeclared("Forms$MicroflowParameterMapping", "Expression", *pv),
+		unmarkedPaths:   pv.Compare(endOfParallelSplitPathSince) < 0,
 	}
 	if !l.flatDesignProps && !l.boolEditable && !l.textPlaceholder && !l.namedParameter && !l.noFullObjects &&
-		!l.noPersistentID && !l.flatConstant && !l.variableArgs {
+		!l.noPersistentID && !l.flatConstant && !l.variableArgs && !l.unmarkedPaths {
 		return contents, nil
 	}
 	var doc bson.D
@@ -95,9 +102,16 @@ type shapeLowering struct {
 	pv                                             version.Version
 	flatDesignProps, boolEditable, textPlaceholder bool
 	namedParameter, noFullObjects, noPersistentID  bool
-	flatConstant, variableArgs                     bool
+	flatConstant, variableArgs, unmarkedPaths      bool
 	changed                                        bool
 }
+
+// endOfParallelSplitPathSince is the version that introduced the type
+// Workflows$EndOfParallelSplitPathActivity (mendixmodelsdk 4.117.0:
+// EndOfParallelSplitPathActivity.versionInfo introduced "10.21.0"). It is
+// written down here because the generated version data holds property
+// versions only, never a type's own.
+var endOfParallelSplitPathSince = version.Version{Major: 10, Minor: 21}
 
 var placeholderWidgets = map[string]bool{"Forms$TextBox": true, "Forms$TextArea": true, "Forms$DatePicker": true}
 
@@ -139,6 +153,9 @@ func (l *shapeLowering) walk(v any) (any, error) {
 		}
 		if l.noPersistentID && strings.HasPrefix(typ, "Workflows$") {
 			x = l.dropPersistentID(x)
+		}
+		if l.unmarkedPaths && typ == "Workflows$Flow" {
+			l.dropEndOfPathMarkers(x)
 		}
 		if l.variableArgs {
 			if err = l.lowerFlowArguments(x); err != nil {
@@ -376,6 +393,34 @@ func (l *shapeLowering) dropPersistentID(d bson.D) bson.D {
 	}
 	l.changed = true
 	return append(append(bson.D{}, d[:i]...), d[i+1:]...)
+}
+
+// dropEndOfPathMarkers removes the Workflows$EndOfParallelSplitPathActivity
+// from a flow's activities below 10.21, where the type does not exist. The
+// list keeps its leading type marker, so a path that held only the end-of-path
+// activity stores `Activities: [3]`, as Studio Pro 9 stores an empty flow.
+// Nothing is refused:
+// the marker is the writer's, never something a script states, and a path
+// before 10.21 is its activities alone (Studio Pro 9.4.0's parallel split).
+func (l *shapeLowering) dropEndOfPathMarkers(flow bson.D) {
+	i := shapeIndex(flow, "Activities")
+	if i < 0 {
+		return
+	}
+	list, _ := flow[i].Value.(bson.A)
+	out := make(bson.A, 0, len(list))
+	for _, el := range list {
+		if d, ok := el.(bson.D); ok {
+			if t, _ := shapeString(d, "$Type"); t == "Workflows$EndOfParallelSplitPathActivity" {
+				continue
+			}
+		}
+		out = append(out, el)
+	}
+	if len(out) != len(list) {
+		flow[i].Value = out
+		l.changed = true
+	}
 }
 
 // listItems returns the elements of a stored list, without its type marker.

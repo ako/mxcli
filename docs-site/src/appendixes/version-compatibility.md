@@ -186,6 +186,7 @@ Some properties kept their meaning and changed how they are stored. mxcli builds
 | A text box's, text area's or date picker's placeholder | 10.11 | `Placeholder` text, instead of a `PlaceholderTemplate` |
 | Any data source's `ForceFullObjects` | 10.8 | Not stored |
 | The `PersistentId` of a workflow, activity, outcome or boundary event | 10.21 | Not stored |
+| The end of a parallel split path (`Workflows$EndOfParallelSplitPathActivity`, a type introduced in 10.21) | 10.21 | Not stored: a path holds its activities and nothing more (Studio Pro 9.4) |
 | A constant's value in a configuration (`alter settings constant … in configuration`) | 10.9 | A flat `Value` string on the override, instead of a `Settings$SharedValue` under `SharedOrPrivateValue` |
 | A page's flow call argument that is the enclosing object (`call microflow M.F(P = $currentObject)`, `call nanoflow …`) | 10.10 | Not stored: Studio Pro infers it. A page parameter, snippet parameter or widget argument is stored as before, as a `Variable` |
 

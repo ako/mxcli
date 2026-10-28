@@ -164,6 +164,108 @@ func TestNormalize_WorkflowPersistentIDsBelowMendix10_21(t *testing.T) {
 	}
 }
 
+// endOfPath is the marker mxcli ends a parallel split path with
+// (workflows.EndParallelSplitPath).
+func endOfPath() bson.D {
+	return bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$EndOfParallelSplitPathActivity"},
+		{Key: "Annotation", Value: nil}, {Key: "Caption", Value: "End of parallel split path"},
+		{Key: "Name", Value: "EndOfParallelSplitPath"}, {Key: "PersistentId", Value: pid()}}
+}
+
+// workflowWithParallelSplit is a workflow as mxcli builds it: a parallel split
+// whose first path calls a microflow and whose second is empty, each ending in
+// the end-of-path marker, followed by another microflow call.
+func workflowWithParallelSplit() bson.D {
+	call := func(name string) bson.D {
+		return bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$CallMicroflowTask"},
+			{Key: "BoundaryEvents", Value: bson.A{int32(2)}}, {Key: "Caption", Value: name},
+			{Key: "Microflow", Value: "M." + name}, {Key: "Name", Value: name}, {Key: "PersistentId", Value: pid()}}
+	}
+	path := func(acts ...bson.D) bson.D {
+		list := bson.A{int32(3)}
+		for _, a := range acts {
+			list = append(list, a)
+		}
+		return bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$ParallelSplitOutcome"},
+			{Key: "Flow", Value: bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$Flow"}, {Key: "Activities", Value: list}}},
+			{Key: "PersistentId", Value: pid()}}
+	}
+	split := bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$ParallelSplitActivity"},
+		{Key: "Annotation", Value: nil}, {Key: "Caption", Value: "Parallel split"}, {Key: "Name", Value: "split"},
+		{Key: "Outcomes", Value: bson.A{int32(3), path(call("Left"), endOfPath()), path(endOfPath())}},
+		{Key: "PersistentId", Value: pid()}}
+	return bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$Workflow"},
+		{Key: "Flow", Value: bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$Flow"},
+			{Key: "Activities", Value: bson.A{int32(3), split, call("After")}}}},
+		{Key: "Name", Value: "WF"},
+		{Key: "PersistentId", Value: pid()},
+		{Key: "Title", Value: "WF"}}
+}
+
+// pathActivityTypes returns, per parallel split path, the $Type of each
+// activity its flow holds.
+func pathActivityTypes(t *testing.T, d bson.D) [][]string {
+	t.Helper()
+	outcomes, _ := get(find(d, "Workflows$ParallelSplitActivity"), "Outcomes")
+	var out [][]string
+	for _, o := range listItems(outcomes) {
+		flow, _ := get(o.(bson.D), "Flow")
+		acts, _ := get(flow.(bson.D), "Activities")
+		if a, _ := acts.(bson.A); len(a) == 0 || a[0] != int32(3) {
+			t.Errorf("a path's Activities is %v, want a list with marker 3", acts)
+		}
+		types := []string{}
+		for _, a := range listItems(acts) {
+			typ, _ := get(a.(bson.D), "$Type")
+			types = append(types, typ.(string))
+		}
+		out = append(out, types)
+	}
+	return out
+}
+
+// Workflows$EndOfParallelSplitPathActivity is introduced in 10.21.0
+// (mendixmodelsdk: the type's own versionInfo). mxcli ends every parallel split
+// path with one, because from 10.21 the engine runs a path only up to it — and
+// below 10.21 the type does not exist: mx check 9.24.30 does not load the
+// project at all ("TypeCacheUnknownTypeException: The type cache does not
+// contain a type with qualified name Workflows$EndOfParallelSplitPathActivity").
+// The property floor holds property versions only, so it never saw the type.
+// Studio Pro before 10.21 stores a path as its activities and nothing else:
+// the Marketplace's "Example project workflow extension" 2.0.0 (Studio Pro
+// 9.4.0) has a split whose two paths hold one user task each, no marker, and
+// an empty flow stores `Activities: [3]`. So below 10.21 the marker is not
+// written; from 10.21 it is, and must be.
+func TestNormalize_ParallelSplitPathsBelowMendix10_21(t *testing.T) {
+	for _, tt := range []struct {
+		v    *version.ProjectVersion
+		want string
+	}{
+		{pv(9, 24, 30), "Workflows$CallMicroflowTask|"},
+		{pv(10, 20, 0), "Workflows$CallMicroflowTask|"},
+		{pv(10, 21, 0), "Workflows$CallMicroflowTask,Workflows$EndOfParallelSplitPathActivity|Workflows$EndOfParallelSplitPathActivity"},
+		{pv(11, 13, 0), "Workflows$CallMicroflowTask,Workflows$EndOfParallelSplitPathActivity|Workflows$EndOfParallelSplitPathActivity"}, // control
+	} {
+		d, err := normalizeShape(t, tt.v, workflowWithParallelSplit())
+		if err != nil {
+			t.Errorf("%d.%d: a parallel split is refused: %v", tt.v.MajorVersion, tt.v.MinorVersion, err)
+			continue
+		}
+		var paths []string
+		for _, p := range pathActivityTypes(t, d) {
+			paths = append(paths, strings.Join(p, ","))
+		}
+		if got := strings.Join(paths, "|"); got != tt.want {
+			t.Errorf("%d.%d: paths hold %s, want %s", tt.v.MajorVersion, tt.v.MinorVersion, got, tt.want)
+		}
+		// The rest of the workflow is untouched: the call after the split stays.
+		acts, _ := get(find(d, "Workflows$Flow"), "Activities")
+		if n := len(listItems(acts)); n != 2 {
+			t.Errorf("%d.%d: the main flow holds %d activities, want 2", tt.v.MajorVersion, tt.v.MinorVersion, n)
+		}
+	}
+}
+
 // settingsWithConstantValue is the project settings unit as `alter settings
 // constant … in configuration` writes a new override: the value nested in a
 // Settings$SharedValue (or a Settings$PrivateValue, which holds none). flat is

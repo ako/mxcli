@@ -16,9 +16,9 @@ mdl 1;
 -- then `mxcli docker check` reports the blank app's error count, and `mx
 -- convert -p` strips no PersistentId.
 --
--- Not covered: a `parallel split`. Its paths end in a
--- Workflows$EndOfParallelSplitPathActivity, a type Mendix introduced in 10.21,
--- so below 10.21 the project does not load (TypeCacheUnknownTypeException).
+-- A `parallel split` is in 1163-parallel-split-below-10-21.mdl: its paths end
+-- in a Workflows$EndOfParallelSplitPathActivity, a type Mendix introduced in
+-- 10.21, which below 10.21 is no longer written.
 
 create module Probe1163Wf;
 
