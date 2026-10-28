@@ -1,0 +1,55 @@
+mdl 1;
+-- ako/mxcli#1163: on Mendix 9.x and on 10.0–10.20 every workflow was refused:
+--
+--   this Mendix 9.24.30 project cannot store
+--   Workflows$Workflow.PersistentId (Mendix 10.21.0+)
+--
+-- Workflows exist from 9.0; PersistentId arrived in 10.21.0, on the workflow
+-- and on every activity, outcome and boundary event (mendixmodelsdk). The
+-- activities' and outcomes' were declared on abstract supertypes the property
+-- floor does not look up, so they were never refused, and `mx convert` 9.24.30
+-- strips every one. A PersistentId is minted by the writer, never stated by a
+-- script, so below 10.21 none is written: for CREATE, CREATE OR MODIFY and
+-- the activities ALTER WORKFLOW inserts on its own.
+--
+-- Run it on a fresh 9.24.30 app (`mxcli new … --version 9.24.30.51827`): exec,
+-- then `mxcli docker check` reports the blank app's error count, and `mx
+-- convert -p` strips no PersistentId.
+--
+-- Not covered: a `parallel split`. Its paths end in a
+-- Workflows$EndOfParallelSplitPathActivity, a type Mendix introduced in 10.21,
+-- so below 10.21 the project does not load (TypeCacheUnknownTypeException).
+
+create module Probe1163Wf;
+
+create persistent entity Probe1163Wf.Request (
+  Title: String(100),
+  Amount: Integer
+);
+
+create microflow Probe1163Wf.ACT_Validate ($WorkflowContext: Probe1163Wf.Request)
+begin
+  log info node 'Probe1163Wf' 'validate';
+end;
+
+create microflow Probe1163Wf.ACT_Notify ($WorkflowContext: Probe1163Wf.Request)
+begin
+  log info node 'Probe1163Wf' 'notify';
+end;
+
+create workflow Probe1163Wf.WF_Request
+  parameter $WorkflowContext: Probe1163Wf.Request
+  display 'Request'
+begin
+  call microflow Probe1163Wf.ACT_Validate;
+  decision $WorkflowContext/Amount > 1000
+    outcomes
+      true -> { call microflow Probe1163Wf.ACT_Notify; }
+      false -> { end workflow; }
+  ;
+end workflow;
+
+-- ALTER serializes the inserted activity on its own, outside CREATE's encoder.
+alter workflow Probe1163Wf.WF_Request {
+  insert after ACT_Validate { call microflow Probe1163Wf.ACT_Notify; }
+};

@@ -174,9 +174,9 @@ What *is* version-specific is the optional/default-value half: `PageParameter.Is
 
 Atlas UI v3 (Mendix 11.0+) introduced new design properties like "Card style" and "Disable row wrap" for containers. These don't exist in the Atlas v2 theme bundled with 10.x, causing CE6083.
 
-### Page Properties Stored in an Older Shape (below 10.2, 10.7, 10.11)
+### Properties Stored in an Older Shape
 
-Some page properties kept their meaning and changed how they are stored. mxcli builds the current shape and, on every write, rewrites it into the shape the project's version stores. `describe` reads both shapes ([ako/mxcli#1209](https://github.com/ako/mxcli/issues/1209)). The older shapes were measured on Studio Pro-authored 9.24.30 pages:
+Some properties kept their meaning and changed how they are stored. mxcli builds the current shape and, on every write, rewrites it into the shape the project's version stores. `describe` reads both shapes ([ako/mxcli#1209](https://github.com/ako/mxcli/issues/1209), [ako/mxcli#1163](https://github.com/ako/mxcli/issues/1163)). The older shapes were measured on Studio Pro-authored 9.24 documents and with `mx convert` 9.24.30:
 
 | Property | Below | Stored as |
 |---|---|---|
@@ -185,6 +185,7 @@ Some page properties kept their meaning and changed how they are stored. mxcli b
 | A data view's editability | 10.7 | `Editable: true\|false`, instead of `Editability` |
 | A text box's, text area's or date picker's placeholder | 10.11 | `Placeholder` text, instead of a `PlaceholderTemplate` |
 | Any data source's `ForceFullObjects` | 10.8 | Not stored |
+| The `PersistentId` of a workflow, activity, outcome or boundary event | 10.21 | Not stored |
 
 What an older shape cannot hold is refused, naming the element, rather than dropped:
 - a Spacing, colour-picker or toggle-button-group design property below 10.2;

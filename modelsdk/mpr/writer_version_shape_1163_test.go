@@ -81,3 +81,85 @@ func TestNormalize_ReduceFoldIsRefusedBelowMendix10(t *testing.T) {
 		}
 	}
 }
+
+// pid is a fresh PersistentId: a non-zero GUID, as the writer mints one (a zero
+// GUID is an empty value, which the floor would drop rather than refuse).
+func pid() bson.Binary {
+	pidSeq++
+	return bson.Binary{Subtype: 0, Data: []byte{pidSeq, 0x11, 2, 3, 4, 5, 0x46, 7, 0x88, 9, 10, 11, 12, 13, 14, 15}}
+}
+
+var pidSeq byte
+
+// workflowWithPersistentIDs is a workflow as mxcli builds it: a fresh
+// PersistentId on the workflow, on every activity and on every outcome.
+func workflowWithPersistentIDs() bson.D {
+	outcome := func(value bool) bson.D {
+		return bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$BooleanConditionOutcome"},
+			{Key: "Flow", Value: bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$Flow"}, {Key: "Activities", Value: bson.A{int32(3)}}}},
+			{Key: "PersistentId", Value: pid()}, {Key: "Value", Value: value}}
+	}
+	split := bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$ExclusiveSplitActivity"},
+		{Key: "Caption", Value: "Active?"}, {Key: "Expression", Value: "$WorkflowContext/Active"}, {Key: "Name", Value: "split"},
+		{Key: "Outcomes", Value: bson.A{int32(3), outcome(true), outcome(false)}},
+		{Key: "PersistentId", Value: pid()}}
+	call := bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$CallMicroflowTask"},
+		{Key: "BoundaryEvents", Value: bson.A{int32(2)}}, {Key: "Caption", Value: "Validate"},
+		{Key: "Microflow", Value: "M.Validate"}, {Key: "Name", Value: "call"}, {Key: "PersistentId", Value: pid()}}
+	return bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$Workflow"},
+		{Key: "Flow", Value: bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$Flow"},
+			{Key: "Activities", Value: bson.A{int32(3), call, split}}}},
+		{Key: "Name", Value: "WF"},
+		{Key: "PersistentId", Value: pid()},
+		{Key: "Title", Value: "WF"}}
+}
+
+// persistentIDHolders returns the $Type of every element in v carrying a
+// PersistentId.
+func persistentIDHolders(v any) []string {
+	var out []string
+	switch x := v.(type) {
+	case bson.D:
+		typ, _ := get(x, "$Type")
+		for _, e := range x {
+			if e.Key == "PersistentId" {
+				out = append(out, typ.(string))
+			}
+			out = append(out, persistentIDHolders(e.Value)...)
+		}
+	case bson.A:
+		for _, el := range x {
+			out = append(out, persistentIDHolders(el)...)
+		}
+	}
+	return out
+}
+
+// Workflows exist from 9.0, PersistentId from 10.21.0 — on the workflow and on
+// WorkflowActivity, Outcome and BoundaryEvent (mendixmodelsdk). Below that a
+// workflow was refused ("cannot store Workflows$Workflow.PersistentId (Mendix
+// 10.21.0+)"), and the activities' and outcomes' were never seen by the floor,
+// which does not look up the abstract supertypes that declare them: `mx
+// convert` 9.24.30 strips all of them. A PersistentId is minted by the writer,
+// never stated by a script, so below 10.21 it is not written.
+func TestNormalize_WorkflowPersistentIDsBelowMendix10_21(t *testing.T) {
+	for _, tt := range []struct {
+		v    *version.ProjectVersion
+		want int
+	}{
+		{pv(9, 24, 30), 0},
+		{pv(10, 20, 0), 0},
+		{pv(10, 21, 0), 5},
+		{pv(10, 24, 24), 5},
+		{pv(11, 13, 0), 5}, // control
+	} {
+		d, err := normalizeShape(t, tt.v, workflowWithPersistentIDs())
+		if err != nil {
+			t.Errorf("%d.%d: a workflow is refused: %v", tt.v.MajorVersion, tt.v.MinorVersion, err)
+			continue
+		}
+		if got := persistentIDHolders(d); len(got) != tt.want {
+			t.Errorf("%d.%d: PersistentId on %d elements %v, want %d", tt.v.MajorVersion, tt.v.MinorVersion, len(got), got, tt.want)
+		}
+	}
+}

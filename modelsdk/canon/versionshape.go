@@ -4,6 +4,7 @@ package canon
 
 import (
 	"fmt"
+	"strings"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 
@@ -37,6 +38,10 @@ import (
 //     CE6050 "The selected entity must be configured with a page parameter".
 //   - ForceFullObjects, declared on the abstract Forms$DataSource from 10.8.0:
 //     every data source carried it, and the floor never saw it.
+//   - Workflows$ PersistentId, from 10.21.0 on the workflow and on the abstract
+//     WorkflowActivity, Outcome and BoundaryEvent (ako/mxcli#1163). Workflows
+//     exist from 9.0; `mx convert` 9.24.30 strips every one. The workflow's
+//     own was refused; the others slipped past the floor.
 //
 // It runs on every unit write, before the floor, so no writer needs to know
 // these shapes. What the older shape cannot hold — a design property value
@@ -53,8 +58,10 @@ func LowerToProjectShape(contents []byte, pv *version.Version) ([]byte, error) {
 		textPlaceholder: !PropertyDeclared("Forms$AttributeWidgetWithPlaceholder", "PlaceholderTemplate", *pv),
 		namedParameter:  !PropertyDeclared("Forms$EntityPathSource", "SourceVariable", *pv),
 		noFullObjects:   !PropertyDeclared("Forms$DataSource", "ForceFullObjects", *pv),
+		noPersistentID:  !PropertyDeclared("Workflows$Workflow", "PersistentId", *pv),
 	}
-	if !l.flatDesignProps && !l.boolEditable && !l.textPlaceholder && !l.namedParameter && !l.noFullObjects {
+	if !l.flatDesignProps && !l.boolEditable && !l.textPlaceholder && !l.namedParameter && !l.noFullObjects &&
+		!l.noPersistentID {
 		return contents, nil
 	}
 	var doc bson.D
@@ -74,7 +81,7 @@ func LowerToProjectShape(contents []byte, pv *version.Version) ([]byte, error) {
 type shapeLowering struct {
 	pv                                             version.Version
 	flatDesignProps, boolEditable, textPlaceholder bool
-	namedParameter, noFullObjects                  bool
+	namedParameter, noFullObjects, noPersistentID  bool
 	changed                                        bool
 }
 
@@ -111,6 +118,9 @@ func (l *shapeLowering) walk(v any) (any, error) {
 			if x, err = l.dropForceFullObjects(x, typ); err != nil {
 				return nil, err
 			}
+		}
+		if l.noPersistentID && strings.HasPrefix(typ, "Workflows$") {
+			x = l.dropPersistentID(x)
 		}
 		for i := range x {
 			if x[i].Value, err = l.walk(x[i].Value); err != nil {
@@ -259,6 +269,19 @@ func (l *shapeLowering) dropForceFullObjects(d bson.D, typ string) (bson.D, erro
 	}
 	l.changed = true
 	return append(append(bson.D{}, d[:i]...), d[i+1:]...), nil
+}
+
+// dropPersistentID removes a workflow element's PersistentId below 10.21, where
+// none declares it. Whatever it holds is dropped, not refused: a PersistentId is
+// minted by the writer (a fresh GUID on every build), never stated by a script,
+// and a workflow Studio Pro 9.24 stores has none.
+func (l *shapeLowering) dropPersistentID(d bson.D) bson.D {
+	i := shapeIndex(d, "PersistentId")
+	if i < 0 {
+		return d
+	}
+	l.changed = true
+	return append(append(bson.D{}, d[:i]...), d[i+1:]...)
 }
 
 // listItems returns the elements of a stored list, without its type marker.
