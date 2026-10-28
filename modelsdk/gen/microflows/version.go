@@ -45,9 +45,15 @@ var VersionInfos = map[string]version.TypeVersionInfo{
 	},
 	"Microflows$AggregateAction": {
 		Properties: map[string]version.PropertyVersionInfo{
-			"aggregateFunction":            {Introduced: "10.0.0", Required: true},
+			// Fixed by hand (ako/mxcli#1163): the vendored generator gave
+			// aggregateFunction the row of reduceReturnDataType, which it then
+			// left out. mendixmodelsdk 4.117.0 has aggregateFunction with no
+			// version and reduceReturnDataType introduced 10.0.0 and required;
+			// Studio Pro 9.24 stores AggregateFunction (Workflow Commons 2.6.0).
+			"aggregateFunction":            {},
 			"expression":                   {Introduced: "10.0.0"},
 			"reduceInitialValueExpression": {Introduced: "10.0.0"},
+			"reduceReturnDataType":         {Introduced: "10.0.0", Required: true},
 			"useExpression":                {Introduced: "10.0.0"},
 		},
 	},

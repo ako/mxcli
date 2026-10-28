@@ -186,11 +186,12 @@ Some page properties kept their meaning and changed how they are stored. mxcli b
 | A text box's, text area's or date picker's placeholder | 10.11 | `Placeholder` text, instead of a `PlaceholderTemplate` |
 | Any data source's `ForceFullObjects` | 10.8 | Not stored |
 
-What an older shape cannot hold is refused, naming the widget, rather than dropped:
+What an older shape cannot hold is refused, naming the element, rather than dropped:
 - a Spacing, colour-picker or toggle-button-group design property below 10.2;
 - conditional data view editability below 10.7;
 - a placeholder with parameters below 10.11;
-- a data view fed by another widget below 10.0.
+- a data view fed by another widget below 10.0;
+- an aggregate over an expression (`sum $L of …`), `reduce`, `all` or `any` below 10.0. The plain `count`, `sum`, `average`, `minimum` and `maximum` are written on every version ([ako/mxcli#1163](https://github.com/ako/mxcli/issues/1163)).
 
 Before this, `describe` on 9.24 printed none of these properties, so a describe → exec round trip removed them. Writing a data view on 9.24 was refused outright.
 
