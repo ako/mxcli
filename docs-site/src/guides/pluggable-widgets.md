@@ -55,7 +55,7 @@ version you actually have at the moment you create the widget.
    So a hidden property you leave out is written at its default; one you set to its
    default draws an MDL-WIDGET10 warning (the value is ignored); and one you set to
    anything else is an MDL-WIDGET10 **error**, which `exec` refuses before writing.
-   For example, a
+   `describe` leaves out a hidden property that holds its default. For example, a
    Timeline grouped by `'day'` hides `groupByMonthOptions`, and one with
    `customVisualization: true` hides both format enumerations.
 
