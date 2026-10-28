@@ -207,6 +207,8 @@ A published OData service is not an older shape of the same document. Before 10.
 
 Pluggable widget PropertyTypes change between Mendix versions. A widget template extracted from 11.6 may have more or fewer properties than the widget installed in a 10.24 project. The [widget augmentation system](../internals/widget-templates.md) handles this by reconciling templates against the project's `.mpk` files.
 
+The schema itself also gained keys over time. A key the project's version does not declare is left out of the schema mxcli writes, by the same version data the property floor uses. For example, a return type's `AssignableTo` arrived in 9.20, so a 9.0–9.19 schema stores `EntityProperty`, `IsList` and `Type`, as Studio Pro 9.1 and 9.4 do ([ako/mxcli#1163](https://github.com/ako/mxcli/issues/1163)).
+
 ## Widget Template Versions
 
 Embedded widget templates are extracted from Mendix 11.6 and cover:
