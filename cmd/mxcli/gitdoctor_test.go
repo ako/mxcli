@@ -458,6 +458,34 @@ func TestGitCommit_RefusedWhileStudioProOpen(t *testing.T) {
 	}
 }
 
+// --dry-run staged everything to report it and then reset the whole index, so
+// whatever the user had staged before running it was unstaged.
+func TestGitCommit_DryRunKeepsTheUsersStaging(t *testing.T) {
+	dir, mprPath := doctorNoteRepo(t)
+	doctorEnv(t, dir)
+	for _, name := range []string{"staged.txt", "unstaged.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gitIn(t, dir, "add", "staged.txt")
+
+	var out bytes.Buffer
+	if err := commitRun(mprPath, "dry", false, true, &out); err != nil {
+		t.Fatalf("dry run failed: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "unstaged.txt") {
+		t.Errorf("the dry run must still report every file it would commit:\n%s", out.String())
+	}
+	staged, err := gitOut(dir, "diff", "--cached", "--name-only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(staged); got != "staged.txt" {
+		t.Errorf("staged after --dry-run = %q, want exactly what the user had staged (staged.txt)", got)
+	}
+}
+
 func TestGitCommit_DryRunCommitsNothing(t *testing.T) {
 	dir, mprPath := doctorNoteRepo(t)
 	doctorEnv(t, dir)

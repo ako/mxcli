@@ -60,7 +60,7 @@ func init() {
 	gitCommitCmd.Flags().StringP("project", "p", "", "path to the Mendix project (.mpr)")
 	_ = gitCommitCmd.MarkFlagRequired("project")
 	gitCommitCmd.Flags().Bool("push", false, "push the branch and the notes ref to their remote afterwards")
-	gitCommitCmd.Flags().Bool("dry-run", false, "stage and report, then unstage; commit nothing")
+	gitCommitCmd.Flags().Bool("dry-run", false, "report what would be committed; commit nothing and leave your staging as it is")
 	gitCmd.AddCommand(gitCommitCmd)
 }
 
@@ -115,12 +115,25 @@ func commitRun(mprPath, message string, push, dryRun bool, out io.Writer) error 
 		}
 	}
 
-	// 2. Stage everything, then unstage what Studio Pro never commits.
-	if _, err := gitOutIn(root, nil, "add", "-A"); err != nil {
+	// 2. Stage everything, then unstage what Studio Pro never commits. A dry
+	//    run stages into a copy of the index: resetting the real one afterwards
+	//    unstaged whatever the user had staged before running it.
+	var env []string
+	if dryRun {
+		idx, cleanup, err := indexCopy(root)
+		if err != nil {
+			return fmt.Errorf("copy the index for the dry run: %w", err)
+		}
+		defer cleanup()
+		env = []string{"GIT_INDEX_FILE=" + idx}
+	}
+	git := func(args ...string) (string, error) { return gitOutInEnv(root, env, nil, args...) }
+	if _, err := git("add", "-A"); err != nil {
 		return fmt.Errorf("stage changes: %w", err)
 	}
 	// -z: paths come back NUL-separated, so spaces and quotes stay inside one path.
-	staged := nulFields(gitOutOr(root, "diff", "--cached", "--name-only", "-z"))
+	cached, _ := git("diff", "--cached", "--name-only", "-z")
+	staged := nulFields(cached)
 	var junk []string
 	for _, f := range staged {
 		if isJunkPath(f) {
@@ -128,8 +141,7 @@ func commitRun(mprPath, message string, push, dryRun bool, out io.Writer) error 
 		}
 	}
 	if len(junk) > 0 {
-		args := append([]string{"reset", "-q", "--"}, junk...)
-		if _, err := gitOutIn(root, nil, args...); err != nil {
+		if _, err := git(append([]string{"reset", "-q", "--"}, junk...)...); err != nil {
 			return fmt.Errorf("unstage files Studio Pro never commits: %w", err)
 		}
 		fmt.Fprintf(out, "Left out %d file(s) Studio Pro never commits (project-settings.user.json, *.mpr.lock, caches).\n", len(junk))
@@ -151,10 +163,7 @@ func commitRun(mprPath, message string, push, dryRun bool, out io.Writer) error 
 	}
 
 	if dryRun {
-		if _, err := gitOutIn(root, nil, "reset", "-q"); err != nil {
-			return fmt.Errorf("unstage: %w", err)
-		}
-		fmt.Fprintln(out, "Dry run: staged nothing permanently, committed nothing.")
+		fmt.Fprintln(out, "Dry run: committed nothing; what you had staged is unchanged.")
 		return nil
 	}
 
@@ -183,6 +192,47 @@ func commitRun(mprPath, message string, push, dryRun bool, out io.Writer) error 
 		fmt.Fprintf(out, "Pushed %s and %s to origin.\n", branch, mxMetadataRef)
 	}
 	return nil
+}
+
+// indexCopy copies the repository's index to a temporary file, for a
+// GIT_INDEX_FILE that a dry run can stage into without touching the real one.
+// With no index yet, the path is left free for git to create it.
+func indexCopy(root string) (string, func(), error) {
+	p, err := gitOut(root, "rev-parse", "--git-path", "index")
+	if err != nil {
+		return "", nil, err
+	}
+	src := strings.TrimSpace(p)
+	if !filepath.IsAbs(src) {
+		src = filepath.Join(root, src)
+	}
+	f, err := os.CreateTemp("", "mxcli-dry-run-index-*")
+	if err != nil {
+		return "", nil, err
+	}
+	tmp := f.Name()
+	cleanup := func() { _ = os.Remove(tmp) }
+	data, err := os.ReadFile(src)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		f.Close()
+		cleanup() // an empty file is not a valid index
+		return tmp, cleanup, nil
+	case err != nil:
+		f.Close()
+		cleanup()
+		return "", nil, err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		cleanup()
+		return "", nil, err
+	}
+	if err := f.Close(); err != nil {
+		cleanup()
+		return "", nil, err
+	}
+	return tmp, cleanup, nil
 }
 
 // nulFields splits git's -z output (NUL-separated, no quoting) into paths.

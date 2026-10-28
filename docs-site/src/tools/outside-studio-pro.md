@@ -208,7 +208,8 @@ The commit is refused while Studio Pro has the project open (the `.mpr.lock`
 beside it), and during an unresolved merge — `git add -A` would otherwise
 commit the conflict markers. `--dry-run` verifies and reports (including
 ContentsHash drift, which it does not repair — a dry run writes nothing),
-stages, reports what it would commit, and unstages again without committing.
+and reports what it would commit without committing. It stages into a copy of
+the index, so whatever you had staged is left exactly as it was.
 
 ## Auditing a repository: `mxcli git doctor`
 
