@@ -227,10 +227,21 @@ mxcli git doctor --fix --version 10.21.0
 | local git config: `core.autocrlf=False` (a checkout must not rewrite line endings inside `.mxunit` files), `mendix.commits-since-gc`, `mendix.lineEndingResetDone` | sets them |
 | the remote URL: Studio Pro can only use HTTPS | rewrites SSH (`git@host:org/app.git`, `ssh://…`) to HTTPS; other non-HTTPS URLs are reported unchanged |
 | the remote's `refs/notes/mx_metadata` | reported only — push the notes ref together with the branch |
+| the local `refs/notes/mx_metadata` holds the remote's notes: `git clone` and a plain `git fetch` never fetch them, so a fresh clone or a CI checkout has none | fetches them, as a fast-forward only; refused when the local ref has notes the remote does not |
 | each commit on the checked-out branch and its mx_metadata note: missing notes make Studio Pro show `(unknown)`; a malformed note it cannot read at all | computes real notes from the model (`-p`), falling back to a template note with a `--version` ModelerVersion where the model at a commit cannot be read (MPR v1 history, a revision without the `.mpr`); when no version is known the newest valid note in history supplies it |
 
 Notes Studio Pro wrote are never touched, with or without `--fix`. `--fix`
 does not push.
+
+The commits are judged only once the local notes ref holds the remote's. Until
+then the report names the unfetched ref and the command that fetches it, rather
+than calling every commit the remote annotates unannotated. In CI, fetch the
+notes before the audit:
+
+```bash
+git fetch origin refs/notes/mx_metadata:refs/notes/mx_metadata
+mxcli git doctor -p app.mpr
+```
 
 ## Commit metadata: `mxcli git note`
 

@@ -218,6 +218,48 @@ func TestGitDoctor_FixKeepsRealNotes(t *testing.T) {
 	}
 }
 
+// A fresh clone has no refs/notes/* (git clone never fetches them), while the
+// remote carries the notes Studio Pro wrote. Judged against the empty local
+// ref, every commit looked unannotated, and --fix wrote notes over the
+// remote's that it then refused to accept (non-fast-forward).
+func TestGitDoctor_UnfetchedNotesAreNotMissing(t *testing.T) {
+	src, _ := doctorNoteRepo(t)
+	doctorEnv(t, src)
+	gitIn(t, src, "notes", "--ref="+mxMetadataRef, "add", "-f", "-m", realStudioProNote, "HEAD")
+	remote := t.TempDir()
+	gitIn(t, remote, "init", "-q", "--bare")
+	gitIn(t, src, "remote", "add", "origin", remote)
+	gitIn(t, src, "push", "-q", "origin", "feature", mxMetadataRef)
+
+	clone := filepath.Join(t.TempDir(), "clone")
+	gitIn(t, filepath.Dir(clone), "clone", "-q", "-b", "feature", remote, clone)
+	for _, kv := range mxConfigKeys {
+		gitIn(t, clone, "config", "--local", kv[0], kv[1])
+	}
+	mprPath := filepath.Join(clone, "App.mpr")
+	head := strings.TrimSpace(gitOutOr(clone, "rev-parse", "HEAD"))
+
+	var out bytes.Buffer
+	err := doctorRun(clone, mprPath, "", "", false, &out)
+	if strings.Contains(out.String(), shortCommit(head)+" without a note") {
+		t.Errorf("HEAD has a note on the remote; an unfetched notes ref must not report it missing:\n%s", out.String())
+	}
+	if !errors.Is(err, errDoctorIssuesRemain) || !strings.Contains(out.String(), "git fetch origin "+mxMetadataRef) {
+		t.Errorf("the unfetched notes ref must be the finding, with the command that fetches it: %v\n%s", err, out.String())
+	}
+
+	out.Reset()
+	if err := doctorRun(clone, mprPath, "", "", true, &out); err != nil {
+		t.Fatalf("--fix must fetch the notes and annotate the rest: %v\n%s", err, out.String())
+	}
+	if got := strings.TrimSpace(noteOn(t, clone, "HEAD")); got != realStudioProNote {
+		t.Fatalf("--fix replaced the remote's note on HEAD:\n got %s\nwant %s\n%s", got, realStudioProNote, out.String())
+	}
+	if _, err := gitOut(clone, "push", "origin", "feature", mxMetadataRef); err != nil {
+		t.Errorf("the notes --fix leaves must push as a fast-forward: %v\n%s", err, out.String())
+	}
+}
+
 func TestGitDoctor_TemplateWithoutProjectUsesVersionFlag(t *testing.T) {
 	dir := t.TempDir()
 	doctorEnv(t, dir)
