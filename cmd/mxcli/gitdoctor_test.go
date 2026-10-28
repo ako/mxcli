@@ -143,6 +143,56 @@ func TestGitDoctor_SSHURLFormRewrittenByFix(t *testing.T) {
 	}
 }
 
+// A url.<base>.insteadOf rule rewrites the URL every git command uses, not the
+// URL the repository is configured with. The doctor judged the rewritten one:
+// with the common https -> git@ rule in ~/.gitconfig an HTTPS remote read as
+// SSH, and --fix "repaired" the configured URL on every run.
+func TestGitDoctor_InsteadOfRewriteIsNotAnSSHRemote(t *testing.T) {
+	dir := t.TempDir()
+	doctorEnv(t, dir)
+	t.Setenv("GIT_SSH_COMMAND", "false") // the rewritten URL is SSH: never reach the network
+	gitIn(t, dir, "init", "-q", "-b", "main")
+	for _, kv := range mxConfigKeys {
+		gitIn(t, dir, "config", "--local", kv[0], kv[1])
+	}
+	gitIn(t, dir, "config", "--local", "url.git@git.example.com:.insteadOf", "https://git.example.com/")
+	gitIn(t, dir, "remote", "add", "origin", "https://git.example.com/org/app.git")
+
+	var out bytes.Buffer
+	if err := doctorRun(dir, "", "", "", false, &out); err != nil {
+		t.Errorf("a configured HTTPS remote is not an issue, whatever a rewrite makes of it: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "insteadOf") {
+		t.Errorf("the report must explain the rewrite:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := doctorRun(dir, "", "", "", true, &out); err != nil {
+		t.Errorf("--fix: %v\n%s", err, out.String())
+	}
+	if got := configLocal(t, dir, "remote.origin.url"); got != "https://git.example.com/org/app.git" {
+		t.Errorf("--fix changed the configured URL to %q:\n%s", got, out.String())
+	}
+}
+
+// The configured URL is what --fix rewrites, so an SSH remote is still found
+// when a rule rewrites it to HTTPS (as hosted sandboxes do).
+func TestGitDoctor_ConfiguredSSHRemoteFoundBehindRewrite(t *testing.T) {
+	dir := t.TempDir()
+	doctorEnv(t, dir)
+	gitIn(t, dir, "init", "-q", "-b", "main")
+	gitIn(t, dir, "config", "--local", "url.https://git.example.com/.insteadOf", "git@git.example.com:")
+	gitIn(t, dir, "remote", "add", "origin", "git@git.example.com:org/app.git")
+
+	var out bytes.Buffer
+	if err := doctorRun(dir, "", "", "", true, &out); err != nil {
+		t.Fatalf("--fix: %v\n%s", err, out.String())
+	}
+	if got := configLocal(t, dir, "remote.origin.url"); got != "https://git.example.com/org/app" {
+		t.Errorf("configured URL = %q, want https://git.example.com/org/app\n%s", got, out.String())
+	}
+}
+
 // --- doctor: mx_metadata notes ----------------------------------------------
 
 // doctorNoteRepo makes a two-commit repository holding an MPR v2 project:
@@ -215,6 +265,48 @@ func TestGitDoctor_FixKeepsRealNotes(t *testing.T) {
 	doctorRun(dir, mprPath, "", "", true, &out) // config findings remain; the note must not
 	if got := strings.TrimSpace(noteOn(t, dir, "HEAD")); got != realStudioProNote {
 		t.Fatalf("real note was changed:\n got %s\nwant %s", got, realStudioProNote)
+	}
+}
+
+// A fresh clone has no refs/notes/* (git clone never fetches them), while the
+// remote carries the notes Studio Pro wrote. Judged against the empty local
+// ref, every commit looked unannotated, and --fix wrote notes over the
+// remote's that it then refused to accept (non-fast-forward).
+func TestGitDoctor_UnfetchedNotesAreNotMissing(t *testing.T) {
+	src, _ := doctorNoteRepo(t)
+	doctorEnv(t, src)
+	gitIn(t, src, "notes", "--ref="+mxMetadataRef, "add", "-f", "-m", realStudioProNote, "HEAD")
+	remote := t.TempDir()
+	gitIn(t, remote, "init", "-q", "--bare")
+	gitIn(t, src, "remote", "add", "origin", remote)
+	gitIn(t, src, "push", "-q", "origin", "feature", mxMetadataRef)
+
+	clone := filepath.Join(t.TempDir(), "clone")
+	gitIn(t, filepath.Dir(clone), "clone", "-q", "-b", "feature", remote, clone)
+	for _, kv := range mxConfigKeys {
+		gitIn(t, clone, "config", "--local", kv[0], kv[1])
+	}
+	mprPath := filepath.Join(clone, "App.mpr")
+	head := strings.TrimSpace(gitOutOr(clone, "rev-parse", "HEAD"))
+
+	var out bytes.Buffer
+	err := doctorRun(clone, mprPath, "", "", false, &out)
+	if strings.Contains(out.String(), shortCommit(head)+" without a note") {
+		t.Errorf("HEAD has a note on the remote; an unfetched notes ref must not report it missing:\n%s", out.String())
+	}
+	if !errors.Is(err, errDoctorIssuesRemain) || !strings.Contains(out.String(), "git fetch origin "+mxMetadataRef) {
+		t.Errorf("the unfetched notes ref must be the finding, with the command that fetches it: %v\n%s", err, out.String())
+	}
+
+	out.Reset()
+	if err := doctorRun(clone, mprPath, "", "", true, &out); err != nil {
+		t.Fatalf("--fix must fetch the notes and annotate the rest: %v\n%s", err, out.String())
+	}
+	if got := strings.TrimSpace(noteOn(t, clone, "HEAD")); got != realStudioProNote {
+		t.Fatalf("--fix replaced the remote's note on HEAD:\n got %s\nwant %s\n%s", got, realStudioProNote, out.String())
+	}
+	if _, err := gitOut(clone, "push", "origin", "feature", mxMetadataRef); err != nil {
+		t.Errorf("the notes --fix leaves must push as a fast-forward: %v\n%s", err, out.String())
 	}
 }
 
@@ -366,6 +458,34 @@ func TestGitCommit_RefusedWhileStudioProOpen(t *testing.T) {
 	}
 }
 
+// --dry-run staged everything to report it and then reset the whole index, so
+// whatever the user had staged before running it was unstaged.
+func TestGitCommit_DryRunKeepsTheUsersStaging(t *testing.T) {
+	dir, mprPath := doctorNoteRepo(t)
+	doctorEnv(t, dir)
+	for _, name := range []string{"staged.txt", "unstaged.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gitIn(t, dir, "add", "staged.txt")
+
+	var out bytes.Buffer
+	if err := commitRun(mprPath, "dry", false, true, &out); err != nil {
+		t.Fatalf("dry run failed: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "unstaged.txt") {
+		t.Errorf("the dry run must still report every file it would commit:\n%s", out.String())
+	}
+	staged, err := gitOut(dir, "diff", "--cached", "--name-only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(staged); got != "staged.txt" {
+		t.Errorf("staged after --dry-run = %q, want exactly what the user had staged (staged.txt)", got)
+	}
+}
+
 func TestGitCommit_DryRunCommitsNothing(t *testing.T) {
 	dir, mprPath := doctorNoteRepo(t)
 	doctorEnv(t, dir)
@@ -469,6 +589,85 @@ func TestGitCommit_SpacedPathsStagedWholeAndJunkLeft(t *testing.T) {
 	}
 	if strings.Contains(files, "deployment/old log.txt") {
 		t.Errorf("junk was committed:\n%s", files)
+	}
+}
+
+// writeFiles creates each repo-relative path with its parent folders.
+func writeFiles(t *testing.T, dir string, paths ...string) {
+	t.Helper()
+	for _, p := range paths {
+		full := filepath.Join(dir, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(p), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// committedSet is the set of paths HEAD changed.
+func committedSet(t *testing.T, dir string) map[string]bool {
+	t.Helper()
+	set := map[string]bool{}
+	for _, f := range strings.Split(strings.TrimSpace(committedFiles(t, dir)), "\n") {
+		set[f] = true
+	}
+	return set
+}
+
+// The never-commit folders are the project's own, beside the .mpr, where
+// Studio Pro's .gitignore anchors them (/deployment/). Matched at any depth, a
+// user folder of the same name was silently left out of the commit.
+func TestGitCommit_NestedFolderNamedLikeJunkIsCommitted(t *testing.T) {
+	dir, mprPath := doctorNoteRepo(t)
+	doctorEnv(t, dir)
+	writeFiles(t, dir, "resources/deployment/endpoints.xml", "javascriptsource/theme-cache/x.js", "deployment/run.log", "theme-cache/a.css")
+
+	var out bytes.Buffer
+	if err := commitRun(mprPath, "nested", false, false, &out); err != nil {
+		t.Fatalf("commitRun: %v\n%s", err, out.String())
+	}
+	files := committedSet(t, dir)
+	for _, keep := range []string{"resources/deployment/endpoints.xml", "javascriptsource/theme-cache/x.js"} {
+		if !files[keep] {
+			t.Errorf("%s is not the project's own folder and must be committed:\n%s", keep, out.String())
+		}
+	}
+	for _, junk := range []string{"deployment/run.log", "theme-cache/a.css"} {
+		if files[junk] {
+			t.Errorf("%s is the project's own and must be left out", junk)
+		}
+	}
+}
+
+// With the project in a subfolder of the repository, its folders are under
+// that subfolder; the same names elsewhere in the repository are not its own.
+func TestGitCommit_JunkAnchoredAtProjectInSubfolder(t *testing.T) {
+	root := t.TempDir()
+	doctorEnv(t, root)
+	gitIn(t, root, "init", "-q", "-b", "feature")
+	app := filepath.Join(root, "app")
+	if err := os.MkdirAll(app, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeProject(t, app, "11.13.0", baseUnits(t))
+	gitIn(t, root, "add", "-A")
+	gitIn(t, root, "commit", "-q", "-m", "base")
+	writeFiles(t, root, "app/deployment/run.log", "app/resources/deployment/endpoints.xml", "tools/deployment/deploy.sh")
+
+	var out bytes.Buffer
+	if err := commitRun(filepath.Join(app, "App.mpr"), "sub", false, false, &out); err != nil {
+		t.Fatalf("commitRun: %v\n%s", err, out.String())
+	}
+	files := committedSet(t, root)
+	if files["app/deployment/run.log"] {
+		t.Error("app/deployment/ is the project's own and must be left out")
+	}
+	for _, keep := range []string{"app/resources/deployment/endpoints.xml", "tools/deployment/deploy.sh"} {
+		if !files[keep] {
+			t.Errorf("%s must be committed:\n%s", keep, out.String())
+		}
 	}
 }
 

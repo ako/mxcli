@@ -32,8 +32,9 @@ var gitCommitCmd = &cobra.Command{
      rewritten from the file, which is the source of truth; MISSING or ORPHAN
      entries have no automatic repair and refuse the commit;
   2. everything is staged, then the files Studio Pro never commits are
-     unstaged again: project-settings.user.json, *.mpr.lock, *.mpr.bak,
-     .mendix-cache/, deployment/, theme-cache/, .mxcli/;
+     unstaged again: project-settings.user.json, *.mpr.lock, *.mpr.bak, and
+     the project's own .mendix-cache/, deployment/, theme-cache/ and .mxcli/
+     beside the .mpr (a folder of the same name further down is committed);
   3. git commit runs with your message and your git identity;
   4. the mx_metadata note is computed from the new commit and attached, so
      Studio Pro can version-check it and show what changed.
@@ -60,7 +61,7 @@ func init() {
 	gitCommitCmd.Flags().StringP("project", "p", "", "path to the Mendix project (.mpr)")
 	_ = gitCommitCmd.MarkFlagRequired("project")
 	gitCommitCmd.Flags().Bool("push", false, "push the branch and the notes ref to their remote afterwards")
-	gitCommitCmd.Flags().Bool("dry-run", false, "stage and report, then unstage; commit nothing")
+	gitCommitCmd.Flags().Bool("dry-run", false, "report what would be committed; commit nothing and leave your staging as it is")
 	gitCmd.AddCommand(gitCommitCmd)
 }
 
@@ -115,21 +116,34 @@ func commitRun(mprPath, message string, push, dryRun bool, out io.Writer) error 
 		}
 	}
 
-	// 2. Stage everything, then unstage what Studio Pro never commits.
-	if _, err := gitOutIn(root, nil, "add", "-A"); err != nil {
+	// 2. Stage everything, then unstage what Studio Pro never commits. A dry
+	//    run stages into a copy of the index: resetting the real one afterwards
+	//    unstaged whatever the user had staged before running it.
+	var env []string
+	if dryRun {
+		idx, cleanup, err := indexCopy(root)
+		if err != nil {
+			return fmt.Errorf("copy the index for the dry run: %w", err)
+		}
+		defer cleanup()
+		env = []string{"GIT_INDEX_FILE=" + idx}
+	}
+	git := func(args ...string) (string, error) { return gitOutInEnv(root, env, nil, args...) }
+	if _, err := git("add", "-A"); err != nil {
 		return fmt.Errorf("stage changes: %w", err)
 	}
 	// -z: paths come back NUL-separated, so spaces and quotes stay inside one path.
-	staged := nulFields(gitOutOr(root, "diff", "--cached", "--name-only", "-z"))
+	cached, _ := git("diff", "--cached", "--name-only", "-z")
+	staged := nulFields(cached)
+	projDir := path.Dir(repo.MPRPath) // the project's folder in the repository; "." at its root
 	var junk []string
 	for _, f := range staged {
-		if isJunkPath(f) {
+		if isJunkPath(f, projDir) {
 			junk = append(junk, f)
 		}
 	}
 	if len(junk) > 0 {
-		args := append([]string{"reset", "-q", "--"}, junk...)
-		if _, err := gitOutIn(root, nil, args...); err != nil {
+		if _, err := git(append([]string{"reset", "-q", "--"}, junk...)...); err != nil {
 			return fmt.Errorf("unstage files Studio Pro never commits: %w", err)
 		}
 		fmt.Fprintf(out, "Left out %d file(s) Studio Pro never commits (project-settings.user.json, *.mpr.lock, caches).\n", len(junk))
@@ -151,10 +165,7 @@ func commitRun(mprPath, message string, push, dryRun bool, out io.Writer) error 
 	}
 
 	if dryRun {
-		if _, err := gitOutIn(root, nil, "reset", "-q"); err != nil {
-			return fmt.Errorf("unstage: %w", err)
-		}
-		fmt.Fprintln(out, "Dry run: staged nothing permanently, committed nothing.")
+		fmt.Fprintln(out, "Dry run: committed nothing; what you had staged is unchanged.")
 		return nil
 	}
 
@@ -185,6 +196,47 @@ func commitRun(mprPath, message string, push, dryRun bool, out io.Writer) error 
 	return nil
 }
 
+// indexCopy copies the repository's index to a temporary file, for a
+// GIT_INDEX_FILE that a dry run can stage into without touching the real one.
+// With no index yet, the path is left free for git to create it.
+func indexCopy(root string) (string, func(), error) {
+	p, err := gitOut(root, "rev-parse", "--git-path", "index")
+	if err != nil {
+		return "", nil, err
+	}
+	src := strings.TrimSpace(p)
+	if !filepath.IsAbs(src) {
+		src = filepath.Join(root, src)
+	}
+	f, err := os.CreateTemp("", "mxcli-dry-run-index-*")
+	if err != nil {
+		return "", nil, err
+	}
+	tmp := f.Name()
+	cleanup := func() { _ = os.Remove(tmp) }
+	data, err := os.ReadFile(src)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		f.Close()
+		cleanup() // an empty file is not a valid index
+		return tmp, cleanup, nil
+	case err != nil:
+		f.Close()
+		cleanup()
+		return "", nil, err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		cleanup()
+		return "", nil, err
+	}
+	if err := f.Close(); err != nil {
+		cleanup()
+		return "", nil, err
+	}
+	return tmp, cleanup, nil
+}
+
 // nulFields splits git's -z output (NUL-separated, no quoting) into paths.
 func nulFields(s string) []string {
 	var out []string
@@ -197,9 +249,14 @@ func nulFields(s string) []string {
 }
 
 // isJunkPath reports whether a repo-relative path is one of the files Studio
-// Pro never commits. Matched on any path level and without case, the way
-// Studio Pro matches its own lock file (whose .gitignore entry is lowercase).
-func isJunkPath(rel string) bool {
+// Pro never commits. The files match by name at any level and without case,
+// the way Studio Pro matches its own lock file (whose .gitignore entry is
+// lowercase). The folders are the project's own, the ones Studio Pro, mxbuild
+// and mxcli create directly in projDir (the project's folder relative to the
+// repository root, "." at the root): matched at any depth, a user folder of
+// the same name, resources/deployment/ say, was silently left out of the
+// commit.
+func isJunkPath(rel, projDir string) bool {
 	f := filepath.ToSlash(rel)
 	base := path.Base(f)
 	switch {
@@ -208,11 +265,21 @@ func isJunkPath(rel string) bool {
 	case strings.HasSuffix(strings.ToLower(base), ".mpr.lock"), strings.HasSuffix(strings.ToLower(base), ".mpr.bak"):
 		return true
 	}
-	for _, seg := range strings.Split(f, "/") {
-		switch strings.ToLower(seg) {
-		case ".mendix-cache", "deployment", "theme-cache", ".mxcli":
-			return true
+	inProject := f
+	if projDir != "." && projDir != "" {
+		prefix := projDir + "/"
+		if len(f) <= len(prefix) || !strings.EqualFold(f[:len(prefix)], prefix) {
+			return false
 		}
+		inProject = f[len(prefix):]
+	}
+	folder, rest, inFolder := strings.Cut(inProject, "/")
+	if !inFolder || rest == "" {
+		return false
+	}
+	switch strings.ToLower(folder) {
+	case ".mendix-cache", "deployment", "theme-cache", ".mxcli":
+		return true
 	}
 	return false
 }

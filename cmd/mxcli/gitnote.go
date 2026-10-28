@@ -366,8 +366,14 @@ func gitOut(dir string, args ...string) (string, error) {
 }
 
 func gitOutIn(dir string, stdin []byte, args ...string) (string, error) {
+	return gitOutInEnv(dir, nil, stdin, args...)
+}
+
+// gitOutInEnv is gitOutIn with extra environment entries, such as the
+// GIT_INDEX_FILE a dry run stages into.
+func gitOutInEnv(dir string, env []string, stdin []byte, args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat")
+	cmd.Env = append(append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat"), env...)
 	if stdin != nil {
 		cmd.Stdin = bytes.NewReader(stdin)
 	}
