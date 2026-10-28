@@ -179,6 +179,10 @@ features:
       mdl: "CREATE BUSINESS EVENT SERVICE Module.Name ..."
     odata_client:
       min_version: "10.0.0"
+    published_odata_service:
+      # ODataPublish$PublishedODataService2 is 10.4+; see mendix-10.yaml.
+      min_version: "10.4.0"
+      mdl: "CREATE PUBLISHED ODATA SERVICE Module.Name (...) { PUBLISH ENTITY ... }"
     odata_graphql:
       # A published OData service can also answer GraphQL — one boolean, same
       # resources, an extra endpoint. Introduced in Studio Pro 10.14 as an

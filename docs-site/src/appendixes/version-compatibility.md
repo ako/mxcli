@@ -200,6 +200,8 @@ What an older shape cannot hold is refused, naming the element, rather than drop
 
 Before this, `describe` on 9.24 printed none of these properties, so a describe → exec round trip removed them. Writing a data view on 9.24 was refused outright.
 
+A published OData service is not an older shape of the same document. Before 10.4 it is a different document (`Rest$PublishedODataService`, not `ODataPublish$PublishedODataService2`), which mxcli does not write. `create published odata service` is refused below 10.4 with MDL-VERSION01, by `check -p` and by `exec` before anything is written. Mendix 9.24 cannot load a project that holds the 10.4 document.
+
 ### Widget Type Definitions
 
 Pluggable widget PropertyTypes change between Mendix versions. A widget template extracted from 11.6 may have more or fewer properties than the widget installed in a 10.24 project. The [widget augmentation system](../internals/widget-templates.md) handles this by reconciling templates against the project's `.mpk` files.

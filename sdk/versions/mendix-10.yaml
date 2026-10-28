@@ -167,6 +167,17 @@ features:
       mdl: "CREATE BUSINESS EVENT SERVICE Module.Name ..."
     odata_client:
       min_version: "10.0.0"
+    published_odata_service:
+      # mxcli writes a published OData service as ODataPublish$PublishedODataService2,
+      # introduced in 10.4.0 (mendixmodelsdk); before, it is a
+      # Rest$PublishedODataService, a different document with its own children,
+      # which mxcli does not write. Measured: mx check 9.24.30 cannot load a
+      # project holding a PublishedODataService2 —
+      # "TypeCacheUnknownTypeException: ... ODataPublish$PublishedODataService2"
+      # (ako/mxcli#1163). Below this the property floor used to refuse
+      # IncludeMetadataByDefault instead, which named the wrong thing.
+      min_version: "10.4.0"
+      mdl: "CREATE PUBLISHED ODATA SERVICE Module.Name (...) { PUBLISH ENTITY ... }"
     odata_graphql:
       # A published OData service can also answer GraphQL — one boolean, same
       # resources, an extra endpoint. Introduced in Studio Pro 10.14 as an

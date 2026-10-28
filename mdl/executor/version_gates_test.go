@@ -32,6 +32,10 @@ func TestCheckVersionGates_ReportsEveryHandlerGate(t *testing.T) {
 		{"alter published rest", &ast.AlterPublishedRestServiceStmt{}, [3]int{9, 24, 0}, "alter published rest service"},
 		{"grant published rest", &ast.GrantPublishedRestServiceAccessStmt{}, [3]int{9, 24, 0}, "grant access on published rest service"},
 		{"odata graphql", &ast.CreateODataServiceStmt{SupportsGraphQL: true}, [3]int{10, 13, 0}, "SupportsGraphQL"},
+		// ako/mxcli#1163: the document mxcli writes is 10.4+; 9.24.30 does not
+		// load a project holding one (TypeCacheUnknownTypeException).
+		{"published odata", &ast.CreateODataServiceStmt{}, [3]int{9, 24, 30}, "create published odata service"},
+		{"published odata 10.3", &ast.CreateODataServiceStmt{}, [3]int{10, 3, 0}, "create published odata service"},
 		{"message definition document", &ast.CreateMessageDefinitionStmt{}, [3]int{11, 14, 0}, "create message definition"},
 		{"workflow group", &ast.AlterSettingsStmt{Section: "WORKFLOWS", AddGroup: true, GroupName: "G"}, [3]int{11, 1, 0}, "add group"},
 		{"view entity", &ast.CreateViewEntityStmt{}, [3]int{10, 17, 0}, "create view entity"},
@@ -104,14 +108,13 @@ func TestCheckVersionGates_ReportsEveryHandlerGate(t *testing.T) {
 
 // Statements with no gate, or a gated statement without the gated clause, are
 // not reported — `synchronize all` on 9.0, a page without parameters, OData
-// without GraphQL.
+// without GraphQL from 10.4.
 func TestCheckVersionGates_UngatedFormsPass(t *testing.T) {
 	prog := &ast.Program{Statements: []ast.Statement{
 		&ast.CreateModuleStmt{Name: "M"},
 		&ast.CreateMicroflowStmt{},
 		&ast.CreateNanoflowStmt{Body: []ast.MicroflowStatement{&ast.SynchronizeStmt{SyncType: "All"}}},
 		&ast.CreatePageStmtV3{},
-		&ast.CreateODataServiceStmt{},
 		&ast.AlterSettingsStmt{Section: "MODEL"},
 		// No EXPORT LEVEL clause: the stored level is carried (#1498).
 		&ast.CreateEntityStmt{Attributes: []ast.Attribute{{Name: "A"}}},
@@ -121,6 +124,10 @@ func TestCheckVersionGates_UngatedFormsPass(t *testing.T) {
 	}}
 	if vs := versionGateViolations(versionCtx(t, 9, 0, 0), prog); len(vs) != 0 {
 		t.Errorf("ungated forms reported on 9.0: %+v", vs)
+	}
+	odata := &ast.Program{Statements: []ast.Statement{&ast.CreateModuleStmt{Name: "M"}, &ast.CreateODataServiceStmt{}}}
+	if vs := versionGateViolations(versionCtx(t, 10, 4, 0), odata); len(vs) != 0 {
+		t.Errorf("a published OData service without GraphQL reported on 10.4: %+v", vs)
 	}
 }
 
