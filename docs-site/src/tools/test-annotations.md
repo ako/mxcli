@@ -77,6 +77,10 @@ FAIL  the board is 81 squares
       expected length($result) = 81, actual: 27
 ```
 
+A test with several `@expect` lines passes only when every one of them holds, and
+it reports the first that does not. The Docker / `--legacy-runner` path evaluates
+them all, and adds how many more failed — `(and 1 more failure in this test)`.
+
 `@expect` cannot be combined with `@throws`: a body expected to fail produces no
 result to assert on, so the combination is refused rather than ignored.
 

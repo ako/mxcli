@@ -31,8 +31,11 @@
 --
 -- Under --legacy-runner a test whose error leaves the runner (05, 06, 11) ends
 -- the whole run; 05 was reported PASS there (a RUN line with no verdict read as
--- the zero status) and is now an ERROR. That runner also needs a distinct
--- variable name per test.
+-- the zero status) and is now an ERROR. That runner also needed a distinct
+-- variable name per test: it renamed a variable per test only after an
+-- upper-case `CALL`, so this file's `$r` and `$Result` drew 14 MDL063
+-- duplicate-variable errors there. It renames one after a lower-case `call` too
+-- since the sibling fix to ako/mxcli#1753.
 mdl 1;
 /**
  * @test 01 plain call that throws

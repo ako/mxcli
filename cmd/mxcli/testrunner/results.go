@@ -189,6 +189,8 @@ func ParseLogResults(logReader io.Reader, suite *TestSuite, requireAssertions bo
 	// Track which tests we've seen results for
 	resultMap := make(map[string]*TestResult)
 	runTimes := make(map[string]time.Time)
+	// failures counts each test's FAIL and ERROR lines; see applyVerdictLine.
+	failures := make(map[string]int)
 
 	scanner := bufio.NewScanner(logReader)
 	for scanner.Scan() {
@@ -233,6 +235,9 @@ func ParseLogResults(logReader io.Reader, suite *TestSuite, requireAssertions bo
 			// verdict did not finish: an error left the runner flow, which
 			// stops it here — a call whose own handler re-raises does exactly
 			// that (ako/mxcli#1448). Its PASS or FAIL line replaces this.
+			// A RUN line starts the test's verdict afresh, so a failure that
+			// sticks (applyVerdictLine) cannot outlive the run it belongs to.
+			delete(failures, id)
 			resultMap[id] = &TestResult{
 				ID:      id,
 				Name:    name,
@@ -240,77 +245,25 @@ func ParseLogResults(logReader io.Reader, suite *TestSuite, requireAssertions bo
 				Message: "started and reported no verdict: an error left the test runner here, which stopped it (the runtime log has the error)",
 			}
 
-		case "PASS":
-			if r, ok := resultMap[id]; ok {
-				r.Status = StatusPass
-				r.Message = ""
+		case "PASS", "FAIL", "ERROR", "SKIP":
+			// ERROR is a setup that threw: the test never ran, so it is neither a
+			// pass nor a failure. Only the monolithic runner reports this way —
+			// the endpoint carries the same outcome back as a SETUP verdict.
+			msg := ""
+			if len(parts) >= 4 {
+				msg = parts[3]
+			}
+			r, ok := resultMap[id]
+			if !ok {
+				r = &TestResult{ID: id, Name: id}
+				resultMap[id] = r
+			}
+			if action == "PASS" || action == "FAIL" {
 				if t, ok := runTimes[id]; ok {
 					r.Duration = time.Since(t)
 				}
-			} else {
-				resultMap[id] = &TestResult{
-					ID:     id,
-					Name:   id,
-					Status: StatusPass,
-				}
 			}
-
-		case "FAIL":
-			msg := ""
-			if len(parts) >= 4 {
-				msg = parts[3]
-			}
-			if r, ok := resultMap[id]; ok {
-				r.Status = StatusFail
-				r.Message = msg
-				if t, ok := runTimes[id]; ok {
-					r.Duration = time.Since(t)
-				}
-			} else {
-				resultMap[id] = &TestResult{
-					ID:      id,
-					Name:    id,
-					Status:  StatusFail,
-					Message: msg,
-				}
-			}
-
-		case "ERROR":
-			// A setup that threw: the test never ran, so it is neither a pass nor
-			// a failure. Only the monolithic runner reports this way — the
-			// endpoint carries the same outcome back as a SETUP verdict.
-			msg := ""
-			if len(parts) >= 4 {
-				msg = parts[3]
-			}
-			if r, ok := resultMap[id]; ok {
-				r.Status = StatusError
-				r.Message = msg
-			} else {
-				resultMap[id] = &TestResult{
-					ID:      id,
-					Name:    id,
-					Status:  StatusError,
-					Message: msg,
-				}
-			}
-
-		case "SKIP":
-			msg := ""
-			if len(parts) >= 4 {
-				msg = parts[3]
-			}
-			if r, ok := resultMap[id]; ok {
-				r.Status = StatusSkip
-				r.Message = msg
-			} else {
-				resultMap[id] = &TestResult{
-					ID:      id,
-					Name:    id,
-					Status:  StatusSkip,
-					Message: msg,
-				}
-			}
+			applyVerdictLine(r, verdictStatus[action], msg, failures)
 
 		case "END":
 			result.Duration = time.Since(result.Started)
@@ -337,6 +290,13 @@ func ParseLogResults(logReader io.Reader, suite *TestSuite, requireAssertions bo
 			}
 			res.Status = r.Status
 			res.Message = r.Message
+			if more := failures[tc.ID] - 1; more > 0 {
+				noun := "failures"
+				if more == 1 {
+					noun = "failure"
+				}
+				res.Message += fmt.Sprintf(" (and %d more %s in this test)", more, noun)
+			}
 			res.Duration = r.Duration
 			result.Tests = append(result.Tests, res)
 		} else {
@@ -349,6 +309,45 @@ func ParseLogResults(logReader io.Reader, suite *TestSuite, requireAssertions bo
 	}
 
 	return result
+}
+
+// verdictStatus maps a log protocol verdict action to the status it reports.
+var verdictStatus = map[string]TestStatus{
+	"PASS":  StatusPass,
+	"FAIL":  StatusFail,
+	"ERROR": StatusError,
+	"SKIP":  StatusSkip,
+}
+
+// applyVerdictLine records one verdict line of the after-startup runner's log
+// against a test's result. failures counts each test's FAIL and ERROR lines.
+//
+// A test can log more than one verdict line: writeExpectAssertion logs PASS or
+// FAIL for every @expect on its own, and the skipped-assertions guard logs a
+// FAIL after them. A failure is therefore sticky — once a test has a FAIL or an
+// ERROR, no later line clears it, and the first failure's message is the one
+// reported. When every line simply replaced the last, a test whose first
+// assertion failed and whose second held reported PASS with the failure message
+// erased, and `mxcli test` exited 0 (ako/mxcli#1753). The rule lives here rather
+// than in the generated flow so it also holds for a log written by a runner
+// generated before it.
+//
+// This is the endpoint runner's semantics: there an assertion is evaluated only
+// while $Verdict is still PASS, and the skipped-assertions guard does not
+// replace an existing failure, so its first failure is what it returns.
+//
+// The ERROR a RUN line leaves as a placeholder is not a failure line; the
+// test's own verdict replaces it.
+func applyVerdictLine(r *TestResult, status TestStatus, msg string, failures map[string]int) {
+	failed := status == StatusFail || status == StatusError
+	if failed {
+		failures[r.ID]++
+	}
+	if failures[r.ID] > 1 || (!failed && failures[r.ID] > 0) {
+		return
+	}
+	r.Status = status
+	r.Message = msg
 }
 
 // PrintResults writes a human-readable summary to the writer.

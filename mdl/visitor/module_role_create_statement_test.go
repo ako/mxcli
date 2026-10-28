@@ -35,7 +35,7 @@ func TestCreateModuleRole_IsACreateStatementKind(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s: got %T", tc.src, prog.Statements[0])
 		}
-		if s.Name.String() != "M.Admin" || s.CreateOrModify != tc.orModify || s.Description != tc.desc {
+		if s.Name.String() != "M.Admin" || s.CreateOrModify != tc.orModify || s.DescriptionText() != tc.desc {
 			t.Errorf("%s: got %+v", tc.src, s)
 		}
 		if got := len(prog.Deprecations) > 0; got != tc.deprecated {

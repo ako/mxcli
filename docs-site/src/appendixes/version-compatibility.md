@@ -174,9 +174,9 @@ What *is* version-specific is the optional/default-value half: `PageParameter.Is
 
 Atlas UI v3 (Mendix 11.0+) introduced new design properties like "Card style" and "Disable row wrap" for containers. These don't exist in the Atlas v2 theme bundled with 10.x, causing CE6083.
 
-### Page Properties Stored in an Older Shape (below 10.2, 10.7, 10.11)
+### Properties Stored in an Older Shape
 
-Some page properties kept their meaning and changed how they are stored. mxcli builds the current shape and, on every write, rewrites it into the shape the project's version stores. `describe` reads both shapes ([ako/mxcli#1209](https://github.com/ako/mxcli/issues/1209)). The older shapes were measured on Studio Pro-authored 9.24.30 pages:
+Some properties kept their meaning and changed how they are stored. mxcli builds the current shape and, on every write, rewrites it into the shape the project's version stores. `describe` reads both shapes ([ako/mxcli#1209](https://github.com/ako/mxcli/issues/1209), [ako/mxcli#1163](https://github.com/ako/mxcli/issues/1163)). The older shapes were measured on Studio Pro-authored 9.24 documents and with `mx convert` 9.24.30:
 
 | Property | Below | Stored as |
 |---|---|---|
@@ -185,14 +185,22 @@ Some page properties kept their meaning and changed how they are stored. mxcli b
 | A data view's editability | 10.7 | `Editable: true\|false`, instead of `Editability` |
 | A text box's, text area's or date picker's placeholder | 10.11 | `Placeholder` text, instead of a `PlaceholderTemplate` |
 | Any data source's `ForceFullObjects` | 10.8 | Not stored |
+| The `PersistentId` of a workflow, activity, outcome or boundary event | 10.21 | Not stored |
+| A constant's value in a configuration (`alter settings constant … in configuration`) | 10.9 | A flat `Value` string on the override, instead of a `Settings$SharedValue` under `SharedOrPrivateValue` |
+| A page's flow call argument that is the enclosing object (`call microflow M.F(P = $currentObject)`, `call nanoflow …`) | 10.10 | Not stored: Studio Pro infers it. A page parameter, snippet parameter or widget argument is stored as before, as a `Variable` |
 
-What an older shape cannot hold is refused, naming the widget, rather than dropped:
+What an older shape cannot hold is refused, naming the element, rather than dropped:
 - a Spacing, colour-picker or toggle-button-group design property below 10.2;
 - conditional data view editability below 10.7;
 - a placeholder with parameters below 10.11;
-- a data view fed by another widget below 10.0.
+- a data view fed by another widget below 10.0;
+- a private constant value in a configuration below 10.9;
+- a page's flow call argument that is any other expression (a literal, an attribute path) below 10.10;
+- an aggregate over an expression (`sum $L of …`), `reduce`, `all` or `any` below 10.0. The plain `count`, `sum`, `average`, `minimum` and `maximum` are written on every version ([ako/mxcli#1163](https://github.com/ako/mxcli/issues/1163)).
 
 Before this, `describe` on 9.24 printed none of these properties, so a describe → exec round trip removed them. Writing a data view on 9.24 was refused outright.
+
+A published OData service is not an older shape of the same document. Before 10.4 it is a different document (`Rest$PublishedODataService`, not `ODataPublish$PublishedODataService2`), which mxcli does not write. `create published odata service` is refused below 10.4 with MDL-VERSION01, by `check -p` and by `exec` before anything is written. Mendix 9.24 cannot load a project that holds the 10.4 document.
 
 ### Widget Type Definitions
 

@@ -1,0 +1,30 @@
+mdl 1;
+-- ako/mxcli#1163: on Mendix 9.x and on 10.0–10.8 a new constant override in a
+-- configuration was refused:
+--
+--   this Mendix 9.24.30 project cannot store
+--   Settings$ConstantValue.SharedOrPrivateValue (Mendix 10.9.0+)
+--
+-- Before 10.9 an override's value is a flat Value string on the
+-- Settings$ConstantValue; from 10.9 it is a Settings$SharedValue nested under
+-- SharedOrPrivateValue (mendixmodelsdk). `mx convert` 9.24.30 turns the nested
+-- form into `{$ID, $Type, ConstantId, Value: ""}`: it does not know it, and the
+-- override silently becomes empty. mxcli builds the nested form and lowers it
+-- on the write. A private value (stored on the developer's workstation) has no
+-- flat form and is refused below 10.9.
+--
+-- Run it on a fresh 9.24.30 app (`mxcli new … --version 9.24.30.51827`): exec,
+-- then `describe settings` shows the override as 'broker:9092', and `mxcli
+-- docker check` reports the blank app's error count.
+
+create module Probe1163Const;
+
+create constant Probe1163Const.ServerUrl ( Type: string, DefaultValue: 'localhost:9092' );
+
+-- A new override: built nested, stored flat.
+alter settings constant @Probe1163Const.ServerUrl value 'kafka:9092'
+  in configuration 'Default';
+
+-- An existing flat override is updated in place.
+alter settings constant @Probe1163Const.ServerUrl value 'broker:9092'
+  in configuration 'Default';
