@@ -100,7 +100,12 @@ const defaultSlotContainer = "template"
 //	    `editable:` when the package declares no Editability); before, it was
 //	    known-but-unmapped and the Calendar's `editable` could not be written
 //	    (mendixlabs/mxcli#1578).
-const WidgetDefGeneratorVersion = 19
+//	20 — lift editorConfig hides in a `switch` arm, and a guard bounded by the
+//	    head of a `switch(`/`if(` statement (terser folds earlier statements
+//	    into it). Timeline went from 2 to 6 of 6 rules, so its hidden
+//	    enumerations are refused with MDL-WIDGET10 rather than reaching mx check
+//	    as CE0463 (ako/mxcli#1762). Bump forces existing projects to regenerate.
+const WidgetDefGeneratorVersion = 20
 
 // WidgetDefinition describes how to construct a pluggable widget from MDL syntax.
 // Loaded from embedded JSON definition files (*.def.json).
