@@ -1,0 +1,55 @@
+-- ako/mxcli#1753: on the after-startup runner (every Docker run, and --local
+-- --legacy-runner) a test with more than one @expect was reported PASS when an
+-- earlier assertion failed and a later one held, and `mxcli test` exited 0.
+-- Each assertion logs its own PASS or FAIL line, and the log parser let the
+-- last line be the test's verdict. A failure now sticks, and the first one is
+-- the message reported.
+--
+-- Setup: test-runner-1514-setup.mdl (Probe.SUB_Make returns 'a;b'). Then:
+--
+--   mxcli test mdl-examples/bug-tests/test-runner-1753-earlier-expect-fails.test.mdl -p app.mpr --local --legacy-runner
+--
+-- Expected: test 1 FAIL "Expected $a = 'zzz', actual: a;b" (before the fix:
+-- PASS), test 2 FAIL with the same message for $b (the control — the order the
+-- parser always got right), test 3 FAIL "Expected $c = 'zzz', actual: a;b (and
+-- 1 more failure in this test)", test 4 PASS. The endpoint runner (--local
+-- alone) evaluates an assertion only while the test is still passing, so it
+-- reported test 1 correctly before the fix too.
+--
+-- The log parser's verdicts are pinned by cmd/mxcli/testrunner/
+-- sticky_failure_test.go; this file is the runtime reproduction and was not run
+-- against an app for the fix. Each test uses its own variable so the file does
+-- not depend on the runner renaming a shared one.
+mdl 1;
+/**
+ * @test 1 earlier assertion fails, later one holds
+ * @expect $a = 'zzz'
+ * @expect $a = 'a;b'
+ */
+$a = call microflow Probe.SUB_Make();
+/
+
+/**
+ * @test 2 earlier assertion holds, later one fails
+ * @expect $b = 'a;b'
+ * @expect $b = 'zzz'
+ */
+$b = call microflow Probe.SUB_Make();
+/
+
+/**
+ * @test 3 two assertions fail, one holds
+ * @expect $c = 'zzz'
+ * @expect $c = 'a;b'
+ * @expect $c = 'yyy'
+ */
+$c = call microflow Probe.SUB_Make();
+/
+
+/**
+ * @test 4 every assertion holds
+ * @expect $d = 'a;b'
+ * @expect length($d) = 3
+ */
+$d = call microflow Probe.SUB_Make();
+/
