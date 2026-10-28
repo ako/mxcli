@@ -8,6 +8,7 @@
 #   make test-integration - Run integration tests (requires mx/mxbuild)
 #   make test-mdl  - Run MDL integration tests (requires Docker)
 #   make lint      - Lint all code (Go + TypeScript)
+#   make ci-local  - Run what CI's build-and-test job runs, before pushing
 #   make lint-go   - Lint Go code (fmt + vet)
 #   make lint-ts   - Lint TypeScript code (tsc --noEmit)
 #   make grammar   - Regenerate ANTLR parser
@@ -35,7 +36,7 @@ GO_BUILD_FLAGS = -trimpath
 # Clean version for VS Code extension (must be valid semver: major.minor.patch)
 VSCE_VERSION = $(shell echo "$(VERSION)" | sed 's/^v//; s/-.*//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$$' || echo "0.0.0")
 
-.PHONY: build build-debug size release clean test test-mdl check-mdl check-skill-mdl check-conformance conformance-shrink gen-migration-reference check-migration-reference check-skill-pack-js check-findings check-wiki-pages digest-status check-tunnel-deps check-test-timeouts check-widget-versions test-integration test-integration-executor test-integration-roundtrip test-integration-parity test-integration-upgrade test-integration-other grammar completions sync-skills sync-skill-packs sync-commands sync-mods sync-lint-rules sync-changelog sync-all docs documentation docs-site docs-serve vscode-ext vscode-install source-tree sbom sbom-report lint lint-go lint-ts fmt fmt-check vet skill-index check-skill-index
+.PHONY: build build-debug size release clean test ci-local test-mdl check-mdl check-skill-mdl check-conformance conformance-shrink gen-migration-reference check-migration-reference check-skill-pack-js check-findings check-wiki-pages digest-status check-tunnel-deps check-test-timeouts check-widget-versions test-integration test-integration-executor test-integration-roundtrip test-integration-parity test-integration-upgrade test-integration-other grammar completions sync-skills sync-skill-packs sync-commands sync-mods sync-lint-rules sync-changelog sync-all docs documentation docs-site docs-serve vscode-ext vscode-install source-tree sbom sbom-report lint lint-go lint-ts fmt fmt-check vet skill-index check-skill-index
 
 # Helper: copy file only if content differs (avoids mtime updates that invalidate go build cache)
 # Usage: $(call copy-if-changed,src,dst)
@@ -452,6 +453,20 @@ check-widget-versions: build
 
 # Lint all code (Go + TypeScript)
 lint: lint-go lint-ts check-conformance check-test-timeouts
+
+# What the build-and-test job in .github/workflows/push-test.yml runs, in its
+# order, so a push is proven against the gate it will meet rather than against
+# `build test lint`, which covers less of it: check-mdl, check-findings,
+# check-skill-index and the rest run only in CI unless someone remembers them.
+# check-skill-mdl is a superset of the job's three skill/docs MDL steps.
+#
+# Left out: govulncheck (the job installs it @latest, over the network) and the
+# integration jobs, which need mxbuild -- `make test-integration` runs those.
+# A step added to the job belongs here too.
+ci-local: build test check-tunnel-deps check-mdl check-skill-pack-js check-findings \
+		check-wiki-pages check-skill-index check-test-timeouts check-skill-mdl \
+		check-conformance check-migration-reference lint-go
+	@echo "ci-local passed (build-and-test, without govulncheck)"
 
 # Lint Go code
 #
