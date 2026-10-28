@@ -23,6 +23,14 @@ import (
 func doctorEnv(t *testing.T, dir string) {
 	t.Helper()
 	requireGit(t)
+	// The repository under test is the only git configuration these tests may
+	// see. `git remote get-url` applies url.<base>.insteadOf, so a rewrite in
+	// ~/.gitconfig (https -> git@, common on developer machines) or in the
+	// GIT_CONFIG_COUNT/KEY/VALUE environment (git@ -> https, set by hosted
+	// sandboxes) changed the URL the remote tests read back.
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_COUNT", "0")
 	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(dir))
 	t.Setenv("GIT_AUTHOR_NAME", "t")
 	t.Setenv("GIT_AUTHOR_EMAIL", "t@example.com")
