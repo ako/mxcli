@@ -25,9 +25,11 @@ Checked:
   1. Local git config: core.autocrlf=False (a checkout must not rewrite line
      endings inside .mxunit files), mendix.commits-since-gc and
      mendix.lineEndingResetDone (Studio Pro's own bookkeeping). --fix sets them.
-  2. The remote URL. Studio Pro can only use HTTPS; an SSH remote
-     (git@host:org/app.git or ssh://…) is rewritten to HTTPS by --fix. Other
-     non-HTTPS URLs are reported without being changed.
+  2. The remote URL, as configured. Studio Pro can only use HTTPS; an SSH
+     remote (git@host:org/app.git or ssh://…) is rewritten to HTTPS by --fix.
+     Other non-HTTPS URLs are reported without being changed. A
+     url.<base>.insteadOf rule in your git config that makes git use another
+     URL is reported too; --fix leaves it alone.
   3. The remote's refs/notes/mx_metadata. Absent or unreachable is a hint:
      push the notes ref together with the branch. When the remote has notes
      the local ref does not hold (git clone never fetches refs/notes/*), the

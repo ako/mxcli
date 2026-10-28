@@ -81,7 +81,11 @@ func doctorRun(root, mprPath, remoteOverride, version string, fix bool, out io.W
 	case remote == "":
 		fmt.Fprintln(out, "  [i] no remote configured; skipping remote checks")
 	default:
-		urlRaw, urlErr := gitOut(root, "remote", "get-url", remote)
+		// The configured URL, not `git remote get-url`: that one applies
+		// url.<base>.insteadOf, so a rewrite in the user's git config (https ->
+		// git@ is a common one) made an HTTPS remote read as SSH, and --fix set
+		// the configured URL on every run without changing what git uses.
+		urlRaw, urlErr := gitOut(root, "config", "--get", "remote."+remote+".url")
 		if urlErr != nil {
 			found++
 			fmt.Fprintf(out, "  [ ] remote %s does not exist (git remote -v lists the names)\n", remote)
@@ -105,6 +109,9 @@ func doctorRun(root, mprPath, remoteOverride, version string, fix bool, out io.W
 			fmt.Fprintf(out, "  [x] %s: %s (HTTPS)\n", remote, url)
 		} else {
 			fmt.Fprintf(out, "  [i] %s: %s (not HTTPS; Studio Pro can only use HTTPS remotes)\n", remote, url)
+		}
+		if eff, err := gitOut(root, "remote", "get-url", remote); err == nil && strings.TrimSpace(eff) != url {
+			fmt.Fprintf(out, "  [i] a url.<base>.insteadOf rule in your git config makes git use %s instead; --fix leaves the rule alone\n", strings.TrimSpace(eff))
 		}
 		// Absent or unreachable notes ref is a hint, not an issue.
 		ls, err := gitOut(root, "ls-remote", remote, mxMetadataRef)

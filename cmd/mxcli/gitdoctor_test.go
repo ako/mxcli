@@ -143,6 +143,56 @@ func TestGitDoctor_SSHURLFormRewrittenByFix(t *testing.T) {
 	}
 }
 
+// A url.<base>.insteadOf rule rewrites the URL every git command uses, not the
+// URL the repository is configured with. The doctor judged the rewritten one:
+// with the common https -> git@ rule in ~/.gitconfig an HTTPS remote read as
+// SSH, and --fix "repaired" the configured URL on every run.
+func TestGitDoctor_InsteadOfRewriteIsNotAnSSHRemote(t *testing.T) {
+	dir := t.TempDir()
+	doctorEnv(t, dir)
+	t.Setenv("GIT_SSH_COMMAND", "false") // the rewritten URL is SSH: never reach the network
+	gitIn(t, dir, "init", "-q", "-b", "main")
+	for _, kv := range mxConfigKeys {
+		gitIn(t, dir, "config", "--local", kv[0], kv[1])
+	}
+	gitIn(t, dir, "config", "--local", "url.git@git.example.com:.insteadOf", "https://git.example.com/")
+	gitIn(t, dir, "remote", "add", "origin", "https://git.example.com/org/app.git")
+
+	var out bytes.Buffer
+	if err := doctorRun(dir, "", "", "", false, &out); err != nil {
+		t.Errorf("a configured HTTPS remote is not an issue, whatever a rewrite makes of it: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "insteadOf") {
+		t.Errorf("the report must explain the rewrite:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := doctorRun(dir, "", "", "", true, &out); err != nil {
+		t.Errorf("--fix: %v\n%s", err, out.String())
+	}
+	if got := configLocal(t, dir, "remote.origin.url"); got != "https://git.example.com/org/app.git" {
+		t.Errorf("--fix changed the configured URL to %q:\n%s", got, out.String())
+	}
+}
+
+// The configured URL is what --fix rewrites, so an SSH remote is still found
+// when a rule rewrites it to HTTPS (as hosted sandboxes do).
+func TestGitDoctor_ConfiguredSSHRemoteFoundBehindRewrite(t *testing.T) {
+	dir := t.TempDir()
+	doctorEnv(t, dir)
+	gitIn(t, dir, "init", "-q", "-b", "main")
+	gitIn(t, dir, "config", "--local", "url.https://git.example.com/.insteadOf", "git@git.example.com:")
+	gitIn(t, dir, "remote", "add", "origin", "git@git.example.com:org/app.git")
+
+	var out bytes.Buffer
+	if err := doctorRun(dir, "", "", "", true, &out); err != nil {
+		t.Fatalf("--fix: %v\n%s", err, out.String())
+	}
+	if got := configLocal(t, dir, "remote.origin.url"); got != "https://git.example.com/org/app" {
+		t.Errorf("configured URL = %q, want https://git.example.com/org/app\n%s", got, out.String())
+	}
+}
+
 // --- doctor: mx_metadata notes ----------------------------------------------
 
 // doctorNoteRepo makes a two-commit repository holding an MPR v2 project:
