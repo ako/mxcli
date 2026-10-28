@@ -42,6 +42,13 @@ import (
 //     from 10.9.0; before, the value as a flat Value string, `{$ID, $Type,
 //     ConstantId, Value}` (`mx convert` 9.24.30, which empties the nested form
 //     it does not know).
+//   - Forms$MicroflowParameterMapping / NanoflowParameterMapping: an argument
+//     as Expression text from 10.10.0; before, only a Variable (a required
+//     Forms$PageVariable), and an argument that is the enclosing object is not
+//     stored at all — Studio Pro 9.24 infers it (Workflow Commons 2.6.0: 77
+//     flow calls taking parameters, no mapping on any). mxcli writes that
+//     argument as Expression `$currentObject` with Variable null, which 9.24
+//     cannot even load.
 //   - Workflows$ PersistentId, from 10.21.0 on the workflow and on the abstract
 //     WorkflowActivity, Outcome and BoundaryEvent (ako/mxcli#1163). Workflows
 //     exist from 9.0; `mx convert` 9.24.30 strips every one. The workflow's
@@ -64,9 +71,10 @@ func LowerToProjectShape(contents []byte, pv *version.Version) ([]byte, error) {
 		noFullObjects:   !PropertyDeclared("Forms$DataSource", "ForceFullObjects", *pv),
 		noPersistentID:  !PropertyDeclared("Workflows$Workflow", "PersistentId", *pv),
 		flatConstant:    !PropertyDeclared("Settings$ConstantValue", "SharedOrPrivateValue", *pv),
+		variableArgs:    !PropertyDeclared("Forms$MicroflowParameterMapping", "Expression", *pv),
 	}
 	if !l.flatDesignProps && !l.boolEditable && !l.textPlaceholder && !l.namedParameter && !l.noFullObjects &&
-		!l.noPersistentID && !l.flatConstant {
+		!l.noPersistentID && !l.flatConstant && !l.variableArgs {
 		return contents, nil
 	}
 	var doc bson.D
@@ -87,7 +95,7 @@ type shapeLowering struct {
 	pv                                             version.Version
 	flatDesignProps, boolEditable, textPlaceholder bool
 	namedParameter, noFullObjects, noPersistentID  bool
-	flatConstant                                   bool
+	flatConstant, variableArgs                     bool
 	changed                                        bool
 }
 
@@ -131,6 +139,11 @@ func (l *shapeLowering) walk(v any) (any, error) {
 		}
 		if l.noPersistentID && strings.HasPrefix(typ, "Workflows$") {
 			x = l.dropPersistentID(x)
+		}
+		if l.variableArgs {
+			if err = l.lowerFlowArguments(x); err != nil {
+				return nil, err
+			}
 		}
 		for i := range x {
 			if x[i].Value, err = l.walk(x[i].Value); err != nil {
@@ -305,6 +318,51 @@ func (l *shapeLowering) lowerConstantValue(d bson.D) (bson.D, error) {
 	}
 	d[i] = bson.E{Key: "Value", Value: value}
 	return d, nil
+}
+
+var flowParameterMappings = map[string]bool{
+	"Forms$MicroflowParameterMapping": true, "Forms$NanoflowParameterMapping": true,
+}
+
+// lowerFlowArguments rewrites the flow call arguments in d's ParameterMappings
+// list, if it has one, into what a version before 10.10 stores: an argument
+// bound through Variable keeps it (its empty Expression is the floor's to
+// drop); an argument that is the enclosing object (`$currentObject`) — or one
+// that binds nothing — is left out, which is how Studio Pro 9.24 stores it.
+// Any other expression has no Variable form and is refused, naming the
+// parameter.
+func (l *shapeLowering) lowerFlowArguments(d bson.D) error {
+	i := shapeIndex(d, "ParameterMappings")
+	if i < 0 {
+		return nil
+	}
+	list, _ := d[i].Value.(bson.A)
+	out := bson.A{}
+	dropped := false
+	for _, el := range list {
+		m, ok := el.(bson.D)
+		typ, _ := shapeString(m, "$Type")
+		if !ok || !flowParameterMappings[typ] {
+			out = append(out, el)
+			continue
+		}
+		if v, _ := shapeValue(m, "Variable"); v != nil {
+			out = append(out, el)
+			continue
+		}
+		expr, _ := shapeString(m, "Expression")
+		if e := strings.TrimSpace(expr); e != "" && !strings.EqualFold(e, "$currentObject") {
+			param, _ := shapeString(m, "Parameter")
+			return fmt.Errorf("the argument for %s is the expression %s, which Mendix introduced in 10.10 (this project is %s): "+
+				"an argument there is the enclosing object, or a page parameter, snippet parameter or widget", param, expr, l.pv)
+		}
+		dropped = true
+	}
+	if dropped {
+		d[i].Value = out
+		l.changed = true
+	}
+	return nil
 }
 
 // dropPersistentID removes a workflow element's PersistentId below 10.21, where

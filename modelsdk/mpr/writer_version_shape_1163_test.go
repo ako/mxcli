@@ -235,6 +235,133 @@ func TestNormalize_RefusesAPrivateConstantValueBelowMendix10_9(t *testing.T) {
 	}
 }
 
+// flowMapping is one argument of a page's flow call as mxcli builds it
+// (bindParameterMappingValue): a page-variable reference under Variable with an
+// empty Expression, anything else as Expression text with Variable null.
+func flowMapping(mappingType, param, expression, pageParam string) bson.D {
+	var variable any
+	if pageParam != "" {
+		variable = bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Forms$PageVariable"},
+			{Key: "PageParameter", Value: pageParam}, {Key: "SnippetParameter", Value: ""},
+			{Key: "UseAllPages", Value: false}, {Key: "Widget", Value: ""}}
+	}
+	return bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: mappingType},
+		{Key: "Expression", Value: expression}, {Key: "Parameter", Value: param}, {Key: "Variable", Value: variable}}
+}
+
+// pageWithFlowCalls is a page with a microflow button and a nanoflow button,
+// each passing the given mappings.
+func pageWithFlowCalls(microflowMappings, nanoflowMappings []bson.D) bson.D {
+	list := func(ms []bson.D) bson.A {
+		a := bson.A{int32(2)}
+		for _, m := range ms {
+			a = append(a, m)
+		}
+		return a
+	}
+	mfButton := bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Forms$ActionButton"}, {Key: "Name", Value: "btnMf"},
+		{Key: "Action", Value: bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Forms$MicroflowAction"},
+			{Key: "MicroflowSettings", Value: bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Forms$MicroflowSettings"},
+				{Key: "Microflow", Value: "M.ACT"}, {Key: "ParameterMappings", Value: list(microflowMappings)}}}}}}
+	nfButton := bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Forms$ActionButton"}, {Key: "Name", Value: "btnNf"},
+		{Key: "Action", Value: bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Forms$CallNanoflowClientAction"},
+			{Key: "Nanoflow", Value: "M.NF"}, {Key: "ParameterMappings", Value: list(nanoflowMappings)}}}}
+	return bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Forms$Page"}, {Key: "Name", Value: "P"},
+		{Key: "Widgets", Value: bson.A{int32(2), mfButton, nfButton}}}
+}
+
+// mappingsOf returns the mappings stored under the first $Type holder in d.
+func mappingsOf(t *testing.T, d bson.D, holder string) []bson.D {
+	t.Helper()
+	list, _ := get(find(d, holder), "ParameterMappings")
+	var out []bson.D
+	for _, el := range listItems(list) {
+		out = append(out, el.(bson.D))
+	}
+	return out
+}
+
+func listItems(v any) bson.A {
+	a, _ := v.(bson.A)
+	if len(a) > 0 {
+		if _, marker := a[0].(int32); marker {
+			return a[1:]
+		}
+	}
+	return a
+}
+
+// A flow argument on a page is a Variable (a Forms$PageVariable, required) below
+// 10.10, and Expression text only from 10.10 (mendixmodelsdk). mxcli writes
+// `$currentObject` as Expression with Variable null: the floor refused it on
+// 9.24 ("cannot store Forms$MicroflowParameterMapping.Expression (Mendix
+// 10.10.0+)"), and without the floor 9.24 does not load the page at all ("An
+// error occurred when trying to set the 'Variable' property of a Microflow
+// parameter mapping … Value cannot be null"). Studio Pro 9.24 stores no mapping
+// for an argument that is the enclosing object — it infers it: Workflow
+// Commons 2.6.0 (9.24.0), 75 microflow and 2 nanoflow calls taking parameters,
+// none with a mapping; the 9.24.30 starter app's ShowPasswordForm(Account)
+// button likewise. So below 10.10 that mapping is not written; a page
+// parameter keeps its Variable and loses only the empty Expression.
+func TestNormalize_FlowArgumentsBelowMendix10_10(t *testing.T) {
+	build := func() bson.D {
+		return pageWithFlowCalls(
+			[]bson.D{flowMapping("Forms$MicroflowParameterMapping", "M.ACT.Item", "$currentObject", ""),
+				flowMapping("Forms$MicroflowParameterMapping", "M.ACT.Order", "", "Order")},
+			[]bson.D{flowMapping("Forms$NanoflowParameterMapping", "M.NF.Item", "$currentObject", "")})
+	}
+	for _, tt := range []struct {
+		v        *version.ProjectVersion
+		lowered  bool
+		mfCount  int
+		nfCount  int
+		mfParams string
+	}{
+		{pv(9, 24, 30), true, 1, 0, "M.ACT.Order"},
+		{pv(10, 9, 0), true, 1, 0, "M.ACT.Order"},
+		{pv(10, 10, 0), false, 2, 1, "M.ACT.Item,M.ACT.Order"},
+		{pv(11, 13, 0), false, 2, 1, "M.ACT.Item,M.ACT.Order"}, // control
+	} {
+		d, err := normalizeShape(t, tt.v, build())
+		if err != nil {
+			t.Errorf("%d.%d: the page is refused: %v", tt.v.MajorVersion, tt.v.MinorVersion, err)
+			continue
+		}
+		mf := mappingsOf(t, d, "Forms$MicroflowSettings")
+		nf := mappingsOf(t, d, "Forms$CallNanoflowClientAction")
+		var params []string
+		for _, m := range mf {
+			p, _ := get(m, "Parameter")
+			params = append(params, p.(string))
+			if _, ok := get(m, "Expression"); ok == tt.lowered {
+				t.Errorf("%d.%d: mapping %v keeps Expression %v", tt.v.MajorVersion, tt.v.MinorVersion, p, ok)
+			}
+			if v, _ := get(m, "Variable"); tt.lowered && v == nil {
+				t.Errorf("%d.%d: mapping %v has no Variable, which 9.x cannot load", tt.v.MajorVersion, tt.v.MinorVersion, p)
+			}
+		}
+		if len(mf) != tt.mfCount || len(nf) != tt.nfCount || strings.Join(params, ",") != tt.mfParams {
+			t.Errorf("%d.%d: %d microflow mappings (%s) and %d nanoflow mappings, want %d (%s) and %d",
+				tt.v.MajorVersion, tt.v.MinorVersion, len(mf), strings.Join(params, ","), len(nf), tt.mfCount, tt.mfParams, tt.nfCount)
+		}
+	}
+}
+
+// Any other expression — a literal, an attribute path — has no Variable form:
+// refused below 10.10, naming the parameter, rather than dropped.
+func TestNormalize_RefusesAnExpressionArgumentBelowMendix10_10(t *testing.T) {
+	for _, m := range []bson.D{
+		flowMapping("Forms$MicroflowParameterMapping", "M.ACT.Flag", "true", ""),
+		flowMapping("Forms$NanoflowParameterMapping", "M.NF.Name", "$Order/Name", ""),
+	} {
+		_, err := normalizeShape(t, pv(9, 24, 30), pageWithFlowCalls([]bson.D{m}, nil))
+		p, _ := get(m, "Parameter")
+		if err == nil || !strings.Contains(err.Error(), p.(string)) || !strings.Contains(err.Error(), "10.10") {
+			t.Errorf("an expression argument for %v on 9.24 was not refused naming it: %v", p, err)
+		}
+	}
+}
+
 // Studio Pro's property set for a workflow on 9.24 includes the two state-change
 // event handlers Mendix removed in 11.0: `mx convert` 9.24.30 adds both as null
 // to a workflow mxcli wrote, as 10.24.24 does — a property-name difference

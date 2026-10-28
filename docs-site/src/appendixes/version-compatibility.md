@@ -187,6 +187,7 @@ Some properties kept their meaning and changed how they are stored. mxcli builds
 | Any data source's `ForceFullObjects` | 10.8 | Not stored |
 | The `PersistentId` of a workflow, activity, outcome or boundary event | 10.21 | Not stored |
 | A constant's value in a configuration (`alter settings constant … in configuration`) | 10.9 | A flat `Value` string on the override, instead of a `Settings$SharedValue` under `SharedOrPrivateValue` |
+| A page's flow call argument that is the enclosing object (`call microflow M.F(P = $currentObject)`, `call nanoflow …`) | 10.10 | Not stored: Studio Pro infers it. A page parameter, snippet parameter or widget argument is stored as before, as a `Variable` |
 
 What an older shape cannot hold is refused, naming the element, rather than dropped:
 - a Spacing, colour-picker or toggle-button-group design property below 10.2;
@@ -194,6 +195,7 @@ What an older shape cannot hold is refused, naming the element, rather than drop
 - a placeholder with parameters below 10.11;
 - a data view fed by another widget below 10.0;
 - a private constant value in a configuration below 10.9;
+- a page's flow call argument that is any other expression (a literal, an attribute path) below 10.10;
 - an aggregate over an expression (`sum $L of …`), `reduce`, `all` or `any` below 10.0. The plain `count`, `sum`, `average`, `minimum` and `maximum` are written on every version ([ako/mxcli#1163](https://github.com/ako/mxcli/issues/1163)).
 
 Before this, `describe` on 9.24 printed none of these properties, so a describe → exec round trip removed them. Writing a data view on 9.24 was refused outright.
