@@ -32,8 +32,9 @@ var gitCommitCmd = &cobra.Command{
      rewritten from the file, which is the source of truth; MISSING or ORPHAN
      entries have no automatic repair and refuse the commit;
   2. everything is staged, then the files Studio Pro never commits are
-     unstaged again: project-settings.user.json, *.mpr.lock, *.mpr.bak,
-     .mendix-cache/, deployment/, theme-cache/, .mxcli/;
+     unstaged again: project-settings.user.json, *.mpr.lock, *.mpr.bak, and
+     the project's own .mendix-cache/, deployment/, theme-cache/ and .mxcli/
+     beside the .mpr (a folder of the same name further down is committed);
   3. git commit runs with your message and your git identity;
   4. the mx_metadata note is computed from the new commit and attached, so
      Studio Pro can version-check it and show what changed.
@@ -134,9 +135,10 @@ func commitRun(mprPath, message string, push, dryRun bool, out io.Writer) error 
 	// -z: paths come back NUL-separated, so spaces and quotes stay inside one path.
 	cached, _ := git("diff", "--cached", "--name-only", "-z")
 	staged := nulFields(cached)
+	projDir := path.Dir(repo.MPRPath) // the project's folder in the repository; "." at its root
 	var junk []string
 	for _, f := range staged {
-		if isJunkPath(f) {
+		if isJunkPath(f, projDir) {
 			junk = append(junk, f)
 		}
 	}
@@ -247,9 +249,14 @@ func nulFields(s string) []string {
 }
 
 // isJunkPath reports whether a repo-relative path is one of the files Studio
-// Pro never commits. Matched on any path level and without case, the way
-// Studio Pro matches its own lock file (whose .gitignore entry is lowercase).
-func isJunkPath(rel string) bool {
+// Pro never commits. The files match by name at any level and without case,
+// the way Studio Pro matches its own lock file (whose .gitignore entry is
+// lowercase). The folders are the project's own, the ones Studio Pro, mxbuild
+// and mxcli create directly in projDir (the project's folder relative to the
+// repository root, "." at the root): matched at any depth, a user folder of
+// the same name, resources/deployment/ say, was silently left out of the
+// commit.
+func isJunkPath(rel, projDir string) bool {
 	f := filepath.ToSlash(rel)
 	base := path.Base(f)
 	switch {
@@ -258,11 +265,21 @@ func isJunkPath(rel string) bool {
 	case strings.HasSuffix(strings.ToLower(base), ".mpr.lock"), strings.HasSuffix(strings.ToLower(base), ".mpr.bak"):
 		return true
 	}
-	for _, seg := range strings.Split(f, "/") {
-		switch strings.ToLower(seg) {
-		case ".mendix-cache", "deployment", "theme-cache", ".mxcli":
-			return true
+	inProject := f
+	if projDir != "." && projDir != "" {
+		prefix := projDir + "/"
+		if len(f) <= len(prefix) || !strings.EqualFold(f[:len(prefix)], prefix) {
+			return false
 		}
+		inProject = f[len(prefix):]
+	}
+	folder, rest, inFolder := strings.Cut(inProject, "/")
+	if !inFolder || rest == "" {
+		return false
+	}
+	switch strings.ToLower(folder) {
+	case ".mendix-cache", "deployment", "theme-cache", ".mxcli":
+		return true
 	}
 	return false
 }

@@ -592,6 +592,85 @@ func TestGitCommit_SpacedPathsStagedWholeAndJunkLeft(t *testing.T) {
 	}
 }
 
+// writeFiles creates each repo-relative path with its parent folders.
+func writeFiles(t *testing.T, dir string, paths ...string) {
+	t.Helper()
+	for _, p := range paths {
+		full := filepath.Join(dir, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(p), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// committedSet is the set of paths HEAD changed.
+func committedSet(t *testing.T, dir string) map[string]bool {
+	t.Helper()
+	set := map[string]bool{}
+	for _, f := range strings.Split(strings.TrimSpace(committedFiles(t, dir)), "\n") {
+		set[f] = true
+	}
+	return set
+}
+
+// The never-commit folders are the project's own, beside the .mpr, where
+// Studio Pro's .gitignore anchors them (/deployment/). Matched at any depth, a
+// user folder of the same name was silently left out of the commit.
+func TestGitCommit_NestedFolderNamedLikeJunkIsCommitted(t *testing.T) {
+	dir, mprPath := doctorNoteRepo(t)
+	doctorEnv(t, dir)
+	writeFiles(t, dir, "resources/deployment/endpoints.xml", "javascriptsource/theme-cache/x.js", "deployment/run.log", "theme-cache/a.css")
+
+	var out bytes.Buffer
+	if err := commitRun(mprPath, "nested", false, false, &out); err != nil {
+		t.Fatalf("commitRun: %v\n%s", err, out.String())
+	}
+	files := committedSet(t, dir)
+	for _, keep := range []string{"resources/deployment/endpoints.xml", "javascriptsource/theme-cache/x.js"} {
+		if !files[keep] {
+			t.Errorf("%s is not the project's own folder and must be committed:\n%s", keep, out.String())
+		}
+	}
+	for _, junk := range []string{"deployment/run.log", "theme-cache/a.css"} {
+		if files[junk] {
+			t.Errorf("%s is the project's own and must be left out", junk)
+		}
+	}
+}
+
+// With the project in a subfolder of the repository, its folders are under
+// that subfolder; the same names elsewhere in the repository are not its own.
+func TestGitCommit_JunkAnchoredAtProjectInSubfolder(t *testing.T) {
+	root := t.TempDir()
+	doctorEnv(t, root)
+	gitIn(t, root, "init", "-q", "-b", "feature")
+	app := filepath.Join(root, "app")
+	if err := os.MkdirAll(app, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeProject(t, app, "11.13.0", baseUnits(t))
+	gitIn(t, root, "add", "-A")
+	gitIn(t, root, "commit", "-q", "-m", "base")
+	writeFiles(t, root, "app/deployment/run.log", "app/resources/deployment/endpoints.xml", "tools/deployment/deploy.sh")
+
+	var out bytes.Buffer
+	if err := commitRun(filepath.Join(app, "App.mpr"), "sub", false, false, &out); err != nil {
+		t.Fatalf("commitRun: %v\n%s", err, out.String())
+	}
+	files := committedSet(t, root)
+	if files["app/deployment/run.log"] {
+		t.Error("app/deployment/ is the project's own and must be left out")
+	}
+	for _, keep := range []string{"app/resources/deployment/endpoints.xml", "tools/deployment/deploy.sh"} {
+		if !files[keep] {
+			t.Errorf("%s must be committed:\n%s", keep, out.String())
+		}
+	}
+}
+
 // An unresolved merge must refuse the commit: `git add -A` would otherwise
 // stage the conflict markers and commit them.
 func TestGitCommit_RefusedDuringUnresolvedMerge(t *testing.T) {

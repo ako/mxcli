@@ -196,8 +196,10 @@ In order it:
 1. repairs ContentsHash mismatches from the files on disk (`MISSING` and
    `ORPHAN` entries have no automatic repair and refuse the commit);
 2. stages everything, then unstages the files Studio Pro never commits:
-   `project-settings.user.json`, `*.mpr.lock`, `*.mpr.bak`, `.mendix-cache/`,
-   `deployment/`, `theme-cache/`, `.mxcli/`;
+   `project-settings.user.json`, `*.mpr.lock`, `*.mpr.bak`, and the project's
+   own `.mendix-cache/`, `deployment/`, `theme-cache/` and `.mxcli/`, the
+   folders Studio Pro, mxbuild and mxcli create beside the `.mpr`. A folder of
+   the same name further down, such as `resources/deployment/`, is committed;
 3. runs `git commit` with your message and your git identity;
 4. computes the mx_metadata note from the new commit and attaches it, and
    prints the `git push origin <branch> refs/notes/mx_metadata` command —
