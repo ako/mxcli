@@ -273,9 +273,15 @@ func writeExpectAssertion(b *strings.Builder, testID string, exp Expect, evaluat
 // varPattern matches $VariableName in MDL ($ followed by word characters).
 var varPattern = regexp.MustCompile(`\$([A-Za-z_][A-Za-z0-9_]*)`)
 
-// assignPattern matches "$var = CALL" or "$var = CREATE" at the start of any
+// assignPattern matches "$var = call …" or "$var = create …" at the start of any
 // statement line inside the test body.
-var assignPattern = regexp.MustCompile(`(?m)^\s*\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:CALL|CREATE)`)
+//
+// The keywords match in any case. MDL keywords are case-insensitive, and mdl 1
+// and `fmt` write them in lower case; matching only `CALL|CREATE` left
+// `$r = call microflow …` unrenamed, so two tests that both assigned `$r` declared
+// it twice in the one runner flow and injection failed with MDL063 (CE0111).
+// The `\b` keeps a value that merely starts with those letters from matching.
+var assignPattern = regexp.MustCompile(`(?mi)^\s*\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:call|create)\b`)
 
 // extractVariableNames finds all user-defined variable names in the MDL body.
 // Returns the set of variable names (without $ prefix).
