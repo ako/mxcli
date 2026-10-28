@@ -114,8 +114,8 @@ func TestIssue707_ModuleRoleDescriptionReparses(t *testing.T) {
 
 	out := buf.String()
 	stmt := findStmt[*ast.CreateModuleRoleStmt](t, reparse(t, out), out)
-	if stmt.Description != "Can't delete orders" {
-		t.Errorf("description: stored %q, re-exec stores %q\n%s", "Can't delete orders", stmt.Description, out)
+	if stmt.DescriptionText() != "Can't delete orders" {
+		t.Errorf("description: stored %q, re-exec stores %q\n%s", "Can't delete orders", stmt.DescriptionText(), out)
 	}
 }
 

@@ -13,11 +13,11 @@ description: "Configure Mendix security in MDL — module and user roles, access
 | 27-35 | When to Use This Skill |
 | 36-43 | Security Concepts |
 | 44-120 | The System-module ceiling — decide the role model around this FIRST |
-| 121-558 | Syntax Reference |
-| 559-573 | Starlark Lint Rule APIs |
-| 574-626 | Common Workflow: Setting Up Module Security |
-| 627-636 | Common Mistakes |
-| 637-646 | Validation |
+| 121-560 | Syntax Reference |
+| 561-575 | Starlark Lint Rule APIs |
+| 576-628 | Common Workflow: Setting Up Module Security |
+| 629-638 | Common Mistakes |
+| 639-648 | Validation |
 
 <!-- /skill-index -->
 # Security Management Skill
@@ -205,7 +205,9 @@ create module role MyModule.Viewer description 'Read-only access';
 
 -- `or modify` updates an existing role's description instead of failing, so the
 -- whole security script stays re-runnable rather than needing a run-once file.
+-- Without `description` it keeps the stored one; `description ''` clears it.
 create or modify module role MyModule.ApiUser description 'API consumer';
+create or modify module role MyModule.Admin;   -- ensures it exists, keeps its description
 
 -- Remove a module role (`if exists` makes it a no-op when the role is gone)
 drop module role MyModule.Viewer;

@@ -10,11 +10,24 @@ package ast
 type CreateModuleRoleStmt struct {
 	CreateGuard // `create … if not exists` (ako/mxcli#731)
 	Name        QualifiedName
-	Description string
+	// Description is nil when the statement has no DESCRIPTION clause: a new
+	// role then has none, and `create or modify` keeps the stored one
+	// (ako/mxcli#1218), as CreateUserRoleStmt's properties do. `description ''`
+	// is the stated empty description, which clears it.
+	Description *string
 	// CreateOrModify makes the statement idempotent: an existing role has its
 	// description updated instead of the statement failing, so a security script
 	// can be re-run.
 	CreateOrModify bool
+}
+
+// DescriptionText is the description the statement states, or "" when it
+// states none.
+func (s *CreateModuleRoleStmt) DescriptionText() string {
+	if s.Description == nil {
+		return ""
+	}
+	return *s.Description
 }
 
 func (s *CreateModuleRoleStmt) isStatement() {}

@@ -42,8 +42,8 @@ func TestCreateModuleRole_OrModify(t *testing.T) {
 			if got.Name.Name != tc.wantName {
 				t.Errorf("Name = %q, want %q", got.Name.Name, tc.wantName)
 			}
-			if got.Description != tc.desc {
-				t.Errorf("Description = %q, want %q", got.Description, tc.desc)
+			if got.DescriptionText() != tc.desc {
+				t.Errorf("Description = %q, want %q", got.DescriptionText(), tc.desc)
 			}
 		})
 	}
