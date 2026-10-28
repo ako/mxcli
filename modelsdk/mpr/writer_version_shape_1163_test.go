@@ -163,3 +163,29 @@ func TestNormalize_WorkflowPersistentIDsBelowMendix10_21(t *testing.T) {
 		}
 	}
 }
+
+// Studio Pro's property set for a workflow on 9.24 includes the two state-change
+// event handlers Mendix removed in 11.0: `mx convert` 9.24.30 adds both as null
+// to a workflow mxcli wrote, as 10.24.24 does — a property-name difference
+// Mendix's merge engine refuses to compare (#1373).
+func TestNormalize_WorkflowStateChangeEventsOnMendix9(t *testing.T) {
+	for _, tt := range []struct {
+		v    *version.ProjectVersion
+		want bool
+	}{
+		{pv(9, 24, 30), true},
+		{pv(10, 24, 24), true},
+		{pv(11, 13, 0), false}, // removed in 11.0
+	} {
+		d, err := normalizeShape(t, tt.v, workflowWithPersistentIDs())
+		if err != nil {
+			t.Fatal(err)
+		}
+		wf := find(d, "Workflows$Workflow")
+		for _, k := range []string{"WorkflowOnStateChangeEvent", "UsertaskOnStateChangeEvent"} {
+			if v, ok := get(wf, k); ok != tt.want || v != nil {
+				t.Errorf("%d.%d: %s present %v (%v), want present %v and null", tt.v.MajorVersion, tt.v.MinorVersion, k, ok, v, tt.want)
+			}
+		}
+	}
+}
