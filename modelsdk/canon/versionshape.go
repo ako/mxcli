@@ -59,6 +59,9 @@ import (
 //     Marketplace's "Example project workflow extension" 2.0.0), and a project
 //     holding the marker does not load (TypeCacheUnknownTypeException). The
 //     floor checks property versions, never a type's own.
+//   - Workflows$ user task targeting: UserTargeting from 11.2.0, declared on
+//     the abstract UserTaskActivity; before, UserSource (ako/mxcli#1771). See
+//     lowerUserTargeting.
 //
 // It runs on every unit write, before the floor, so no writer needs to know
 // these shapes. What the older shape cannot hold — a design property value
@@ -79,9 +82,10 @@ func LowerToProjectShape(contents []byte, pv *version.Version) ([]byte, error) {
 		flatConstant:    !PropertyDeclared("Settings$ConstantValue", "SharedOrPrivateValue", *pv),
 		variableArgs:    !PropertyDeclared("Forms$MicroflowParameterMapping", "Expression", *pv),
 		unmarkedPaths:   pv.Compare(endOfParallelSplitPathSince) < 0,
+		userSource:      !PropertyDeclared("Workflows$UserTaskActivity", "UserTargeting", *pv),
 	}
 	if !l.flatDesignProps && !l.boolEditable && !l.textPlaceholder && !l.namedParameter && !l.noFullObjects &&
-		!l.noPersistentID && !l.flatConstant && !l.variableArgs && !l.unmarkedPaths {
+		!l.noPersistentID && !l.flatConstant && !l.variableArgs && !l.unmarkedPaths && !l.userSource {
 		return contents, nil
 	}
 	var doc bson.D
@@ -103,6 +107,7 @@ type shapeLowering struct {
 	flatDesignProps, boolEditable, textPlaceholder bool
 	namedParameter, noFullObjects, noPersistentID  bool
 	flatConstant, variableArgs, unmarkedPaths      bool
+	userSource                                     bool
 	changed                                        bool
 }
 
@@ -143,6 +148,10 @@ func (l *shapeLowering) walk(v any) (any, error) {
 			}
 		case l.flatConstant && typ == "Settings$ConstantValue":
 			if x, err = l.lowerConstantValue(x); err != nil {
+				return nil, err
+			}
+		case l.userSource && userTaskTypes[typ]:
+			if x, err = l.lowerUserTargeting(x); err != nil {
 				return nil, err
 			}
 		}
