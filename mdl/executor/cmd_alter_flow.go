@@ -987,7 +987,18 @@ func (a *alterFlowContext) storedVariables(ctx *ExecContext) (varTypes, declared
 	for _, p := range a.mf.Parameters {
 		add(p.Name, p.Type)
 	}
+	// What is typed from another variable — a retrieve over an association
+	// from its start, a loop's iterator from its list — is typed once the
+	// rest are, below.
+	deps := storedDependents{}
+	fb := &flowBuilder{backend: ctx.Backend}
 	for _, c := range a.cands {
+		if loop, ok := c.Object.(*microflows.LoopedActivity); ok {
+			if src, ok := loop.LoopSource.(*microflows.IterableList); ok {
+				deps.add(src.VariableName, storedDependent{from: src.ListVariableName})
+			}
+			continue
+		}
 		act, ok := c.Object.(*microflows.ActionActivity)
 		if !ok || c.OutputVariable == "" {
 			continue
@@ -1005,7 +1016,13 @@ func (a *alterFlowContext) storedVariables(ctx *ExecContext) (varTypes, declared
 			}
 		case *microflows.RetrieveAction:
 			// A database retrieve names its entity; one over an association
-			// depends on which side it starts from and stays untyped here.
+			// yields an end of it, which depends on the end it starts from
+			// and is typed below (ako/mxcli#1769).
+			if src, ok := x.Source.(*microflows.AssociationRetrieveSource); ok {
+				declared[c.OutputVariable] = "Unknown"
+				deps.add(c.OutputVariable, storedDependent{from: src.StartVariable, assoc: src.AssociationQualifiedName})
+				break
+			}
 			src, ok := x.Source.(*microflows.DatabaseRetrieveSource)
 			entity := ""
 			if ok {
@@ -1026,7 +1043,7 @@ func (a *alterFlowContext) storedVariables(ctx *ExecContext) (varTypes, declared
 			// A call's result has the called microflow's return type.
 			var rt microflows.DataType
 			if x.MicroflowCall != nil {
-				rt = (&flowBuilder{backend: ctx.Backend}).lookupMicroflowReturnType(x.MicroflowCall.Microflow)
+				rt = fb.lookupMicroflowReturnType(x.MicroflowCall.Microflow)
 			}
 			switch rt.(type) {
 			case *microflows.ObjectType, *microflows.ListType:
@@ -1038,7 +1055,70 @@ func (a *alterFlowContext) storedVariables(ctx *ExecContext) (varTypes, declared
 			declared[c.OutputVariable] = "Unknown"
 		}
 	}
+	deps.typeAll(fb, varTypes, declared)
 	return varTypes, declared
+}
+
+// storedDependent is a stored variable whose type follows from another's: the
+// output of a retrieve over assoc from the variable from, or — assoc empty —
+// the iterator of a loop over the list from.
+type storedDependent struct {
+	from, assoc string
+}
+
+// storedDependents are the stored flow's dependent variables by name. A name
+// two of them give different origins is nil: which one a fragment means
+// depends on where it goes (two loops can share an iterator name), and a guess
+// would qualify a member with the wrong entity. It stays untyped and the
+// member is refused.
+type storedDependents map[string]*storedDependent
+
+func (d storedDependents) add(name string, dep storedDependent) {
+	if name == "" {
+		return
+	}
+	if old, seen := d[name]; seen {
+		if old == nil || *old != dep {
+			d[name] = nil
+		}
+		return
+	}
+	d[name] = &dep
+}
+
+// typeAll types every dependent whose origin is typed — a parameter, a
+// database retrieve, another dependent — whatever order the stored flow lists
+// them in, until a pass types nothing new. A name the rest of the stored flow
+// already types keeps that type.
+func (d storedDependents) typeAll(fb *flowBuilder, varTypes, declared map[string]string) {
+	for progress := true; progress; {
+		progress = false
+		for name, dep := range d {
+			if dep == nil {
+				continue
+			}
+			if _, typed := varTypes[name]; typed {
+				continue
+			}
+			from, ok := varTypes[dep.from]
+			if !ok {
+				continue
+			}
+			t := ""
+			if dep.assoc == "" {
+				if elem, isList := strings.CutPrefix(from, "List of "); isList {
+					t = elem
+				}
+			} else {
+				t = fb.associationRetrieveType(from, dep.assoc)
+			}
+			if t != "" {
+				varTypes[name] = t
+				delete(declared, name)
+				progress = true
+			}
+		}
+	}
 }
 
 // systemVariables are in scope everywhere they exist at all; the platform

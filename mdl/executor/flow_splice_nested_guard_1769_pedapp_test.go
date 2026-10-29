@@ -4,10 +4,12 @@ package executor
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 
 	"github.com/mendixlabs/mxcli/mdl/visitor"
+	"github.com/mendixlabs/mxcli/sdk/microflows"
 )
 
 // ako/mxcli#1769 (mendixlabs/mxcli#1673) on the Studio Pro-authored PedApp,
@@ -120,5 +122,113 @@ func TestAlterMicroflow_FindOverUntypedListIsRefused(t *testing.T) {
 				t.Errorf("a refused alter wrote %v", changed)
 			}
 		})
+	}
+}
+
+// matchLinesFlow returns the stored MyModule.SUB_MatchLines.
+func matchLinesFlow(t *testing.T, exec *Executor) *microflows.Microflow {
+	t.Helper()
+	ctx := exec.newExecContext(context.Background())
+	h, err := getHierarchy(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	all, err := ctx.Backend.ListMicroflows()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range all {
+		if m.Name == "SUB_MatchLines" && h.GetModuleName(h.FindModuleID(m.ContainerID)) == "MyModule" {
+			mf, err := ctx.Backend.GetMicroflow(m.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return mf
+		}
+	}
+	t.Fatal("MyModule.SUB_MatchLines not found")
+	return nil
+}
+
+// TestAlterMicroflow_FindOverAssociationListIsByAttribute: every alter that
+// writes `find $Lines by Code = …`, where $Lines is retrieved over an
+// association before it, writes Microflows$Find on MyModule.OrderLine.Code,
+// as `create microflow` does; check predicts it and exec writes it.
+func TestAlterMicroflow_FindOverAssociationListIsByAttribute(t *testing.T) {
+	for name, src := range matchLinesFindIn("$Lines") {
+		t.Run(name, func(t *testing.T) {
+			exec, _, _ := openMatchLinesFixture(t)
+			predictedAgree(t, exec, src, "")
+			var finds int
+			for _, op := range fragmentListOperations(matchLinesFlow(t, exec).ObjectCollection.Objects) {
+				switch f := op.(type) {
+				case *microflows.FindOperation:
+					t.Errorf("a find over $%s was stored by the expression %q", f.ListVariable, f.Expression)
+				case *microflows.FindByAttributeOperation:
+					finds++
+					if f.Attribute != "MyModule.OrderLine.Code" {
+						t.Errorf("a find over $%s is on %q, want MyModule.OrderLine.Code", f.ListVariable, f.Attribute)
+					}
+				}
+			}
+			if finds == 0 {
+				t.Errorf("no find by attribute was stored")
+			}
+		})
+	}
+}
+
+// The reported alter writes what describe prints back unchanged: exec of the
+// describe output reports Unchanged.
+func TestAlterMicroflow_ReplacedLoopDescribeRoundTrips(t *testing.T) {
+	exec, out, _ := openMatchLinesFixture(t)
+	predictedAgree(t, exec, matchLinesFindIn("$Lines")["replace loop"], "")
+	var desc bytes.Buffer
+	saved := exec.output
+	exec.output = &desc
+	err := afRun(t, exec, "describe microflow MyModule.SUB_MatchLines;")
+	exec.output = saved
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(desc.String(), "find $Lines by Code = $Lookup/Code;") {
+		t.Errorf("describe does not print the find by attribute:\n%s", desc.String())
+	}
+	out.Reset()
+	if err := afRun(t, exec, "mdl 1;\n"+desc.String()); err != nil {
+		t.Fatalf("exec of the describe output: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "Unchanged") {
+		t.Errorf("exec of the describe output must report Unchanged, got:\n%s", out.String())
+	}
+}
+
+// A stored loop's iterator is typed from its list, so a member of it in a
+// fragment inserted in the loop body is qualified; it was refused.
+func TestAlterMicroflow_ChangeOnStoredIteratorIsQualified(t *testing.T) {
+	exec, _, _ := openMatchLinesFixture(t)
+	predictedAgree(t, exec, `mdl 1;
+alter microflow MyModule.SUB_MatchLines {
+  insert after $Line begin change $Lookup (Code = 'x'); end;
+};`, "")
+	var changed []string
+	var walk func(objs []microflows.MicroflowObject)
+	walk = func(objs []microflows.MicroflowObject) {
+		for _, obj := range objs {
+			switch o := obj.(type) {
+			case *microflows.ActionActivity:
+				if ch, ok := o.Action.(*microflows.ChangeObjectAction); ok {
+					for _, m := range ch.Changes {
+						changed = append(changed, m.AttributeQualifiedName)
+					}
+				}
+			case *microflows.LoopedActivity:
+				walk(o.ObjectCollection.Objects)
+			}
+		}
+	}
+	walk(matchLinesFlow(t, exec).ObjectCollection.Objects)
+	if strings.Join(changed, ",") != "MyModule.Lookup.Code" {
+		t.Errorf("the change was stored on %v, want [MyModule.Lookup.Code]", changed)
 	}
 }
