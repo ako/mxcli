@@ -867,35 +867,20 @@ func (fb *flowBuilder) addErrorHandlerFlow(sourceActivityID model.ID, sourceX in
 	errorX := sourceX
 
 	// Build error handler activities
-	errBuilder := &flowBuilder{
-		textLang:     fb.textLang,
-		posX:         errorX,
-		posY:         errorY,
-		baseY:        errorY,
-		spacing:      HorizontalSpacing,
-		returnType:   fb.returnType,
-		varTypes:     fb.varTypes,
-		declaredVars: fb.declaredVars,
-		measurer:     fb.measurer,
-		backend:      fb.backend,
-		quiet:        fb.quiet,
-		hierarchy:    fb.hierarchy,
-		restServices: fb.restServices,
-		isNanoflow:   fb.isNanoflow,
-		self:         fb.self,
-		scriptFlows:  fb.scriptFlows,
-		// A handler's activities are merged into the PARENT's object collection
-		// below, so a note declared outside the handler and referenced inside it
-		// (or the reverse) lands in one collection — sharing the registry is
-		// sound here in a way it is not across a loop boundary (#1077).
-		annotationsByLabel: fb.annotationsByLabel,
-		storedNotes:        fb.storedNotes,
-		// Same collection, so the same label table: `join recovered` inside a
-		// handler must find the `merge recovered` declared on the main path.
-		// This is the one rejoin MDL could not spell before, and the reason the
-		// registry is a shared pointer rather than per-builder state.
-		labelReg: fb.labels(),
-	}
+	// A handler's activities are merged into the PARENT's object collection
+	// below, so a note declared outside the handler and referenced inside it
+	// (or the reverse) lands in one collection — sharing the note registry
+	// (nestedBuilder) is sound here in a way it is not across a loop boundary
+	// (#1077).
+	errBuilder := fb.nestedBuilder(errorX, errorY)
+	// The handler keeps the flow's return type, which its pending-handler
+	// routing and the undeclared-`set` advice read; a loop body never had it.
+	errBuilder.returnType = fb.returnType
+	// Same collection, so the same label table: `join recovered` inside a
+	// handler must find the `merge recovered` declared on the main path.
+	// This is the one rejoin MDL could not spell before, and the reason the
+	// registry is a shared pointer rather than per-builder state.
+	errBuilder.labelReg = fb.labels()
 
 	var lastErrID model.ID
 	var lastErrCase string
