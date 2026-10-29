@@ -54,7 +54,7 @@ begin
   end error;
   log info node 'EH' 'done';
 end;
-`, "(spliced: 1 replaced)", 2},
+`, "(spliced: 1 replaced with new element IDs)", 2},
 		{"insert, mdl 1, a returned value", "mdl 1;\n",
 			`create or modify microflow MyFirstModule.EH_Insert1 () returns Boolean as $R
 begin

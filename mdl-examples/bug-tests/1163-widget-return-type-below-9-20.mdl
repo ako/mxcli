@@ -1,0 +1,61 @@
+mdl 1;
+-- ako/mxcli#1163: two more rows of the version data mxcli vendors from the
+-- Model SDK gave a property the version of the property after it, and left
+-- that one out — the same generator mistake as AggregateFunction:
+--
+--   CustomWidgets$WidgetReturnType  Type 9.20.0      (belongs to AssignableTo)
+--   Forms$GroupBox                  Caption 8.10.0   (belongs to HeaderMode)
+--
+-- mendixmodelsdk 4.117.0: WidgetReturnType `type: {}`, `assignableTo:
+-- {introduced: "9.20.0"}`; pages.GroupBox `caption: {}`, `headerMode:
+-- {introduced: "8.10.0"}`.
+--
+-- What it changed: a pluggable widget's schema is written with only the keys
+-- the project's version declares, by the same data. On 9.0–9.19 every return
+-- type in it lost its Type and kept AssignableTo (49 return types across the
+-- embedded templates; the slider below has 3). Studio Pro stores
+-- {EntityProperty, IsList, Type} on 9.1.1 (208 of 208, the Marketplace's
+-- Employee Onboarding app) and 9.4.0 (326 of 326, "Example project workflow
+-- extension" 2.0.0), and {AssignableTo, EntityProperty, IsList, Type} on
+-- 9.24.3 (57 of 57, Multilevel Dynamic Workflow). The group box row changed
+-- nothing mxcli writes: the caption is stored as CaptionTemplate, which the
+-- table never keyed, and 8.10 is below every version mxcli supports.
+--
+-- Measured, exec then `mxcli docker check` on fresh apps, before and after:
+-- 10.24.24 and 11.13.0 report 0 errors and store the same key sets. 9.24.30
+-- stores Studio Pro 9.24.3's return type key set both times, but its mx check
+-- stops with a NullReferenceException in WidgetValue.IsDefault on this page,
+-- and on a data grid 2 page. That happens with the build before either
+-- ako/mxcli#1163 fix as well, so it is a separate defect. Not run on a
+-- 9.0–9.19 platform: those mxbuilds are Mono builds (mx.exe), and no Mono
+-- runtime is installed.
+
+create module Probe1163Rt;
+
+create enumeration Probe1163Rt.Country (
+  NL 'Netherlands',
+  BE 'Belgium'
+);
+
+create persistent entity Probe1163Rt.Customer (
+  Name: String(100),
+  Country: enumeration(Probe1163Rt.Country),
+  Score: Integer
+);
+
+create page Probe1163Rt.Customer_Edit
+(
+  params: ( $Customer: Probe1163Rt.Customer ),
+  title: 'Customer',
+  layout: Atlas_Core.PopupLayout
+)
+{
+  dataview dvCustomer (datasource: $Customer) {
+    groupbox gbCustomer (caption: 'Customer', HeaderMode: H3, Collapsible: YesExpanded) {
+      textbox txtName (label: 'Name', attribute: Name)
+      pluggablewidget 'com.mendix.widget.custom.slider.Slider' sldScore (
+        valueAttribute: Score
+      )
+    }
+  }
+};

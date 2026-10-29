@@ -395,6 +395,11 @@ func (a *EndOfParallelSplitPathActivity) ActivityType() string { return "EndOfPa
 // the path (a jump, or an end-of-workflow), where a marker would be unreachable.
 // A nil flow — an empty path — gets a flow holding only the marker, which is how
 // an empty path is stored.
+//
+// The marker's type is introduced in Mendix 10.21; before it a path is its
+// activities alone, and a project holding the marker does not load. The marker
+// is added on every version here and dropped below 10.21 on the way to storage
+// (canon.LowerToProjectShape), so the builders need not know the version.
 func EndParallelSplitPath(flow *Flow, newID func() model.ID) *Flow {
 	if flow == nil {
 		flow = &Flow{}

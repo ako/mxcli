@@ -14,9 +14,10 @@
 -- To reproduce: exec this file against a project, then change
 -- `formatDecimal($It/Amount, '0.#')` to `toString(round($It/Amount, 1))` and
 -- exec it again. The second run now reports
---   Modified microflow: BugTest1106.BuildJson (spliced: 1 replaced)
+--   Modified microflow: BugTest1106.BuildJson (spliced: 1 edited in place)
 -- and a third run writes nothing. The loop and the other activities keep their
--- $IDs and positions; only the edited `set` is replaced, in place.
+-- $IDs and positions; the edited `set` is the stored activity with its new
+-- expression, and keeps its $ID too (ako/mxcli#1761).
 --
 -- Still refused (needs the body laid out again): a statement added, removed,
 -- reordered or moved inside the body, or one kind of statement swapped for

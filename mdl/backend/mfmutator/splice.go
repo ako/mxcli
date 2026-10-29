@@ -17,10 +17,14 @@ package mfmutator
 //     every other property of a rewired flow (its $ID, case value, error-handler
 //     flag, the curve at its other end) is kept;
 //   - nodes are moved only to make room, and only by a translation;
-//   - nothing else is touched, and no $ID is ever rewritten. A removed element
-//     leaves no reference behind: Save refuses a document in which any binary
-//     still names an element that was removed (CLAUDE.md rule 1), and one in
-//     which two elements share an $ID.
+//   - nothing else is touched, and no stored $ID is ever rewritten. A removed
+//     element leaves no reference behind: Save refuses a document in which any
+//     binary still names an element that was removed (CLAUDE.md rule 1), and
+//     one in which two elements share an $ID;
+//   - an activity replaced by one of the same kind is edited, not replaced:
+//     the replacement takes the stored activity's $IDs, and every reference to
+//     it is rewritten with them in the same pass (splice_edit.go,
+//     ako/mxcli#1761).
 //
 // What the splice cannot do safely it refuses, with the reason: an insert
 // after a decision (which branch?), before an activity several flows enter
@@ -81,6 +85,11 @@ type Mutator struct {
 	// pinnedIn are the same for the nodes of a loop body, by the loop's $ID,
 	// in the loop box's coordinates (PinInLoop).
 	pinnedIn map[string]map[point]bool
+	// carried maps the $ID a same-kind replacement was built with to the
+	// stored $ID it takes over, put on at Bytes (ako/mxcli#1761,
+	// splice_edit.go); edited are the stored activities a Replace edited so.
+	carried map[string][]byte
+	edited  map[string]bool
 }
 
 var _ backend.MicroflowMutator = (*Mutator)(nil)
@@ -96,11 +105,15 @@ func New(doc bson.D, unitID model.ID, deps Deps) (*Mutator, error) {
 	if dDoc(doc, "ObjectCollection") == nil {
 		return nil, fmt.Errorf("unit %s has no object collection", unitID)
 	}
-	return &Mutator{deps: deps, unitID: unitID, doc: doc, removed: map[string]bool{}}, nil
+	return &Mutator{deps: deps, unitID: unitID, doc: doc, removed: map[string]bool{},
+		carried: map[string][]byte{}, edited: map[string]bool{}}, nil
 }
 
 // Bytes returns the patched unit, after the integrity checks Save applies.
+// An activity a replace edited in place takes its stored identity back first
+// (applyCarried).
 func (m *Mutator) Bytes() ([]byte, error) {
+	m.applyCarried()
 	if err := m.checkIntegrity(); err != nil {
 		return nil, err
 	}
@@ -467,6 +480,11 @@ func (m *Mutator) Replace(target model.ID, frag *backend.MicroflowFragment) erro
 	if err != nil {
 		return err
 	}
+	// One activity of the same kind is an edit of the stored one, which keeps
+	// its identity (ako/mxcli#1761).
+	if edited, err := m.editInPlace(g, x, frag); edited || err != nil {
+		return err
+	}
 	y := g.nodes[out.dest]
 	if y == nil {
 		return fmt.Errorf("flow %s points at an object that is not in the flow", out.id)
@@ -528,7 +546,8 @@ func (m *Mutator) Replace(target model.ID, frag *backend.MicroflowFragment) erro
 // swapped in place (ako/mxcli#1106): the new activity takes the stored one's
 // place in the loop's collection, is drawn where it was at the size it was,
 // and the flows that entered and left it now enter and leave the new one, so
-// nothing else in the body moves. By several (ako/mxcli#1693) the fragment
+// nothing else in the body moves; of the same kind, it also takes the stored
+// one's identity (ako/mxcli#1761). By several (ako/mxcli#1693) the fragment
 // starts where the activity started, what is past it in the body moves along
 // when the fragment is longer, and the loop box grows when the body no longer
 // fits it. The activity may be the body's first (no flow in) or last (no flow
@@ -554,7 +573,7 @@ func (m *Mutator) replaceInLoop(g *graph, x *node, frag *backend.MicroflowFragme
 		if d, err := m.serializeInPlace(x, frag); err != nil {
 			return err
 		} else if dString(d, "$Type") == x.typ {
-			return m.swapInPlace(g, x, dDoc(loop.doc, "ObjectCollection"), d, frag.Entry)
+			return m.swapKeeping(g, x, dDoc(loop.doc, "ObjectCollection"), d, frag.Entry)
 		}
 	}
 	in := g.incoming(x.id)
@@ -828,7 +847,8 @@ func (m *Mutator) dropInLoop(g *graph, x *node) error {
 // handler by one activity handling errors the same way, in place
 // (mendixlabs/mxcli#1489): the new activity takes the stored one's place, is
 // drawn where it was at the size it was, and every flow that entered or left
-// it — its error flow included — now enters or leaves the new one. The
+// it — its error flow included — now enters or leaves the new one; of the
+// same kind, it takes the stored one's identity too (ako/mxcli#1761). The
 // handler's own activities, and the merge its path rejoins at, are not
 // touched: changing one of them is a change of its own, addressed by its own
 // handle. Anything else — more than one activity, or one that does not raise
@@ -864,22 +884,12 @@ func (m *Mutator) replaceKeepingHandler(g *graph, x *node, frag *backend.Microfl
 		return fmt.Errorf("cannot replace %s by a %s: it has an error handler, which the splice keeps only on an "+
 			"activity", describeNode(x), t)
 	}
-	if err := m.swapInPlace(g, x, dDoc(m.doc, "ObjectCollection"), d, frag.Entry); err != nil {
+	if err := m.swapKeeping(g, x, dDoc(m.doc, "ObjectCollection"), d, frag.Entry); err != nil {
 		return err
 	}
-	if notes == nil {
-		return nil
-	}
-	// A note drawn relative to the activity moves with it, from where the
-	// builder drew the activity to where the stored one is; one whose canvas
-	// position the script states stays there (mendixlabs/mxcli#1598).
-	for _, n := range notes.frag.Objects {
-		if !notes.frag.Pinned[n.GetID()] {
-			p := n.GetPosition()
-			n.SetPosition(model.Point{X: p.X + x.pos.X - notes.entryAt.X, Y: p.Y + x.pos.Y - notes.entryAt.Y})
-		}
-	}
-	return m.addFragment(notes.frag)
+	// The notes move with the activity, from where the builder drew it to
+	// where the stored one is.
+	return m.addNotesAt(notes, x.pos)
 }
 
 // fragmentNotes are the notes a one-activity fragment attaches to its

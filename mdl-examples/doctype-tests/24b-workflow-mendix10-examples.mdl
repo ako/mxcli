@@ -19,6 +19,13 @@ mdl 1;
 -- `annotation` is the workflow's own note; from 11.3 they are stored and the
 -- note is the start activity's. A branch's `end workflow` is stored on every
 -- version.
+--
+-- User tasks (end of file) hid ako/mxcli#1771 the same way. Below 11.2 a task's
+-- targeting is a UserSource, and every user task mxcli wrote on 10.24 failed mx
+-- check with CE1859 "XPath constraint is required". Only the features 10.0
+-- has are used: user targeting, and the consensus, veto, majority and
+-- threshold rules. Group targeting is 11.2, `await all users` 10.2 and
+-- `decide by microflow` 10.3.
 -- ============================================================================
 
 create module WfTen;
@@ -75,3 +82,68 @@ begin
       false -> { end workflow; }
   ;
 end workflow;
+
+-- User tasks: users by XPath, users by a microflow, no targeting, and
+-- multi-user tasks with each rule 10.0 has.
+create microflow WfTen.ACT_Approvers ($Workflow: System.Workflow, $Context: WfTen.Request)
+returns list of System.User as $Users
+begin
+  retrieve $Users from System.User;
+  return $Users;
+end;
+
+create page WfTen.TaskPage (
+  title: 'Task',
+  layout: Atlas_Core.Atlas_Default,
+  params: ( $WorkflowUserTask: System.WorkflowUserTask )
+) {
+  dynamictext txtTask (content: 'Task')
+};
+
+create workflow WfTen.WF_Review
+  parameter $WorkflowContext: WfTen.Request
+  display 'Review'
+begin
+  user task Review 'Review'
+    page WfTen.TaskPage
+    targeting users xpath [Name = 'admin']
+    outcomes 'Approve' { } 'Reject' { end workflow; };
+  user task Handle 'Handle'
+    page WfTen.TaskPage
+    targeting users microflow WfTen.ACT_Approvers
+    outcomes 'Done' { };
+  user task Anyone 'Anyone'
+    page WfTen.TaskPage
+    outcomes 'Done' { };
+  multi user task Agree 'Agree'
+    page WfTen.TaskPage
+    targeting users microflow WfTen.ACT_Approvers
+    outcomes 'Yes' { } 'No' { };
+  multi user task Vote 'Vote'
+    page WfTen.TaskPage
+    targeting users xpath [Name = 'admin']
+    participants 2
+    decide by veto 'No'
+    outcomes 'Yes' { } 'No' { };
+  multi user task Poll 'Poll'
+    page WfTen.TaskPage
+    targeting users microflow WfTen.ACT_Approvers
+    participants 50 percent
+    decide by majority more than half fallback 'No'
+    outcomes 'Yes' { } 'No' { };
+  multi user task Quorum 'Quorum'
+    page WfTen.TaskPage
+    targeting users microflow WfTen.ACT_Approvers
+    decide by threshold 60 percent fallback 'No'
+    outcomes 'Yes' { } 'No' { };
+end workflow;
+
+-- ALTER inserts a user task through the mutator, and changes a task's
+-- targeting in whichever key the version stores it.
+alter workflow WfTen.WF_Review {
+  insert after Handle { user task Confirm 'Confirm'
+    page WfTen.TaskPage
+    targeting users xpath [Name = 'admin']
+    outcomes 'OK' { }; }
+};
+alter workflow WfTen.WF_Review { set (Targeting: xpath [Name = 'reviewer']) on Review; };

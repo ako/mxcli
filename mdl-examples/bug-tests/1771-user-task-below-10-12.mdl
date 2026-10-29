@@ -1,0 +1,84 @@
+mdl 1;
+-- ako/mxcli#1771: on Mendix 9.x a workflow with a user task made the project
+-- unloadable. `exec` reported "Created workflow", then mx check and Studio Pro
+-- could not load the project at all:
+--
+--   TypeCacheUnknownTypeException: The type cache does not contain a type with
+--   qualified name Workflows$SingleUserTaskActivity.
+--
+-- mxcli writes a user task as a Workflows$SingleUserTaskActivity or
+-- MultiUserTaskActivity. Both types arrived in 10.12, which also deleted the
+-- one before them (mendixmodelsdk). Before 10.12 a user task is a
+-- Workflows$UserTask, and its UserTaskCompletion (9.22) says whether it is a
+-- single-user or a multi-user task. Studio Pro 9.24.3 stores `{…, UserSource,
+-- UserTaskCompletion: SingleInputCompletion}` (the Marketplace's Multilevel
+-- Dynamic Workflow). A multi-user task's rule, participants and, from 10.2,
+-- `await all users` sit in a MultiInputCompletion, and its outcomes stay on the
+-- task. What the older type cannot hold is refused, naming the task: a rule
+-- added later (majority and threshold in 10.0, microflow in 10.3), `await all
+-- users` below 10.2, and a boundary event on a user task below 10.14.
+--
+-- Measured on fresh apps (`mxcli new … --skip-build`), exec then
+-- `mxcli docker check`:
+--   9.24.30.51827    before: TypeCacheUnknownTypeException. After: 0 errors.
+--                    `mx convert -p` 9.24.30 changes no key and no value.
+--                    describe → exec prints "Unchanged workflow". Converted up
+--                    to 10.24.24, the tasks are those mxcli writes on 10.24
+--                    directly.
+--   10.11.0.37074    before: TypeCacheUnknownTypeException. After: 0 errors,
+--                    each multi-user task's completion with AwaitAllUsers (10.2+).
+--                    `mx convert -p` 10.11 changes nothing. describe → exec
+--                    prints "Unchanged workflow".
+--   10.24.24, 11.13.0  0 errors, with the same key sets as before the fix.
+
+create module Probe1771Ut;
+
+create persistent entity Probe1771Ut.Request ( Title: String(100) );
+
+create microflow Probe1771Ut.ACT_GetUsers ($Workflow: System.Workflow, $Context: Probe1771Ut.Request)
+returns list of System.User as $Users
+begin
+  retrieve $Users from System.User;
+  return $Users;
+end;
+
+create page Probe1771Ut.TaskPage (
+  title: 'Task',
+  layout: Atlas_Core.Atlas_Default,
+  params: ( $WorkflowUserTask: System.WorkflowUserTask )
+) {
+  dynamictext txt1 (content: 'Task')
+};
+
+create workflow Probe1771Ut.WF_Tasks
+  parameter $WorkflowContext: Probe1771Ut.Request
+  display 'Tasks'
+begin
+  user task Review 'Review'
+    page Probe1771Ut.TaskPage
+    targeting users xpath [Name = 'admin']
+    outcomes 'Approve' { } 'Reject' { };
+  user task Handle 'Handle'
+    page Probe1771Ut.TaskPage
+    targeting users microflow Probe1771Ut.ACT_GetUsers
+    outcomes 'Done' { };
+  multi user task Vote 'Vote'
+    page Probe1771Ut.TaskPage
+    targeting users xpath [Name = 'admin']
+    participants 2
+    decide by veto 'Reject'
+    outcomes 'Approve' { } 'Reject' { };
+  multi user task Agree 'Agree'
+    page Probe1771Ut.TaskPage
+    targeting users microflow Probe1771Ut.ACT_GetUsers
+    outcomes 'Yes' { } 'No' { };
+end workflow;
+
+-- ALTER inserts a user task through the mutator, outside CREATE's encoder; the
+-- lowering runs on every unit write, so it covers both.
+alter workflow Probe1771Ut.WF_Tasks {
+  insert after Handle { user task Confirm 'Confirm'
+    page Probe1771Ut.TaskPage
+    targeting users xpath [Name = 'admin']
+    outcomes 'OK' { }; }
+};

@@ -200,6 +200,60 @@ type flowBuilder struct {
 	joinScopes map[string]flowBuilderVariableState
 }
 
+// nestedBuilder returns the builder for a body nested in this one — a loop's,
+// a while loop's, an error handler's — whose first activity is centred at
+// (x, y). The body has its own position, graph and pending state, and
+// inherits what says which flow is being built and how its statements are
+// written: the variable scope, the backend and project lookups, the language,
+// the notes, and the guards. Every nested body is built here, so a field is
+// inherited by all of them or by none — bar what the one site that needs it
+// sets (an error handler's return type and label table) — and
+// TestNestedBuilder_InheritsSharedState fails until a new field is put on one
+// side or the other.
+//
+// ako/mxcli#1769: each site listed the fields it copied, and none listed
+// qualifiedMembersOnly, so a fragment spliced into a stored flow refused an
+// unqualifiable member on its main line and wrote it in every body nested in
+// it — `find $L by Code = …` in a replaced loop became a find by the invalid
+// expression `Code = …` (CE0117).
+func (fb *flowBuilder) nestedBuilder(x, y int) *flowBuilder {
+	return &flowBuilder{
+		posX:    x,
+		posY:    y,
+		baseY:   y,
+		spacing: HorizontalSpacing,
+
+		varTypes:     fb.varTypes,     // one variable scope
+		declaredVars: fb.declaredVars, // (fixes a nil map panic)
+		textLang:     fb.textLang,
+		measurer:     fb.measurer,
+		backend:      fb.backend,
+		quiet:        fb.quiet,
+		hierarchy:    fb.hierarchy,
+		restServices: fb.restServices, // for parameter classification
+		isNanoflow:   fb.isNanoflow,
+		self:         fb.self,
+		scriptFlows:  fb.scriptFlows,
+		// The note registry, so a note declared outside the body and
+		// referenced on an activity in it attaches to the SAME Annotation
+		// rather than being refused. The describer emits exactly that (its
+		// label state is shared across the loop overlay), so a builder that
+		// refused it would reject its own DESCRIBE output.
+		//
+		// Across a loop boundary the result — Annotation in the parent
+		// collection, both AnnotationFlows in the parent collection, one
+		// destination inside the loop — was measured at 0 errors on mxbuild
+		// 11.13. mxbuild is the only oracle available here; Studio Pro is
+		// stricter in general, though this is the same split mxcli already
+		// ships for an ordinary loop-body note, whose flow is hoisted to the
+		// parent. (#1077)
+		annotationsByLabel: fb.annotationsByLabel,
+		storedNotes:        fb.storedNotes,
+		// A body of a spliced fragment is spliced too (ako/mxcli#1769).
+		qualifiedMembersOnly: fb.qualifiedMembersOnly,
+	}
+}
+
 type flowBuilderVariableState struct {
 	varTypes     map[string]string
 	declaredVars map[string]string

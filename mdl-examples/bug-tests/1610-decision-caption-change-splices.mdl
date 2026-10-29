@@ -14,7 +14,7 @@
 --
 -- To reproduce: exec this file against a project, then add
 -- `@caption 'Big?'` on the line before `if` and exec it again. The second run
--- reports `Modified microflow: BugTest1610.F (spliced: 1 replaced)`, and a
+-- reports `Modified microflow: BugTest1610.F (spliced: 1 edited in place)`, and a
 -- third run writes nothing. Taking the caption off again captions the
 -- decision with its condition, as a new one would be.
 

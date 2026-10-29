@@ -1,0 +1,71 @@
+mdl 1;
+-- ako/mxcli#1771: on Mendix 10.12 to 11.1 every user task mxcli wrote failed
+-- mx check with CE1859 "XPath constraint is required". That included tasks
+-- targeted by a microflow. `exec` and `mxcli check` were clean.
+--
+-- mxcli stored the targeting as UserTargeting, the 11.2 property. Before 11.2 a
+-- user task stores it as UserSource. UserTargeting is declared on the abstract
+-- UserTaskActivity, which the property floor does not look up, so the key went
+-- into every version. The older versions read the task as having no user
+-- source. `mx convert -p` 10.24.24 then dropped the targeting and stored an
+-- empty XPathBasedUserSource in its place, so the targeting was silently lost.
+--
+-- The older shape, measured with `mx convert -p`. The sources are Studio
+-- Pro-authored Marketplace samples: Employee Onboarding (9.1.1, XPath
+-- targeting) and Multilevel Dynamic Workflow (9.24.3, microflow targeting).
+-- Each was converted 9.24.30 → 10.24.24 → 11.13.0. The value is carried byte
+-- for byte, and only its holder changes:
+--   UserSource: XPathBasedUserSource     ↔ UserTargeting: XPathUserTargeting
+--   UserSource: MicroflowBasedUserSource ↔ UserTargeting: MicroflowUserTargeting
+-- A task with no targeting is an EmptyUserSource (9.10+), and from 11.2 a
+-- NoUserTargeting. Group targeting is 11.2. Before 11.2 it is refused with
+-- MDL-VERSION01 by check -p, and at write time.
+--
+-- Measured on fresh apps (`mxcli new … --skip-build`): exec, then
+-- `mxcli docker check`.
+--   10.24.24.119653  before: CE1859 on every task. After: 0 errors.
+--                    `mx convert -p` 10.24.24 changes no key and no value.
+--                    describe → exec prints "Unchanged workflow".
+--   10.11.0.37074    0 errors. The task is a Workflows$UserTask there (see
+--                    1771-user-task-below-10-12.mdl), with the same UserSource.
+--   11.13.0          0 errors before and after, with the same key sets.
+
+create module Probe1771Tg;
+
+create persistent entity Probe1771Tg.Request ( Title: String(100) );
+
+create microflow Probe1771Tg.ACT_GetUsers ($Workflow: System.Workflow, $Context: Probe1771Tg.Request)
+returns list of System.User as $Users
+begin
+  retrieve $Users from System.User;
+  return $Users;
+end;
+
+create page Probe1771Tg.TaskPage (
+  title: 'Task',
+  layout: Atlas_Core.Atlas_Default,
+  params: ( $WorkflowUserTask: System.WorkflowUserTask )
+) {
+  dynamictext txt1 (content: 'Task')
+};
+
+create workflow Probe1771Tg.WF_Targeting
+  parameter $WorkflowContext: Probe1771Tg.Request
+  display 'Targeting'
+begin
+  user task ByXPath 'By XPath'
+    page Probe1771Tg.TaskPage
+    targeting users xpath [Name = 'admin']
+    outcomes 'Done' { };
+  user task ByMicroflow 'By microflow'
+    page Probe1771Tg.TaskPage
+    targeting users microflow Probe1771Tg.ACT_GetUsers
+    outcomes 'Done' { };
+  user task Untargeted 'No targeting'
+    page Probe1771Tg.TaskPage
+    outcomes 'Done' { };
+  multi user task MultiByXPath 'Multi by XPath'
+    page Probe1771Tg.TaskPage
+    targeting users xpath [Name = 'admin']
+    outcomes 'Approve' { } 'Reject' { };
+end workflow;

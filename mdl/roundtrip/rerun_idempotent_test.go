@@ -441,7 +441,7 @@ end;
 		}
 		written := len(before.diff(h.snapshot()))
 		switch {
-		case run == 1 && (written == 0 || !strings.Contains(h.out.String(), "(spliced: 1 replaced)")):
+		case run == 1 && (written == 0 || !strings.Contains(h.out.String(), "(spliced: 1 edited in place)")):
 			t.Errorf("run 1: want the edited set spliced in, %d unit(s) written:\n%s", written, h.out.String())
 		case run == 2 && written != 0:
 			t.Errorf("run 2 of the same script wrote %d unit(s):\n%s", written, h.out.String())

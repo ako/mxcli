@@ -215,7 +215,7 @@ func TestSpliceLoopBody1693_CreateOrModify(t *testing.T) {
 		{"LB1693Swap", "    log info node 'X' 'middle';\n    set $S = $S + 'a';\n    commit $It;\n",
 			"", []string{"'middle'", "set $S", "commit $It"}, 1, 1},
 		{"LB1693ReplaceByTwo", "    set $S = $S + 'a';\n    log info node 'X' 'one';\n    log info node 'X' 'two';\n    commit $It;\n",
-			"spliced: 1 replaced", []string{"set $S", "'one'", "'two'", "commit $It"}, 1, 2},
+			"spliced: 1 replaced with new element IDs", []string{"set $S", "'one'", "'two'", "commit $It"}, 1, 2},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

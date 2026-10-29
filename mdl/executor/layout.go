@@ -98,6 +98,14 @@ func (m *layoutMeasurer) measureStatements(stmts []ast.MicroflowStatement) Bound
 		} else {
 			cursor = left + bounds.Width
 		}
+		if row := m.handlerRowWidth(stmt); row > 0 {
+			// The handler's row hangs in the same lane, from the activity's left
+			// edge, and the main line goes on above it — as reserveHandlerRow
+			// records it for the builder.
+			rowRight := left + row
+			laneBusy = max(laneBusy, rowRight+laneGap)
+			extent = max(extent, rowRight)
+		}
 		extent = max(extent, cursor)
 		prev = stmt
 	}

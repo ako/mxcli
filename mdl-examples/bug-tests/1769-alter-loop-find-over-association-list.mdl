@@ -1,0 +1,61 @@
+mdl 1;
+-- ako/mxcli#1769 (mendixlabs/mxcli#1673) — a find in a loop an alter writes
+--
+-- `alter microflow … { replace loop … with begin … end; }` whose loop body
+-- finds by member in a list retrieved over an association before the loop
+-- (`retrieve $Lines from $Order/MyModule.OrderLine_Order`) stored the find as
+-- Microflows$FindByExpression with the bare text `Code = $Lookup/Code`: check
+-- --references and exec reported nothing, and mx check failed CE0117 "Error(s)
+-- in expression." `create microflow` stores the same find as Microflows$Find
+-- on MyModule.OrderLine.Code.
+--
+-- Two causes. The member guard a spliced fragment has (ako/mxcli#891) was not
+-- inherited by the builder of a body nested in it — a loop, a while loop, an
+-- error handler — so it wrote a member it could not qualify where the main
+-- line refused it. And the fragment did not know what a stored retrieve over
+-- an association holds, so it could not qualify the member. A retrieve from
+-- the TO end of a reference (Order here) yields the list of the FROM entity
+-- (OrderLine); from the FROM end, the one TO object.
+--
+-- Run on any project:
+--   mxcli exec mdl-examples/bug-tests/1769-alter-loop-find-over-association-list.mdl -p app.mpr
+--   mxcli bson dump -p app.mpr --type microflow --object MyModule.SUB_MatchLines
+-- Expected: "Altered microflow MyModule.SUB_MatchLines"; the dump shows
+-- "$Type": "Microflows$Find" with "Attribute": "MyModule.OrderLine.Code" and
+-- "Expression": "$Lookup/Code"; mx check reports no error for the flow, and
+-- exec of `describe microflow MyModule.SUB_MatchLines` reports Unchanged.
+-- Before the fix: Microflows$FindByExpression "Code = $Lookup/Code" and CE0117
+-- (measured on 11.13.0).
+
+create module MyModule;
+create persistent entity MyModule.Order (Code: String(50));
+create persistent entity MyModule.OrderLine (Code: String(50), Status: String(20));
+create association MyModule.OrderLine_Order from MyModule.OrderLine to MyModule.Order;
+create non-persistent entity MyModule.Lookup (Code: String(50));
+
+create microflow MyModule.SUB_MatchLines ($Order: MyModule.Order, $Lookups: List of MyModule.Lookup) returns Integer as $Found
+begin
+  declare $Found Integer = 0;
+  retrieve $Lines from $Order/MyModule.OrderLine_Order;
+  loop $Lookup in $Lookups
+  begin
+    $Line = find $Lines by Code = $Lookup/Code;
+    if $Line != empty then
+      set $Found = $Found + 1;
+    end if;
+  end loop;
+  return $Found;
+end;
+
+-- The loop replaced with its own text.
+alter microflow MyModule.SUB_MatchLines {
+  replace loop $Lookup in $Lookups with begin
+    loop $Lookup in $Lookups
+    begin
+      $Line = find $Lines by Code = $Lookup/Code;
+      if $Line != empty then
+        set $Found = $Found + 1;
+      end if;
+    end loop;
+  end;
+};

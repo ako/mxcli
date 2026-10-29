@@ -36,15 +36,22 @@ func (fb *flowBuilder) buildFlowGraph(stmts []ast.MicroflowStatement, returns *a
 	// Set baseY for branch restoration (this is the center line)
 	fb.baseY = fb.posY
 
-	// Pre-scan: if the first statement carries an @position annotation, shift the
-	// StartEvent to be one spacing unit to the left of that position so it doesn't
-	// end up behind activities that use explicit coordinates.
-	for _, stmt := range stmts {
-		if ann := getStatementAnnotations(stmt); ann != nil && ann.Position != nil {
+	// If the first statement carries an @position annotation, shift the StartEvent
+	// to be one spacing unit to the left of that position so it doesn't end up
+	// behind activities that use explicit coordinates.
+	//
+	// The first statement only. This used to take the first statement that had an
+	// @position, wherever it was, so a position on a later statement moved the
+	// start — and every unplaced statement before it, which follows the start — to
+	// that statement's place: `declare $A …; @position(840, 200) declare $B …`
+	// stored both at 840;200 (ako/mxcli#1768). Statements before a placed one keep
+	// the places the builder derives for them, as alter's patch already assumed
+	// (patchDiff.startEvent reads declared[0]).
+	if len(stmts) > 0 {
+		if ann := getStatementAnnotations(stmts[0]); ann != nil && ann.Position != nil {
 			fb.posX = ann.Position.X - fb.spacing
 			fb.posY = ann.Position.Y
 			fb.baseY = fb.posY
-			break
 		}
 	}
 

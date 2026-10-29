@@ -61,6 +61,10 @@ features:
       min_version: "9.0.0"
     user_task:
       min_version: "9.0.0"
+    multi_user_task:
+      min_version: "9.22.0"
+      mdl: "MULTI USER TASK Vote 'Vote' PAGE M.TaskPage OUTCOMES 'Yes' { } 'No' { };"
+      notes: "Before 10.12 a Workflows$UserTask whose UserTaskCompletion is a MultiInputCompletion, introduced with consensus and veto in 9.22.0 (mendixmodelsdk 4.117.0; ako/mxcli#1771)."
 
   navigation:
     profiles:

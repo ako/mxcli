@@ -882,9 +882,11 @@ func (ob *Builder) EnsureRequiredObjectLists() {}
 
 // ApplyPropertyVisibility nulls the TextTemplate of any TextTemplate-typed
 // property the rules mark as hidden under the widget's current configuration.
-// Non-TextTemplate properties are left untouched: only the populated-vs-null
-// ClientTemplate choice triggers CE0463, so Phase 1 scopes the action to
-// TextTemplate. The widget's current primitive values (read from the assembled
+// Non-TextTemplate properties are left untouched HERE, not because they are
+// harmless: a hidden enumeration at a non-default value is CE0463 too
+// (ako/mxcli#1762). The engine writes one the script does not name at its
+// declared default (hiddenUnnamedProperties), and MDL-WIDGET10 refuses one it
+// does. The widget's current primitive values (read from the assembled
 // object) drive rule evaluation, so a rule keyed on e.g. `type` sees the value
 // just set from MDL.
 
@@ -897,8 +899,8 @@ func (ob *Builder) ApplyPropertyVisibility(rules []types.WidgetVisibilityRule) {
 // the updated object. It is the engine-agnostic form of ApplyPropertyVisibility
 // so build paths that construct a widget object without a full Builder (e.g. the
 // filter-widget build path) can apply the same #574 nulling. Non-TextTemplate
-// properties are left untouched — only the populated-vs-null ClientTemplate
-// choice triggers CE0463.
+// properties are left untouched here; see ApplyPropertyVisibility for where a
+// hidden enumeration's default is enforced instead.
 func ApplyVisibilityRules(object bson.D, propertyTypeIDs map[string]pages.PropertyTypeIDEntry, rules []types.WidgetVisibilityRule) bson.D {
 	if len(rules) == 0 {
 		return object

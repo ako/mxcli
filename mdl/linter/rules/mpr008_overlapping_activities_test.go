@@ -147,3 +147,60 @@ func TestOverlapUsesStoredSizes(t *testing.T) {
 		})
 	}
 }
+
+// ako/mxcli#1768: two error handler rows laid on top of each other put the first
+// handler's end event and the second handler's first activity both on 680;330.
+// MPR008 compared activities, splits and merges only, so it reported nothing —
+// and with one more statement in the first handler it reported one of the two
+// overlaps, the one that happened to be activity on activity. Events are nodes
+// on the canvas and are compared too, with their own 20x20 box.
+func TestOverlapComparesEvents(t *testing.T) {
+	act := func(x, y int) *microflows.ActionActivity {
+		a := &microflows.ActionActivity{}
+		a.Position = model.Point{X: x, Y: y}
+		a.Size = model.Size{Width: 120, Height: 60}
+		return a
+	}
+	end := func(x, y int, sized bool) *microflows.EndEvent {
+		e := &microflows.EndEvent{}
+		e.Position = model.Point{X: x, Y: y}
+		if sized {
+			e.Size = model.Size{Width: 20, Height: 20}
+		}
+		return e
+	}
+	for _, tc := range []struct {
+		name string
+		objs []microflows.MicroflowObject
+		want bool
+	}{
+		{"end event on an activity (the report)", []microflows.MicroflowObject{end(680, 330, true), act(680, 330)}, true},
+		{"end event one pitch after an activity", []microflows.MicroflowObject{act(520, 330), end(680, 330, true)}, false},
+		// An event that stores no size is an event, not an activity: judged as a
+		// 120x60 box it would overlap an activity 80px away.
+		{"unsized end event 80px from an activity", []microflows.MicroflowObject{act(600, 200), end(680, 200, false)}, false},
+		{"unsized end event inside an activity", []microflows.MicroflowObject{act(600, 200), end(640, 200, false)}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := overlapPlanes(tc.objs)[0]
+			if len(p) != 2 {
+				t.Fatalf("got %d nodes on the canvas, want 2 — the event was left out", len(p))
+			}
+			if got := boxesOverlap(p[0], p[1]); got != tc.want {
+				t.Errorf("overlap = %v, want %v (%+v, %+v)", got, tc.want, p[0], p[1])
+			}
+		})
+	}
+
+	// Every kind of event, and a type split, is on the canvas.
+	nodes := []microflows.MicroflowObject{
+		&microflows.StartEvent{}, &microflows.EndEvent{}, &microflows.ErrorEvent{},
+		&microflows.BreakEvent{}, &microflows.ContinueEvent{}, &microflows.InheritanceSplit{},
+	}
+	for i, n := range nodes {
+		n.SetPosition(model.Point{X: 100 + 200*i, Y: 200})
+	}
+	if got := len(overlapPlanes(nodes)[0]); got != len(nodes) {
+		t.Errorf("%d of %d nodes are on the canvas", got, len(nodes))
+	}
+}

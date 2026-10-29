@@ -2833,6 +2833,51 @@ func (fb *flowBuilder) lookupAssociation(moduleName, assocName string) *assocLoo
 	return nil
 }
 
+// associationRetrieveType is what `retrieve $X from $Start/assocQN` binds when
+// $Start holds startType ("Module.Entity"): the list or the object at the
+// other end, by associationRetrieveYieldsList — the answer addRetrieveAction
+// and check --references take. Mind the inversion: an association's parent is
+// its FROM end and its child the TO end, so a retrieve from the TO end yields
+// the FROM entity. "" when it cannot be established: the association or the
+// start unknown, the start a list, or the start no end of it — or, over a
+// reference, both ends (a self-reference), where which end it starts from is
+// not known.
+func (fb *flowBuilder) associationRetrieveType(startType, assocQN string) string {
+	if startType == "" || strings.HasPrefix(startType, "List of ") {
+		return ""
+	}
+	module, name, ok := strings.Cut(assocQN, ".")
+	if !ok || module == "" || name == "" {
+		return ""
+	}
+	info := fb.lookupAssociation(module, name)
+	if info == nil || info.parentEntityQN == "" || info.childEntityQN == "" {
+		return ""
+	}
+	refSet := info.Type == domainmodel.AssociationTypeReferenceSet
+	fromTo := fb.entityIsSubtypeOf(startType, info.childEntityQN)
+	fromFrom := fb.entityIsSubtypeOf(startType, info.parentEntityQN)
+	switch {
+	case fromTo && fromFrom:
+		// Either end: a reference set to itself is a list of it whichever
+		// end it starts from, and nothing else is known.
+		if refSet && info.parentEntityQN == info.childEntityQN {
+			return "List of " + info.parentEntityQN
+		}
+		return ""
+	case !fromTo && !fromFrom:
+		return ""
+	}
+	other := info.childEntityQN
+	if fromTo {
+		other = info.parentEntityQN
+	}
+	if associationRetrieveYieldsList(refSet, info.Owner == domainmodel.AssociationOwnerBoth, fromTo) {
+		return "List of " + other
+	}
+	return other
+}
+
 // qualifyIteratorAttributes rewrites a bare attribute name in a FILTER/FIND
 // predicate into `$currentObject/<Attr>`.
 //
