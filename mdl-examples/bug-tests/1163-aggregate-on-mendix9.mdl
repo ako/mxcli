@@ -1,0 +1,36 @@
+mdl 1;
+-- ako/mxcli#1163: on Mendix 9.x every count/sum/average/minimum/maximum in a
+-- microflow was refused:
+--
+--   this Mendix 9.24.30 project cannot store
+--   Microflows$AggregateAction.AggregateFunction (Mendix 10.0.0+)
+--
+-- The property floor came from the vendored generated version data, which had
+-- given AggregateFunction the row of ReduceReturnDataType (the fold Reduce
+-- added in 10.0) and left that one out. Studio Pro 9.24.0 stores
+-- AggregateFunction on every aggregate (Workflow Commons 2.6.0), `mx convert`
+-- 9.24.30 keeps it, and mendixmodelsdk gives it no version.
+--
+-- Run it on a fresh 9.24.30 app (`mxcli new … --version 9.24.30.51827`): exec
+-- writes all five, and `mxcli docker check` reports the blank app's error
+-- count. An aggregate over an expression (`sum $L of …`) and `reduce`, `all`
+-- and `any` are Mendix 10.0 and are still refused below it.
+
+create module Probe1163Agg;
+
+create persistent entity Probe1163Agg.Line (
+  Amount: Decimal
+);
+
+create microflow Probe1163Agg.Totals (
+  $Lines: list of Probe1163Agg.Line
+)
+returns decimal as $Sum
+begin
+  $Count = count $Lines;
+  $Sum = sum $Lines by Amount;
+  $Average = average $Lines by Amount;
+  $Min = minimum $Lines by Amount;
+  $Max = maximum $Lines by Amount;
+  return $Sum;
+end;

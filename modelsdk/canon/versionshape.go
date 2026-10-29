@@ -4,6 +4,7 @@ package canon
 
 import (
 	"fmt"
+	"strings"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 
@@ -37,6 +38,21 @@ import (
 //     CE6050 "The selected entity must be configured with a page parameter".
 //   - ForceFullObjects, declared on the abstract Forms$DataSource from 10.8.0:
 //     every data source carried it, and the floor never saw it.
+//   - Settings$ConstantValue: a Settings$SharedValue under SharedOrPrivateValue
+//     from 10.9.0; before, the value as a flat Value string, `{$ID, $Type,
+//     ConstantId, Value}` (`mx convert` 9.24.30, which empties the nested form
+//     it does not know).
+//   - Forms$MicroflowParameterMapping / NanoflowParameterMapping: an argument
+//     as Expression text from 10.10.0; before, only a Variable (a required
+//     Forms$PageVariable), and an argument that is the enclosing object is not
+//     stored at all — Studio Pro 9.24 infers it (Workflow Commons 2.6.0: 77
+//     flow calls taking parameters, no mapping on any). mxcli writes that
+//     argument as Expression `$currentObject` with Variable null, which 9.24
+//     cannot even load.
+//   - Workflows$ PersistentId, from 10.21.0 on the workflow and on the abstract
+//     WorkflowActivity, Outcome and BoundaryEvent (ako/mxcli#1163). Workflows
+//     exist from 9.0; `mx convert` 9.24.30 strips every one. The workflow's
+//     own was refused; the others slipped past the floor.
 //
 // It runs on every unit write, before the floor, so no writer needs to know
 // these shapes. What the older shape cannot hold — a design property value
@@ -53,8 +69,12 @@ func LowerToProjectShape(contents []byte, pv *version.Version) ([]byte, error) {
 		textPlaceholder: !PropertyDeclared("Forms$AttributeWidgetWithPlaceholder", "PlaceholderTemplate", *pv),
 		namedParameter:  !PropertyDeclared("Forms$EntityPathSource", "SourceVariable", *pv),
 		noFullObjects:   !PropertyDeclared("Forms$DataSource", "ForceFullObjects", *pv),
+		noPersistentID:  !PropertyDeclared("Workflows$Workflow", "PersistentId", *pv),
+		flatConstant:    !PropertyDeclared("Settings$ConstantValue", "SharedOrPrivateValue", *pv),
+		variableArgs:    !PropertyDeclared("Forms$MicroflowParameterMapping", "Expression", *pv),
 	}
-	if !l.flatDesignProps && !l.boolEditable && !l.textPlaceholder && !l.namedParameter && !l.noFullObjects {
+	if !l.flatDesignProps && !l.boolEditable && !l.textPlaceholder && !l.namedParameter && !l.noFullObjects &&
+		!l.noPersistentID && !l.flatConstant && !l.variableArgs {
 		return contents, nil
 	}
 	var doc bson.D
@@ -74,7 +94,8 @@ func LowerToProjectShape(contents []byte, pv *version.Version) ([]byte, error) {
 type shapeLowering struct {
 	pv                                             version.Version
 	flatDesignProps, boolEditable, textPlaceholder bool
-	namedParameter, noFullObjects                  bool
+	namedParameter, noFullObjects, noPersistentID  bool
+	flatConstant, variableArgs                     bool
 	changed                                        bool
 }
 
@@ -106,9 +127,21 @@ func (l *shapeLowering) walk(v any) (any, error) {
 			if err = l.lowerPlaceholder(x, typ); err != nil {
 				return nil, err
 			}
+		case l.flatConstant && typ == "Settings$ConstantValue":
+			if x, err = l.lowerConstantValue(x); err != nil {
+				return nil, err
+			}
 		}
 		if l.noFullObjects {
 			if x, err = l.dropForceFullObjects(x, typ); err != nil {
+				return nil, err
+			}
+		}
+		if l.noPersistentID && strings.HasPrefix(typ, "Workflows$") {
+			x = l.dropPersistentID(x)
+		}
+		if l.variableArgs {
+			if err = l.lowerFlowArguments(x); err != nil {
 				return nil, err
 			}
 		}
@@ -259,6 +292,90 @@ func (l *shapeLowering) dropForceFullObjects(d bson.D, typ string) (bson.D, erro
 	}
 	l.changed = true
 	return append(append(bson.D{}, d[:i]...), d[i+1:]...), nil
+}
+
+// lowerConstantValue replaces a constant override's nested SharedOrPrivateValue
+// with the flat Value older versions store, in its place. A flat Value already
+// beside it (the overlay clears one to "" when it writes the nested form) takes
+// the nested value. A private value — kept on the developer's workstation, which
+// the flat form cannot say — is refused.
+func (l *shapeLowering) lowerConstantValue(d bson.D) (bson.D, error) {
+	i := shapeIndex(d, "SharedOrPrivateValue")
+	if i < 0 {
+		return d, nil
+	}
+	inner, _ := d[i].Value.(bson.D)
+	if t, _ := shapeString(inner, "$Type"); t == "Settings$PrivateValue" {
+		constant, _ := shapeString(d, "ConstantId")
+		return nil, fmt.Errorf("constant %q has a private value in this configuration, which Mendix introduced in 10.9 "+
+			"(this project is %s): a constant value there is shared, stored in the model", constant, l.pv)
+	}
+	value, _ := shapeString(inner, "Value")
+	l.changed = true
+	if j := shapeIndex(d, "Value"); j >= 0 {
+		d[j].Value = value
+		return append(append(bson.D{}, d[:i]...), d[i+1:]...), nil
+	}
+	d[i] = bson.E{Key: "Value", Value: value}
+	return d, nil
+}
+
+var flowParameterMappings = map[string]bool{
+	"Forms$MicroflowParameterMapping": true, "Forms$NanoflowParameterMapping": true,
+}
+
+// lowerFlowArguments rewrites the flow call arguments in d's ParameterMappings
+// list, if it has one, into what a version before 10.10 stores: an argument
+// bound through Variable keeps it (its empty Expression is the floor's to
+// drop); an argument that is the enclosing object (`$currentObject`) — or one
+// that binds nothing — is left out, which is how Studio Pro 9.24 stores it.
+// Any other expression has no Variable form and is refused, naming the
+// parameter.
+func (l *shapeLowering) lowerFlowArguments(d bson.D) error {
+	i := shapeIndex(d, "ParameterMappings")
+	if i < 0 {
+		return nil
+	}
+	list, _ := d[i].Value.(bson.A)
+	out := bson.A{}
+	dropped := false
+	for _, el := range list {
+		m, ok := el.(bson.D)
+		typ, _ := shapeString(m, "$Type")
+		if !ok || !flowParameterMappings[typ] {
+			out = append(out, el)
+			continue
+		}
+		if v, _ := shapeValue(m, "Variable"); v != nil {
+			out = append(out, el)
+			continue
+		}
+		expr, _ := shapeString(m, "Expression")
+		if e := strings.TrimSpace(expr); e != "" && !strings.EqualFold(e, "$currentObject") {
+			param, _ := shapeString(m, "Parameter")
+			return fmt.Errorf("the argument for %s is the expression %s, which Mendix introduced in 10.10 (this project is %s): "+
+				"an argument there is the enclosing object, or a page parameter, snippet parameter or widget", param, expr, l.pv)
+		}
+		dropped = true
+	}
+	if dropped {
+		d[i].Value = out
+		l.changed = true
+	}
+	return nil
+}
+
+// dropPersistentID removes a workflow element's PersistentId below 10.21, where
+// none declares it. Whatever it holds is dropped, not refused: a PersistentId is
+// minted by the writer (a fresh GUID on every build), never stated by a script,
+// and a workflow Studio Pro 9.24 stores has none.
+func (l *shapeLowering) dropPersistentID(d bson.D) bson.D {
+	i := shapeIndex(d, "PersistentId")
+	if i < 0 {
+		return d
+	}
+	l.changed = true
+	return append(append(bson.D{}, d[:i]...), d[i+1:]...)
 }
 
 // listItems returns the elements of a stored list, without its type marker.

@@ -8,6 +8,7 @@
 #   make test-integration - Run integration tests (requires mx/mxbuild)
 #   make test-mdl  - Run MDL integration tests (requires Docker)
 #   make lint      - Lint all code (Go + TypeScript)
+#   make ci-local  - Run what CI's build-and-test job runs, before pushing
 #   make lint-go   - Lint Go code (fmt + vet)
 #   make lint-ts   - Lint TypeScript code (tsc --noEmit)
 #   make grammar   - Regenerate ANTLR parser
@@ -35,7 +36,7 @@ GO_BUILD_FLAGS = -trimpath
 # Clean version for VS Code extension (must be valid semver: major.minor.patch)
 VSCE_VERSION = $(shell echo "$(VERSION)" | sed 's/^v//; s/-.*//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$$' || echo "0.0.0")
 
-.PHONY: build build-debug size release clean test test-mdl check-mdl check-skill-mdl check-conformance conformance-shrink gen-migration-reference check-migration-reference check-skill-pack-js check-findings check-wiki-pages digest-status check-tunnel-deps check-test-timeouts check-widget-versions test-integration test-integration-executor test-integration-roundtrip test-integration-parity test-integration-upgrade test-integration-other grammar completions sync-skills sync-skill-packs sync-commands sync-mods sync-lint-rules sync-changelog sync-all docs documentation docs-site docs-serve vscode-ext vscode-install source-tree sbom sbom-report lint lint-go lint-ts fmt fmt-check vet skill-index check-skill-index
+.PHONY: build build-debug size release clean test ci-local test-mdl check-mdl check-skill-mdl check-conformance conformance-shrink gen-migration-reference check-migration-reference check-skill-pack-js check-findings check-wiki-pages digest-status check-tunnel-deps check-test-timeouts check-widget-versions test-integration test-integration-executor test-integration-roundtrip test-integration-parity test-integration-upgrade test-integration-other grammar completions sync-skills sync-skill-packs sync-commands sync-mods sync-lint-rules sync-changelog sync-all docs documentation docs-site docs-serve vscode-ext vscode-install source-tree sbom sbom-report lint lint-go lint-ts fmt fmt-check vet skill-index check-skill-index
 
 # Helper: copy file only if content differs (avoids mtime updates that invalidate go build cache)
 # Usage: $(call copy-if-changed,src,dst)
@@ -453,6 +454,20 @@ check-widget-versions: build
 # Lint all code (Go + TypeScript)
 lint: lint-go lint-ts check-conformance check-test-timeouts
 
+# What the build-and-test job in .github/workflows/push-test.yml runs, in its
+# order, so a push is proven against the gate it will meet rather than against
+# `build test lint`, which covers less of it: check-mdl, check-findings,
+# check-skill-index and the rest run only in CI unless someone remembers them.
+# check-skill-mdl is a superset of the job's three skill/docs MDL steps.
+#
+# Left out: govulncheck (the job installs it @latest, over the network) and the
+# integration jobs, which need mxbuild -- `make test-integration` runs those.
+# A step added to the job belongs here too.
+ci-local: build test check-tunnel-deps check-mdl check-skill-pack-js check-findings \
+		check-wiki-pages check-skill-index check-test-timeouts check-skill-mdl \
+		check-conformance check-migration-reference lint-go
+	@echo "ci-local passed (build-and-test, without govulncheck)"
+
 # Lint Go code
 #
 # Depends on fmt-check, which VERIFIES, not on fmt, which rewrites. `go fmt ./...`
@@ -470,13 +485,21 @@ lint-go: fmt-check vet
 # Tracked files only: the ANTLR parser under mdl/grammar/parser is generated at
 # build time and deliberately not committed. The empty-list guard is a positive
 # control -- a check that inspected nothing must fail loudly rather than pass.
+#
+# The gofmt is the toolchain's, not the first one on PATH. go.mod's `toolchain`
+# line makes `go` (and so `make fmt`) switch to that release, but a bare `gofmt`
+# is whatever Go is installed, and gofmt's output changes between releases. With
+# Go 1.24.7 installed and the toolchain at 1.27.3, the bare one failed main on a
+# file CI accepts (mdl/backend/mfmutator/splice_handler_test.go) and passed a
+# file CI then rejected (ako/mxcli#1759).
+GOFMT ?= $(shell go env GOROOT)/bin/gofmt
 fmt-check:
 	@files=$$(git ls-files '*.go' | grep -v '/parser/'); \
 	if [ -z "$$files" ]; then \
 		echo "fmt-check: found no Go files to check -- the file list is wrong"; \
 		exit 1; \
 	fi; \
-	unformatted=$$(gofmt -l $$files); \
+	unformatted=$$($(GOFMT) -l $$files); \
 	if [ -n "$$unformatted" ]; then \
 		echo "Not gofmt-clean (run 'make fmt'):"; \
 		echo "$$unformatted"; \

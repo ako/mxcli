@@ -28,8 +28,25 @@ func TestCreateModuleRole(t *testing.T) {
 	if stmt.Name.Module != "MyModule" || stmt.Name.Name != "Editor" {
 		t.Errorf("Expected MyModule.Editor, got %s.%s", stmt.Name.Module, stmt.Name.Name)
 	}
-	if stmt.Description != "Can edit content" {
-		t.Errorf("Expected description 'Can edit content', got %q", stmt.Description)
+	if stmt.DescriptionText() != "Can edit content" {
+		t.Errorf("Expected description 'Can edit content', got %q", stmt.DescriptionText())
+	}
+}
+
+// A description clause with an empty string states an empty description, which
+// clears a stored one under `create or modify`; no clause states none, which
+// keeps it (ako/mxcli#1218).
+func TestCreateModuleRole_EmptyDescriptionIsStated(t *testing.T) {
+	prog, errs := Build(`create or modify module role MyModule.Viewer description '';`)
+	if len(errs) > 0 {
+		t.Fatalf("parse: %v", errs)
+	}
+	stmt, ok := prog.Statements[0].(*ast.CreateModuleRoleStmt)
+	if !ok {
+		t.Fatalf("Expected CreateModuleRoleStmt, got %T", prog.Statements[0])
+	}
+	if stmt.Description == nil || *stmt.Description != "" {
+		t.Errorf("Description = %v, want a stated empty string", stmt.Description)
 	}
 }
 
@@ -46,8 +63,8 @@ func TestCreateModuleRole_NoDescription(t *testing.T) {
 	if !ok {
 		t.Fatalf("Expected CreateModuleRoleStmt, got %T", prog.Statements[0])
 	}
-	if stmt.Description != "" {
-		t.Errorf("Expected empty description, got %q", stmt.Description)
+	if stmt.Description != nil {
+		t.Errorf("Expected no description clause, got %q", *stmt.Description)
 	}
 }
 

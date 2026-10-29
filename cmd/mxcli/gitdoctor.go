@@ -76,11 +76,16 @@ func doctorRun(root, mprPath, remoteOverride, version string, fix bool, out io.W
 
 	fmt.Fprintln(out, "Remote")
 	remote := detectDoctorRemote(root, remoteOverride)
+	remoteNotes := "" // the remote's notes commit, when it has one and could be reached
 	switch {
 	case remote == "":
 		fmt.Fprintln(out, "  [i] no remote configured; skipping remote checks")
 	default:
-		urlRaw, urlErr := gitOut(root, "remote", "get-url", remote)
+		// The configured URL, not `git remote get-url`: that one applies
+		// url.<base>.insteadOf, so a rewrite in the user's git config (https ->
+		// git@ is a common one) made an HTTPS remote read as SSH, and --fix set
+		// the configured URL on every run without changing what git uses.
+		urlRaw, urlErr := gitOut(root, "config", "--get", "remote."+remote+".url")
 		if urlErr != nil {
 			found++
 			fmt.Fprintf(out, "  [ ] remote %s does not exist (git remote -v lists the names)\n", remote)
@@ -105,6 +110,9 @@ func doctorRun(root, mprPath, remoteOverride, version string, fix bool, out io.W
 		} else {
 			fmt.Fprintf(out, "  [i] %s: %s (not HTTPS; Studio Pro can only use HTTPS remotes)\n", remote, url)
 		}
+		if eff, err := gitOut(root, "remote", "get-url", remote); err == nil && strings.TrimSpace(eff) != url {
+			fmt.Fprintf(out, "  [i] a url.<base>.insteadOf rule in your git config makes git use %s instead; --fix leaves the rule alone\n", strings.TrimSpace(eff))
+		}
 		// Absent or unreachable notes ref is a hint, not an issue.
 		ls, err := gitOut(root, "ls-remote", remote, mxMetadataRef)
 		switch {
@@ -112,12 +120,15 @@ func doctorRun(root, mprPath, remoteOverride, version string, fix bool, out io.W
 			fmt.Fprintf(out, "  [i] could not reach %s to check %s\n", remote, mxMetadataRef)
 		case strings.Contains(ls, mxMetadataRef):
 			fmt.Fprintf(out, "  [x] %s has %s\n", remote, mxMetadataRef)
+			if f := strings.Fields(ls); len(f) > 0 {
+				remoteNotes = f[0]
+			}
 		default:
 			fmt.Fprintf(out, "  [i] %s has no %s yet; push it together with the branch\n", remote, mxMetadataRef)
 		}
 	}
 
-	fn, fx, err := doctorNotes(root, mprPath, version, fix, out)
+	fn, fx, err := doctorNotes(root, mprPath, version, remote, remoteNotes, fix, out)
 	if err != nil {
 		return err
 	}
@@ -143,11 +154,34 @@ func doctorRun(root, mprPath, remoteOverride, version string, fix bool, out io.W
 
 // doctorNotes reports (and with fix, repairs) missing and malformed notes over
 // the whole current history. It returns how many it found and how many it fixed.
-func doctorNotes(root, mprPath, version string, fix bool, out io.Writer) (found, fixed int, err error) {
+//
+// remoteNotes is the remote's notes commit ("" when it has none or could not
+// be reached). Those are the notes Studio Pro reads: its fetch force-replaces
+// the local ref with them. A local ref that does not contain that commit — a
+// fresh clone, since git clone never fetches refs/notes/* — cannot be judged:
+// every commit the remote annotates would look unannotated, and a note written
+// over it could not be pushed (non-fast-forward). So the commits are not
+// judged until the ref is fetched; --fix fetches it, as a fast-forward only,
+// which never drops a note that exists only locally.
+func doctorNotes(root, mprPath, version, remote, remoteNotes string, fix bool, out io.Writer) (found, fixed int, err error) {
 	fmt.Fprintln(out, "mx_metadata notes")
 	if _, err := gitOut(root, "rev-parse", "--verify", "--quiet", "HEAD"); err != nil {
 		fmt.Fprintln(out, "  [i] no commits yet")
 		return 0, 0, nil
+	}
+	if remoteNotes != "" && !hasNotesCommit(root, remoteNotes) {
+		found++
+		fmt.Fprintf(out, "  [ ] %s from %s is not fetched; the notes cannot be judged without it\n", mxMetadataRef, remote)
+		if !fix {
+			fmt.Fprintf(out, "      git fetch %s %s:%s\n", remote, mxMetadataRef, mxMetadataRef)
+			return found, 0, nil
+		}
+		if _, err := gitOut(root, "fetch", "--quiet", remote, mxMetadataRef+":"+mxMetadataRef); err != nil {
+			fmt.Fprintf(out, "      could not fetch it as a fast-forward (%v); if the local ref has notes the remote lacks, push or reconcile them first\n", err)
+			return found, 0, nil
+		}
+		fixed++
+		fmt.Fprintf(out, "      fetched from %s\n", remote)
 	}
 	revs := strings.Fields(gitOutOr(root, "rev-list", "--reverse", "HEAD"))
 	noted := map[string]bool{}
@@ -314,6 +348,21 @@ func sshToHTTPS(url string) (host, p string, ok bool) {
 		return m[1], m[3], true
 	}
 	return "", "", false
+}
+
+// hasNotesCommit reports whether the local notes ref is, or contains, the
+// notes commit c. False when the ref is absent or c is not in its history
+// (including when c's object was never fetched).
+func hasNotesCommit(root, c string) bool {
+	local, err := gitOut(root, "rev-parse", "--verify", "--quiet", mxMetadataRef)
+	if err != nil {
+		return false
+	}
+	if strings.TrimSpace(local) == c {
+		return true
+	}
+	_, err = gitOut(root, "merge-base", "--is-ancestor", c, strings.TrimSpace(local))
+	return err == nil
 }
 
 func gitNoteText(root, c string) string {

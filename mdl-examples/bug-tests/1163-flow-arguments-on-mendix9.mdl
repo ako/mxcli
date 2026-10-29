@@ -1,0 +1,50 @@
+mdl 1;
+-- ako/mxcli#1163: on Mendix 9.x and on 10.0–10.9 a page passing
+-- `$currentObject` to a microflow or nanoflow was refused:
+--
+--   this Mendix 9.24.30 project cannot store
+--   Forms$MicroflowParameterMapping.Expression (Mendix 10.10.0+)
+--
+-- An argument stored as Expression text arrived in 10.10. Before it, a
+-- mapping holds only a Variable (a Forms$PageVariable, required: a null one
+-- makes 9.24 fail to load the page). An argument that is the enclosing object
+-- is not stored at all, because Studio Pro 9.24 infers it: Workflow Commons
+-- 2.6.0 (9.24.0) has 77 flow calls taking parameters and no mapping on any.
+-- Below 10.10 mxcli therefore leaves `$currentObject` out and keeps a page
+-- parameter as its Variable. Any other expression (a literal, an attribute
+-- path) has no form there and is refused, naming the parameter.
+--
+-- Run it on a fresh 9.24.30 app (`mxcli new … --version 9.24.30.51827`): exec,
+-- then `mxcli docker check` reports the blank app's error count, and `mx
+-- convert -p` changes no key on the page.
+
+create module Probe1163Args;
+
+create persistent entity Probe1163Args.Item (
+  Name: String(100)
+);
+
+create microflow Probe1163Args.ACT_Item ( $Item: Probe1163Args.Item )
+begin
+  log info node 'Probe1163Args' 'item';
+end;
+
+create nanoflow Probe1163Args.NF_Item ( $Item: Probe1163Args.Item )
+begin
+  log info node 'Probe1163Args' 'item';
+end;
+
+create page Probe1163Args.Item_Edit (
+  Title: 'Item',
+  Layout: Atlas_Core.Atlas_Default,
+  Params: ( $Item: Probe1163Args.Item )
+) {
+  dataview dv (DataSource: $Item) {
+    actionbutton btnCurrent (Caption: 'Current',
+      Action: call microflow Probe1163Args.ACT_Item(Item = $currentObject))
+    actionbutton btnNanoflow (Caption: 'Nanoflow',
+      Action: call nanoflow Probe1163Args.NF_Item(Item = $currentObject))
+  }
+  actionbutton btnParam (Caption: 'Param',
+    Action: call microflow Probe1163Args.ACT_Item(Item = $Item))
+};

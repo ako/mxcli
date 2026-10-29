@@ -91,6 +91,18 @@ every unit write passes (`canon.LowerToProjectShape`, before the floor), and to
 read both shapes. A starter app is the cheapest source of the older shape's real
 bytes: `mxcli new --version 9.24.30.51827` authored by Studio Pro.
 
+A refusal is not always an older shape, though. In the next 9.24 run (#1163), one
+of five refusals was the floor's own data being wrong: an aggregate's function had
+been given the row of the fold `reduce` added in 10.0. One was a document type the
+version does not have: a published OData service before 10.4. That needs a gate,
+because lowering its property would have produced a project that does not load.
+For one more, the older shape was "nothing stored": Studio Pro 9 infers a flow
+argument that is the enclosing object. Three things settled each one: the SDK's
+version data, Studio Pro-authored bytes (a Marketplace `.mpk` holds a whole
+`project.mpr` of its Mendix version), and `mx convert -p` on the older version
+run against a floor-off build. Convert strips undeclared keys and empties values
+it does not understand, so compare values as well as key sets.
+
 **mxcli sometimes generates the environment it then fails in.** The non-root
 devcontainer that could not provision PostgreSQL was scaffolded by `mxcli new` —
 the same code emits that base image, installs postgresql, and runs as `vscode`.

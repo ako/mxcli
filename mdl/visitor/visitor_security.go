@@ -27,7 +27,10 @@ func (b *Builder) ExitCreateModuleRoleStatement(ctx *parser.CreateModuleRoleStat
 	}
 	if ctx.DESCRIPTION() != nil {
 		if sl := ctx.STRING_LITERAL(); sl != nil {
-			stmt.Description = unquoteStringLit(sl)
+			// A pointer, so `description ''` (clear it) and no clause at all
+			// (keep what is stored) stay different statements (ako/mxcli#1218).
+			d := unquoteStringLit(sl)
+			stmt.Description = &d
 		}
 	}
 	b.statements = append(b.statements, stmt)

@@ -53,11 +53,18 @@ func statementVersionGates(stmt ast.Statement) []versionGate {
 		return []versionGate{{"integration", "published_rest_grant_revoke", "grant access on published rest service",
 			"upgrade your project to 10.0+"}}
 	case *ast.CreateODataServiceStmt:
+		// The document mxcli writes, ODataPublish$PublishedODataService2, is
+		// 10.4+; before, a published OData service is a Rest$PublishedODataService,
+		// a different document mxcli does not write (ako/mxcli#1163).
+		gates := []versionGate{{"integration", "published_odata_service", "create published odata service",
+			"Before Mendix 10.4 a published OData service is a different document " +
+				"(Rest$PublishedODataService), which mxcli does not write. Publish it in Studio Pro, or upgrade the project."}}
 		if s.SupportsGraphQL {
-			return []versionGate{{"integration", "odata_graphql", "SupportsGraphQL on a published OData service",
+			gates = append(gates, versionGate{"integration", "odata_graphql", "SupportsGraphQL on a published OData service",
 				"Publishing a service as GraphQL as well arrived in Studio Pro 10.14. " +
-					"Remove SupportsGraphQL to publish OData only."}}
+					"Remove SupportsGraphQL to publish OData only."})
 		}
+		return gates
 	case *ast.CreateMessageDefinitionStmt:
 		return []versionGate{messageDefinitionDocumentGate("create message definition")}
 	case *ast.AlterSettingsStmt:
