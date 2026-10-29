@@ -1,0 +1,98 @@
+mdl 1;
+-- ako/mxcli#1771: what an older user task cannot store is refused up front
+-- with MDL-VERSION01, by `mxcli check -p` and by exec before anything is
+-- written. Before, these were written as they are on 11.2+:
+--   - group targeting below 11.2. mx check 10.24.24 then reported CE1859
+--     "XPath constraint is required", and `mx convert` emptied the
+--     targeting. Before 11.2 a user task targets users only.
+--   - a multi-user task below 10.12, with the 10.12 types. mx check 9.24.30
+--     could not load the project (TypeCacheUnknownTypeException).
+-- Below 10.12 a multi-user task is now written as a Workflows$UserTask (see
+-- 1771-user-task-below-10-12.mdl), which has no room for what came later:
+--   multi user task                          9.22
+--   decide by majority / threshold           10.0
+--   await all users                          10.2
+--   decide by microflow                      10.3
+--   targeting groups xpath / microflow       11.2
+-- (mendixmodelsdk 4.117.0 StructureVersionInfo.)
+--
+-- EXPECTED: `mxcli check` passes this file. With -p on a project below a
+-- floor, each workflow that states the feature is reported as MDL-VERSION01,
+-- naming it. Measured on fresh apps:
+--   9.24.30.51827    WF_Majority, WF_Await, WF_Microflow, WF_Groups
+--   10.24.24.119653  WF_Groups
+--   11.13.0          none; exec writes all five, and mx check reports 0 errors.
+
+create module Probe1771Gt;
+
+create persistent entity Probe1771Gt.Request ( Title: String(100) );
+
+create microflow Probe1771Gt.ACT_Groups ($Workflow: System.Workflow, $Context: Probe1771Gt.Request)
+returns list of System.WorkflowGroup as $Groups
+begin
+  retrieve $Groups from System.WorkflowGroup;
+  return $Groups;
+end;
+
+create microflow Probe1771Gt.ACT_Decide ($WorkflowUserTask: System.WorkflowUserTask)
+returns String as $Outcome
+begin
+  return 'Yes';
+end;
+
+create page Probe1771Gt.TaskPage (
+  title: 'Task',
+  layout: Atlas_Core.Atlas_Default,
+  params: ( $WorkflowUserTask: System.WorkflowUserTask )
+) {
+  dynamictext txt1 (content: 'Task')
+};
+
+create workflow Probe1771Gt.WF_Veto
+  parameter $WorkflowContext: Probe1771Gt.Request
+begin
+  multi user task Vote 'Vote'
+    page Probe1771Gt.TaskPage
+    targeting users xpath [Name = 'admin']
+    decide by veto 'No'
+    outcomes 'Yes' { } 'No' { };
+end workflow;
+
+create workflow Probe1771Gt.WF_Majority
+  parameter $WorkflowContext: Probe1771Gt.Request
+begin
+  multi user task Vote 'Vote'
+    page Probe1771Gt.TaskPage
+    targeting users xpath [Name = 'admin']
+    decide by majority more than half fallback 'No'
+    outcomes 'Yes' { } 'No' { };
+end workflow;
+
+create workflow Probe1771Gt.WF_Await
+  parameter $WorkflowContext: Probe1771Gt.Request
+begin
+  multi user task Vote 'Vote'
+    page Probe1771Gt.TaskPage
+    targeting users xpath [Name = 'admin']
+    await all users
+    outcomes 'Yes' { } 'No' { };
+end workflow;
+
+create workflow Probe1771Gt.WF_Microflow
+  parameter $WorkflowContext: Probe1771Gt.Request
+begin
+  multi user task Vote 'Vote'
+    page Probe1771Gt.TaskPage
+    targeting users xpath [Name = 'admin']
+    decide by microflow Probe1771Gt.ACT_Decide
+    outcomes 'Yes' { } 'No' { };
+end workflow;
+
+create workflow Probe1771Gt.WF_Groups
+  parameter $WorkflowContext: Probe1771Gt.Request
+begin
+  user task Review 'Review'
+    page Probe1771Gt.TaskPage
+    targeting groups microflow Probe1771Gt.ACT_Groups
+    outcomes 'Done' { };
+end workflow;
