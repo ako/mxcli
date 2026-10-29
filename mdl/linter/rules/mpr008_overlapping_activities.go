@@ -15,6 +15,11 @@ import (
 const activityBoxWidth = 120
 const activityBoxHeight = 60
 
+// eventSize is the side of an event's box (start, end, error, break, continue)
+// for one that stores no size: Studio Pro stores 20x20 on every event it draws
+// (all 712 in ako/TestApp and PedApp), and so does mxcli.
+const eventSize = 20
+
 // OverlappingActivitiesRule flags microflow activities whose canvas positions overlap.
 //
 // The most common cause is writing multiple MDL statements after a single @position
@@ -124,6 +129,11 @@ func boxesOverlap(a, b actInfo) bool {
 func newActInfo(obj microflows.MicroflowObject, caption string) actInfo {
 	p := obj.GetPosition()
 	w, h := activityBoxWidth, activityBoxHeight
+	switch obj.(type) {
+	case *microflows.StartEvent, *microflows.EndEvent, *microflows.ErrorEvent,
+		*microflows.BreakEvent, *microflows.ContinueEvent:
+		w, h = eventSize, eventSize
+	}
 	if s, ok := obj.(interface{ GetSize() model.Size }); ok {
 		if sz := s.GetSize(); sz.Width > 0 && sz.Height > 0 {
 			w, h = sz.Width, sz.Height
@@ -170,8 +180,24 @@ func overlapPlanes(objects []microflows.MicroflowObject) [][]actInfo {
 				}
 			case *microflows.ExclusiveSplit:
 				plane = append(plane, newActInfo(act, act.Caption))
+			case *microflows.InheritanceSplit:
+				plane = append(plane, newActInfo(act, act.Caption))
 			case *microflows.ExclusiveMerge:
 				plane = append(plane, newActInfo(act, "(merge)"))
+			// Events are nodes on the canvas too. Leaving them out hid an
+			// activity drawn on a handler's end event: two error handler rows
+			// laid on top of each other were reported only when an activity
+			// happened to land on an activity (ako/mxcli#1768).
+			case *microflows.StartEvent:
+				plane = append(plane, newActInfo(act, "(start)"))
+			case *microflows.EndEvent:
+				plane = append(plane, newActInfo(act, "(end)"))
+			case *microflows.ErrorEvent:
+				plane = append(plane, newActInfo(act, "(error)"))
+			case *microflows.BreakEvent:
+				plane = append(plane, newActInfo(act, "(break)"))
+			case *microflows.ContinueEvent:
+				plane = append(plane, newActInfo(act, "(continue)"))
 			}
 		}
 		planes = append(planes, plane)
