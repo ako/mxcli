@@ -1,0 +1,61 @@
+mdl 1;
+-- ako/mxcli#1771: on Mendix 9.x to 11.1, `alter workflow … { set (Targeting: …)
+-- on … }` reported "Altered workflow" and changed nothing. describe
+-- printed the old targeting afterwards, and mx check stayed clean, because
+-- the old targeting was still valid.
+--
+-- Below 11.2 a stored user task holds its targeting as UserSource. The ALTER
+-- mutator set UserTargeting, the 11.2 key, and only where the task already had
+-- one, so on those versions it found none and did nothing. It now replaces the
+-- stored targeting, whichever key holds it. The write then stores it in the
+-- version's shape (see 1771-user-task-targeting-below-11-2.mdl).
+--
+-- Measured on fresh apps (`mxcli new … --skip-build`): exec, then describe,
+-- then `mxcli docker check`.
+--   9.24.30.51827, 10.24.24.119653  before: the old targeting was kept. After:
+--                    `[Name = 'reviewer']` and ACT_GetReviewers. 0 errors, with
+--                    the version's key set (Workflows$UserTask on 9.24).
+--   11.13.0          the new targeting both before and after, 0 errors.
+
+create module Probe1771At;
+
+create persistent entity Probe1771At.Request ( Title: String(100) );
+
+create microflow Probe1771At.ACT_GetUsers ($Workflow: System.Workflow, $Context: Probe1771At.Request)
+returns list of System.User as $Users
+begin
+  retrieve $Users from System.User;
+  return $Users;
+end;
+
+create microflow Probe1771At.ACT_GetReviewers ($Workflow: System.Workflow, $Context: Probe1771At.Request)
+returns list of System.User as $Users
+begin
+  retrieve $Users from System.User where Name = 'reviewer';
+  return $Users;
+end;
+
+create page Probe1771At.TaskPage (
+  title: 'Task',
+  layout: Atlas_Core.Atlas_Default,
+  params: ( $WorkflowUserTask: System.WorkflowUserTask )
+) {
+  dynamictext txt1 (content: 'Task')
+};
+
+create workflow Probe1771At.WF_Edit
+  parameter $WorkflowContext: Probe1771At.Request
+  display 'Edit'
+begin
+  user task Review 'Review'
+    page Probe1771At.TaskPage
+    targeting users xpath [Name = 'admin']
+    outcomes 'Done' { };
+  user task Handle 'Handle'
+    page Probe1771At.TaskPage
+    targeting users xpath [Name = 'admin']
+    outcomes 'Done' { };
+end workflow;
+
+alter workflow Probe1771At.WF_Edit { set (Targeting: xpath [Name = 'reviewer']) on Review; };
+alter workflow Probe1771At.WF_Edit { set (Targeting: microflow Probe1771At.ACT_GetReviewers) on Handle; };

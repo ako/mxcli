@@ -214,6 +214,34 @@ func TestNormalize_RefusesWhatAnOlderUserTaskCannotHold(t *testing.T) {
 	}
 }
 
+// `alter workflow … set activity '…' targeting …` on a stored Mendix 9 task
+// puts a UserTargeting in the place of its UserSource (the mutator writes the
+// current shape). The write lowers it back: the task keeps Studio Pro 9.24's
+// key set, with the new targeting value.
+func TestNormalize_EditedMendix9UserTaskTargeting(t *testing.T) {
+	task := bson.D{{Key: "$ID", Value: eid()}, {Key: "$Type", Value: "Workflows$UserTask"},
+		{Key: "Annotation", Value: nil}, {Key: "AutoAssignSingleTargetUser", Value: false}, {Key: "Caption", Value: "Edited"},
+		{Key: "DueDate", Value: ""}, {Key: "Name", Value: "Edited"},
+		{Key: "OnCreatedEvent", Value: bson.D{{Key: "$ID", Value: eid()}, {Key: "$Type", Value: "Workflows$NoEvent"}}},
+		{Key: "Outcomes", Value: bson.A{int32(3), userTaskOutcome("Done")}},
+		{Key: "TaskDescription", Value: stringTemplate("")}, {Key: "TaskName", Value: stringTemplate("Edited")},
+		{Key: "TaskPage", Value: bson.D{{Key: "$ID", Value: eid()}, {Key: "$Type", Value: "Workflows$PageReference"}, {Key: "Page", Value: "M.TaskPage"}}},
+		{Key: "UserTargeting", Value: xpathUserTargeting("[Name = 'reviewer']")},
+		{Key: "UserTaskCompletion", Value: bson.D{{Key: "$ID", Value: eid()}, {Key: "$Type", Value: "Workflows$SingleInputCompletion"}}}}
+	d, err := normalizeShape(t, pv(9, 24, 30), workflowWithUserTasks(task))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := findNamed(d, "Edited")
+	if keys := strings.Join(keysOf(got), ","); keys != studioPro924UserTask {
+		t.Errorf("edited task keys %s, want %s", keys, studioPro924UserTask)
+	}
+	src, _ := get(got, "UserSource")
+	if x, _ := get(src.(bson.D), "XPathConstraint"); x != "[Name = 'reviewer']" {
+		t.Errorf("edited targeting %v, want the new XPath", src)
+	}
+}
+
 func indexOf(d bson.D, key string) int {
 	for i, e := range d {
 		if e.Key == key {
