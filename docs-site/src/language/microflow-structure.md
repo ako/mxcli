@@ -152,11 +152,15 @@ $Order = CREATE Sales.Order (Status = 'New');
 Positions are optional. A microflow written without them is laid out by mxcli: the
 main line runs left to right and wraps onto a new row once it passes two canvas
 widths (2880 px); a guard — `if … then …; return; end if` — drops its branch into the
-lane below while the main line carries on above it; and a `case` of four or more
-branches leaves the decision in three groups (top, right, bottom) so its lines do not
-cross. A statement that carries `@position` is never moved, and becomes the start of
-the row for the statements after it — so either place everything or nothing: a few
-hand-placed statements are not measured against what is laid out around them.
+lane below while the main line carries on above it; a custom error handler's row hangs
+in that same lane, 130 px under its activity; and a `case` of four or more branches
+leaves the decision in three groups (top, right, bottom) so its lines do not cross.
+Whatever reaches down into the lane — a decision, a loop, an activity with an error
+handler of its own — waits for the lane to clear, so two consecutive handlers never
+share a row; a plain activity does not wait. A statement that carries `@position` is
+never moved, and becomes the start of the row for the statements after it — so either
+place everything or nothing: a few hand-placed statements are not measured against
+what is laid out around them.
 
 To re-arrange a flow that already exists — one drawn in Studio Pro, or one whose
 positions no longer fit after edits — run `mxcli layout flows`. It applies this

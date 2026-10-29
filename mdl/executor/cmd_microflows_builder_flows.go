@@ -1015,6 +1015,10 @@ func (fb *flowBuilder) addErrorHandlerFlow(sourceActivityID model.ID, sourceX in
 		fb.returnEndIDs[id] = true
 	}
 
+	// The row now occupies the lane under this activity's line, so the next
+	// statement that reaches into that lane waits for it (ako/mxcli#1768).
+	fb.reserveHandlerRow(sourceX, errorBody)
+
 	// If the error handler ends with RAISE ERROR or RETURN, it terminates there.
 	// Otherwise, return the last activity ID so caller can create a merge.
 	if errBuilder.endsWithReturn {

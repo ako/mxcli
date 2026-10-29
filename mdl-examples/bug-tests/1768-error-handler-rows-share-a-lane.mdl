@@ -1,0 +1,66 @@
+-- ============================================================================
+-- ako/mxcli#1768 (mendixlabs/mxcli#1672) — the error handlers of two
+-- consecutive activities were drawn in one row, the second on the first
+-- ============================================================================
+--
+-- Without @position a custom error handler is a row 130px under its activity,
+-- running right, and the main line carries on one spacing after the activity
+-- whatever the row's length. A second activity with a handler started its row
+-- at its own x, inside the first. Reported, from `describe … with handles`:
+--
+--   first handler: $FirstFailed 360;330, log 520;330, end event 680;330
+--   $Second 680;200, second handler: $SecondFailed 680;330  <- on the end event
+--
+-- `layout flows --dry-run` called the flow already laid out, and MPR008 said
+-- nothing, because it did not compare end events.
+--
+-- Expected after exec: `describe microflow BugTest1768.SUB_TwoHandlers with
+-- handles` keeps $First, its handler row and $Body where they were (360;200,
+-- 360..680;330, 520;200) and places $Second at 790;200 with its row at
+-- 790..1110;330 — clear of the first row's end, with the gap two activities
+-- keep. `lint -r MPR008` reports nothing, and `layout flows --dry-run` calls
+-- every flow below already laid out.
+
+mdl 1;
+
+create module BugTest1768;
+
+create non-persistent entity BugTest1768.Result (IsDone: Boolean, Code: Integer);
+
+create or modify microflow BugTest1768.SUB_TwoHandlers ($Url: String) returns BugTest1768.Result as $Result
+begin
+  $First = call rest service get '{1}' with ({1} = $Url) (Timeout: 30) returns response on error without rollback begin
+    $FirstFailed = create BugTest1768.Result (Code = 1);
+    log error node 'BugTest1768' 'first failed';
+    return $FirstFailed;
+  end error;
+  declare $Body String = $First/Content;
+  $Second = call rest service get '{1}' with ({1} = $Body) (Timeout: 30) returns response on error without rollback begin
+    $SecondFailed = create BugTest1768.Result (Code = 2);
+    log error node 'BugTest1768' 'second failed';
+    return $SecondFailed;
+  end error;
+  $Done = create BugTest1768.Result (IsDone = true);
+  return $Done;
+end;
+
+-- One more statement in the first handler: its row then reached 840;330, two
+-- objects deep into the second row, and MPR008 reported only the one of the two
+-- overlaps that was activity on activity.
+create or modify microflow BugTest1768.SUB_TwoHandlersLonger ($Url: String) returns BugTest1768.Result as $Result
+begin
+  $First = call rest service get '{1}' with ({1} = $Url) (Timeout: 30) returns response on error without rollback begin
+    $FirstFailed = create BugTest1768.Result (Code = 1);
+    log error node 'BugTest1768' 'first failed';
+    log info node 'BugTest1768' 'first failed, details';
+    return $FirstFailed;
+  end error;
+  declare $Body String = $First/Content;
+  $Second = call rest service get '{1}' with ({1} = $Body) (Timeout: 30) returns response on error without rollback begin
+    $SecondFailed = create BugTest1768.Result (Code = 2);
+    log error node 'BugTest1768' 'second failed';
+    return $SecondFailed;
+  end error;
+  $Done = create BugTest1768.Result (IsDone = true);
+  return $Done;
+end;
