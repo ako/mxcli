@@ -19,20 +19,17 @@ mdl 1;
 -- EXPECTED: `mxcli check` passes this file. With -p on a project below a
 -- floor, each workflow that states the feature is reported as MDL-VERSION01,
 -- naming it. Measured on fresh apps:
---   9.24.30.51827    WF_Majority, WF_Await, WF_Microflow, WF_Groups
---   10.24.24.119653  WF_Groups
+--   9.24.30.51827    WF_Majority, WF_Await, WF_Microflow, WF_Groups; exec
+--                    writes nothing.
+--   10.11.0.37074    WF_Groups. Without it, exec writes the other four as
+--                    Workflows$UserTask with a MultiInputCompletion, and mx
+--                    check reports 0 errors.
+--   10.24.24.119653  WF_Groups.
 --   11.13.0          none; exec writes all five, and mx check reports 0 errors.
 
 create module Probe1771Gt;
 
 create persistent entity Probe1771Gt.Request ( Title: String(100) );
-
-create microflow Probe1771Gt.ACT_Groups ($Workflow: System.Workflow, $Context: Probe1771Gt.Request)
-returns list of System.WorkflowGroup as $Groups
-begin
-  retrieve $Groups from System.WorkflowGroup;
-  return $Groups;
-end;
 
 create microflow Probe1771Gt.ACT_Decide ($WorkflowUserTask: System.WorkflowUserTask)
 returns String as $Outcome
@@ -93,6 +90,6 @@ create workflow Probe1771Gt.WF_Groups
 begin
   user task Review 'Review'
     page Probe1771Gt.TaskPage
-    targeting groups microflow Probe1771Gt.ACT_Groups
+    targeting groups xpath [Name = 'Reviewers']
     outcomes 'Done' { };
 end workflow;

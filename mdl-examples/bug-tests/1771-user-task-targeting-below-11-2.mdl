@@ -26,6 +26,8 @@ mdl 1;
 --   10.24.24.119653  before: CE1859 on every task. After: 0 errors.
 --                    `mx convert -p` 10.24.24 changes no key and no value.
 --                    describe → exec prints "Unchanged workflow".
+--   10.11.0.37074    0 errors. The task is a Workflows$UserTask there (see
+--                    1771-user-task-below-10-12.mdl), with the same UserSource.
 --   11.13.0          0 errors before and after, with the same key sets.
 
 create module Probe1771Tg;

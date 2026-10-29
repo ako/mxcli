@@ -15,6 +15,7 @@ mdl 1;
 --   9.24.30.51827, 10.24.24.119653  before: the old targeting was kept. After:
 --                    `[Name = 'reviewer']` and ACT_GetReviewers. 0 errors, with
 --                    the version's key set (Workflows$UserTask on 9.24).
+--   10.11.0.37074    after: the new targeting, 0 errors.
 --   11.13.0          the new targeting both before and after, 0 errors.
 
 create module Probe1771At;
