@@ -347,7 +347,19 @@ func rawAwaitsAllUsers(d map[string]any) bool {
 // resets when the statement omits it.
 func rawMultiUserTaskSettings(raw map[string]any) (rules, participants, await []string) {
 	walkRawDocs(raw, func(d map[string]any) {
-		if t, _ := d["$Type"].(string); t != "Workflows$MultiUserTaskActivity" {
+		switch t, _ := d["$Type"].(string); t {
+		case "Workflows$MultiUserTaskActivity":
+		case "Workflows$UserTask":
+			// Below 10.12 a multi-user task is a UserTask, and its settings live
+			// on its MultiInputCompletion (ako/mxcli#1771).
+			c, _ := d["UserTaskCompletion"].(map[string]any)
+			if ct, _ := c["$Type"].(string); ct != "Workflows$MultiInputCompletion" {
+				return
+			}
+			d = map[string]any{"Name": d["Name"], "Outcomes": d["Outcomes"],
+				"CompletionCriteria": c["CompletionCriteria"], "TargetUserInput": c["TargetUserInput"],
+				"AwaitAllUsers": c["AwaitAllUsers"]}
+		default:
 			return
 		}
 		if r := rawCompletionRule(d); r != "" {

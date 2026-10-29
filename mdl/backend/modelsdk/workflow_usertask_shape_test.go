@@ -56,6 +56,60 @@ func storedUserTask(t *testing.T, act *workflows.UserTask, pv *types.ProjectVers
 	return ut
 }
 
+// Below 10.12 a user task is a Workflows$UserTask, and a multi-user task's
+// rule, participants and `await all users` live in its UserTaskCompletion (a
+// Workflows$MultiInputCompletion). Each reads back as the statement gave it,
+// as on 10.12 and later.
+func TestWorkflowRead_UserTaskInTheMendix9Shape(t *testing.T) {
+	outcomes := func() []*workflows.UserTaskOutcome {
+		return []*workflows.UserTaskOutcome{{Value: "Approve"}, {Value: "Reject"}}
+	}
+	for _, tc := range []struct {
+		name  string
+		pv    *types.ProjectVersion
+		multi bool
+		cc    *workflows.CompletionCriteria
+		input *workflows.TargetUserInput
+		await bool
+	}{
+		{"single", &types.ProjectVersion{MajorVersion: 9, MinorVersion: 24, PatchVersion: 30}, false, nil, nil, false},
+		{"consensus", &types.ProjectVersion{MajorVersion: 9, MinorVersion: 24, PatchVersion: 30}, true,
+			&workflows.CompletionCriteria{Kind: "Consensus", FallbackOutcome: "Reject"}, &workflows.TargetUserInput{Kind: "All"}, false},
+		{"veto, two participants", &types.ProjectVersion{MajorVersion: 9, MinorVersion: 24, PatchVersion: 30}, true,
+			&workflows.CompletionCriteria{Kind: "Veto", VetoOutcome: "Reject"}, &workflows.TargetUserInput{Kind: "Absolute", Amount: 2}, false},
+		{"majority, await all", &types.ProjectVersion{MajorVersion: 10, MinorVersion: 6}, true,
+			&workflows.CompletionCriteria{Kind: "Majority", CompletionType: "Absolute", FallbackOutcome: "Approve"},
+			&workflows.TargetUserInput{Kind: "Percentage", Percentage: 50}, true},
+		{"control: 10.24", &types.ProjectVersion{MajorVersion: 10, MinorVersion: 24, PatchVersion: 24}, true,
+			&workflows.CompletionCriteria{Kind: "Veto", VetoOutcome: "Reject"}, &workflows.TargetUserInput{Kind: "Absolute", Amount: 2}, true},
+	} {
+		ut := &workflows.UserTask{Page: "M.TaskPage", IsMulti: tc.multi, Outcomes: outcomes(),
+			UserSource:         &workflows.XPathBasedUserSource{XPath: "[Name = 'admin']"},
+			CompletionCriteria: tc.cc, TargetUserInput: tc.input, AwaitAllUsers: tc.await}
+		ut.Name, ut.Caption = "Review", "Review"
+
+		got := storedUserTask(t, ut, tc.pv)
+		if got.IsMulti != tc.multi {
+			t.Errorf("%s: read back multi=%v, want %v", tc.name, got.IsMulti, tc.multi)
+		}
+		if !reflect.DeepEqual(got.UserSource, ut.UserSource) {
+			t.Errorf("%s: targeting read back as %#v", tc.name, got.UserSource)
+		}
+		if !tc.multi {
+			continue
+		}
+		if got.CompletionCriteria == nil || *got.CompletionCriteria != *tc.cc {
+			t.Errorf("%s: rule read back as %+v, want %+v", tc.name, got.CompletionCriteria, tc.cc)
+		}
+		if got.TargetUserInput == nil || *got.TargetUserInput != *tc.input {
+			t.Errorf("%s: participants read back as %+v, want %+v", tc.name, got.TargetUserInput, tc.input)
+		}
+		if got.AwaitAllUsers != tc.await {
+			t.Errorf("%s: await all users read back as %v, want %v", tc.name, got.AwaitAllUsers, tc.await)
+		}
+	}
+}
+
 func TestWorkflowRead_UserTaskTargetingInTheMendix10Shape(t *testing.T) {
 	for _, tc := range []struct {
 		name   string

@@ -187,6 +187,7 @@ Some properties kept their meaning and changed how they are stored. mxcli builds
 | Any data source's `ForceFullObjects` | 10.8 | Not stored |
 | The `PersistentId` of a workflow, activity, outcome or boundary event | 10.21 | Not stored |
 | The end of a parallel split path (`Workflows$EndOfParallelSplitPathActivity`, a type introduced in 10.21) | 10.21 | Not stored: a path holds its activities and nothing more (Studio Pro 9.4) |
+| A user task (`Workflows$SingleUserTaskActivity` / `MultiUserTaskActivity`, types introduced in 10.12) | 10.12 | A `Workflows$UserTask` whose `UserTaskCompletion` is a `SingleInputCompletion`, or a `MultiInputCompletion` holding the rule, the participants and, from 10.2, `AwaitAllUsers` (Studio Pro 9.24, [ako/mxcli#1771](https://github.com/ako/mxcli/issues/1771)) |
 | A user task's targeting (`targeting users xpath […]`, `targeting users microflow …`, none) | 11.2 | A `UserSource` (`XPathBasedUserSource`, `MicroflowBasedUserSource`, `EmptyUserSource`) holding the same value, instead of a `UserTargeting` ([ako/mxcli#1771](https://github.com/ako/mxcli/issues/1771)) |
 | A constant's value in a configuration (`alter settings constant … in configuration`) | 10.9 | A flat `Value` string on the override, instead of a `Settings$SharedValue` under `SharedOrPrivateValue` |
 | A page's flow call argument that is the enclosing object (`call microflow M.F(P = $currentObject)`, `call nanoflow …`) | 10.10 | Not stored: Studio Pro infers it. A page parameter, snippet parameter or widget argument is stored as before, as a `Variable` |
@@ -199,6 +200,7 @@ What an older shape cannot hold is refused, naming the element, rather than drop
 - a private constant value in a configuration below 10.9;
 - a page's flow call argument that is any other expression (a literal, an attribute path) below 10.10;
 - a user task targeting groups (`targeting groups xpath …`, `targeting groups microflow …`) below 11.2, where a task targets users only ([ako/mxcli#1771](https://github.com/ako/mxcli/issues/1771));
+- a multi-user task below 9.22, `decide by majority` or `decide by threshold` below 10.0, `decide by microflow` below 10.3, `await all users` below 10.2, and a boundary event on a user task below 10.14 ([ako/mxcli#1771](https://github.com/ako/mxcli/issues/1771));
 - an aggregate over an expression (`sum $L of …`), `reduce`, `all` or `any` below 10.0. The plain `count`, `sum`, `average`, `minimum` and `maximum` are written on every version ([ako/mxcli#1163](https://github.com/ako/mxcli/issues/1163)).
 
 Before this, `describe` on 9.24 printed none of these properties, so a describe → exec round trip removed them. Writing a data view on 9.24 was refused outright.
