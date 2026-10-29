@@ -191,7 +191,7 @@ end;
 		want  string
 	}{
 		// The final return: the stored else of the described form.
-		{"a changed final return", []edit{{"  return $N;\nend;", "  return $N + $Base;\nend;"}}, "spliced: 1 replaced"},
+		{"a changed final return", []edit{{"  return $N;\nend;", "  return $N + $Base;\nend;"}}, "spliced: 1 edited in place"},
 		// An activity inserted between the guard and the final return.
 		{"an activity after the guard", []edit{{"  return $N;\nend;", "  declare $M Integer = $N * 2;\n  return $M;\nend;"}}, "spliced: 1 inserted"},
 		// Two changes straddling the guard's return: one each, never one
@@ -199,7 +199,7 @@ end;
 		{"changes on both sides of the guard's return", []edit{
 			{"declare $Base Integer = 1;", "declare $Base Integer = 2;"},
 			{"declare $Neg Integer = 0 - $N;", "declare $Neg Integer = 1 - $N;"},
-		}, "spliced: 2 replaced"},
+		}, "spliced: 2 edited in place"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h.restore()

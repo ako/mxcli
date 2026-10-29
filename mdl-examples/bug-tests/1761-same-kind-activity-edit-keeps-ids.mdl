@@ -1,0 +1,64 @@
+-- ============================================================================
+-- ako/mxcli#1761 (mendixlabs/mxcli#1667) — an edited filter gets new $IDs
+-- ============================================================================
+--
+-- Re-running `create or modify microflow` where the only change is a filter's
+-- expression did not edit the activity, it replaced it. Measured after the
+-- second run (Mendix 10.24.28):
+--
+--   $BigList: the Microflows$ActionActivity, Microflows$ListOperationsAction
+--   and Microflows$FilterByExpression all got new $IDs. [...] The decision's
+--   ExclusiveSplit and SplitCondition kept theirs.
+--
+-- and exec reported both as `spliced: 1 replaced`. Studio Pro compares and
+-- merges by $ID, so it showed the filter as one activity removed and another
+-- added; check, mx check, diff and describe all looked fine.
+--
+-- An activity replaced by one of the same kind — the same action — is now an
+-- edit of the stored one: it keeps its $ID, and so do its action and every
+-- element under it that pairs up (a member by its attribute or association,
+-- an argument by its parameter). Several activities each changed in their own
+-- place are each edited so.
+--
+-- To reproduce: exec this file against a project, then change every `> 10`
+-- to `>= 10`, `= 7` to `= 8` and `Factor = 2` to `Factor = 3`, and exec it
+-- again. The second run reports
+--   Modified microflow: BugTest1761.FilterSales (spliced: 1 edited in place)
+--   Modified microflow: BugTest1761.Decide (spliced: 1 edited in place)
+--   Modified microflow: BugTest1761.Kinds (spliced: 3 edited in place)
+-- and `mxcli bson dump --type microflow --object BugTest1761.FilterSales`
+-- shows the same $IDs as before it; a third run writes nothing. An activity
+-- replaced by another kind —
+-- a log where the filter was — still reports `replaced with new element IDs`.
+
+mdl 1;
+
+create module BugTest1761;
+
+create or modify persistent entity BugTest1761.Sale ( Amount: Integer, Note: String(200) );
+
+create or modify microflow BugTest1761.FilterSales ( $SaleList: List of BugTest1761.Sale )
+returns List of BugTest1761.Sale as $BigList
+begin
+  $SmallList = filter $SaleList where $currentObject/Amount < 5;
+  $BigList = filter $SaleList where $currentObject/Amount > 10;
+  return $BigList;
+end;
+
+create or modify microflow BugTest1761.Decide ( $N: Integer ) returns Boolean as $Result
+begin
+  if $N > 10 then return true; else return false; end if;
+end;
+
+create or modify microflow BugTest1761.Sub ( $Sale: BugTest1761.Sale, $Factor: Integer ) returns Boolean as $Ok
+begin
+  return true;
+end;
+
+create or modify microflow BugTest1761.Kinds ( $SaleList: List of BugTest1761.Sale ) returns Boolean as $Ok
+begin
+  $Found = find $SaleList where $currentObject/Amount > 10;
+  change $Found (Amount = 7, Note = 'x');
+  $Ok = call microflow BugTest1761.Sub (Sale = $Found, Factor = 2);
+  return $Ok;
+end;

@@ -341,7 +341,13 @@ var metamodelVersions = []map[string]TypeVersionInfo{
 		},
 		"CustomWidgets$WidgetReturnType": {
 			Properties: map[string]PropertyVersionInfo{
-				"type": {Introduced: "9.20.0"},
+				// Fixed by hand (ako/mxcli#1163): the vendored generator gave type
+				// the row of assignableTo, which it then left out. mendixmodelsdk
+				// 4.117.0 has type with no version and assignableTo introduced
+				// 9.20.0; Studio Pro 9.1.1 and 9.4.0 store Type and no AssignableTo
+				// on every return type, Studio Pro 9.24.3 both.
+				"assignableTo": {Introduced: "9.20.0"},
+				"type":         {},
 			},
 		},
 		"CustomWidgets$WidgetValue": {
@@ -2416,9 +2422,15 @@ var metamodelVersions = []map[string]TypeVersionInfo{
 		},
 		"Forms$GroupBox": {
 			Properties: map[string]PropertyVersionInfo{
-				"caption": {Introduced: "8.10.0"},
-				"widget":  {Deleted: "7.15.0"},
-				"widgets": {Introduced: "7.15.0"},
+				// Fixed by hand (ako/mxcli#1163): the vendored generator gave caption
+				// the row of headerMode, which it then left out. mendixmodelsdk
+				// 4.117.0 has caption with no version and headerMode introduced
+				// 8.10.0; Studio Pro 9.1.1, 9.4.0 and 9.24.3 store both (the caption
+				// as CaptionTemplate).
+				"caption":    {},
+				"headerMode": {Introduced: "8.10.0"},
+				"widget":     {Deleted: "7.15.0"},
+				"widgets":    {Introduced: "7.15.0"},
 			},
 		},
 		"Forms$Header": {

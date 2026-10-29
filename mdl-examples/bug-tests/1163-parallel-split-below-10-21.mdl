@@ -1,0 +1,64 @@
+mdl 1;
+-- ako/mxcli#1163: on Mendix 9.x and on 10.0–10.20 a workflow with a
+-- `parallel split` made the project unloadable. `exec` reported success, then
+-- mx check (and Studio Pro) could not load the project at all:
+--
+--   TypeCacheUnknownTypeException: The type cache does not contain a type
+--   with qualified name Workflows$EndOfParallelSplitPathActivity.
+--
+-- mxcli ends every parallel split path with that marker, because from 10.21
+-- the workflow engine runs a path only up to it. The type itself arrived in
+-- 10.21 (mendixmodelsdk), and the property floor checks property versions,
+-- never a type's own. Before 10.21 Studio Pro stores a path as its activities
+-- and nothing else (Studio Pro 9.4.0: the Marketplace's "Example project
+-- workflow extension" 2.0.0, a split whose two paths hold a user task each),
+-- so below 10.21 the marker is no longer written.
+--
+-- Measured on fresh apps (`mxcli new … --skip-build`), exec then `mxcli docker
+-- check`:
+--   9.24.30.51827   before: TypeCacheUnknownTypeException; after: 0 errors.
+--                   `mx convert -p` 9.24.30 changes no key; describe → exec
+--                   prints "Unchanged workflow".
+--   10.12.19.81612  before: TypeCacheUnknownTypeException; after: 0 errors;
+--                   `mx convert -p` 10.12.19 changes no key.
+--   10.24.24, 11.13.0  every path still ends in the marker, 0 errors, the
+--                   same key sets as before the fix.
+--
+-- The ALTER below inserts a path through the mutator (InsertPath), outside
+-- CREATE's encoder; the lowering runs on every unit write, so it covers both.
+
+create module Probe1163Ps;
+
+create persistent entity Probe1163Ps.Request (
+  Title: String(100),
+  Amount: Integer
+);
+
+create microflow Probe1163Ps.ACT_Left ($WorkflowContext: Probe1163Ps.Request)
+begin
+  log info node 'Probe1163Ps' 'left';
+end;
+
+create microflow Probe1163Ps.ACT_Right ($WorkflowContext: Probe1163Ps.Request)
+begin
+  log info node 'Probe1163Ps' 'right';
+end;
+
+create workflow Probe1163Ps.WF_Split
+  parameter $WorkflowContext: Probe1163Ps.Request
+  display 'Split'
+begin
+  call microflow Probe1163Ps.ACT_Left;
+  parallel split
+    path 1 { call microflow Probe1163Ps.ACT_Left; }
+    path 2 { call microflow Probe1163Ps.ACT_Right; }
+    path 3 { }
+  ;
+  call microflow Probe1163Ps.ACT_Right;
+end workflow;
+
+alter workflow Probe1163Ps.WF_Split {
+  insert into 'Parallel split' { path {
+    call microflow Probe1163Ps.ACT_Right;
+  } }
+};

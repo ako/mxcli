@@ -151,6 +151,7 @@ func (a *alterFlowContext) applyTo(ctx *ExecContext, mut backend.MicroflowMutato
 			if err := a.setNodeNotes(ctx, mut, op, target); err != nil {
 				return fail(err)
 			}
+			a.noteEdited(op)
 			continue
 		}
 		if op.SetCondition {
@@ -164,6 +165,7 @@ func (a *alterFlowContext) applyTo(ctx *ExecContext, mut backend.MicroflowMutato
 				return fail(err)
 			}
 			a.noteRewritten(target, "if "+expr)
+			a.noteEdited(op)
 			continue
 		}
 		if ret, ok := returnValueEdit(op, target); ok {
@@ -177,6 +179,7 @@ func (a *alterFlowContext) applyTo(ctx *ExecContext, mut backend.MicroflowMutato
 				return fail(err)
 			}
 			a.noteRewritten(target, "return "+value)
+			a.noteEdited(op)
 			continue
 		}
 		frag, vars, err := a.buildFragmentVars(ctx, op.Body)
@@ -234,7 +237,11 @@ func (a *alterFlowContext) applyTo(ctx *ExecContext, mut backend.MicroflowMutato
 					return nil
 				})
 			}
-			err = mut.Replace(target.ID, frag)
+			if err = mut.Replace(target.ID, frag); err == nil && mut.EditedInPlace(target.ID) {
+				// One activity of the same kind: the stored one, edited
+				// (ako/mxcli#1761).
+				a.noteEdited(op)
+			}
 		default:
 			err = fmt.Errorf("unknown operation")
 		}
@@ -309,6 +316,21 @@ type alterFlowContext struct {
 	// each (ako/mxcli#1695). nil until then — and for the patch of a `create or
 	// modify`, which states its notes and has none to resolve.
 	storedNotes map[string]*microflows.Annotation
+
+	// edited are the replace operations that edited the stored node in place
+	// — a decision's condition, a return's value, a node's notes, an activity
+	// replaced by one of the same kind — so that it kept its $ID, as against
+	// one whose target was swapped for new elements (ako/mxcli#1761). The
+	// report of a `create or modify` tells the two apart.
+	edited map[*ast.AlterFlowOperation]bool
+}
+
+// noteEdited records that op edited its stored target in place.
+func (a *alterFlowContext) noteEdited(op *ast.AlterFlowOperation) {
+	if a.edited == nil {
+		a.edited = map[*ast.AlterFlowOperation]bool{}
+	}
+	a.edited[op] = true
 }
 
 // candidatesOf returns the stored candidates with the given $IDs.

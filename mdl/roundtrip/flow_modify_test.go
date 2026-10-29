@@ -86,8 +86,8 @@ func TestFlowModify_MDL1ReadsStoredStringsAsStored(t *testing.T) {
 	if bytes.Equal(h.flowUnit(t, "VAL_Feedback"), before) {
 		t.Fatal("mdl 1: a string that states another value than the stored one wrote nothing")
 	}
-	if !strings.Contains(h.out.String(), "(spliced: 1 replaced)") {
-		t.Errorf("mdl 1: want the one statement replaced by a splice, got:\n%s", h.out.String())
+	if !strings.Contains(h.out.String(), "(spliced: 1 edited in place)") {
+		t.Errorf("mdl 1: want the one statement edited in place by a splice, got:\n%s", h.out.String())
 	}
 	if again := h.mustDescribeMdl0(t, valFeedback); !strings.Contains(again, "characters\\\\n';") {
 		t.Errorf("mdl 1: want the backslash stored as written:\n%s", again)
@@ -199,7 +199,7 @@ func TestFlowModify_DropAndReplace(t *testing.T) {
 	if err := h.exec("mdl 1;\n" + edited); err != nil {
 		t.Fatalf("exec edited definition: %v", err)
 	}
-	if !strings.Contains(h.out.String(), "(spliced: 1 replaced, 1 dropped)") {
+	if !strings.Contains(h.out.String(), "(spliced: 1 edited in place, 1 dropped)") {
 		t.Errorf("want a splice report, got:\n%s", h.out.String())
 	}
 	after := h.flowUnit(t, "SUB_Feedback_Sanitize")
@@ -231,7 +231,7 @@ func TestFlowModify_BranchEditIsSpliced(t *testing.T) {
 	if err := h.exec(edited); err != nil {
 		t.Fatalf("exec edited definition: %v", err)
 	}
-	if !strings.Contains(h.out.String(), "(spliced: 1 replaced)") {
+	if !strings.Contains(h.out.String(), "(spliced: 1 edited in place)") {
 		t.Errorf("want a splice report, got:\n%s", h.out.String())
 	}
 	after := h.flowUnit(t, "VAL_Feedback")
@@ -334,7 +334,7 @@ end;`
 	if err := h.exec("mdl 1;\n" + edited); err != nil {
 		t.Fatalf("a value edit in the loop body under mdl 1: %v", err)
 	}
-	if !strings.Contains(h.out.String(), "(spliced: 1 replaced)") {
+	if !strings.Contains(h.out.String(), "(spliced: 1 edited in place)") {
 		t.Errorf("a value edit in the loop body: want a splice, got:\n%s", h.out.String())
 	}
 	described = h.mustDescribeMdl0(t, target)
@@ -371,7 +371,7 @@ end;`
 	if err := h.exec("mdl 1;\n" + after); err != nil {
 		t.Fatalf("control under mdl 1: %v", err)
 	}
-	if !strings.Contains(h.out.String(), "(spliced: 1 replaced)") {
+	if !strings.Contains(h.out.String(), "(spliced: 1 edited in place)") {
 		t.Errorf("control: want a splice, got:\n%s", h.out.String())
 	}
 }

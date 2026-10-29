@@ -6,6 +6,8 @@ import (
 	"context"
 	"strings"
 	"sync"
+
+	"github.com/mendixlabs/mxcli/mdl/types"
 )
 
 // buildPropertyTypeKeyMap builds a map from PropertyType $ID to PropertyKey for a CustomWidget.
@@ -1320,6 +1322,8 @@ func extractExplicitProperties(ctx *ExecContext, w map[string]any, enclosingEnti
 	}
 
 	var result []rawExplicitProp
+	stored := map[string]string{}   // primitive values, for the visibility rules
+	defaults := map[string]string{} // the stored schema's DefaultValue per key
 	props := getBsonArrayElements(obj["Properties"])
 	for _, prop := range props {
 		propMap, ok := prop.(map[string]any)
@@ -1335,6 +1339,10 @@ func extractExplicitProperties(ctx *ExecContext, w map[string]any, enclosingEnti
 		if !ok {
 			continue
 		}
+		if pv := extractString(value["PrimitiveValue"]); pv != "" {
+			stored[propKey] = pv
+		}
+		defaults[propKey] = schemas[typePointerID].Default
 
 		// Check for AttributeRef (attribute binding)
 		if attrRef, ok := value["AttributeRef"].(map[string]any); ok && attrRef != nil {
@@ -1401,7 +1409,53 @@ func extractExplicitProperties(ctx *ExecContext, w map[string]any, enclosingEnti
 			})
 		}
 	}
-	return result
+	return withoutHiddenDefaults(ctx, extractCustomWidgetID(ctx, w), result, stored, defaults)
+}
+
+// withoutHiddenDefaults drops the described properties the widget's own
+// editorConfig hides in its stored configuration while they hold their
+// default. Such a property says nothing — exec writes a hidden property the
+// script leaves out at that same default (hiddenUnnamedProperties) — and
+// printing it drew an MDL-WIDGET10 warning on describe's own output: every
+// Timeline hides one of its two format enumerations (ako/mxcli#1762).
+//
+// The rules are the ones `check` evaluates (the project's widget registry), so
+// the two cannot disagree about what is hidden. A hidden property holding a
+// NON-default value is kept: that widget fails mx check with CE0463, and
+// printing the value is what lets `check` say so instead of describe hiding it.
+func withoutHiddenDefaults(ctx *ExecContext, widgetID string, props []rawExplicitProp, stored, defaults map[string]string) []rawExplicitProp {
+	reg := ctx.GetWidgetRegistry()
+	if reg == nil || widgetID == "" || len(props) == 0 {
+		return props
+	}
+	def, ok := reg.GetByWidgetID(widgetID)
+	if !ok {
+		return props
+	}
+	hidden := map[string]bool{}
+	for _, rule := range visibilityRulesFor(def, reg) {
+		if rule.Nested() || rule.HiddenWhen == nil {
+			continue
+		}
+		fires, determinable := rule.Fires(func(c types.WidgetVisibilityCondition) (string, bool) {
+			v, ok := stored[c.PropertyKey]
+			return v, ok
+		})
+		if determinable && fires {
+			hidden[rule.PropertyKey] = true
+		}
+	}
+	if len(hidden) == 0 {
+		return props
+	}
+	out := props[:0:0]
+	for _, p := range props {
+		if hidden[p.Key] && !p.IsRef && len(p.Params) == 0 && defaults[p.Key] != "" && p.Value == defaults[p.Key] {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 // extractImageProperties extracts properties from a pluggable Image CustomWidget.

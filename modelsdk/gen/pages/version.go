@@ -406,9 +406,15 @@ var VersionInfos = map[string]version.TypeVersionInfo{
 	},
 	"Forms$GroupBox": {
 		Properties: map[string]version.PropertyVersionInfo{
-			"caption": {Introduced: "8.10.0"},
-			"widget":  {Deleted: "7.15.0"},
-			"widgets": {Introduced: "7.15.0"},
+			// Fixed by hand (ako/mxcli#1163): the vendored generator gave caption
+			// the row of headerMode, which it then left out. mendixmodelsdk
+			// 4.117.0 has caption with no version and headerMode introduced
+			// 8.10.0; Studio Pro 9.1.1, 9.4.0 and 9.24.3 store both (the caption
+			// as CaptionTemplate).
+			"caption":    {},
+			"headerMode": {Introduced: "8.10.0"},
+			"widget":     {Deleted: "7.15.0"},
+			"widgets":    {Introduced: "7.15.0"},
 		},
 	},
 	"Forms$Header": {

@@ -939,9 +939,28 @@ func visibilityCondWord(c *types.WidgetVisibilityCondition) string {
 		return "is enabled"
 	case "falsy":
 		return "is disabled"
+	case "empty":
+		return "is empty"
+	case "notempty":
+		return "is not empty"
+	case "in":
+		return "is one of " + quotedCSV(c.Value)
+	case "notin":
+		// A switch's default arm (Timeline's `groupByKey` other than day/month).
+		return "is none of " + quotedCSV(c.Value)
 	default:
 		return "matches"
 	}
+}
+
+// quotedCSV renders an `in`/`notin` condition's comma-separated values as a
+// quoted, comma-separated list.
+func quotedCSV(csv string) string {
+	parts := strings.Split(csv, ",")
+	for i, p := range parts {
+		parts[i] = fmt.Sprintf("%q", p)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // validateObjectListItemEnums flags an enumeration sub-property of an object-list

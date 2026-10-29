@@ -60,35 +60,69 @@ func handlerFlow() ([]bson.D, []bson.D) {
 }
 
 func TestSplice_ReplaceKeepsTheErrorHandler(t *testing.T) {
-	objs, flows := handlerFlow()
-	m, deps := newMutator(t, unit(objs, flows))
-	frag := oneActivityEH(microflows.ErrorHandlingTypeCustomWithoutRollback)
-	if err := m.Replace(model.ID(uid("a")), frag); err != nil {
-		t.Fatal(err)
-	}
-	if err := m.Save(); err != nil {
-		t.Fatalf("save: %v", err)
-	}
-	// What the replace should leave: the stored unit with a's document
-	// swapped for the new one, drawn where a was at a's size, and the three
-	// flows through a — in, out, and the error flow — pointing at it.
-	newID := bson.Binary{Data: types.UUIDToBlob(string(frag.Entry))}
-	wantObjs, wantFlows := handlerFlow()
-	wantObjs[1] = withEH(bson.D{
-		{Key: "$ID", Value: newID},
-		{Key: "$Type", Value: "Microflows$ActionActivity"},
-		{Key: "RelativeMiddlePoint", Value: "250;200"},
-		{Key: "Size", Value: "160;60"},
-	}, microflows.ErrorHandlingTypeCustomWithoutRollback)
-	dSet(wantFlows[0], "DestinationPointer", newID)
-	dSet(wantFlows[1], "OriginPointer", newID)
-	dSet(wantFlows[2], "OriginPointer", newID)
-	raw, _ := bson.Marshal(unit(wantObjs, wantFlows))
-	if !bytes.Equal(deps.saved, raw) {
-		var got bson.D
-		_ = bson.Unmarshal(deps.saved, &got)
-		t.Errorf("the replace changed more than the activity and the flows through it:\n got %v\nwant %v", got, unit(wantObjs, wantFlows))
-	}
+	// The same kind of activity (a call for a call) is an edit of the stored
+	// one, which keeps its $ID (ako/mxcli#1761): the replacement equal to it,
+	// the unit is the stored one, byte for byte.
+	t.Run("the same kind of activity", func(t *testing.T) {
+		objs, flows := handlerFlow()
+		m, deps := newMutator(t, unit(objs, flows))
+		if err := m.Replace(model.ID(uid("a")), oneActivityEH(microflows.ErrorHandlingTypeCustomWithoutRollback)); err != nil {
+			t.Fatal(err)
+		}
+		if err := m.Save(); err != nil {
+			t.Fatalf("save: %v", err)
+		}
+		raw, _ := bson.Marshal(unit(handlerFlow()))
+		if !bytes.Equal(deps.saved, raw) {
+			var got bson.D
+			_ = bson.Unmarshal(deps.saved, &got)
+			t.Errorf("the replace by the same activity changed the unit:\n got %v\nwant %v", got, unit(handlerFlow()))
+		}
+	})
+	// Another kind is a new activity: what the replace should leave is the
+	// stored unit with a's document swapped for the new one, drawn where a
+	// was at a's size, and the three flows through a — in, out, and the
+	// error flow — pointing at it.
+	t.Run("another kind of activity", func(t *testing.T) {
+		objs, flows := handlerFlow()
+		raw, _ := bson.Marshal(unit(objs, flows))
+		var d bson.D
+		_ = bson.Unmarshal(raw, &d)
+		java := bson.D{
+			{Key: "$Type", Value: "Microflows$JavaActionCallAction"},
+			{Key: "ErrorHandlingType", Value: string(microflows.ErrorHandlingTypeCustomWithoutRollback)},
+		}
+		deps := &editDeps{action: java}
+		m, err := New(d, "unit", deps)
+		if err != nil {
+			t.Fatal(err)
+		}
+		frag := oneActivityEH(microflows.ErrorHandlingTypeCustomWithoutRollback)
+		if err := m.Replace(model.ID(uid("a")), frag); err != nil {
+			t.Fatal(err)
+		}
+		if err := m.Save(); err != nil {
+			t.Fatalf("save: %v", err)
+		}
+		newID := bson.Binary{Data: types.UUIDToBlob(string(frag.Entry))}
+		wantObjs, wantFlows := handlerFlow()
+		wantObjs[1] = bson.D{
+			{Key: "$ID", Value: newID},
+			{Key: "$Type", Value: "Microflows$ActionActivity"},
+			{Key: "RelativeMiddlePoint", Value: "250;200"},
+			{Key: "Size", Value: "160;60"},
+			{Key: "Action", Value: java},
+		}
+		dSet(wantFlows[0], "DestinationPointer", newID)
+		dSet(wantFlows[1], "OriginPointer", newID)
+		dSet(wantFlows[2], "OriginPointer", newID)
+		want, _ := bson.Marshal(unit(wantObjs, wantFlows))
+		if !bytes.Equal(deps.saved, want) {
+			var got bson.D
+			_ = bson.Unmarshal(deps.saved, &got)
+			t.Errorf("the replace changed more than the activity and the flows through it:\n got %v\nwant %v", got, unit(wantObjs, wantFlows))
+		}
+	})
 }
 
 func TestSplice_ReplaceOfAHandledActivityRefusals(t *testing.T) {

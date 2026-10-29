@@ -32,6 +32,20 @@ against the flow as stored before any operation runs.
 A fragment is written exactly as the same statements are in `CREATE
 MICROFLOW`, between `BEGIN` and `END`.
 
+### Editing an activity
+
+`REPLACE` by one activity of the same kind — the same action, with a
+filter's or find's expression, a retrieve's `WHERE`, a member's value or a
+call's argument changed — edits the stored activity rather than putting a new
+one in its place. The activity keeps its element ID, its place and its size,
+and so do its action and every element under it that pairs up: a member of a
+change or create by its attribute or association, an argument by its
+parameter, anything else by its property and type. A member taken out goes
+with its ID, which no other member inherits; a part of another type (a `FIND`
+where a `FILTER` was) is new. Studio Pro, which compares and merges by element
+ID, then shows the activity as changed rather than one removed and another
+added. An activity replaced by another kind of activity, or by several, is new.
+
 ### Inside a loop body
 
 Inside a loop body, plain activities are inserted, replaced and dropped the
@@ -83,6 +97,13 @@ added, removed, reordered or changed inside a loop body is spliced; under
 makes it — for a decision inside a loop body, `REPLACE BODY OF` that loop.
 Re-running the script that created a flow after another script spliced a
 decision into it takes that decision out again, when it has the shape above.
+
+A statement changed where it stands edits its stored activity, as above, and
+so does each of several adjacent statements changed in their own places. The
+report says which: `Modified microflow: M.F (spliced: 1 edited in place)` for
+a node that kept its element ID — an activity of the same kind, a decision's
+condition, a return's value — and `replaced with new element IDs` for one
+that did not.
 
 ## Examples
 

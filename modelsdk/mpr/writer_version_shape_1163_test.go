@@ -8,7 +8,9 @@ import (
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 
+	"github.com/mendixlabs/mxcli/modelsdk/canon"
 	"github.com/mendixlabs/mxcli/modelsdk/mpr/version"
+	mversion "github.com/mendixlabs/mxcli/modelsdk/version"
 )
 
 // ako/mxcli#1163: what the 9.24 doctype run found mxcli writing that Mendix 9
@@ -79,6 +81,132 @@ func TestNormalize_ReduceFoldIsRefusedBelowMendix10(t *testing.T) {
 		if _, ok := get(find(d, "Microflows$AggregateAction"), "ReduceReturnDataType"); !ok {
 			t.Errorf("%s on 10.0 lost ReduceReturnDataType", fn)
 		}
+	}
+}
+
+// The vendored generator gave two more properties the row of their type's next
+// property and left that one out, as it did AggregateFunction: mendixmodelsdk
+// 4.117.0 has CustomWidgets$WidgetReturnType `type: {}` and `assignableTo:
+// {introduced: "9.20.0"}`, and Forms$GroupBox (pages.GroupBox) `caption: {}`
+// and `headerMode: {introduced: "8.10.0"}`. The table had type 9.20.0 and
+// caption 8.10.0, and no row for assignableTo or headerMode.
+// Workflows$CallMicroflowTask.boundaryEvents is 10.14.0 in both, and stays.
+func TestPropertyDeclared_RowsTheGeneratorMisattributed(t *testing.T) {
+	for _, tt := range []struct {
+		typ, key string
+		v        *version.ProjectVersion
+		want     bool
+	}{
+		// Studio Pro 9.1.1 and 9.4.0 store Type on every return type; 9.24.3
+		// adds AssignableTo.
+		{"CustomWidgets$WidgetReturnType", "Type", pv(9, 0, 0), true},
+		{"CustomWidgets$WidgetReturnType", "Type", pv(9, 18, 0), true},
+		{"CustomWidgets$WidgetReturnType", "AssignableTo", pv(9, 19, 0), false},
+		{"CustomWidgets$WidgetReturnType", "AssignableTo", pv(9, 20, 0), true},
+		// The caption is stored as CaptionTemplate, which the table never
+		// keyed: the wrong row applied to nothing. HeaderMode is 8.10, below
+		// every version mxcli writes.
+		{"Forms$GroupBox", "CaptionTemplate", pv(8, 0, 0), true},
+		{"Forms$GroupBox", "HeaderMode", pv(8, 9, 0), false},
+		{"Forms$GroupBox", "HeaderMode", pv(8, 10, 0), true},
+		{"Forms$GroupBox", "HeaderMode", pv(9, 0, 0), true},
+		// Unchanged: right in the table already.
+		{"Workflows$CallMicroflowTask", "BoundaryEvents", pv(10, 13, 0), false},
+		{"Workflows$CallMicroflowTask", "BoundaryEvents", pv(10, 14, 0), true},
+	} {
+		v := mversion.Version{Major: tt.v.MajorVersion, Minor: tt.v.MinorVersion, Patch: tt.v.PatchVersion}
+		if got := canon.PropertyDeclared(tt.typ, tt.key, v); got != tt.want {
+			t.Errorf("%s.%s declared on %s = %v, want %v", tt.typ, tt.key, v, got, tt.want)
+		}
+	}
+}
+
+// pageWithReturnType is a page holding one pluggable widget whose Type has a
+// return type as the template carries it: Type set, AssignableTo empty.
+func pageWithReturnType() bson.D {
+	rt := bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "CustomWidgets$WidgetReturnType"},
+		{Key: "AssignableTo", Value: ""}, {Key: "EntityProperty", Value: ""}, {Key: "IsList", Value: false}, {Key: "Type", Value: "String"}}
+	vt := bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "CustomWidgets$WidgetValueType"}, {Key: "ReturnType", Value: rt}}
+	widget := bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "CustomWidgets$CustomWidget"}, {Key: "Name", Value: "w"},
+		{Key: "Type", Value: bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "CustomWidgets$CustomWidgetType"},
+			{Key: "ObjectType", Value: bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "CustomWidgets$WidgetObjectType"},
+				{Key: "PropertyTypes", Value: bson.A{int32(2), bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "CustomWidgets$WidgetPropertyType"},
+					{Key: "ValueType", Value: vt}}}}}}}}}
+	return bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Forms$Page"}, {Key: "Name", Value: "P"},
+		{Key: "Widgets", Value: bson.A{int32(2), widget}}}
+}
+
+// Below 9.20 a return type's Type was refused ("this Mendix 9.18.0 project
+// cannot store CustomWidgets$WidgetReturnType.Type (Mendix 9.20.0+)") and its
+// AssignableTo passed. Now Type is kept and the empty AssignableTo dropped.
+func TestNormalize_WidgetReturnTypeAcrossMendix9_20(t *testing.T) {
+	for _, tt := range []struct {
+		v    *version.ProjectVersion
+		want string
+	}{
+		{pv(9, 18, 0), "$ID,$Type,EntityProperty,IsList,Type"},
+		{pv(9, 20, 0), "$ID,$Type,AssignableTo,EntityProperty,IsList,Type"},
+		{pv(11, 13, 0), "$ID,$Type,AssignableTo,EntityProperty,IsList,Type"}, // control
+	} {
+		d, err := normalizeShape(t, tt.v, pageWithReturnType())
+		if err != nil {
+			t.Errorf("%d.%d: a widget with a return type is refused: %v", tt.v.MajorVersion, tt.v.MinorVersion, err)
+			continue
+		}
+		if got := strings.Join(keysOf(find(d, "CustomWidgets$WidgetReturnType")), ","); got != tt.want {
+			t.Errorf("%d.%d: return type keys %s, want %s", tt.v.MajorVersion, tt.v.MinorVersion, got, tt.want)
+		}
+	}
+}
+
+// boundaryEvent is a timer boundary event as mxcli writes one (10.20's type).
+func boundaryEvent() bson.D {
+	return bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$InterruptingTimerBoundaryEvent"},
+		{Key: "Caption", Value: "Late"}, {Key: "FirstExecutionTime", Value: "addDays([%CurrentDateTime%], 1)"},
+		{Key: "Flow", Value: bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$Flow"}, {Key: "Activities", Value: bson.A{int32(3)}}}}}
+}
+
+// workflowWithCallBoundaryEvents is a workflow holding one microflow call with
+// the given BoundaryEvents list.
+func workflowWithCallBoundaryEvents(events bson.A) bson.D {
+	call := bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$CallMicroflowTask"},
+		{Key: "BoundaryEvents", Value: events}, {Key: "Caption", Value: "Validate"},
+		{Key: "Microflow", Value: "M.Validate"}, {Key: "Name", Value: "call"}}
+	return bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$Workflow"},
+		{Key: "Flow", Value: bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$Flow"},
+			{Key: "Activities", Value: bson.A{int32(3), call}}}},
+		{Key: "Name", Value: "WF"}, {Key: "Title", Value: "WF"}}
+}
+
+// Workflows$CallMicroflowTask.BoundaryEvents is 10.14.0 (mendixmodelsdk, and
+// the table). The writer gives every microflow call an empty list, so below
+// 10.14 the empty list is dropped, not refused: Studio Pro 9.24.3 stores no
+// BoundaryEvents on a call (Multilevel Dynamic Workflow 1.0.0), and with the
+// row's floor removed mxcli writes `BoundaryEvents: [2]` on 10.12.19, which
+// `mx convert` 10.12.19 strips. A boundary event the script states is
+// refused there, naming the key.
+func TestNormalize_CallMicroflowBoundaryEventsBelowMendix10_14(t *testing.T) {
+	for _, tt := range []struct {
+		v    *version.ProjectVersion
+		kept bool
+	}{
+		{pv(9, 24, 30), false},
+		{pv(10, 13, 0), false},
+		{pv(10, 14, 0), true},
+		{pv(11, 13, 0), true}, // control
+	} {
+		d, err := normalizeShape(t, tt.v, workflowWithCallBoundaryEvents(bson.A{int32(2)}))
+		if err != nil {
+			t.Errorf("%d.%d: a microflow call is refused: %v", tt.v.MajorVersion, tt.v.MinorVersion, err)
+			continue
+		}
+		if _, ok := get(find(d, "Workflows$CallMicroflowTask"), "BoundaryEvents"); ok != tt.kept {
+			t.Errorf("%d.%d: BoundaryEvents kept %v, want %v", tt.v.MajorVersion, tt.v.MinorVersion, ok, tt.kept)
+		}
+	}
+	_, err := normalizeShape(t, pv(10, 13, 0), workflowWithCallBoundaryEvents(bson.A{int32(2), boundaryEvent()}))
+	if err == nil || !strings.Contains(err.Error(), "Workflows$CallMicroflowTask.BoundaryEvents (Mendix 10.14.0+)") {
+		t.Errorf("a boundary event on a microflow call on 10.13 was not refused naming the key: %v", err)
 	}
 }
 
@@ -160,6 +288,108 @@ func TestNormalize_WorkflowPersistentIDsBelowMendix10_21(t *testing.T) {
 		}
 		if got := persistentIDHolders(d); len(got) != tt.want {
 			t.Errorf("%d.%d: PersistentId on %d elements %v, want %d", tt.v.MajorVersion, tt.v.MinorVersion, len(got), got, tt.want)
+		}
+	}
+}
+
+// endOfPath is the marker mxcli ends a parallel split path with
+// (workflows.EndParallelSplitPath).
+func endOfPath() bson.D {
+	return bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$EndOfParallelSplitPathActivity"},
+		{Key: "Annotation", Value: nil}, {Key: "Caption", Value: "End of parallel split path"},
+		{Key: "Name", Value: "EndOfParallelSplitPath"}, {Key: "PersistentId", Value: pid()}}
+}
+
+// workflowWithParallelSplit is a workflow as mxcli builds it: a parallel split
+// whose first path calls a microflow and whose second is empty, each ending in
+// the end-of-path marker, followed by another microflow call.
+func workflowWithParallelSplit() bson.D {
+	call := func(name string) bson.D {
+		return bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$CallMicroflowTask"},
+			{Key: "BoundaryEvents", Value: bson.A{int32(2)}}, {Key: "Caption", Value: name},
+			{Key: "Microflow", Value: "M." + name}, {Key: "Name", Value: name}, {Key: "PersistentId", Value: pid()}}
+	}
+	path := func(acts ...bson.D) bson.D {
+		list := bson.A{int32(3)}
+		for _, a := range acts {
+			list = append(list, a)
+		}
+		return bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$ParallelSplitOutcome"},
+			{Key: "Flow", Value: bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$Flow"}, {Key: "Activities", Value: list}}},
+			{Key: "PersistentId", Value: pid()}}
+	}
+	split := bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$ParallelSplitActivity"},
+		{Key: "Annotation", Value: nil}, {Key: "Caption", Value: "Parallel split"}, {Key: "Name", Value: "split"},
+		{Key: "Outcomes", Value: bson.A{int32(3), path(call("Left"), endOfPath()), path(endOfPath())}},
+		{Key: "PersistentId", Value: pid()}}
+	return bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$Workflow"},
+		{Key: "Flow", Value: bson.D{{Key: "$ID", Value: bid()}, {Key: "$Type", Value: "Workflows$Flow"},
+			{Key: "Activities", Value: bson.A{int32(3), split, call("After")}}}},
+		{Key: "Name", Value: "WF"},
+		{Key: "PersistentId", Value: pid()},
+		{Key: "Title", Value: "WF"}}
+}
+
+// pathActivityTypes returns, per parallel split path, the $Type of each
+// activity its flow holds.
+func pathActivityTypes(t *testing.T, d bson.D) [][]string {
+	t.Helper()
+	outcomes, _ := get(find(d, "Workflows$ParallelSplitActivity"), "Outcomes")
+	var out [][]string
+	for _, o := range listItems(outcomes) {
+		flow, _ := get(o.(bson.D), "Flow")
+		acts, _ := get(flow.(bson.D), "Activities")
+		if a, _ := acts.(bson.A); len(a) == 0 || a[0] != int32(3) {
+			t.Errorf("a path's Activities is %v, want a list with marker 3", acts)
+		}
+		types := []string{}
+		for _, a := range listItems(acts) {
+			typ, _ := get(a.(bson.D), "$Type")
+			types = append(types, typ.(string))
+		}
+		out = append(out, types)
+	}
+	return out
+}
+
+// Workflows$EndOfParallelSplitPathActivity is introduced in 10.21.0
+// (mendixmodelsdk: the type's own versionInfo). mxcli ends every parallel split
+// path with one, because from 10.21 the engine runs a path only up to it — and
+// below 10.21 the type does not exist: mx check 9.24.30 does not load the
+// project at all ("TypeCacheUnknownTypeException: The type cache does not
+// contain a type with qualified name Workflows$EndOfParallelSplitPathActivity").
+// The property floor holds property versions only, so it never saw the type.
+// Studio Pro before 10.21 stores a path as its activities and nothing else:
+// the Marketplace's "Example project workflow extension" 2.0.0 (Studio Pro
+// 9.4.0) has a split whose two paths hold one user task each, no marker, and
+// an empty flow stores `Activities: [3]`. So below 10.21 the marker is not
+// written; from 10.21 it is, and must be.
+func TestNormalize_ParallelSplitPathsBelowMendix10_21(t *testing.T) {
+	for _, tt := range []struct {
+		v    *version.ProjectVersion
+		want string
+	}{
+		{pv(9, 24, 30), "Workflows$CallMicroflowTask|"},
+		{pv(10, 20, 0), "Workflows$CallMicroflowTask|"},
+		{pv(10, 21, 0), "Workflows$CallMicroflowTask,Workflows$EndOfParallelSplitPathActivity|Workflows$EndOfParallelSplitPathActivity"},
+		{pv(11, 13, 0), "Workflows$CallMicroflowTask,Workflows$EndOfParallelSplitPathActivity|Workflows$EndOfParallelSplitPathActivity"}, // control
+	} {
+		d, err := normalizeShape(t, tt.v, workflowWithParallelSplit())
+		if err != nil {
+			t.Errorf("%d.%d: a parallel split is refused: %v", tt.v.MajorVersion, tt.v.MinorVersion, err)
+			continue
+		}
+		var paths []string
+		for _, p := range pathActivityTypes(t, d) {
+			paths = append(paths, strings.Join(p, ","))
+		}
+		if got := strings.Join(paths, "|"); got != tt.want {
+			t.Errorf("%d.%d: paths hold %s, want %s", tt.v.MajorVersion, tt.v.MinorVersion, got, tt.want)
+		}
+		// The rest of the workflow is untouched: the call after the split stays.
+		acts, _ := get(find(d, "Workflows$Flow"), "Activities")
+		if n := len(listItems(acts)); n != 2 {
+			t.Errorf("%d.%d: the main flow holds %d activities, want 2", tt.v.MajorVersion, tt.v.MinorVersion, n)
 		}
 	}
 }

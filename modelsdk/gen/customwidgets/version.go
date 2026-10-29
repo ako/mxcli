@@ -48,7 +48,13 @@ var VersionInfos = map[string]version.TypeVersionInfo{
 	},
 	"CustomWidgets$WidgetReturnType": {
 		Properties: map[string]version.PropertyVersionInfo{
-			"type": {Introduced: "9.20.0"},
+			// Fixed by hand (ako/mxcli#1163): the vendored generator gave type
+			// the row of assignableTo, which it then left out. mendixmodelsdk
+			// 4.117.0 has type with no version and assignableTo introduced
+			// 9.20.0; Studio Pro 9.1.1 and 9.4.0 store Type and no AssignableTo
+			// on every return type, Studio Pro 9.24.3 both.
+			"assignableTo": {Introduced: "9.20.0"},
+			"type":         {},
 		},
 	},
 	"CustomWidgets$WidgetValue": {

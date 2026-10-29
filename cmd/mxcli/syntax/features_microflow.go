@@ -624,6 +624,12 @@ func init() {
 			"-- stored flow before any operation runs; an ambiguous or unknown target is an error.\n" +
 			"-- Only the new activities, the rewired flows and the objects moved to make room change;\n" +
 			"-- every other element keeps its $ID, position and curve.\n" +
+			"-- REPLACE by one activity of the same kind (the same action: a filter's expression, a\n" +
+			"-- retrieve's where, a member's value, a call's argument changed) edits the stored\n" +
+			"-- activity: it keeps its $ID and those of its action and the parts that pair up — a\n" +
+			"-- member by its attribute or association, an argument by its parameter (ako/mxcli#1761).\n" +
+			"-- CREATE OR MODIFY reports it as `edited in place`; anything else replaced gets new\n" +
+			"-- element IDs, reported as `replaced with new element IDs`.\n" +
 			"-- Inside a loop body, plain activities are inserted, replaced and dropped the same way,\n" +
 			"-- the loop box growing when the body no longer fits (ako/mxcli#1693).\n" +
 			"-- REPLACE BODY OF <loop> keeps the loop itself (its $ID, position, iterator and list)\n" +

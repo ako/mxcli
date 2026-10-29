@@ -127,8 +127,9 @@ func extractVisibilityRulesFromMPK(mpkPath, widgetID string) []types.WidgetVisib
 // widget's compiled editorConfig.js into declarative WidgetVisibilityRules.
 //
 // It recognizes the dominant `getProperties` idioms — `"V"===ref && hide(...)`,
-// `"V"!==ref && hide(...)`, `ref && hide(...)`, `ref || hide(...)`, and
-// `ref ? hide(...) : …` — where `ref` is `obj.prop` or a locally-aliased
+// `"V"!==ref && hide(...)`, `ref && hide(...)`, `ref || hide(...)`,
+// `ref ? hide(...) : …`, and a hide in a `switch(ref){case "V": …}` arm — where
+// `ref` is `obj.prop` or a locally-aliased
 // identifier resolved within the enclosing function scope. Everything it cannot
 // lift (object-list-nested hides, compound/computed guards, unresolved aliases)
 // is counted in the returned stats so callers can gauge coverage; unrecognized
@@ -159,7 +160,21 @@ func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, edit
 		if listKey != "" {
 			itemIdent = enclosingForEachParam(js, callStart)
 		}
-		cond, guardText, ok, conjunctive, chain := parseGuard(js, callStart, itemIdent)
+		// A hide in a `switch` arm runs on the arm's case values, not on a guard
+		// beside it, so it is read from the switch and never from parseGuard —
+		// whose `:` handling would take the arm's label for a ternary's else.
+		var (
+			cond        types.WidgetVisibilityCondition
+			guardText   string
+			conjunctive bool
+			chain       []types.WidgetVisibilityCondition
+		)
+		armCond, inSwitchArm, armOK := switchArmCondition(js, callStart, itemIdent)
+		if inSwitchArm {
+			cond, ok = armCond, armOK
+		} else {
+			cond, guardText, ok, conjunctive, chain = parseGuard(js, callStart, itemIdent)
+		}
 		// A guard inside `outer ? ( … inner && hide(x) … )` states only the INNER
 		// term; the branch runs on outer too. Collect the enclosing group guards
 		// so the rule carries the whole conjunction — Combo box nests three deep,
@@ -254,13 +269,19 @@ func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, edit
 		// guard alone would mark both branches hidden together (#956).
 		if len(condKeys) > 0 {
 			aliases := enclosingAliases(js, callStart)
+			// In a switch arm the element's condition holds only where the arm
+			// runs, so the arm's condition is a term of its own.
+			condExtra := extra
+			if inSwitchArm {
+				condExtra = append([]types.WidgetVisibilityCondition{cond}, extra...)
+			}
 			for _, tk := range condKeys {
 				c, ok := guardToCondition(tk.guard, tk.falsy, aliases, itemIdent)
 				if !ok {
 					stats.SkippedComplex++
 					continue
 				}
-				sig := listKey + "\x00" + tk.key + "\x00" + c.PropertyKey + c.Operator + c.Value + c.Scope + condsSig(extra)
+				sig := listKey + "\x00" + tk.key + "\x00" + c.PropertyKey + c.Operator + c.Value + c.Scope + condsSig(condExtra)
 				if seen[sig] {
 					continue
 				}
@@ -270,7 +291,7 @@ func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, edit
 					PropertyKey:     tk.key,
 					ListPropertyKey: listKey,
 					HiddenWhen:      &cc,
-					And:             extra,
+					And:             condExtra,
 				})
 			}
 		}
@@ -808,6 +829,22 @@ func parseGuard(js string, callStart int, itemIdent string) (types.WidgetVisibil
 		return types.WidgetVisibilityCondition{}, pre, false, false, nil
 	case '&':
 		if !falsy {
+			return types.WidgetVisibilityCondition{}, guard, false, false, nil
+		}
+	case '(':
+		// The paren heads a STATEMENT rather than grouping a guarded branch:
+		// terser folds the expression statements before a `switch`/`if` into
+		// its head, and their contents run unconditionally. Timeline's first
+		// hide is the THEN branch of
+		//
+		//	switch(e.customVisualization ? hide([…]) : hide([…]), e.groupEvents || hide([…]), e.groupByKey){…}
+		//
+		// and was dropped as "one operand of a compound condition" while its
+		// else branch, read through trailingExpr, was lifted (ako/mxcli#1762).
+		// A call's paren is not this case — the call can itself be guarded.
+		// boundaryAt indexes js only while pre is still a prefix of it, which
+		// an else-branch guard (cut out by ternaryCondition) is not.
+		if elseBranch || !strings.HasPrefix(js, pre) || !statementHeadParen(js, boundaryAt) {
 			return types.WidgetVisibilityCondition{}, guard, false, false, nil
 		}
 	default:

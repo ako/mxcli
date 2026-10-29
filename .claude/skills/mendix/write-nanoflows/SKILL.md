@@ -11,21 +11,21 @@ description: "Nanoflow syntax in MDL — shared with microflows, but client-side
 | lines | section |
 |---|---|
 | 35-44 | When to Use This Skill |
-| 45-81 | Changing an Existing Nanoflow |
-| 82-100 | When to Use a Nanoflow vs a Microflow |
-| 101-115 | Key Differences from Microflows |
-| 116-139 | Nanoflow Structure |
-| 140-148 | Naming Convention |
-| 149-217 | Supported Activities |
-| 218-484 | Real-World Patterns |
-| 485-555 | NanoflowCommons JavaScript Actions Reference |
-| 556-594 | Disallowed Activities |
-| 595-598 | Return Type Restrictions |
-| 599-643 | Error Handling in Nanoflows |
-| 644-651 | Security (GRANT/REVOKE) |
-| 652-664 | Management Commands |
-| 665-675 | Common Mistakes |
-| 676-690 | Validation Checklist |
+| 45-83 | Changing an Existing Nanoflow |
+| 84-102 | When to Use a Nanoflow vs a Microflow |
+| 103-117 | Key Differences from Microflows |
+| 118-141 | Nanoflow Structure |
+| 142-150 | Naming Convention |
+| 151-219 | Supported Activities |
+| 220-486 | Real-World Patterns |
+| 487-557 | NanoflowCommons JavaScript Actions Reference |
+| 558-596 | Disallowed Activities |
+| 597-600 | Return Type Restrictions |
+| 601-645 | Error Handling in Nanoflows |
+| 646-653 | Security (GRANT/REVOKE) |
+| 654-666 | Management Commands |
+| 667-677 | Common Mistakes |
+| 678-692 | Validation Checklist |
 
 <!-- /skill-index -->
 # Mendix Nanoflow Skill
@@ -52,7 +52,9 @@ Choose the mode by who owns the nanoflow ([choose-edit-mode](../choose-edit-mode
   (targets by output variable, caption or statement pattern). `create or modify` of `describe`
   output also works as a patch: an unchanged definition writes nothing, and an inserted,
   replaced or dropped statement (at the top level or in an `if` branch) is spliced in,
-  leaving every other node, merge and curve as stored — a guard clause (`if … then return;
+  leaving every other node, merge and curve as stored — a statement changed into one of
+  the same kind (an expression, a `where`, a member value, an argument) edits the stored
+  activity, which keeps its `$ID` and its action's (reported `edited in place`); a guard clause (`if … then return;
   end if;`) too, its return a new end event, and so is the `return` ending a new activity's
   error handler; a changed `return` value or `if` condition is set on
   the stored end event or decision, and a body without a trailing `return` means the stored end. The
