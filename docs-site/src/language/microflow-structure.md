@@ -158,9 +158,11 @@ leaves the decision in three groups (top, right, bottom) so its lines do not cro
 Whatever reaches down into the lane — a decision, a loop, an activity with an error
 handler of its own — waits for the lane to clear, so two consecutive handlers never
 share a row; a plain activity does not wait. A statement that carries `@position` is
-never moved, and becomes the start of the row for the statements after it — so either
-place everything or nothing: a few hand-placed statements are not measured against
-what is laid out around them.
+never moved, and becomes the start of the row for the statements after it; the
+statements before it keep the places the builder derives for them, and only a
+`@position` on the first statement moves the start event. So either place everything
+or nothing: a few hand-placed statements are not measured against what is laid out
+around them.
 
 To re-arrange a flow that already exists — one drawn in Studio Pro, or one whose
 positions no longer fit after edits — run `mxcli layout flows`. It applies this

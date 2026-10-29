@@ -19,7 +19,13 @@
 -- 360..680;330, 520;200) and places $Second at 790;200 with its row at
 -- 790..1110;330 — clear of the first row's end, with the gap two activities
 -- keep. `lint -r MPR008` reports nothing, and `layout flows --dry-run` calls
--- every flow below already laid out.
+-- every flow below already laid out except SUB_PositionedLater (layout flows
+-- drops its @position).
+--
+-- SUB_PositionedLater is the issue's second case: a @position on a later
+-- statement used to move the start event to it and every unplaced statement
+-- before it along with the start, so `declare $A` and `declare $B` were both
+-- stored at 840;200. Expected now: start 200;200, $A 360;200, $B 840;200.
 
 mdl 1;
 
@@ -63,4 +69,12 @@ begin
   end error;
   $Done = create BugTest1768.Result (IsDone = true);
   return $Done;
+end;
+
+create or modify microflow BugTest1768.SUB_PositionedLater ($Url: String) returns String as $B
+begin
+  declare $A String = $Url;
+  @position(840, 200)
+  declare $B String = $A;
+  return $B;
 end;

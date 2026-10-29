@@ -938,8 +938,10 @@ func init() {
 			"does not (ako/mxcli#1768). A CASE of four or more branches leaves the split\n" +
 			"in three groups — top, right, bottom — so its lines do not cross. A\n" +
 			"statement that carries @position is never moved, and starts the row for what\n" +
-			"follows it. Prefer no @position at all to a few: hand-placed statements are\n" +
-			"not measured against what the builder puts around them. (#1154)\n\n" +
+			"follows it; the statements BEFORE it keep the places the builder derives for\n" +
+			"them, and only a @position on the first statement moves the start event.\n" +
+			"Prefer no @position at all to a few: hand-placed statements are not measured\n" +
+			"against what the builder puts around them. (#1154)\n\n" +
 			"@start and @merge position the two nodes that have no statement of their\n" +
 			"own, so each is written on the statement it belongs to. Omit @start and the\n" +
 			"start is placed one spacing unit left of the first activity, on its centre\n" +
