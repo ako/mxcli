@@ -192,6 +192,14 @@ func workflowActivityFromGen(el element.Element) workflows.WorkflowActivity {
 			t.Page = taskPageName(a.TaskPage())
 		}
 		t.Outcomes = userTaskOutcomesFromGen(a.OutcomesItems())
+		// Below 10.12 a multi-user task is a UserTask whose completion holds
+		// what MultiUserTaskActivity holds itself from 10.12 (ako/mxcli#1771).
+		if mc, ok := a.UserTaskCompletion().(*genWf.MultiInputCompletion); ok && mc != nil {
+			t.IsMulti = true
+			t.AwaitAllUsers = mc.AwaitAllUsers()
+			t.CompletionCriteria = completionCriteriaFromGen(mc.CompletionCriteria(), t.Outcomes)
+			t.TargetUserInput = targetUserInputFromGen(mc.TargetUserInput())
+		}
 		return t
 	case *genWf.SingleUserTaskActivity:
 		t := &workflows.UserTask{

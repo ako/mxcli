@@ -59,6 +59,12 @@ import (
 //     Marketplace's "Example project workflow extension" 2.0.0), and a project
 //     holding the marker does not load (TypeCacheUnknownTypeException). The
 //     floor checks property versions, never a type's own.
+//   - Workflows$ user task targeting: UserTargeting from 11.2.0, declared on
+//     the abstract UserTaskActivity; before, UserSource (ako/mxcli#1771). See
+//     lowerUserTargeting.
+//   - Workflows$SingleUserTaskActivity and MultiUserTaskActivity, TYPES
+//     introduced in 10.12.0; before, a Workflows$UserTask whose
+//     UserTaskCompletion says which (ako/mxcli#1771). See lowerUserTaskType.
 //
 // It runs on every unit write, before the floor, so no writer needs to know
 // these shapes. What the older shape cannot hold — a design property value
@@ -79,15 +85,20 @@ func LowerToProjectShape(contents []byte, pv *version.Version) ([]byte, error) {
 		flatConstant:    !PropertyDeclared("Settings$ConstantValue", "SharedOrPrivateValue", *pv),
 		variableArgs:    !PropertyDeclared("Forms$MicroflowParameterMapping", "Expression", *pv),
 		unmarkedPaths:   pv.Compare(endOfParallelSplitPathSince) < 0,
+		userSource:      !PropertyDeclared("Workflows$UserTaskActivity", "UserTargeting", *pv),
+		taskBoundaries:  !PropertyDeclared("Workflows$UserTaskActivity", "BoundaryEvents", *pv),
+		userTaskType:    pv.Compare(userTaskActivitySince) < 0,
 	}
 	if !l.flatDesignProps && !l.boolEditable && !l.textPlaceholder && !l.namedParameter && !l.noFullObjects &&
-		!l.noPersistentID && !l.flatConstant && !l.variableArgs && !l.unmarkedPaths {
+		!l.noPersistentID && !l.flatConstant && !l.variableArgs && !l.unmarkedPaths && !l.userSource &&
+		!l.taskBoundaries && !l.userTaskType {
 		return contents, nil
 	}
 	var doc bson.D
 	if err := bson.Unmarshal(contents, &doc); err != nil {
 		return nil, err
 	}
+	l.root = doc
 	out, err := l.walk(doc)
 	if err != nil {
 		return nil, err
@@ -103,7 +114,12 @@ type shapeLowering struct {
 	flatDesignProps, boolEditable, textPlaceholder bool
 	namedParameter, noFullObjects, noPersistentID  bool
 	flatConstant, variableArgs, unmarkedPaths      bool
+	userSource, taskBoundaries, userTaskType       bool
 	changed                                        bool
+	// root is the unit, and used the $IDs it holds, for an element the
+	// lowering adds (see lowerUserTaskType).
+	root bson.D
+	used map[string]bool
 }
 
 // endOfParallelSplitPathSince is the version that introduced the type
@@ -143,6 +159,10 @@ func (l *shapeLowering) walk(v any) (any, error) {
 			}
 		case l.flatConstant && typ == "Settings$ConstantValue":
 			if x, err = l.lowerConstantValue(x); err != nil {
+				return nil, err
+			}
+		case userTaskTypes[typ]:
+			if x, err = l.lowerUserTask(x, typ); err != nil {
 				return nil, err
 			}
 		}
