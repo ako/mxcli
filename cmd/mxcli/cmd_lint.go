@@ -77,6 +77,7 @@ Bundled Starlark rules (in .claude/lint-rules/):
   - No event handlers (CONV016) - avoid entity event handlers
   - No calculated attributes (CONV017) - avoid calculated attributes
   - Created object never persisted (CONV020) - a created object that is never committed, returned or passed on
+  - Create/change then commit (CONV021) - a create/change directly followed by a commit of the same object; set Commit on it instead
 
 Custom Starlark rules in .claude/lint-rules/*.star are loaded automatically.
 
@@ -435,6 +436,7 @@ func builtinLintRules() []linter.Rule {
 		rules.NewErrorHandlingOnCallsRule(),
 		rules.NewNoContinueErrorHandlingRule(),
 		rules.NewCreatedObjectNeverPersistedRule(), // CONV020 - create without commit, never persisted or passed on
+		rules.NewCreateChangeThenCommitRule(),      // CONV021 - create/change then a commit of the same object
 		rules.NewIrreducibleFlowGraphRule(),        // MDL-FLOW01 - graph structure vs MDL nesting
 		rules.NewImportRangeObjectMappingRule(),    // MDL-MAP04 - First over an object-rooted mapping in the model
 	}
