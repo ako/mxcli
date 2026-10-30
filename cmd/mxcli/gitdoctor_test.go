@@ -177,10 +177,20 @@ func TestGitDoctor_SSHURLFormRewrittenByFix(t *testing.T) {
 
 // doctorNoteRepo makes a two-commit repository holding an MPR v2 project:
 // the base commit, then a page retitle. Returns dir and the .mpr path.
+//
+// The fixture's git is hermetic: no system or global config leaks in from the
+// machine this runs on (runner images, developer setups and CI images differ),
+// bytes are committed exactly as written, and no repository above the temp
+// dir is discovered. Without this, git-merge fixtures see a different merge
+// on each machine and fail with the merge's own evidence thrown away.
 func doctorNoteRepo(t *testing.T) (string, string) {
 	t.Helper()
 	dir := t.TempDir()
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(dir))
 	gitIn(t, dir, "init", "-q", "-b", "feature")
+	gitIn(t, dir, "config", "core.autocrlf", "false")
 	units := baseUnits(t)
 	writeProject(t, dir, "11.13.0", units)
 	gitIn(t, dir, "add", "-A")

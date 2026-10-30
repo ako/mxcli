@@ -40,12 +40,12 @@ func modelConflictRepo(t *testing.T) (string, string) {
 	gitIn(t, dir, "add", "-A")
 	gitIn(t, dir, "commit", "-q", "-m", "side change")
 	gitIn(t, dir, "switch", "-q", "feature")
-	_, err := gitInE(t, dir, "merge", "side")
+	mergeOut, err := gitInE(t, dir, "merge", "side")
 	if err != nil && !strings.Contains(err.Error(), "exit status") {
-		t.Fatalf("fixture: expected a conflicted merge, got %v", err)
+		t.Fatalf("fixture: expected a conflicted merge, got %v\n%s", err, mergeOut)
 	}
 	if uu := gitOutT(t, dir, "diff", "--name-only", "--diff-filter=U"); !strings.Contains(uu, ".mxunit") {
-		t.Fatalf("fixture: expected unresolved model files, got %q", uu)
+		t.Fatalf("fixture: expected unresolved model files, got %q\nmerge said:\n%s", uu, mergeOut)
 	}
 	return dir, mprPath
 }
@@ -70,9 +70,9 @@ func twoUnitConflictRepo(t *testing.T) (string, string) {
 	gitIn(t, dir, "add", "-A")
 	gitIn(t, dir, "commit", "-q", "-m", "side change")
 	gitIn(t, dir, "switch", "-q", "feature")
-	_, err := gitInE(t, dir, "merge", "side")
+	mergeOut, err := gitInE(t, dir, "merge", "side")
 	if err != nil && !strings.Contains(err.Error(), "exit status") {
-		t.Fatalf("fixture: expected a conflicted merge, got %v", err)
+		t.Fatalf("fixture: expected a conflicted merge, got %v\n%s", err, mergeOut)
 	}
 	return dir, mprPath
 }
