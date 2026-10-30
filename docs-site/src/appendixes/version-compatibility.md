@@ -125,6 +125,24 @@ body on Mendix 10 too, and Studio Pro could not open the project.
 | Deciding by a microflow | `DECIDE BY MICROFLOW ...` | No | 10.3+ |
 | Group targeting | `TARGETING GROUPS XPATH ...`, `TARGETING GROUPS MICROFLOW ...` | No | 11.2+ |
 | Parallel splits | `PARALLEL SPLIT` | Yes | Yes |
+| Waiting for a notification | `WAIT FOR NOTIFICATION` | No | Yes |
+| Waiting for a timer | `WAIT FOR TIMER` | No | 10.6+ |
+| A timer boundary event of no kind | `BOUNDARY EVENT TIMER ...` | No | 10.14+ (MDL-WF07 refuses it from 11.0) |
+| Interrupting and non-interrupting timer boundary events | `BOUNDARY EVENT [NON] INTERRUPTING TIMER ...` | No | 10.20+ |
+| Locking and unlocking a workflow | `LOCK WORKFLOW ...`, `UNLOCK WORKFLOW ...` | No | Yes |
+
+Every write refuses an element whose type the project's Mendix version does not
+have yet, naming the type, the version that introduced it and the project's
+version ("this Mendix 9.24.30 project cannot store
+Workflows$WaitForNotificationActivity (Mendix 10.0.0+)"). The versions are each
+type's own, from the Mendix Model SDK. Below their versions, the wait
+activities, the timer boundary events and a lock or unlock naming a workflow are
+also refused up front, by `check -p` and by `exec` before anything is written,
+with MDL-VERSION01. Before this, such a type was written, and the project did not load
+(`TypeCacheUnknownTypeException`, [ako/mxcli#1774](https://github.com/ako/mxcli/issues/1774)).
+Where an older version stores the same thing in another shape (the parallel
+split's end marker, user tasks), that shape is written instead, as listed under
+"Properties Stored in an Older Shape".
 
 Below Mendix 11.3 a workflow's main flow has no stored start or end activity:
 11.1 and 11.2 keep them implicit, and 10.x and 11.0 do not have the start

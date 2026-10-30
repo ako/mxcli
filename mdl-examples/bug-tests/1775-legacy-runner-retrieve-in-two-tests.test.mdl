@@ -1,0 +1,65 @@
+-- ako/mxcli#1775: on the after-startup runner (every Docker run, and --local
+-- --legacy-runner) two tests in one file that define the same variable with
+-- `retrieve` failed injection with MDL063 (CE0111 "Duplicate variable name"
+-- from mxbuild). That runner joins every test into one microflow and renames
+-- each test's variables with a `_N` suffix, but which ones it renamed came from
+-- a pattern matching `$x = call|create` only, so a retrieve, declare, list
+-- operation, aggregate, send rest request, execute database query or loop
+-- iterator kept its name and was declared once per test. The names now come
+-- from the parsed body, nested definitions included. The endpoint runner
+-- (--local alone) gives each test its own microflow and was never affected.
+--
+-- Setup: 1775-setup.mdl. Then:
+--
+--   mxcli test mdl-examples/bug-tests/1775-legacy-runner-retrieve-in-two-tests.test.mdl -p app.mpr --local --legacy-runner
+--
+-- Expected: 4 tests PASS. Before the fix, injection was refused with MDL063
+-- for $Items, $First, $Count and $Item before any test ran. The generator side
+-- is pinned by cmd/mxcli/testrunner/rename_keyword_case_test.go.
+mdl 1;
+
+/**
+ * @setup Probe.SUB_SeedItems
+ */
+
+/**
+ * @test 1 a retrieve defines $Items
+ * @expect count($Items) >= 2
+ */
+retrieve $Items from Probe.Item;
+/
+
+/**
+ * @test 2 a second test retrieves the same name
+ * @expect count($Items) >= 2
+ */
+retrieve $Items from Probe.Item;
+/
+
+/**
+ * @test 3 a list operation, a declare and a loop iterator
+ * @expect $First != empty
+ * @expect $Count = count($Items)
+ */
+retrieve $Items from Probe.Item;
+$First = head $Items;
+declare $Count Integer = 0;
+loop $Item in $Items begin
+  set $Count = $Count + 1;
+end loop;
+/
+
+/**
+ * @test 4 the same names again, the loop iterator nested in an if branch
+ * @expect $First != empty
+ * @expect $Count = count($Items)
+ */
+retrieve $Items from Probe.Item;
+$First = head $Items;
+declare $Count Integer = 0;
+if $First != empty then
+  loop $Item in $Items begin
+    set $Count = $Count + 1;
+  end loop;
+end if;
+/

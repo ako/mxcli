@@ -126,3 +126,44 @@ func TestFixPropertySets_CompletesAUnitNothingRewrites(t *testing.T) {
 		t.Fatalf("the repair left the ContentsHash index stale: %s", w)
 	}
 }
+
+// ako/mxcli#1505: on Mendix 10.24.18 `fix property-sets --dry-run` said "Every
+// unit already has the property names Studio Pro writes" while a nanoflow mxcli
+// had re-created lacked ExportLevel and ReturnVariableName and `mx diff` threw on
+// it. The check only knew the keys the measured table fills on the project's
+// version, and the table did not cover 10.24.18.
+//
+// The project itself shows such a gap whatever the table covers: Studio Pro
+// writes the full property set on every element of a $Type, so one element of
+// the type without a key the others carry is a name set Mendix's merge engine
+// cannot compare. With no measured value to fill it from, the command reports
+// it and writes nothing. The subject here is a key the table has no row for at
+// all, on the Studio Pro-authored fixture (11.13.0); the control is
+// TestFixPropertySets_StudioProProjectIsClean, where every type is uniform.
+func TestFixPropertySets_ReportsAKeyNoMeasuredValueFills(t *testing.T) {
+	mprPath := copyPedApp(t)
+	f := dropKeyFromUnit(t, mprPath, "Microflows$Nanoflow", "ACT_Login", "MarkAsUsed")
+	var sink bytes.Buffer
+	if err := fixHashes(mprPath, true, &sink); err != nil {
+		t.Fatalf("re-index the subject: %v\n%s", err, sink.String())
+	}
+	edited, _ := os.ReadFile(f)
+
+	for _, dryRun := range []bool{true, false} {
+		var out bytes.Buffer
+		err := fixPropertySets(mprPath, dryRun, &out)
+		if !errors.Is(err, errPropertySetsRemain) {
+			t.Fatalf("dry-run=%v: want errPropertySetsRemain, got %v\n%s", dryRun, err, out.String())
+		}
+		got := out.String()
+		if strings.Contains(got, "Every unit already has") {
+			t.Fatalf("dry-run=%v: reported complete with a nanoflow missing MarkAsUsed:\n%s", dryRun, got)
+		}
+		if !strings.Contains(got, "Microflows$Nanoflow.MarkAsUsed") || !strings.Contains(got, "[Microflows$Nanoflow ACT_Login]") {
+			t.Fatalf("dry-run=%v: the gap is not named with the unit that has it:\n%s", dryRun, got)
+		}
+		if b, _ := os.ReadFile(f); !bytes.Equal(b, edited) {
+			t.Fatalf("dry-run=%v: wrote the unit — a key with no measured value must not be filled", dryRun)
+		}
+	}
+}

@@ -11,10 +11,11 @@ mxcli docker check -p app.mpr
 ## What It Does
 
 1. **Resolves the `mx` binary** -- Takes the `mx` next to `--mxbuild-path`, else the first it finds on PATH, in a Studio Pro installation, or in the download cache at `~/.mxcli/mxbuild/<version>/modeler/mx`. It does not download one (see [Getting mx](#getting-mx))
-2. **Runs `mx check`** -- Executes the Mendix project checker against a temporary copy of the `.mpr` file, as a local process; despite the `docker` in its name, it does not use Docker
+2. **Runs `mx check`** -- Executes the Mendix project checker against a temporary copy of the project **as stored**, as a local process; despite the `docker` in its name, it does not use Docker
 3. **Reports results** -- Outputs errors, warnings, and deprecations to the console
+4. **Explains CE0463** -- Only when the check found a CE0463, re-checks the copy after `mx update-widgets` and labels each one (see [CE0463 and stale widget definitions](#ce0463-and-stale-widget-definitions))
 
-If the project has errors, the command exits with a non-zero status code.
+If the stored project has errors, the command exits with a non-zero status code.
 
 Before `mx check` it also warns, without failing, about two problems `mx check`
 cannot see: an MPR v2 `ContentsHash` index that disagrees with the `.mxunit`
@@ -45,26 +46,83 @@ another patch of the same minor; `mx update-widgets` does not and the check then
 runs without it (see `mxcli docker check --help`). Pass `--mxbuild-path
 ~/.mxcli/mxbuild/<version>` to choose one.
 
+## CE0463 and stale widget definitions
+
+CE0463 ("The definition of this widget has changed") means a stored pluggable
+widget instance does not match its widget package. Its commonest cause is
+harmless to fix: the package was upgraded after the widget was placed (any
+Marketplace or widget install does this), and Studio Pro's "Update all widgets"
+resyncs it. But until it is resynced, MxBuild and `mxcli run --local` refuse
+the project, so `docker check` reports it.
+
+When the check of the stored project finds a CE0463, `docker check` runs
+`mx update-widgets` on the same temporary copy, checks it again, and labels each
+CE0463 of the stored project:
+
+| Label | Meaning | Fix |
+|---|---|---|
+| `` stale widget definition — `mxcli fix widgets` fixes it `` | the resync clears it | `mxcli fix widgets -p app.mpr` updates the project's widgets and keeps MPR v2 |
+| `persists after update-widgets` | the resync does not clear it: something in the stored widget is wrong in a way a resync does not repair (if mxcli wrote the widget, that is an mxcli defect worth reporting) | not a resync; see [Pluggable Widgets](../guides/pluggable-widgets.md) |
+
+The verdict and the exit status are always the stored project's. The re-check
+costs a second `mx check`, so it runs only when there is a CE0463 to explain.
+
+`mx check` does not print the page a CE0463 is on, so widgets of the same name on
+different pages print the same line; the labels count them (`(4×)`, or
+`(2 of 3)` when a resync clears only some of them).
+
+| Flag | Checks | Exit status | Labels |
+|---|---|---|---|
+| *(none)* | the project as stored | the stored project's | yes, when there is a CE0463 |
+| `--no-update-widgets` | the project as stored | the stored project's | no: update-widgets never runs |
+| `--update-widgets` | only a copy normalised by `mx update-widgets` first | the normalised copy's | no |
+
+`--update-widgets` is how `docker check` behaved by default in earlier
+releases. It reports 0 errors for a project whose only errors are stale widget
+definitions, which then still fails to build: use it only when you mean to ask
+"would this pass after `mxcli fix widgets`?". `--no-update-widgets` is kept for
+scripts that pass it; its verdict is the default's.
+
+If `mx update-widgets` fails during the re-check (it refuses a project whose
+Mendix version is not exactly its own, `exit status 4`), the CE0463s are left
+unlabelled and the output says so.
+
 ## Example Output
 
 A clean project:
 
 ```
-Using mx: /home/vscode/.mxcli/mxbuild/11.6.3.12345/modeler/mx
+Using mx: /home/vscode/.mxcli/mxbuild/11.13.0/modeler/mx
+Checking a temporary copy (mx writes into the project it checks; the project on disk is not changed).
 Checking project /workspaces/app/app.mpr...
+Checking app for errors...
 The app contains: 0 errors.
 Project check passed.
 ```
 
-A project with errors:
+A project whose Data grid 2 package was upgraded after its grids were placed
+(measured on Mendix 11.13.0; the long CE0463 message is shortened here):
 
 ```
-Using mx: /home/vscode/.mxcli/mxbuild/11.6.3.12345/modeler/mx
 Checking project /workspaces/app/app.mpr...
-CE0001: Entity 'MyModule.Customer' has no access rules configured.
-CE0463: Widget definition changed for 'DataGrid2'.
-The app contains: 2 errors.
-project check failed: exit status 1
+Checking app for errors...
+[error] [CE0463] "The definition of this widget has changed. ..." at Data grid 2 'dataGrid2_1'
+[error] [CE0463] "The definition of this widget has changed. ..." at Data grid 2 'dataGrid21'
+...
+The app contains: 11 errors.
+
+The stored project has 11 CE0463 errors. Re-checking the temporary copy after
+  `mx update-widgets` to tell stale widget definitions from other causes...
+CE0463 in the stored project:
+  at Data grid 2 'dataGrid2_1' (4×): stale widget definition — `mxcli fix widgets` fixes it
+  at Data grid 2 'dataGrid21' (4×): stale widget definition — `mxcli fix widgets` fixes it
+  at Data grid 2 'dataGrid2_2' (2×): stale widget definition — `mxcli fix widgets` fixes it
+  at Data grid 2 'dataGrid2_3': stale widget definition — `mxcli fix widgets` fixes it
+All 11 are stale widget definitions. This updates them in the project, as Studio
+  Pro's "Update all widgets" does:
+    mxcli fix widgets -p /workspaces/app/app.mpr
+As stored: 11 errors. After update-widgets: 0 errors.
+Error: project check failed: exit status 1
 ```
 
 ## When to Use
@@ -72,7 +130,7 @@ project check failed: exit status 1
 `mxcli docker check` is faster than a full build (`mxcli docker build`) because it only validates the project structure without compiling or packaging. This makes it useful for:
 
 - **Quick validation** after making MDL changes
-- **Pre-build gate** -- `mxcli docker build` runs `mx check` automatically before building (use `--skip-check` to bypass)
+- **Pre-build gate** -- `mxcli docker build` runs `mx check` automatically before building (use `--skip-check` to bypass). That check runs on the build's widget-normalised copy, as `docker check --update-widgets` does, so it does not report stale widget definitions; `docker check` does
 - **CI pipelines** -- fail fast on invalid projects before spending time on a full build
 - **Iterative development** -- check after each MDL script execution to catch errors early
 

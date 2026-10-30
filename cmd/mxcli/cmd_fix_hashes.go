@@ -14,14 +14,14 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-// cmd_fix_hashes.go verifies and repairs the MPR v2 ContentsHash index
-// (ako/mxcli#972). Unlike its siblings in cmd_fix.go it needs no mx: the index
+// cmd_fix_hashes.go verifies and repairs the .mpr's ContentsHash index
+// (ako/mxcli#972; MPR v1 since ako/mxcli#1159). Unlike its siblings in cmd_fix.go it needs no mx: the index
 // is mxcli's own to read and write.
 
 var fixHashesCmd = &cobra.Command{
 	Use:   "hashes",
-	Short: "Verify (and with --repair, rewrite) the MPR v2 ContentsHash index",
-	Long: `Verify that every unit's ContentsHash in the .mpr matches its .mxunit file.
+	Short: "Verify (and with --repair, rewrite) the .mpr's ContentsHash index",
+	Long: `Verify that every unit's ContentsHash in the .mpr matches its contents.
 
 In an MPR v2 project the .mpr indexes each mprcontents/**/*.mxunit file by
 base64(SHA-256(file)). mxcli and Studio Pro keep the two in step, but anything
@@ -41,9 +41,13 @@ truth. MISSING and ORPHAN have no correct hash to write and are only reported
 ('mxcli diag --check-units --fix' removes orphan files). Like every mxcli
 write, the repair is refused while Studio Pro has the project open.
 
-Exits 1 when an issue remains after the command (so the verify can gate CI).
-An MPR v1 project keeps unit contents inside the .mpr and has no index to
-drift; the command says so and exits 0.`,
+An MPR v1 project (Mendix below 10.18) keeps each unit's contents inside the
+.mpr, in the same row as its ContentsHash, so there are no files to drift. The
+hash is still Studio Pro's to read, and earlier mxcli versions rewrote contents
+without it (ako/mxcli#1159): on v1 the command compares each hash with the
+contents stored beside it, and --repair rewrites it from them.
+
+Exits 1 when an issue remains after the command (so the verify can gate CI).`,
 	Example: `  mxcli fix hashes -p app.mpr
   mxcli fix hashes -p app.mpr --repair`,
 	Args:          cobra.NoArgs,
@@ -100,12 +104,11 @@ func fixHashes(mprPath string, repair bool, out io.Writer) error {
 		rep, err = r.VerifyContentsHashes()
 		_ = r.Close()
 	}
-	if errors.Is(err, mpr.ErrNotMPRv2) {
-		fmt.Fprintf(out, "%s is an MPR v1 project: unit contents live inside the .mpr, so there is no ContentsHash index to verify.\n", filepath.Base(mprPath))
-		return nil
-	}
 	if rep == nil {
 		return err
+	}
+	if rep.Version == mpr.MPRVersionV1 {
+		return reportV1Hashes(mprPath, rep, repair, repaired, err, out)
 	}
 
 	fmt.Fprintf(out, "Checked %d unit(s) in %s against %d .mxunit file(s).\n", rep.Units, filepath.Base(mprPath), rep.Files)
@@ -153,6 +156,34 @@ func fixHashes(mprPath string, repair bool, out io.Writer) error {
 	return nil
 }
 
+// reportV1Hashes is fixHashes' report for an MPR v1 project, where each hash
+// is compared with the contents in its own row: nothing can be missing or
+// orphaned, and the contents are what a repair writes the hash from.
+func reportV1Hashes(mprPath string, rep *mpr.ContentsHashReport, repair bool, repaired int, err error, out io.Writer) error {
+	fmt.Fprintf(out, "Checked %d unit(s) in %s (MPR v1) against the contents stored beside them.\n", rep.Units, filepath.Base(mprPath))
+	for _, m := range rep.Mismatches {
+		label := ""
+		if m.Unit != "" {
+			label = " [" + m.Unit + "]"
+		}
+		fmt.Fprintf(out, "  MISMATCH  %s%s\n            stored %s, contents %s\n", m.UnitID, label, orNone(m.Stored), m.Actual)
+	}
+	fmt.Fprintf(out, "\n%d mismatch(es).\n", len(rep.Mismatches))
+	if err != nil { // the repair itself failed (Studio Pro guard, SQLite)
+		return err
+	}
+	switch {
+	case repair && repaired > 0:
+		fmt.Fprintf(out, "Repaired %d ContentsHash value(s) from the stored contents.\n", repaired)
+	case len(rep.Mismatches) > 0:
+		fmt.Fprintf(out, "Run 'mxcli fix hashes -p %s --repair' to rewrite the mismatched hashes from the stored contents.\n", mprPath)
+		return errHashIssuesRemain
+	default:
+		fmt.Fprintln(out, "Every unit's ContentsHash matches its stored contents.")
+	}
+	return nil
+}
+
 func orNone(s string) string {
 	if s == "" {
 		return "(none)"
@@ -183,8 +214,13 @@ func unitLabel(path string) string {
 // when the ContentsHash index disagrees with the unit files, or "" when it
 // agrees. Measured on testapp (900 units): the whole `mxcli fix hashes` run,
 // process start included, takes ~0.2 s, so it is cheap enough to run on every
-// exec and check. It never fails the caller: an MPR v1 project or any error
-// opening or reading the project yields "".
+// exec and check. It never fails the caller: any error opening or reading the
+// project yields "".
+//
+// MPR v1 is skipped. Its hashes live in the rows with the contents, so a
+// restored file cannot make them drift, and verifying them reads every blob in
+// the .mpr: far more than 0.2 s on a large v1 app, on every command. `fix
+// hashes` checks them when asked (ako/mxcli#1159).
 func contentsHashDriftWarning(mprPath string) string {
 	if mprPath == "" {
 		return ""
@@ -194,6 +230,9 @@ func contentsHashDriftWarning(mprPath string) string {
 		return ""
 	}
 	defer r.Close()
+	if r.Version() != mpr.MPRVersionV2 {
+		return ""
+	}
 	rep, err := r.VerifyContentsHashes()
 	if err != nil {
 		return ""

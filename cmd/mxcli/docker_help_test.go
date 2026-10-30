@@ -28,3 +28,46 @@ func TestDockerHelp_VersionFloorIsBuildsNotChecks(t *testing.T) {
 		}
 	}
 }
+
+// ako/mxcli#568, #646: docker check's help said update-widgets ran first "to
+// prevent false CE0463 errors" — the CE0463s it cleared were real, and failed
+// the build of the stored project. The default now checks the project as
+// stored; the help has to say so, name the flag that restores the old
+// behaviour, and keep accepting --no-update-widgets.
+func TestDockerCheckHelp_StoredProjectIsTheDefault(t *testing.T) {
+	long := flat(dockerCheckCmd.Long)
+	for _, want := range []string{
+		"It checks the project as stored",
+		"the exit status is the stored project's",
+		"stale widget definition — `mxcli fix widgets` fixes it",
+		"persists after update-widgets",
+		"--update-widgets",
+		"--no-update-widgets",
+	} {
+		if !strings.Contains(long, want) {
+			t.Errorf("docker check --help does not say %q", want)
+		}
+	}
+	if strings.Contains(long, "false CE0463") {
+		t.Error("docker check --help still calls the CE0463s update-widgets clears false")
+	}
+	for _, name := range []string{"update-widgets", "no-update-widgets"} {
+		if dockerCheckCmd.Flags().Lookup(name) == nil {
+			t.Errorf("docker check has no --%s flag", name)
+		}
+	}
+	// Both at once is a contradiction cobra refuses.
+	cmd := dockerCheckCmd
+	t.Cleanup(func() {
+		for _, name := range []string{"update-widgets", "no-update-widgets"} {
+			f := cmd.Flags().Lookup(name)
+			f.Value.Set("false")
+			f.Changed = false
+		}
+	})
+	cmd.Flags().Set("update-widgets", "true")
+	cmd.Flags().Set("no-update-widgets", "true")
+	if err := cmd.ValidateFlagGroups(); err == nil {
+		t.Error("docker check accepts --update-widgets together with --no-update-widgets")
+	}
+}

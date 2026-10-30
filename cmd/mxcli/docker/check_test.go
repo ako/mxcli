@@ -150,6 +150,37 @@ echo "$1" >> ` + logFile + "\n"
 	return dir, logFile
 }
 
+// TestCheck_DefaultChecksStoredProject: since ako/mxcli#646 the default runs no
+// update-widgets before the check — the fake mx reports no CE0463, so it runs
+// none at all. (This test asserted update-widgets-then-check for the default
+// until then; that order is now TestCheck_UpdateWidgetsBeforeCheck's, behind
+// --update-widgets.)
+func TestCheck_DefaultChecksStoredProject(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script test not supported on Windows")
+	}
+
+	mxDir, logFile := createFakeMxDir(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := Check(CheckOptions{
+		ProjectPath: fakeProject(t),
+		MxBuildPath: mxDir,
+		Stdout:      &stdout,
+		Stderr:      &stderr,
+	}); err != nil {
+		t.Fatalf("Check: %v\n%s", err, stdout.String())
+	}
+
+	logBytes, err := os.ReadFile(logFile)
+	if err != nil {
+		t.Fatalf("failed to read command log: %v", err)
+	}
+	if string(logBytes) != "check\n" {
+		t.Errorf("want exactly one mx check and no update-widgets, got log:\n%s", logBytes)
+	}
+}
+
 func TestCheck_UpdateWidgetsBeforeCheck(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell script test not supported on Windows")
@@ -159,10 +190,11 @@ func TestCheck_UpdateWidgetsBeforeCheck(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	opts := CheckOptions{
-		ProjectPath: fakeProject(t),
-		MxBuildPath: mxDir,
-		Stdout:      &stdout,
-		Stderr:      &stderr,
+		ProjectPath:        fakeProject(t),
+		MxBuildPath:        mxDir,
+		UpdateWidgetsFirst: true, // --update-widgets: the default before #646
+		Stdout:             &stdout,
+		Stderr:             &stderr,
 	}
 
 	Check(opts)
@@ -238,6 +270,7 @@ func TestUpdateWidgetsPathArg_AbsolutizesBareFilename(t *testing.T) {
 // TestCheck_UpdateWidgetsReceivesAbsolutePath verifies the invocation passes an
 // absolute path to `mx update-widgets` even when ProjectPath is a bare filename
 // (as with `mxcli docker check -p app.mpr` run from the project directory).
+// --update-widgets is what runs it unconditionally since #646.
 func TestCheck_UpdateWidgetsReceivesAbsolutePath(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell script test not supported on Windows")
@@ -254,7 +287,7 @@ func TestCheck_UpdateWidgetsReceivesAbsolutePath(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	// Bare filename — the crash trigger.
 	t.Chdir(filepath.Dir(fakeProject(t)))
-	Check(CheckOptions{ProjectPath: "fake.mpr", MxBuildPath: dir, Stdout: &stdout, Stderr: &stderr})
+	Check(CheckOptions{ProjectPath: "fake.mpr", MxBuildPath: dir, UpdateWidgetsFirst: true, Stdout: &stdout, Stderr: &stderr})
 
 	logBytes, err := os.ReadFile(logFile)
 	if err != nil {

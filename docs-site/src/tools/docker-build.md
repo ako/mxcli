@@ -26,7 +26,9 @@ project into MPRv1), mx check compiles the theme into `theme-cache/` and
 So `docker build` copies the project to a temporary directory (in `$TMPDIR`)
 and runs all three there. Widget definitions are normalised on that copy, so the
 build uses the normalised model while the project keeps its own; run
-`mxcli fix widgets` to apply the normalisation to the project. The only thing
+`mxcli fix widgets` to apply the normalisation to the project. (So the build's
+pre-build check does not report a stale widget definition; `mxcli docker check`,
+which checks the project as stored, does.) The only thing
 written is the output directory (`.docker/build/` by default, or `-o`). Build
 output, caches and VCS folders (`deployment/`, `.docker/`, `.git/`,
 `node_modules/`, ...) are not copied.

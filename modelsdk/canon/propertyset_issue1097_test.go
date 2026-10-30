@@ -16,6 +16,11 @@ import (
 // mappings; testdata/expr-checker (11.6.6) holds the same EntityRef and no
 // MessageDefinition2 at all, which gen's Mappings$MappingDocument records as
 // Introduced 11.10.0.
+//
+// EntityRef's floor was the lowest fixture that held it, not the version that
+// introduced it. ako/mxcli#1505 measured it lower: Studio Pro 10.24.0 stores
+// EntityRef null on all 75 AttributeRefs of a blank app, and `mx convert`
+// 10.24.0 and 10.24.18 write the same null back where it is stripped.
 func TestCompletePropertySets_Issue1097Rows(t *testing.T) {
 	cases := []struct {
 		typ, key string
@@ -23,7 +28,7 @@ func TestCompletePropertySets_Issue1097Rows(t *testing.T) {
 		since    string
 		below    string
 	}{
-		{"DomainModels$AttributeRef", "EntityRef", nil, "11.6.6", "11.6.5"},
+		{"DomainModels$AttributeRef", "EntityRef", nil, "10.24.0", "10.23.0"},
 		{"ImportMappings$ImportMapping", "MessageDefinition2", "", "11.10.0", "11.9.9"},
 		{"ExportMappings$ExportMapping", "MessageDefinition2", "", "11.10.0", "11.9.9"},
 	}

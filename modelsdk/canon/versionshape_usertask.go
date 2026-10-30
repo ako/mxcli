@@ -41,8 +41,9 @@ var emptyUserSourceSince = version.Version{Major: 9, Minor: 10}
 
 // userTaskActivitySince is the version that introduced the types
 // Workflows$SingleUserTaskActivity and MultiUserTaskActivity, and deleted
-// Workflows$UserTask (mendixmodelsdk 4.117.0). Written down here because the
-// generated version data holds property versions only, never a type's own.
+// Workflows$UserTask (mendixmodelsdk 4.117.0), read by hand before the type
+// data existed; TestTypeFloor_AgreesWithTheLowerings keeps it equal to
+// mendixmodelsdk_type_versions.json.
 var userTaskActivitySince = version.Version{Major: 10, Minor: 12}
 
 // completionCriteriaSince holds the multi-user task rules introduced after the

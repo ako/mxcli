@@ -19,6 +19,8 @@ package modelsdkbackend
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/backend"
 	"github.com/mendixlabs/mxcli/mdl/types"
@@ -32,6 +34,7 @@ import (
 // embedded `unimplemented` for every method it doesn't override).
 var _ backend.FullBackend = (*Backend)(nil)
 var _ backend.WriteStatsReporter = (*Backend)(nil)
+var _ backend.SourceFileReporter = (*Backend)(nil)
 
 // Backend reads and writes a Mendix project through the modelsdk codec engine.
 // It embeds `unimplemented` (generated, see gen_unimplemented.go) so any
@@ -49,6 +52,10 @@ type Backend struct {
 	// javasource/ or javascriptsource/ rather than in its unit. They are folded
 	// into WriteStats so a body-only edit is not reported as "Unchanged".
 	fileWrites backend.WriteStats
+
+	// sourceFiles lists the files and folders beside the model that writes
+	// changed since the executor last took them (TakeSourceFileChanges).
+	sourceFiles []backend.SourceFileChange
 }
 
 // New constructs a modelsdk backend.
@@ -93,6 +100,46 @@ func (b *Backend) noteFileWrite(changed bool) {
 	if changed {
 		b.fileWrites.Written++
 	}
+}
+
+// Readers' names for what the files beside the model hold.
+const (
+	javaActionBody       = "Java action body"
+	javaScriptActionBody = "JavaScript action body"
+)
+
+// noteSourceFile records a file or folder beside the model that a write just
+// changed, by its absolute path (from, for a move, likewise; empty otherwise).
+// Call it only once the change is on disk.
+func (b *Backend) noteSourceFile(path, from string, removed bool, what string) {
+	c := backend.SourceFileChange{Path: b.projectRelative(path), Removed: removed, What: what}
+	if from != "" {
+		c.From = b.projectRelative(from)
+	}
+	b.sourceFiles = append(b.sourceFiles, c)
+}
+
+// projectRelative turns an absolute path under the project directory into the
+// slash-separated path a reader would stage. A folder's trailing separator is
+// kept, as "/".
+func (b *Backend) projectRelative(path string) string {
+	folder := strings.HasSuffix(path, string(filepath.Separator))
+	if rel, err := filepath.Rel(filepath.Dir(b.path), path); err == nil {
+		path = rel
+	}
+	path = filepath.ToSlash(path)
+	if folder && !strings.HasSuffix(path, "/") {
+		path += "/"
+	}
+	return path
+}
+
+// TakeSourceFileChanges returns the files and folders beside the model that
+// writes changed since the previous call, and forgets them.
+func (b *Backend) TakeSourceFileChanges() []backend.SourceFileChange {
+	changes := b.sourceFiles
+	b.sourceFiles = nil
+	return changes
 }
 
 // --- ConnectionBackend ---

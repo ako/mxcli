@@ -3,12 +3,15 @@
 package docker
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -20,11 +23,23 @@ type CheckOptions struct {
 	// MxBuildPath is an explicit path to the mxbuild executable (used to find mx).
 	MxBuildPath string
 
-	// SkipUpdateWidgets skips the 'mx update-widgets' step before checking.
-	// By default, update-widgets runs first, on the temporary copy the check
-	// uses, to normalize pluggable widget definitions and prevent false CE0463
-	// errors.
+	// By default the project is checked as stored, and when that finds CE0463
+	// ("the definition of this widget has changed") the same temporary copy is
+	// re-checked after 'mx update-widgets' to label each CE0463 as a stale
+	// widget definition or as one that persists (ako/mxcli#568, #646). The
+	// verdict is always the stored project's.
+
+	// SkipUpdateWidgets checks the project as stored and never runs
+	// 'mx update-widgets', not even for the re-check (--no-update-widgets).
+	// The verdict is the default's; only the labels are missing.
 	SkipUpdateWidgets bool
+
+	// UpdateWidgetsFirst runs 'mx update-widgets' on the temporary copy before
+	// the check and checks only that widget-normalised copy (--update-widgets).
+	// It was the default until #646: it hides every CE0463 a resync clears,
+	// which the stored project still has and which fails MxBuild and
+	// `mxcli run --local`.
+	UpdateWidgetsFirst bool
 
 	// Stdout for output messages.
 	Stdout io.Writer
@@ -32,6 +47,12 @@ type CheckOptions struct {
 	// Stderr for error output.
 	Stderr io.Writer
 }
+
+// The two labels a CE0463 of the stored project gets from the re-check.
+const (
+	staleCE0463Label      = "stale widget definition — `mxcli fix widgets` fixes it"
+	persistingCE0463Label = "persists after update-widgets"
+)
 
 // copyFile copies a single file from src to dst, preserving the source file mode.
 func copyFile(src, dst string) error {
@@ -71,11 +92,22 @@ var mxCheckCmd = func(mxPath, mprPath string, args []string, w, stderr io.Writer
 
 // Check runs 'mx check' on the project to validate it before building.
 //
+// It checks the project as stored: a CE0463 there fails MxBuild and
+// `mxcli run --local`, so the check must report it (ako/mxcli#568, #646). When
+// it finds one, it re-checks the copy after `mx update-widgets` and says which
+// CE0463s a widget resync (`mxcli fix widgets`) clears; the verdict stays the
+// stored project's. opts.UpdateWidgetsFirst restores the old behaviour of
+// checking only the normalised copy.
+//
 // It never modifies the project. `mx update-widgets` rewrites the model (and
 // turns an MPRv2 project into MPRv1), and `mx check` itself writes theme-cache/
 // and deployment/sass/ — so both run on a temporary copy, and what mx prints is
 // reported against the project's own paths (ako/mxcli#951).
 func Check(opts CheckOptions) error {
+	if opts.SkipUpdateWidgets && opts.UpdateWidgetsFirst {
+		return fmt.Errorf("--no-update-widgets and --update-widgets cannot be combined: " +
+			"the first checks the project as stored, the second only a widget-normalised copy")
+	}
 	w := opts.Stdout
 	if w == nil {
 		w = os.Stdout
@@ -117,12 +149,12 @@ func Check(opts CheckOptions) error {
 	defer errOut.Flush()
 	fmt.Fprintln(w, "Checking a temporary copy (mx writes into the project it checks; the project on disk is not changed).")
 
-	// Normalize pluggable widget definitions so `mx check` does not report
-	// CE0463 ("widget definition changed") for definitions that only need a
-	// resync. On the copy, so neither the model nor its storage format changes.
+	// --update-widgets: normalise pluggable widget definitions first and check
+	// only the normalised copy, as docker check did by default before #646. On
+	// the copy, so neither the model nor its storage format changes.
 	normalised := false
-	if !opts.SkipUpdateWidgets {
-		fmt.Fprintln(w, "Normalising widget definitions on the temporary copy...")
+	if opts.UpdateWidgetsFirst {
+		fmt.Fprintln(w, "Normalising widget definitions on the temporary copy (--update-widgets)...")
 		if err := updateWidgetsCmd(mxPath, workMpr, out, errOut); err != nil {
 			out.Flush()
 			fmt.Fprintf(w, "Warning: update-widgets failed (continuing): %v\n", err)
@@ -131,9 +163,10 @@ func Check(opts CheckOptions) error {
 		}
 	}
 
-	// Run mx check
+	// Run mx check. Its output is kept as well as shown, to find the CE0463s.
 	fmt.Fprintf(w, "Checking project %s...\n", opts.ProjectPath)
-	checkErr := mxCheckCmd(mxPath, workMpr, nil, out, errOut)
+	var checkOut, checkErrOut bytes.Buffer
+	checkErr := mxCheckCmd(mxPath, workMpr, nil, io.MultiWriter(out, &checkOut), io.MultiWriter(errOut, &checkErrOut))
 	out.Flush()
 	errOut.Flush()
 
@@ -141,18 +174,20 @@ func Check(opts CheckOptions) error {
 	case normalised:
 		// #568 / #646: the normalisation can hide a CE0463 the stored project
 		// still has, which then fails `run --local` and MxBuild.
-		fmt.Fprintln(w, "Note: widget definitions were normalised on a temporary copy before checking, so a")
-		fmt.Fprintln(w, "  CE0463 the stored project still has is not reported here; it fails MxBuild and")
-		fmt.Fprintln(w, "  `mxcli run --local`. Use --no-update-widgets to check the project as stored, and")
-		fmt.Fprintln(w, "  `mxcli fix widgets` to apply the normalisation to the project.")
-	case !opts.SkipUpdateWidgets:
+		fmt.Fprintln(w, "Note: widget definitions were normalised on a temporary copy before checking")
+		fmt.Fprintln(w, "  (--update-widgets), so a CE0463 the stored project still has is not reported here;")
+		fmt.Fprintln(w, "  it fails MxBuild and `mxcli run --local`. Without --update-widgets docker check")
+		fmt.Fprintln(w, "  checks the project as stored; `mxcli fix widgets` applies the normalisation to it.")
+	case opts.UpdateWidgetsFirst:
 		// mendixlabs/mxcli#1629: update-widgets refuses a project of another
 		// Mendix version than mx's own (exit status 4) where mx check accepts it.
 		fmt.Fprintln(w, "Note: widget definitions were not normalised (update-widgets failed above), so this")
 		fmt.Fprintln(w, "  checked the project as stored, and a CE0463 may be one normalisation would clear.")
-		fmt.Fprintln(w, "  If mx said \"Project is in different Mendix version\", update-widgets needs an mx of")
-		fmt.Fprintln(w, "  the project's exact version, which mx check does not: `mxcli setup mxbuild -p")
-		fmt.Fprintln(w, "  <app>.mpr` fetches it, and --mxbuild-path ~/.mxcli/mxbuild/<version> selects it.")
+		fmt.Fprintln(w, versionMismatchHint)
+	case checkErr != nil && !opts.SkipUpdateWidgets:
+		if stored := ce0463Lines(checkOut.String() + "\n" + checkErrOut.String()); len(stored) > 0 {
+			recheckCE0463(w, out, mxPath, workMpr, opts.ProjectPath, stored, checkOut.String())
+		}
 	}
 	if checkErr != nil {
 		return fmt.Errorf("project check failed: %w", checkErr)
@@ -160,6 +195,152 @@ func Check(opts CheckOptions) error {
 
 	fmt.Fprintln(w, "Project check passed.")
 	return nil
+}
+
+// versionMismatchHint explains the commonest update-widgets failure
+// (mendixlabs/mxcli#1629).
+const versionMismatchHint = "  If mx said \"Project is in different Mendix version\", update-widgets needs an mx of\n" +
+	"  the project's exact version, which mx check does not: `mxcli setup mxbuild -p\n" +
+	"  <app>.mpr` fetches it, and --mxbuild-path ~/.mxcli/mxbuild/<version> selects it."
+
+// recheckCE0463 runs `mx update-widgets` on the copy the stored project was just
+// checked on, checks it again, and labels each CE0463 of the stored project: a
+// stale widget definition, which the resync clears and `mxcli fix widgets`
+// applies to the project, or one that persists after it. The re-check's own
+// output is not shown — the stored project's result is the one that counts.
+//
+// mx check's text output does not name a CE0463's page, so two same-named
+// widgets on different pages print the same line; the lines are compared as
+// counts, and a line that is partly cleared says how many of it were.
+func recheckCE0463(w io.Writer, out *pathRewriter, mxPath, workMpr, projectPath string, stored []string, storedOutput string) {
+	fmt.Fprintf(w, "\nThe stored project has %d CE0463 %s. Re-checking the temporary copy after\n",
+		len(stored), plural(len(stored), "error", "errors"))
+	fmt.Fprintln(w, "  `mx update-widgets` to tell stale widget definitions from other causes...")
+
+	var uwOut bytes.Buffer
+	if err := updateWidgetsCmd(mxPath, workMpr, &uwOut, &uwOut); err != nil {
+		// Its output says why (mendixlabs/mxcli#1629: another patch version).
+		io.Copy(out, &uwOut)
+		out.Flush()
+		fmt.Fprintf(w, "The re-check could not tell which CE0463s are stale widget definitions: update-widgets failed: %v\n", err)
+		fmt.Fprintln(w, versionMismatchHint)
+		return
+	}
+	var after bytes.Buffer
+	_ = mxCheckCmd(mxPath, workMpr, nil, &after, &after) // non-zero whenever errors remain
+	afterTotal, ok := appErrorCount(after.String())
+	if !ok {
+		fmt.Fprintln(w, "The re-check could not tell which CE0463s are stale widget definitions: mx check did")
+		fmt.Fprintln(w, "  not complete on the copy after update-widgets.")
+		return
+	}
+
+	remaining := map[string]int{}
+	for _, l := range ce0463Lines(after.String()) {
+		remaining[l]++
+	}
+	total := map[string]int{}
+	var order []string
+	for _, l := range stored {
+		if total[l] == 0 {
+			order = append(order, l)
+		}
+		total[l]++
+	}
+	stale, persisting := 0, 0
+	fmt.Fprintln(w, "CE0463 in the stored project:")
+	for _, l := range order {
+		n := total[l]
+		p := min(remaining[l], n)
+		s := n - p
+		stale += s
+		persisting += p
+		at := ce0463Location(l)
+		if s > 0 {
+			fmt.Fprintf(w, "  at %s%s: %s\n", at, countOf(s, n), staleCE0463Label)
+		}
+		if p > 0 {
+			fmt.Fprintf(w, "  at %s%s: %s\n", at, countOf(p, n), persistingCE0463Label)
+		}
+	}
+	switch {
+	case persisting == 0 && stale == 1:
+		fmt.Fprintln(w, "It is a stale widget definition. This updates it in the project, as Studio Pro's")
+		fmt.Fprintln(w, "  \"Update all widgets\" does:")
+	case persisting == 0:
+		fmt.Fprintf(w, "All %d are stale widget definitions. This updates them in the project, as Studio\n", stale)
+		fmt.Fprintln(w, "  Pro's \"Update all widgets\" does:")
+	case stale == 0 && persisting == 1:
+		fmt.Fprintln(w, "It is not a stale widget definition: it persists after update-widgets, so a widget")
+		fmt.Fprintln(w, "  resync (`mxcli fix widgets`) does not clear it.")
+	case stale == 0:
+		fmt.Fprintf(w, "None of the %d is a stale widget definition: all persist after update-widgets, so a\n", persisting)
+		fmt.Fprintln(w, "  widget resync (`mxcli fix widgets`) does not clear them.")
+	default:
+		fmt.Fprintf(w, "%d of %d are stale widget definitions; %d persist after update-widgets, which a\n",
+			stale, stale+persisting, persisting)
+		fmt.Fprintln(w, "  widget resync does not clear. This updates the stale ones in the project:")
+	}
+	if stale > 0 {
+		fmt.Fprintf(w, "    mxcli fix widgets -p %s\n", projectPath)
+	}
+	if storedTotal, ok := appErrorCount(storedOutput); ok {
+		fmt.Fprintf(w, "As stored: %d %s. ", storedTotal, plural(storedTotal, "error", "errors"))
+	}
+	fmt.Fprintf(w, "After update-widgets: %d %s.\n", afterTotal, plural(afterTotal, "error", "errors"))
+}
+
+// countOf prints "(k of n)" when only part of n identical lines share a label.
+func countOf(k, n int) string {
+	switch {
+	case n == 1:
+		return ""
+	case k == n:
+		return fmt.Sprintf(" (%d×)", n)
+	default:
+		return fmt.Sprintf(" (%d of %d)", k, n)
+	}
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
+// ce0463Lines returns mx check's CE0463 lines, trimmed, in the order printed:
+//
+//	[error] [CE0463] "The definition of this widget has changed. ..." at Data grid 2 'dgRequests'
+func ce0463Lines(output string) []string {
+	var lines []string
+	for _, l := range strings.Split(output, "\n") {
+		if l = strings.TrimSpace(l); strings.Contains(l, "[CE0463]") {
+			lines = append(lines, l)
+		}
+	}
+	return lines
+}
+
+// ce0463Location is the widget a CE0463 line names ("Data grid 2 'dgRequests'"),
+// or the whole line when it names none.
+func ce0463Location(line string) string {
+	if i := strings.LastIndex(line, `" at `); i >= 0 {
+		return line[i+len(`" at `):]
+	}
+	return line
+}
+
+var appErrorCountRe = regexp.MustCompile(`The app contains: (\d+) errors?\.`)
+
+// appErrorCount reads mx check's closing "The app contains: N errors." line.
+func appErrorCount(output string) (int, bool) {
+	m := appErrorCountRe.FindStringSubmatch(output)
+	if m == nil {
+		return 0, false
+	}
+	n, err := strconv.Atoi(m[1])
+	return n, err == nil
 }
 
 // MxCheckOnCopy runs `mx check <project> args...` on a temporary copy of the

@@ -1,0 +1,44 @@
+mdl 1;
+-- ako/mxcli#1505 (mendixlabs/mxcli#1595): on Mendix 10.24 below 10.24.24 mxcli
+-- wrote documents without properties Studio Pro writes. A re-created nanoflow
+-- lacked ExportLevel and ReturnVariableName, so `mx diff` against the original
+-- threw:
+--
+--   Objects with ID … of type Microflows$Nanoflow do not have the same
+--   properties. baseNames = …, ExportLevel, …, ReturnVariableName; newNames = …
+--
+-- and a fresh microflow and entity lacked AggregateAction's four expression
+-- keys, DeleteAction.ErrorHandlingType, WhileLoopCondition.Caption,
+-- DatabaseRetrieveSource.XpathConstraint and EntityImpl Image/Source/ImageData.
+-- `mxcli fix property-sets --dry-run` reported every unit complete.
+--
+-- The table of values (modelsdk/canon/studiopro_property_defaults.json) was
+-- measured from 10.24.24 up, and its lowest measured version was read as the
+-- version that introduced each key. Re-measured on 10.24.0 and 10.24.18.
+--
+-- Run it on a fresh 10.24.18 (or 10.24.0) app, keeping a copy as the base:
+-- `mx diff base/App.mpr App/App.mpr out.json` exits 0, `mx convert -p` on a
+-- copy adds no key to any element mxcli wrote, `fix property-sets --dry-run`
+-- reports every unit complete, and `mx check` reports 0 errors.
+
+drop nanoflow Atlas_Web_Content.ACT_Login;
+create nanoflow Atlas_Web_Content.ACT_Login () begin end;
+
+create module Probe1505;
+
+create persistent entity Probe1505.Item (Code: String(50), Status: String(20), Amount: Integer);
+
+create microflow Probe1505.ACT_Do ()
+begin
+  retrieve $List from Probe1505.Item;
+  $Cnt = count $List;
+  $Sum = sum $List by Amount;
+  $New = create Probe1505.Item (Code = 'a', Status = 'b');
+  change $New (Amount = 5);
+  delete $New;
+  declare $i Integer = 0;
+  while $i < 3
+  begin
+    set $i = $i + 1;
+  end while;
+end;

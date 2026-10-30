@@ -1,0 +1,14 @@
+-- ako/mxcli#1775: the setup script for
+-- 1775-legacy-runner-retrieve-in-two-tests.test.mdl. Apply it before running
+-- the tests:
+--
+--   mxcli exec mdl-examples/bug-tests/1775-setup.mdl -p app.mpr
+mdl 1;
+create module Probe;
+create persistent entity Probe.Item ( Name: string(100) );
+create microflow Probe.SUB_SeedItems () begin
+  $One = create Probe.Item ( Name = 'one' );
+  $Two = create Probe.Item ( Name = 'two' );
+  commit $One;
+  commit $Two;
+end;

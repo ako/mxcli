@@ -85,6 +85,13 @@ func (m *MockBackend) RenameJavaSourceFile(moduleName, oldName, newName string) 
 	return nil
 }
 
+func (m *MockBackend) MoveJavaSourceFile(fromModule, toModule, actionName string) (string, error) {
+	if m.MoveJavaSourceFileFunc != nil {
+		return m.MoveJavaSourceFileFunc(fromModule, toModule, actionName)
+	}
+	return "", nil
+}
+
 func (m *MockBackend) ReadJavaSourceFile(moduleName, actionName string) (string, error) {
 	if m.ReadJavaSourceFileFunc != nil {
 		return m.ReadJavaSourceFileFunc(moduleName, actionName)
@@ -132,4 +139,11 @@ func (m *MockBackend) RenameJavaScriptSourceFile(moduleName, oldName, newName st
 		return m.RenameJavaScriptSourceFileFunc(moduleName, oldName, newName)
 	}
 	return nil
+}
+
+func (m *MockBackend) MoveJavaScriptSourceFile(fromModule, toModule, actionName string) (string, error) {
+	if m.MoveJavaScriptSourceFileFunc != nil {
+		return m.MoveJavaScriptSourceFileFunc(fromModule, toModule, actionName)
+	}
+	return "", nil
 }

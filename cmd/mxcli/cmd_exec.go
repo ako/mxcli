@@ -43,6 +43,15 @@ writes through it with --mcp. --force writes anyway (for a lock left behind by a
 crash); MXCLI_ALLOW_STUDIO_PRO_OPEN=1 does the same for every command. Reads, and
 re-running a script whose statements change nothing, are never refused.
 
+Some statements also write files beside the model: a Java or JavaScript
+action's body goes to javasource/ or javascriptsource/, and DROP MODULE removes
+the module's source folders. Each file written, moved or removed is named on its
+own line after the statement's report, as a path relative to the project
+("Wrote javasource/probe/actions/JA_Hello.java ..."), and a run that changed any
+ends with "Files changed outside the model: N (...)". Commit them with the .mpr
+and mprcontents/: they are not part of the model. A rewrite that leaves a
+file's content as it was does not touch it and is not reported.
+
 A script is applied all or nothing: if a statement still fails while it is
 written (after the checks passed), the writes of the statements before it are
 rolled back and the project is left as it was. Only the model (.mpr and
@@ -87,6 +96,9 @@ Example:
 		exec, logger := newLoggedExecutor("exec")
 		defer logger.Close()
 		defer exec.Close()
+		if noReport, _ := cmd.Flags().GetBool("no-source-file-report"); noReport {
+			exec.SetSourceFileReport(false)
+		}
 
 		// A relative path inside the script (a toolbox icon, an image) names a
 		// file next to the script, not next to the caller. Empty for stdin.
@@ -218,4 +230,10 @@ func init() {
 		"Write even though Studio Pro appears to have the project open (its .mpr.lock is present) — e.g. a lock left behind by a crash")
 	execCmd.Flags().Bool("continue-on-error", false,
 		"Run every statement, reporting each failure instead of halting at the first (exits non-zero if any failed) — makes a partially-applied script re-runnable")
+	// Hidden: for a caller whose writes are temporary. mxcli test injects a Java
+	// action and deletes its source at cleanup; telling its user to commit that
+	// file would be wrong (ako/mxcli#1618).
+	execCmd.Flags().Bool("no-source-file-report", false,
+		"Do not name the files written beside the model (for a caller that removes them again, such as mxcli test)")
+	_ = execCmd.Flags().MarkHidden("no-source-file-report")
 }

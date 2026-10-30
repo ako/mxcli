@@ -103,9 +103,11 @@ This changed during the beta. Earlier builds rebuilt every pluggable widget of a
 rewritten page from the installed `.mpk`, so re-running `describe` output also
 upgraded it — and usually cleared its CE0463 — while silently resetting whatever the
 statement could not say (a specialized column binding, a row click). If a script
-relied on that side effect to clear CE0463, run `mxcli fix widgets` instead;
-`mxcli docker check` passing is not enough, because it updates the widgets of a
-temporary copy only (`--no-update-widgets` checks the project as stored).
+relied on that side effect to clear CE0463, run `mxcli fix widgets` instead.
+`mxcli docker check` checks the project as stored and labels each CE0463 a widget
+resync would clear as a *stale widget definition*, so it shows which ones
+`mxcli fix widgets` fixes (`--update-widgets` checks a resynced copy only, and
+hides them).
 
 **Two widgets do not yet author cleanly against Data Widgets 3.10+.** Freshly created
 `gallery` and `dropdownfilter` widgets produce CE0463 on those packages; `datagrid2`,

@@ -12,6 +12,15 @@ Moves a document to a different folder or module. Every top-level document type 
 
 Entity moves only support moving to a module (not to a folder), because entities are embedded in domain model documents.
 
+A Java or JavaScript action keeps its source in a directory named after its module
+(`javasource/<module>/actions/`, `javascriptsource/<module>/actions/`). A
+cross-module move takes the source file along, and rewrites a Java source's
+`package` line the way mxbuild would, so the action keeps its code. A source left
+behind builds without error, but the app then calls a generated stub that throws
+"not implemented". If the target module's directory already holds a source file
+of that name, the move is refused before anything changes. A move within the
+module, into a folder, leaves the source where it is.
+
 A `FOLDER` clause on `CREATE OR MODIFY` moves an existing document as well, so a
 script that already creates a document does not need a separate `MOVE` to place
 it.

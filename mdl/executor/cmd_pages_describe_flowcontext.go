@@ -97,7 +97,11 @@ func flowReturnEntity(ctx *ExecContext, kind, qualifiedName string) string {
 	}
 	switch kind {
 	case "microflow":
-		mfs, err := ctx.Backend.ListMicroflows()
+		// Only the microflows of this name are decoded: a page describe asks
+		// once per flow-sourced widget, and listing them all read every
+		// microflow of the project each time (ako/mxcli#1791).
+		_, local, _ := strings.Cut(qualifiedName, ".")
+		mfs, err := microflowsNamed(ctx, local)
 		if err != nil {
 			return ""
 		}

@@ -14,7 +14,7 @@ import (
 )
 
 // execMove handles MOVE PAGE/MICROFLOW/SNIPPET/NANOFLOW/ENTITY/ENUMERATION statements.
-func execMove(ctx *ExecContext, s *ast.MoveStmt) error {
+func execMove(ctx *ExecContext, s *ast.MoveStmt) (moveErr error) {
 	if !ctx.ConnectedForWrite() {
 		return mdlerrors.NewNotConnected()
 	}
@@ -65,6 +65,27 @@ func execMove(ctx *ExecContext, s *ast.MoveStmt) error {
 	// later statement resolving the document through it would not find it
 	// ("microflow not found" on a second move of the same document).
 	defer invalidateHierarchy(ctx)
+
+	// A Java or JavaScript action's source lives under its module's directory,
+	// and mxbuild looks for it under the module the model now names: left
+	// behind, the build succeeded with a stub that throws where the app calls
+	// the action (measured on 11.13.0). The source moves first, so an occupied
+	// destination refuses the statement before the model changes, and moves
+	// back if the rest of the statement fails. exec names the move with the
+	// other files beside the model a statement touched.
+	if isCrossModuleMove {
+		moved, err := moveActionSource(ctx, s.DocumentType, s.Name.Module, targetModule.Name, s.Name.Name)
+		if err != nil {
+			return err
+		}
+		if moved != "" {
+			defer func() {
+				if moveErr != nil {
+					_, _ = moveActionSource(ctx, s.DocumentType, targetModule.Name, s.Name.Module, s.Name.Name)
+				}
+			}()
+		}
+	}
 
 	// Execute move based on document type
 	switch s.DocumentType {
@@ -131,6 +152,28 @@ func execMove(ctx *ExecContext, s *ast.MoveStmt) error {
 	}
 
 	return nil
+}
+
+// moveActionSource moves a Java or JavaScript action's source file from one
+// module's directory to another's and returns its new project-relative path, or
+// "" when the document type has no source file or there was none to move.
+func moveActionSource(ctx *ExecContext, docType ast.DocumentType, fromModule, toModule, name string) (string, error) {
+	var (
+		moved string
+		err   error
+	)
+	switch docType {
+	case ast.DocumentTypeJavaAction:
+		moved, err = ctx.Backend.MoveJavaSourceFile(fromModule, toModule, name)
+	case ast.DocumentTypeJavaScriptAction:
+		moved, err = ctx.Backend.MoveJavaScriptSourceFile(fromModule, toModule, name)
+	default:
+		return "", nil
+	}
+	if err != nil {
+		return "", mdlerrors.NewBackend("move "+docType.CanonicalSpelling()+" source", err)
+	}
+	return moved, nil
 }
 
 // alreadyPlaced reports, as Unchanged, a move whose document already sits in

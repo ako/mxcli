@@ -115,6 +115,9 @@ func (b *Backend) WriteJavaSourceFile(moduleName, actionName string, javaCode st
 	if err != nil {
 		return fmt.Errorf("WriteJavaSourceFile: write: %w", err)
 	}
+	if changed {
+		b.noteSourceFile(path, "", false, javaActionBody)
+	}
 	return nil
 }
 
@@ -154,10 +157,73 @@ func (b *Backend) RenameJavaSourceFile(moduleName, oldName, newName string) erro
 	}
 	// The move is a write whether or not the text needed rewriting.
 	b.noteFileWrite(true)
+	b.noteSourceFile(newPath, oldPath, false, javaActionBody)
 	if _, err := javaactions.WriteSourceIfChanged(newPath, javaactions.RenameSource(string(content), oldName, newName)); err != nil {
 		return fmt.Errorf("RenameJavaSourceFile: rewrite class name: %w", err)
 	}
 	return nil
+}
+
+// MoveJavaSourceFile moves javasource/<from>/actions/<action>.java into <to>'s
+// actions directory and rewrites its package line, as mxbuild regenerates it
+// there. Left behind, the source was not where mxbuild looks: measured on
+// 11.13.0, the build succeeded with a stub that throws "Java action was not
+// implemented" in the class the app calls, and compiled the author's code as an
+// orphaned class nothing calls. An occupied destination is refused before
+// anything moves; a missing source is not an error (the action may have no stub
+// yet). It returns the new project-relative path, or "" when nothing moved.
+func (b *Backend) MoveJavaSourceFile(fromModule, toModule, actionName string) (string, error) {
+	if b.path == "" {
+		return "", fmt.Errorf("MoveJavaSourceFile: no project path")
+	}
+	dir := func(module string) string {
+		return filepath.Join(filepath.Dir(b.path), "javasource", strings.ToLower(module), "actions")
+	}
+	moved, content, err := b.moveSourceFile(dir(fromModule), dir(toModule), actionName+".java", javaActionBody)
+	if moved == "" || err != nil {
+		return moved, err
+	}
+	dst := filepath.Join(filepath.Dir(b.path), filepath.FromSlash(moved))
+	if _, err := javaactions.WriteSourceIfChanged(dst, javaactions.MoveSource(content, fromModule, toModule)); err != nil {
+		return moved, fmt.Errorf("MoveJavaSourceFile: rewrite package: %w", err)
+	}
+	return moved, nil
+}
+
+// moveSourceFile moves fromDir/name to toDir/name, records the move for exec's
+// report as what, and returns the new project-relative path and the moved
+// file's content. It refuses an existing destination before touching anything,
+// and moves nothing — returning "" — when there is no source or the two
+// directories are the same.
+func (b *Backend) moveSourceFile(fromDir, toDir, name, what string) (string, string, error) {
+	if filepath.Clean(fromDir) == filepath.Clean(toDir) {
+		return "", "", nil
+	}
+	src, dst := filepath.Join(fromDir, name), filepath.Join(toDir, name)
+	content, err := os.ReadFile(src)
+	if os.IsNotExist(err) {
+		return "", "", nil
+	}
+	if err != nil {
+		return "", "", err
+	}
+	rel, err := filepath.Rel(filepath.Dir(b.path), dst)
+	if err != nil {
+		return "", "", err
+	}
+	rel = filepath.ToSlash(rel)
+	if _, err := os.Stat(dst); err == nil {
+		return "", "", fmt.Errorf("%s already exists; move or delete it first", rel)
+	}
+	if err := os.MkdirAll(toDir, 0o755); err != nil {
+		return "", "", err
+	}
+	if err := os.Rename(src, dst); err != nil {
+		return "", "", err
+	}
+	b.noteFileWrite(true)
+	b.noteSourceFile(dst, src, false, what)
+	return rel, string(content), nil
 }
 
 // DeleteJavaSourceFile removes javasource/<module>/actions/<action>.java. A missing
@@ -167,7 +233,10 @@ func (b *Backend) DeleteJavaSourceFile(moduleName, actionName string) error {
 		return fmt.Errorf("DeleteJavaSourceFile: no project path")
 	}
 	filePath := filepath.Join(filepath.Dir(b.path), "javasource", strings.ToLower(moduleName), "actions", actionName+".java")
-	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+	switch err := os.Remove(filePath); {
+	case err == nil:
+		b.noteSourceFile(filePath, "", true, javaActionBody)
+	case !os.IsNotExist(err):
 		return fmt.Errorf("DeleteJavaSourceFile: %w", err)
 	}
 	return nil

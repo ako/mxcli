@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -94,25 +95,64 @@ func TestFixHashes_DetectsAndRepairsRevertedUnit(t *testing.T) {
 	}
 }
 
-func TestFixHashes_V1NotApplicable(t *testing.T) {
+// ako/mxcli#1159: on MPR v1 the hash sits beside the contents in the same row,
+// and every mxcli before the fix rewrote Contents without it. `fix hashes`
+// compares against the Contents column there.
+func TestFixHashes_V1ComparesAgainstContents(t *testing.T) {
 	src := filepath.Join("..", "..", "modelsdk", "mpr", "testdata", "v1-project")
-	files, _ := filepath.Glob(filepath.Join(src, "*.mpr"))
-	if len(files) == 0 {
-		t.Skip("no v1 fixture")
-	}
 	dst := t.TempDir()
 	if err := copyTree(src, dst); err != nil {
 		t.Fatal(err)
 	}
-	mprPath := filepath.Join(dst, filepath.Base(files[0]))
+	mprPath := filepath.Join(dst, "App.mpr")
+
+	// Control: the Studio Pro-authored fixture is clean.
 	var out bytes.Buffer
 	if err := fixHashes(mprPath, false, &out); err != nil {
-		t.Fatalf("v1: %v", err)
+		t.Fatalf("v1 control: %v\n%s", err, out.String())
 	}
-	if !strings.Contains(out.String(), "MPR v1") {
-		t.Fatalf("v1 not explained:\n%s", out.String())
+	if !strings.Contains(out.String(), "MPR v1") || !strings.Contains(out.String(), "matches its stored contents") {
+		t.Fatalf("v1 control not reported clean:\n%s", out.String())
 	}
+
+	// What an mxcli before #1159 left behind: new Contents, old hash.
+	db, err := sql.Open("sqlite", mprPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var id []byte
+	var contents []byte
+	if err := db.QueryRow(`SELECT UnitID, Contents FROM Unit ORDER BY UnitID LIMIT 1`).Scan(&id, &contents); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE Unit SET Contents = ? WHERE UnitID = ?`, append(contents, 0), id); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+
+	out.Reset()
+	err = fixHashes(mprPath, false, &out)
+	if !errors.Is(err, errHashIssuesRemain) {
+		t.Fatalf("v1 verify: want errHashIssuesRemain, got %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "MISMATCH") || !strings.Contains(out.String(), "1 mismatch(es)") {
+		t.Fatalf("v1 mismatch not reported:\n%s", out.String())
+	}
+	// exec and docker check stay silent on v1: the warning targets files
+	// restored with git, and would read every blob of the .mpr on every run.
 	if w := contentsHashDriftWarning(mprPath); w != "" {
 		t.Fatalf("v1 warned: %s", w)
+	}
+
+	out.Reset()
+	if err := fixHashes(mprPath, true, &out); err != nil {
+		t.Fatalf("v1 repair: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "Repaired 1 ContentsHash") {
+		t.Fatalf("v1 repair not reported:\n%s", out.String())
+	}
+	out.Reset()
+	if err := fixHashes(mprPath, false, &out); err != nil {
+		t.Fatalf("v1 after repair: %v\n%s", err, out.String())
 	}
 }

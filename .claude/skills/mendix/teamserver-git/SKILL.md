@@ -12,11 +12,11 @@ description: "Commit, branch and push a Mendix project in git the way Studio Pro
 |---|---|
 | 35-41 | The rule: let Studio Pro do version control when it can |
 | 42-55 | Branches: create them on the server |
-| 56-97 | Commit from the agent |
-| 98-112 | Push the branch and the notes together, and soon |
-| 113-134 | Never rewrite or merge model history with git |
-| 135-145 | Reading what Studio Pro recorded |
-| 146-154 | Checklist |
+| 56-101 | Commit from the agent |
+| 102-116 | Push the branch and the notes together, and soon |
+| 117-138 | Never rewrite or merge model history with git |
+| 139-149 | Reading what Studio Pro recorded |
+| 150-158 | Checklist |
 
 <!-- /skill-index -->
 # Working with Git on a Mendix Team Server Project
@@ -78,7 +78,11 @@ mxcli git note -p app.mpr --write               # attach the mx_metadata note
 ```
 
 - Stage `App.mpr`, `mprcontents/` and the source you changed (`theme/`,
-  `javasource/`, `javascriptsource/`, `widgets/`, `mdlsource/`). Never stage
+  `javasource/`, `javascriptsource/`, `widgets/`, `mdlsource/`). A Java or
+  JavaScript action's body is in `javasource/` or `javascriptsource/`, not in
+  the model; `exec` names every such file it wrote, moved or removed
+  (`Wrote javasource/…`) and ends with `Files changed outside the model: N (…)`
+  — stage each of them. Never stage
   `project-settings.user.json`, `*.mpr.lock`, `*.mpr.bak`, `.mendix-cache/`,
   `deployment/`, `theme-cache/` or `.mxcli/`; Mendix's `.gitignore` already
   excludes most of them.

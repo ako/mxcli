@@ -98,7 +98,7 @@ This runs Mendix's own `mx check` tool on a temporary copy of the project. It pe
 
 - BSON serialization errors (malformed internal data)
 - Security configuration problems (missing access rules, CE0066 errors)
-- Widget definition mismatches (CE0463 errors)
+- Widget definition mismatches (CE0463 errors), each labelled either a *stale widget definition*, which `mxcli fix widgets` clears, or one that *persists after update-widgets*
 - Missing required properties on widgets
 - Broken cross-references between documents
 

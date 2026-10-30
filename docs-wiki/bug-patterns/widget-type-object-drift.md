@@ -51,13 +51,16 @@ tell them apart: whether Studio Pro's *own* template widgets fail alongside your
 and whether `mx update-widgets` clears it. Skipping that step produces a confident
 wrong answer, and has.
 
-**The default measurement hides the class.** `mxcli docker check` runs
-`mx update-widgets` first, on purpose, to suppress exactly the package-drift noise
-above — so it reports 0 errors on a project that genuinely has a CE0463, *and*
-repairs the project on the way past, leaving it clean for any later check too.
-Both of this cycle's real CE0463s were invisible until someone passed
-`--no-update-widgets`. (`mxcli check` is not an alternative: it validates an MDL
-script and never invokes mxbuild, so it cannot produce CE0463 at all.)
+**The default measurement hid the class.** Until ako/mxcli#646, `mxcli docker
+check` ran `mx update-widgets` on its copy first, to suppress exactly the
+package-drift noise above — so it reported 0 errors on a project that genuinely had
+a CE0463, which then failed `run --local`. A gate that normalises its input before
+judging it answers a different question from the one asked. It now checks the
+stored project and runs the second control itself, labelling each CE0463 *stale*
+(the resync clears it) or *persists*; `--update-widgets` is the old behaviour, so
+"docker check passed" in an older finding meant the resynced copy passed.
+(`mxcli check` is not an alternative: it validates an MDL script and never invokes
+mxbuild, so it cannot produce CE0463 at all.)
 
 **The cause is usually a value, not the schema** — four of five fixes in one
 release cycle were value-shaped while the error named the version: an empty

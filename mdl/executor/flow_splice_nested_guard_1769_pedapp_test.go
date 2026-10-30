@@ -24,10 +24,14 @@ create persistent entity MyModule.Order (Code: String(50));
 create persistent entity MyModule.OrderLine (Code: String(50), Status: String(20));
 create association MyModule.OrderLine_Order from MyModule.OrderLine to MyModule.Order;
 create non-persistent entity MyModule.Lookup (Code: String(50));
+create java action MyModule.JA_Items (EntityType: entity <T> not null) returns list of T as $$
+  return new java.util.ArrayList<>();
+$$;
 create microflow MyModule.SUB_MatchLines ($Order: MyModule.Order, $Lookups: List of MyModule.Lookup) returns Integer as $Found
 begin
   declare $Found Integer = 0;
   retrieve $Lines from $Order/MyModule.OrderLine_Order;
+  $Items = call java action MyModule.JA_Items(EntityType = MyModule.OrderLine);
   $Open = filter $Lines by Status = 'open';
   loop $Lookup in $Lookups
   begin
@@ -88,15 +92,17 @@ func openMatchLinesFixture(t *testing.T) (*Executor, *bytes.Buffer, string) {
 }
 
 // TestAlterMicroflow_FindOverUntypedListIsRefused: over a list whose entity
-// the fragment does not know — the stored flow does not type a list
-// operation's output — every alter is refused and writes nothing. On the main
+// the fragment does not know — the result of a Java action returning a list of
+// its type parameter, bound by an entity argument, which `create microflow`
+// does not type either (a list operation's output, which this used, is typed
+// since ako/mxcli#1777) — every alter is refused and writes nothing. On the main
 // line and in a stored loop body it always was (ako/mxcli#891); in a loop the
 // fragment brings, it was written as a find by expression. Check does not
 // pass it silently: like the main-line refusal, it names the change as not
 // predicted with exec's reason.
 func TestAlterMicroflow_FindOverUntypedListIsRefused(t *testing.T) {
 	const want = `cannot qualify member "Code"`
-	for name, src := range matchLinesFindIn("$Open") {
+	for name, src := range matchLinesFindIn("$Items") {
 		t.Run(name, func(t *testing.T) {
 			exec, _, dir := openMatchLinesFixture(t)
 			before := projectFiles(t, dir)

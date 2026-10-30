@@ -4,8 +4,10 @@ package executor
 
 import (
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -153,7 +155,7 @@ func outputConsumedODataServiceMDL(ctx *ExecContext, svc *model.ConsumedODataSer
 		props = append(props, fmt.Sprintf("  ODataVersion: %s", svc.ODataVersion))
 	}
 	if svc.MetadataUrl != "" {
-		props = append(props, fmt.Sprintf("  MetadataUrl: %s", mdlQuote(ctx, svc.MetadataUrl)))
+		props = append(props, fmt.Sprintf("  MetadataUrl: %s", mdlQuote(ctx, describedMetadataURL(ctx, svc.MetadataUrl))))
 	}
 	if svc.TimeoutExpression != "" {
 		props = append(props, fmt.Sprintf("  Timeout: %s", svc.TimeoutExpression))
@@ -1033,12 +1035,14 @@ func createODataClient(ctx *ExecContext, stmt *ast.CreateODataClientStmt) error 
 					if stmt.ODataVersion != "" {
 						svc.ODataVersion = stmt.ODataVersion
 					}
+					fetchURL := ""
 					if stmt.MetadataUrl != "" {
-						normalized, nerr := normalizeMetadataURL(ctx, stmt.MetadataUrl)
+						fetch, store, nerr := metadataURLToStore(ctx, stmt.MetadataUrl, svc.MetadataUrl)
 						if nerr != nil {
 							return fmt.Errorf("failed to normalize MetadataUrl: %w", nerr)
 						}
-						svc.MetadataUrl = normalized
+						svc.MetadataUrl = store
+						fetchURL = fetch
 					}
 					if stmt.TimeoutExpression != "" {
 						svc.TimeoutExpression = stmt.TimeoutExpression
@@ -1113,7 +1117,7 @@ func createODataClient(ctx *ExecContext, stmt *ast.CreateODataClientStmt) error 
 					// (mxcli-formula1: F1LiveNowApi gained Trace and Stints, and
 					// the only way out was DROP + recreate, which invalidates the
 					// client ID the external entities point at).
-					refreshed := refreshCachedMetadata(ctx, svc, stmt)
+					refreshed := refreshCachedMetadata(ctx, svc, stmt, fetchURL)
 
 					if err := ctx.Backend.UpdateConsumedODataService(svc); err != nil {
 						return mdlerrors.NewBackend("update OData client", err)
@@ -1277,20 +1281,125 @@ func contractSummary(metadata string) string {
 	return fmt.Sprintf("%d entity types, %d actions", entityCount, len(doc.Actions))
 }
 
-// refreshCachedMetadata re-reads the contract at svc.MetadataUrl into
-// svc.Metadata / svc.MetadataHash, reporting whether it actually changed.
+// metadataURLToStore resolves a create-or-modify's MetadataUrl against the one
+// the client already stores. fetch is the statement's value as this checkout's
+// absolute URL, which the contract is read from; store is what the client
+// keeps: the stored URL when it already names the statement's file, else fetch.
+//
+// A relative path is stored as the absolute file:// URL of whichever checkout
+// ran the script, so without this the same unchanged script rewrote every
+// client it touched when run from a checkout at another path (ako/mxcli#1499).
+// The absolute form itself stays: mx check accepts a relative value, but it
+// accepts a dead absolute one too, and nothing that can run here shows what
+// Studio Pro's metadata editor makes of a relative one.
+func metadataURLToStore(ctx *ExecContext, stmtURL, stored string) (fetch, store string, err error) {
+	fetch, err = normalizeMetadataURL(ctx, stmtURL)
+	if err != nil {
+		return "", "", err
+	}
+	if stored != "" && namesSameMetadataFile(ctx, stmtURL, fetch, stored) {
+		return fetch, stored, nil
+	}
+	return fetch, fetch, nil
+}
+
+// namesSameMetadataFile reports whether stored, a MetadataUrl in the model,
+// names the file the statement's stmtURL (resolved here to want) names.
+//
+// Beyond the plain cases (equal, or equal once normalized) this answers for a
+// relative path inside the project, the form a script uses: a stored file URL
+// that reaches the same project-relative path from another directory names
+// this file in another checkout of the project, when that directory does not
+// exist here (another machine, or a checkout since moved) or holds this
+// project's .mpr (another worktree). A directory that exists here without it
+// is somewhere else, and the statement moves the client off it.
+func namesSameMetadataFile(ctx *ExecContext, stmtURL, want, stored string) bool {
+	if stored == want {
+		return true
+	}
+	if norm, err := normalizeMetadataURL(ctx, stored); err == nil && norm == want {
+		return true
+	}
+	if !isRelativeMetadataPath(stmtURL) || ctx == nil || ctx.MprPath == "" {
+		return false
+	}
+	projectDir, err := filepath.Abs(filepath.Dir(ctx.MprPath))
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(projectDir, pathutil.PathFromURL(want))
+	if err != nil || !filepath.IsLocal(rel) {
+		return false
+	}
+	storedPath := filepath.ToSlash(pathutil.PathFromURL(stored))
+	suffix := "/" + filepath.ToSlash(rel)
+	if storedPath == "" || !strings.HasSuffix(storedPath, suffix) {
+		return false
+	}
+	otherDir := filepath.FromSlash(strings.TrimSuffix(storedPath, suffix))
+	if _, err := os.Stat(otherDir); err != nil {
+		return errors.Is(err, fs.ErrNotExist)
+	}
+	_, err = os.Stat(filepath.Join(otherDir, filepath.Base(ctx.MprPath)))
+	return err == nil
+}
+
+// isRelativeMetadataPath reports whether a MetadataUrl as written is a path
+// relative to the project, the one form whose stored URL depends on where the
+// project is checked out.
+func isRelativeMetadataPath(raw string) bool {
+	for _, scheme := range []string{"http://", "https://", "file://"} {
+		if strings.HasPrefix(raw, scheme) {
+			return false
+		}
+	}
+	return !filepath.IsAbs(raw)
+}
+
+// describedMetadataURL is the MetadataUrl describe prints: a stored file URL
+// inside the project directory as the project-relative path a script would
+// write (ako/mxcli#1499), so a script generated from the model carries no
+// machine path. Only when that path resolves back to exactly the stored URL,
+// so executing the output leaves the client as it is; anything else as stored.
+func describedMetadataURL(ctx *ExecContext, stored string) string {
+	path := pathutil.PathFromURL(stored)
+	if path == "" || ctx == nil || ctx.MprPath == "" {
+		return stored
+	}
+	projectDir, err := filepath.Abs(filepath.Dir(ctx.MprPath))
+	if err != nil {
+		return stored
+	}
+	rel, err := filepath.Rel(projectDir, path)
+	if err != nil || !filepath.IsLocal(rel) {
+		return stored
+	}
+	relative := "./" + filepath.ToSlash(rel)
+	if back, err := normalizeMetadataURL(ctx, relative); err != nil || back != stored {
+		return stored
+	}
+	return relative
+}
+
+// refreshCachedMetadata re-reads the contract into svc.Metadata /
+// svc.MetadataHash, reporting whether it actually changed. It reads fetchURL,
+// the statement's MetadataUrl as resolved in this checkout, or svc.MetadataUrl
+// when the statement named none.
 //
 // A fetch that fails is a warning, not an error, and leaves the cached contract
 // in place: losing a contract that was merely unreachable is worse than serving
 // a stale one, and the caller has nothing else to fall back on. An unchanged
 // contract leaves svc untouched, so the write is elided and the statement
 // reports "Unchanged" rather than churning the document.
-func refreshCachedMetadata(ctx *ExecContext, svc *model.ConsumedODataService, stmt *ast.CreateODataClientStmt) bool {
-	if svc == nil || svc.MetadataUrl == "" {
+func refreshCachedMetadata(ctx *ExecContext, svc *model.ConsumedODataService, stmt *ast.CreateODataClientStmt, fetchURL string) bool {
+	if fetchURL == "" && svc != nil {
+		fetchURL = svc.MetadataUrl
+	}
+	if svc == nil || fetchURL == "" {
 		return false
 	}
 	auth := metadataAuthFromStmt(ctx, stmt)
-	metadata, hash, err := fetchODataMetadata(svc.MetadataUrl, auth)
+	metadata, hash, err := fetchODataMetadata(fetchURL, auth)
 	if err != nil {
 		fmt.Fprintf(ctx.Output, "Warning: could not refresh $metadata: %v\n", err)
 		for _, hint := range auth.hints() {

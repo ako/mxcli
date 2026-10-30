@@ -305,14 +305,8 @@ func quoteForMessage(s string) string {
 // parse, and the error the author then sees is about their own text.
 func attachOnError(lines []string, v langver.Version, handler []string) []string {
 	body := strings.Join(lines, "\n")
-
-	// Parsed inside the same wrapper the generators put it in, under the same
-	// language version, so it reads exactly as the generated script will.
-	var wrap strings.Builder
-	writeScriptHeader(&wrap, v)
-	wrap.WriteString(createFlow(v) + " " + mxTestModule + ".Body ()\nBEGIN\n")
-	prefix := wrap.String()
-	stmts, ok := visitor.FlowStatements(prefix + body + "\nEND;\n")
+	prefix := bodyParsePrefix(v)
+	stmts, ok := visitor.FlowStatements(prefix + body + bodyParseSuffix)
 	if !ok {
 		return lines
 	}
@@ -368,6 +362,19 @@ func attachOnError(lines []string, v langver.Version, handler []string) []string
 	}
 	return strings.Split(string(runes), "\n")
 }
+
+// bodyParsePrefix is the text a test body is parsed after, wherever the
+// generators have to read it rather than copy it: inside the same kind of
+// wrapper they put it in and under the same language version, so it reads
+// exactly as the generated script will. bodyParseSuffix closes it.
+func bodyParsePrefix(v langver.Version) string {
+	var wrap strings.Builder
+	writeScriptHeader(&wrap, v)
+	wrap.WriteString(createFlow(v) + " " + mxTestModule + ".Body ()\nBEGIN\n")
+	return wrap.String()
+}
+
+const bodyParseSuffix = "\nEND;\n"
 
 // escapeMDLComment keeps a test name from closing the javadoc block it sits in.
 func escapeMDLComment(s string) string {

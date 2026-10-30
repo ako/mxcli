@@ -28,14 +28,37 @@ func RenameSource(source, oldName, newName string) string {
 	}
 	replacements := []string{"${1}" + newName, "${1}" + newName + "${2}", `${1}"` + newName + `"${2}`}
 
-	rewrite := func(generated string) string {
+	return rewriteGenerated(source, func(generated string) string {
 		for i, re := range patterns {
 			generated = re.ReplaceAllString(generated, replacements[i])
 		}
 		return generated
-	}
+	})
+}
 
-	// Rewrite only the generated stretches between the author's sections.
+// MoveSource rewrites a Java action's source for a move from fromModule to
+// toModule the way mxbuild regenerates it in the new module: the generated
+// `package <module>.actions;` line, which names the lowercased module, and
+// nothing else. No other generated line names the action's own module — a
+// proxy type names its entity's module, which did not move — and the author's
+// sections are left byte-for-byte, a mention of the old package included.
+//
+// Measured against mxbuild 11.13.0 (testdata/mxbuild/JA_Moved*): run in place on
+// a source moved to the new module's directory, it changed exactly that line.
+func MoveSource(source, fromModule, toModule string) string {
+	from, to := strings.ToLower(fromModule), strings.ToLower(toModule)
+	if from == to || from == "" {
+		return source
+	}
+	pkg := regexp.MustCompile(`(\bpackage\s+)` + regexp.QuoteMeta(from) + `(\.actions\s*;)`)
+	return rewriteGenerated(source, func(generated string) string {
+		return pkg.ReplaceAllString(generated, "${1}"+to+"${2}")
+	})
+}
+
+// rewriteGenerated applies rewrite to the generated stretches of a Java action's
+// source, between the author's sections, and leaves those sections as written.
+func rewriteGenerated(source string, rewrite func(string) string) string {
 	var b strings.Builder
 	rest := source
 	for {

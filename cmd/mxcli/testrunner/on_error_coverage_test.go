@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mendixlabs/mxcli/mdl/langver"
 	"github.com/mendixlabs/mxcli/mdl/visitor"
 )
 
@@ -81,9 +82,10 @@ func assertHandled(t *testing.T, runner, mdl, stmt string) {
 
 // legacyStmt is stmt as the legacy runner writes it for the suite's first test:
 // that runner compiles every test into one flow, so it renames the variable a
-// call assigns with the test's suffix. These statements used to be matched
+// call defines with the test's suffix. These statements used to be matched
 // unrenamed, which held only because a lower-case `call` was not renamed
-// (TestLegacyRunnerRenamesLowerCaseAssignments).
+// (TestLegacyRunnerRenamesLowerCaseAssignments) — nor, in any case, `send rest
+// request` or `execute database query` (ako/mxcli#1775).
 func legacyStmt(stmt string) string {
-	return renameVariables(stmt, extractVariableNames(stmt), "_1")
+	return renameVariables(stmt, extractVariableNames(stmt, langver.V0), "_1")
 }

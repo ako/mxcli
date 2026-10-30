@@ -23,6 +23,14 @@ Two things are written: the model unit
 the JSDoc header, the exported `async function`, and the supplied body placed
 between the `BEGIN USER CODE` / `END USER CODE` markers.
 
+The body is only in the `.js` file, not in the model, so commit
+`javascriptsource/` together with the `.mpr` and `mprcontents/`. A commit of
+the model alone gives a clone an action with no logic. `mxcli exec` names each
+file it writes there on its own line, for example
+`Wrote javascriptsource/sales/actions/JS_Ping.js (JavaScript action body; commit it with the model)`,
+and ends the run with `Files changed outside the model: N (…)`. A rewrite that
+leaves the file's content as it was is not reported.
+
 > **The `AS $$ ... $$` body is mandatory.** Like Java actions, every `CREATE`
 > needs a code body; omitting it reports `no viable alternative at input '...'`.
 > Use a stub such as `AS $$ return Promise.resolve(false); $$` when the

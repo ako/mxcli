@@ -169,6 +169,9 @@ func TestNormalize_RefusesWhatAnOlderUserTaskCannotHold(t *testing.T) {
 	withBoundary := userTaskDoc("Single", false, xpathUserTargeting("[Name = 'admin']"))
 	withBoundary[indexOf(withBoundary, "BoundaryEvents")].Value = bson.A{int32(2),
 		bson.D{{Key: "$ID", Value: eid()}, {Key: "$Type", Value: "Workflows$InterruptingTimerBoundaryEvent"}, {Key: "Caption", Value: "Late"}}}
+	withTimerBoundary := userTaskDoc("Single", false, xpathUserTargeting("[Name = 'admin']"))
+	withTimerBoundary[indexOf(withTimerBoundary, "BoundaryEvents")].Value = bson.A{int32(2),
+		bson.D{{Key: "$ID", Value: eid()}, {Key: "$Type", Value: "Workflows$TimerBoundaryEvent"}, {Key: "Caption", Value: "Late"}}}
 	for _, tt := range []struct {
 		name string
 		v    *version.ProjectVersion
@@ -198,11 +201,20 @@ func TestNormalize_RefusesWhatAnOlderUserTaskCannotHold(t *testing.T) {
 		{pv(10, 2, 0), awaiting},
 		{pv(10, 0, 0), withCriteria("Workflows$MajorityCompletionCriteria", bson.E{Key: "CompletionType", Value: "Absolute"})},
 		{pv(10, 3, 0), withCriteria("Workflows$MicroflowCompletionCriteria", bson.E{Key: "Microflow", Value: "M.Decide"})},
-		{pv(10, 14, 0), withBoundary},
+		{pv(10, 14, 0), withTimerBoundary},
+		{pv(10, 20, 0), withBoundary},
 	} {
 		if _, err := normalizeShape(t, tt.v, workflowWithUserTasks(tt.doc)); err != nil {
 			t.Errorf("control %s: refused: %v", vlabel(tt.v), err)
 		}
+	}
+	// A user task holds boundary events from 10.14, but the (Non)Interrupting
+	// timer types mxcli writes are 10.20 types; 10.14–10.19 store a
+	// Workflows$TimerBoundaryEvent (mendixmodelsdk 4.117.0). The type floor
+	// refuses the newer type there (ako/mxcli#1774).
+	if _, err := normalizeShape(t, pv(10, 14, 0), workflowWithUserTasks(withBoundary)); err == nil ||
+		!strings.Contains(err.Error(), "Workflows$InterruptingTimerBoundaryEvent (Mendix 10.20.0+)") {
+		t.Errorf("an InterruptingTimerBoundaryEvent on 10.14 was not refused naming the type: %v", err)
 	}
 	// The empty list the codec writes on every task is dropped below 10.14.
 	d, err := normalizeShape(t, pv(10, 13, 0), workflowWithUserTasks(userTaskDoc("Single", false, xpathUserTargeting("[Name = 'admin']"))))

@@ -184,6 +184,9 @@ func (b *Backend) WriteJavaScriptSourceFile(moduleName, actionName string, jsCod
 	if err != nil {
 		return fmt.Errorf("WriteJavaScriptSourceFile: write: %w", err)
 	}
+	if changed {
+		b.noteSourceFile(path, "", false, javaScriptActionBody)
+	}
 	return nil
 }
 
@@ -193,10 +196,26 @@ func (b *Backend) DeleteJavaScriptSourceFile(moduleName, actionName string) erro
 		return fmt.Errorf("DeleteJavaScriptSourceFile: no project path")
 	}
 	filePath := filepath.Join(b.jsActionSourceDir(moduleName), actionName+".js")
-	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+	switch err := os.Remove(filePath); {
+	case err == nil:
+		b.noteSourceFile(filePath, "", true, javaScriptActionBody)
+	case !os.IsNotExist(err):
 		return fmt.Errorf("DeleteJavaScriptSourceFile: %w", err)
 	}
 	return nil
+}
+
+// MoveJavaScriptSourceFile moves javascriptsource/<from>/actions/<action>.js into
+// <to>'s actions directory when the action changes module, for the reason
+// MoveJavaSourceFile gives: mxbuild looks for the source under the action's
+// module and bundles a stub that throws when it finds none. The source names no
+// module, so it moves as it is.
+func (b *Backend) MoveJavaScriptSourceFile(fromModule, toModule, actionName string) (string, error) {
+	if b.path == "" {
+		return "", fmt.Errorf("MoveJavaScriptSourceFile: no project path")
+	}
+	moved, _, err := b.moveSourceFile(b.jsActionSourceDir(fromModule), b.jsActionSourceDir(toModule), actionName+".js", javaScriptActionBody)
+	return moved, err
 }
 
 // RenameJavaScriptSourceFile renames the .js file when a JS action is renamed.
@@ -205,7 +224,11 @@ func (b *Backend) RenameJavaScriptSourceFile(moduleName, oldName, newName string
 		return fmt.Errorf("RenameJavaScriptSourceFile: no project path")
 	}
 	dir := b.jsActionSourceDir(moduleName)
-	if err := os.Rename(filepath.Join(dir, oldName+".js"), filepath.Join(dir, newName+".js")); err != nil && !os.IsNotExist(err) {
+	oldPath, newPath := filepath.Join(dir, oldName+".js"), filepath.Join(dir, newName+".js")
+	switch err := os.Rename(oldPath, newPath); {
+	case err == nil:
+		b.noteSourceFile(newPath, oldPath, false, javaScriptActionBody)
+	case !os.IsNotExist(err):
 		return fmt.Errorf("RenameJavaScriptSourceFile: %w", err)
 	}
 	return nil

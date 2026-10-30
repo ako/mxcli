@@ -1,0 +1,32 @@
+-- A cross-module MOVE of a Java or JavaScript action takes its source file along.
+--
+-- Before: the document moved and its source stayed under the old module's
+-- directory. Measured on Mendix 11.13.0 with `mxcli docker build`: the build
+-- succeeded, the Java class the app calls (jamb/actions/JA_Hello) was
+-- mxbuild's generated stub throwing "Java action was not implemented", and the
+-- author's code compiled only as an orphaned jama.actions class. The
+-- JavaScript action's bundle held "JavaScript action was not implemented".
+-- DESCRIBE printed the "Java source not available" placeholder, so re-executing
+-- it replaced the code.
+--
+-- After: exec reports "Moved javasource/jama/actions/JA_Hello.java to
+-- javasource/jamb/actions/JA_Hello.java" (and the .js likewise), the Java source's
+-- package line reads `package jamb.actions;` (what mxbuild regenerates, run
+-- in place), DESCRIBE shows both bodies, and the build carries the author's code.
+mdl 1;
+
+create module JamA;
+create module JamB;
+
+create java action JamA.JA_Hello () returns String
+as $$
+return "hi from the moved action";
+$$;
+
+create javascript action JamA.JSA_Hello () returns String
+as $$
+return "hi from the moved js action";
+$$;
+
+move java action JamA.JA_Hello to JamB;
+move javascript action JamA.JSA_Hello to JamB;

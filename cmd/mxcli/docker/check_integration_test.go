@@ -28,6 +28,10 @@ import (
 // Requires a resolvable mx (provided by the CI integration job's
 // `mxcli setup mxbuild`); skips otherwise. Uses `mx create-project`, whose output
 // is MPRv2, as the fixture — the same scaffolding the executor roundtrip suite uses.
+//
+// Since ako/mxcli#646 update-widgets runs before the check only with
+// --update-widgets (UpdateWidgetsFirst), which is what this test now passes so
+// that it still runs the converting tool.
 func TestCheck_PreservesMPRv2StorageFormat(t *testing.T) {
 	mxPath, err := ResolveMx("")
 	if err != nil {
@@ -54,9 +58,10 @@ func TestCheck_PreservesMPRv2StorageFormat(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if err := Check(CheckOptions{
-		ProjectPath: mprPath,
-		Stdout:      &stdout,
-		Stderr:      &stderr,
+		ProjectPath:        mprPath,
+		UpdateWidgetsFirst: true,
+		Stdout:             &stdout,
+		Stderr:             &stderr,
 	}); err != nil {
 		t.Fatalf("Check failed: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
@@ -83,10 +88,12 @@ func mprStorageVersion(t *testing.T, mprPath string) types.MPRVersion {
 }
 
 // TestCheck_LeavesProjectUntouched is the end-to-end guard for ako/mxcli#951:
-// with real mx, a default `docker check` and a --no-update-widgets one leave
-// every file of an MPRv1 and an MPRv2 project byte-identical with the same
-// mtime. Before the fix, update-widgets rewrote a v1 .mpr permanently, and mx
-// check wrote theme-cache/ and deployment/sass/ in both formats.
+// with real mx, a default `docker check`, a --no-update-widgets one and an
+// --update-widgets one leave every file of an MPRv1 and an MPRv2 project
+// byte-identical with the same mtime. Before the fix, update-widgets rewrote a
+// v1 .mpr permanently, and mx check wrote theme-cache/ and deployment/sass/ in
+// both formats. (The default ran update-widgets until #646; --update-widgets
+// is the mode that runs it on a clean project now.)
 func TestCheck_LeavesProjectUntouched(t *testing.T) {
 	mxPath, err := ResolveMx("")
 	if err != nil {
@@ -109,9 +116,17 @@ func TestCheck_LeavesProjectUntouched(t *testing.T) {
 		return filepath.Join(dir, "App.mpr")
 	}
 
+	modes := []struct {
+		name string
+		opts CheckOptions
+	}{
+		{"default", CheckOptions{}},
+		{"no-update-widgets", CheckOptions{SkipUpdateWidgets: true}},
+		{"update-widgets", CheckOptions{UpdateWidgetsFirst: true}},
+	}
 	for _, format := range []string{"v2", "v1"} {
-		for _, skip := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s/no-update-widgets=%v", format, skip), func(t *testing.T) {
+		for _, mode := range modes {
+			t.Run(fmt.Sprintf("%s/%s", format, mode.name), func(t *testing.T) {
 				mprPath := scaffold(t)
 				if format == "v1" {
 					// update-widgets converts a v2 project to v1 — the fixture we want.
@@ -125,7 +140,9 @@ func TestCheck_LeavesProjectUntouched(t *testing.T) {
 				dir := filepath.Dir(mprPath)
 				before := treeState(t, dir)
 				var stdout bytes.Buffer
-				if err := Check(CheckOptions{ProjectPath: mprPath, SkipUpdateWidgets: skip, Stdout: &stdout, Stderr: &stdout}); err != nil {
+				opts := mode.opts
+				opts.ProjectPath, opts.Stdout, opts.Stderr = mprPath, &stdout, &stdout
+				if err := Check(opts); err != nil {
 					t.Fatalf("Check: %v\n%s", err, stdout.String())
 				}
 				if d := diffStates(before, treeState(t, dir)); len(d) > 0 {

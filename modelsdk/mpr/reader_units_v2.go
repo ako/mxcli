@@ -7,7 +7,10 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 // The MPR v2 unit-type index.
@@ -26,7 +29,14 @@ import (
 // change — including a re-type in place (#503) — has a new hash and is read
 // again; unchanged bytes have the type they had.
 //
-// The index is persisted to <project>/.mxcli/unit-types.idx so the next
+// Beside the $Type the index holds the unit's top-level Name and Excluded,
+// which are as much a function of the bytes as the type is. They are what a
+// name listing needs: the container hierarchy names every folder, and a
+// describe names every microflow, so without them each of those opened every
+// folder or microflow file on every call — 2,904 of a 4,753-unit app's files
+// for one `describe microflow` (ako/mxcli#1791).
+//
+// The index is persisted to <project>/.mxcli/unit-index-2.idx so the next
 // process starts warm. The file is a pure cache: absent, unreadable, corrupt
 // or unwritable all mean "type from the file", never a wrong answer. A unit
 // with no ContentsHash cannot be keyed and is read every time, as before.
@@ -39,11 +49,34 @@ import (
 // verify-hashes` finds it, ako/mxcli#972), and a lookup by that stale hash
 // returns the type of the bytes it was last true of.
 
-const unitTypeIndexName = "unit-types.idx"
+// The file name carries the format: an mxcli that wrote the previous format
+// (unit-types.idx, type only) and one that writes this one each read their
+// own, rather than discarding each other's as corrupt on every call when two
+// versions work on one project — the VS Code extension's and the CLI's.
+const unitTypeIndexName = "unit-index-2.idx"
 
 // unitTypeIndexHeader is the first line of the persisted index; a file
 // without it is ignored, so a format change only costs one cold start.
-const unitTypeIndexHeader = "mxcli-unit-types 1"
+const unitTypeIndexHeader = "mxcli-unit-index 2"
+
+// unitIndexEntry is what the index knows of the unit whose bytes hash to its
+// key: everything derived from the top level of the document.
+type unitIndexEntry struct {
+	Type     string
+	Name     string
+	Excluded bool
+}
+
+// unitIndexEntryOf derives an entry from a unit's bytes.
+func unitIndexEntryOf(contents []byte) unitIndexEntry {
+	e := unitIndexEntry{Type: getTypeFromContents(contents)}
+	raw := bson.Raw(contents)
+	if raw.Validate() == nil {
+		e.Name, _ = raw.Lookup("Name").StringValueOK()
+		e.Excluded, _ = raw.Lookup("Excluded").BooleanOK()
+	}
+	return e
+}
 
 // unitTypeIndexPersistAfter is how many files a later rebuild must have
 // opened before it rewrites the persisted index straight away. A reader's
@@ -61,30 +94,30 @@ func (r *Reader) unitTypeIndexPath() string {
 	return filepath.Join(filepath.Dir(r.path), ".mxcli", unitTypeIndexName)
 }
 
-// knownUnitType returns the indexed $Type for a ContentsHash, loading the
+// knownUnit returns the indexed entry for a ContentsHash, loading the
 // persisted index on first use. Caller holds v2TypesMu.
-func (r *Reader) knownUnitType(hash string) (string, bool) {
+func (r *Reader) knownUnit(hash string) (unitIndexEntry, bool) {
 	if !r.v2TypesLoaded {
 		r.v2TypesLoaded = true
 		r.v2Types = loadUnitTypeIndex(r.unitTypeIndexPath())
 	}
 	if hash == "" {
-		return "", false
+		return unitIndexEntry{}, false
 	}
-	typ, ok := r.v2Types[hash]
-	return typ, ok
+	e, ok := r.v2Types[hash]
+	return e, ok
 }
 
-// learnUnitType records a hash's $Type. Caller holds v2TypesMu.
-func (r *Reader) learnUnitType(hash, typ string) {
+// learnUnit records a hash's entry. Caller holds v2TypesMu.
+func (r *Reader) learnUnit(hash string, e unitIndexEntry) {
 	if hash == "" {
 		return
 	}
 	if r.v2Types == nil {
-		r.v2Types = make(map[string]string)
+		r.v2Types = make(map[string]unitIndexEntry)
 	}
-	if old, ok := r.v2Types[hash]; !ok || old != typ {
-		r.v2Types[hash] = typ
+	if old, ok := r.v2Types[hash]; !ok || old != e {
+		r.v2Types[hash] = e
 		r.v2TypesDirty = true
 	}
 }
@@ -103,13 +136,23 @@ func (r *Reader) persistUnitTypeIndex() {
 	buf.WriteString(unitTypeIndexHeader)
 	buf.WriteByte('\n')
 	for hash := range r.v2Hashes {
-		typ, ok := r.v2Types[hash]
+		e, ok := r.v2Types[hash]
 		if !ok {
 			continue
 		}
+		// hash, type, excluded, name: the name last and quoted, so no
+		// character a name can hold splits the line.
+		excluded := "0"
+		if e.Excluded {
+			excluded = "1"
+		}
 		buf.WriteString(hash)
 		buf.WriteByte('\t')
-		buf.WriteString(typ)
+		buf.WriteString(e.Type)
+		buf.WriteByte('\t')
+		buf.WriteString(excluded)
+		buf.WriteByte('\t')
+		buf.WriteString(strconv.Quote(e.Name))
 		buf.WriteByte('\n')
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -130,8 +173,8 @@ func (r *Reader) persistUnitTypeIndex() {
 }
 
 // loadUnitTypeIndex reads a persisted index; any problem yields an empty one.
-func loadUnitTypeIndex(path string) map[string]string {
-	out := make(map[string]string)
+func loadUnitTypeIndex(path string) map[string]unitIndexEntry {
+	out := make(map[string]unitIndexEntry)
 	if path == "" {
 		return out
 	}
@@ -145,14 +188,18 @@ func loadUnitTypeIndex(path string) map[string]string {
 		return out
 	}
 	for sc.Scan() {
-		hash, typ, ok := strings.Cut(sc.Text(), "\t")
-		if !ok || hash == "" || strings.Contains(typ, "\t") {
-			return make(map[string]string) // corrupt: start cold rather than half-trust it
+		f := strings.SplitN(sc.Text(), "\t", 4)
+		if len(f) != 4 || f[0] == "" || (f[2] != "0" && f[2] != "1") {
+			return make(map[string]unitIndexEntry) // corrupt: start cold rather than half-trust it
 		}
-		out[hash] = typ
+		name, err := strconv.Unquote(f[3])
+		if err != nil {
+			return make(map[string]unitIndexEntry)
+		}
+		out[f[0]] = unitIndexEntry{Type: f[1], Excluded: f[2] == "1", Name: name}
 	}
 	if sc.Err() != nil {
-		return make(map[string]string)
+		return make(map[string]unitIndexEntry)
 	}
 	return out
 }

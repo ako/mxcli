@@ -55,6 +55,21 @@ Found 1 error(s) and 1 warning(s)
 | CW0xxx | Warning | Warning - should be reviewed |
 | CD0xxx | Deprecation | Deprecated feature usage |
 
+## Reading CE0463
+
+`mxcli docker check` checks the project as stored, and labels each CE0463 ("The
+definition of this widget has changed") after re-checking a temporary copy with the
+widgets resynced:
+
+- `stale widget definition — mxcli fix widgets fixes it`: the widget is older than its
+  installed package. Run `mxcli fix widgets -p app.mpr` (never bare `mx update-widgets`
+  on an MPR v2 project: it deletes `mprcontents/`).
+- `persists after update-widgets`: a resync does not clear it; something in the stored
+  widget is wrong. If mxcli wrote the widget, report it.
+
+`--update-widgets` checks only the resynced copy and hides the stale ones, which still
+fail MxBuild and `mxcli run --local`; do not use it to decide that the project builds.
+
 ## When to Use
 
 - After making changes with mxcli to verify they're valid

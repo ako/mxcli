@@ -69,17 +69,27 @@ func (b *Backend) populateViewEntityOql(dms []*domainmodel.DomainModel) {
 	if err != nil {
 		return
 	}
+	// The modules are listed once: GetModule lists them all per call, so a
+	// lookup per view-entity document read every module unit that many times.
+	modules, err := b.reader.ListModules()
+	if err != nil {
+		return
+	}
+	moduleNames := make(map[string]string, len(modules))
+	for _, m := range modules {
+		moduleNames[m.ID] = m.Name
+	}
 	oqlByQN := make(map[string]string, len(units))
 	for _, u := range units {
 		name := u.Element.Name()
 		if name == "" {
 			continue
 		}
-		mi, _ := b.reader.GetModule(string(u.ContainerID))
-		if mi == nil {
+		modName, ok := moduleNames[string(u.ContainerID)]
+		if !ok {
 			continue
 		}
-		oqlByQN[mi.Name+"."+name] = u.Element.Oql()
+		oqlByQN[modName+"."+name] = u.Element.Oql()
 	}
 	for _, dm := range dms {
 		for _, e := range dm.Entities {

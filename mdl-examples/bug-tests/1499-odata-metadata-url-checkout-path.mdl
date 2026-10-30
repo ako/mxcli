@@ -1,0 +1,47 @@
+mdl 1;
+-- ============================================================================
+-- ako/mxcli#1499: a relative MetadataUrl is stored as the absolute file:// URL
+-- of the checkout that ran the script. Re-executing the same unchanged script
+-- from a checkout at another path (another machine, a moved folder, a git
+-- worktree) rewrote every OData client to its own path:
+--
+--   -  MetadataUrl: 'file:///workspaces/mxcli-formula1/Formula1Frontend/contracts/f1-metadata.xml',
+--   +  MetadataUrl: 'file:///home/user/mxcli-formula1/Formula1Frontend/contracts/f1-metadata.xml',
+--
+-- 5 of the 20 writes of a full re-exec in the reported project. Nothing failed:
+-- mx check accepts the value whatever it is (a relative one, a dead absolute
+-- one; measured on 11.13.0), so the churn was only visible in the diff.
+--
+-- The stored form stays the absolute file:// URL. A create or modify whose
+-- relative path names the same project file now leaves the stored URL alone,
+-- and the contract is read from this checkout's file. describe prints a stored
+-- URL inside the project directory as './contracts/…', so a script generated
+-- from the model carries no machine path.
+--
+-- Repro (MetadataUrl resolves against the .mpr's directory):
+--
+--   mkdir -p A/app/contracts
+--   cp mdl-examples/odata-local-metadata/sample-metadata.xml A/app/contracts/f1-metadata.xml
+--   mxcli exec mdl-examples/bug-tests/1499-odata-metadata-url-checkout-path.mdl -p A/app/App.mpr
+--   mv A B            # or cp -r A B: a second checkout of the same project
+--   mxcli exec mdl-examples/bug-tests/1499-odata-metadata-url-checkout-path.mdl -p B/app/App.mpr
+--
+-- Before the fix the second exec printed "Modified OData client"; after it the
+-- client is unchanged ("documents already in sync"). Executing the script twice
+-- from the same checkout is the control: unchanged before and after.
+--
+-- Regression coverage: mdl/executor/cmd_odata_metadata_url_checkout_test.go
+-- ============================================================================
+
+create or modify module F1Cached;
+
+create or modify constant F1Cached.ApiLocation
+  ( Type: String, DefaultValue: 'http://localhost:8080/odata/cached/' );
+
+create or modify consumed odata service F1Cached.CachedApi (
+  Version: '1.0.0',
+  ODataVersion: OData4,
+  MetadataUrl: './contracts/f1-metadata.xml',
+  ServiceUrl: '@F1Cached.ApiLocation',
+  Timeout: '300'
+);

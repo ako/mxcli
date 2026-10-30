@@ -168,24 +168,34 @@ func (b *Backend) DeleteModuleWithCleanup(id model.ID, moduleName string) error 
 	if err := b.DeleteModule(id); err != nil {
 		return err
 	}
+	b.removeModuleSourceDirs(moduleName)
+	return nil
+}
+
+// removeModuleSourceDirs removes a module's source folders beside the model.
+func (b *Backend) removeModuleSourceDirs(moduleName string) {
 	if b.path == "" {
-		return nil
+		return
 	}
 	projectDir := filepath.Dir(b.path)
 	lower := strings.ToLower(moduleName)
 	// themesource and javasource use the lowercased module name; javascriptsource
 	// uses the original casing (with a lowercase fallback).
-	for _, dir := range []string{
-		filepath.Join(projectDir, "themesource", lower),
-		filepath.Join(projectDir, "javasource", lower),
-		filepath.Join(projectDir, "javascriptsource", moduleName),
-		filepath.Join(projectDir, "javascriptsource", lower),
+	for _, d := range []struct{ dir, what string }{
+		{filepath.Join(projectDir, "themesource", lower), "module theme source"},
+		{filepath.Join(projectDir, "javasource", lower), "module Java source"},
+		{filepath.Join(projectDir, "javascriptsource", moduleName), "module JavaScript source"},
+		{filepath.Join(projectDir, "javascriptsource", lower), "module JavaScript source"},
 	} {
-		if stat, err := os.Stat(dir); err == nil && stat.IsDir() {
-			_ = os.RemoveAll(dir)
+		if stat, err := os.Stat(d.dir); err == nil && stat.IsDir() {
+			// Recorded only once gone: a folder that is still there needs no
+			// staging. On a case-insensitive filesystem the two javascriptsource
+			// spellings are one folder, and the second stat finds nothing.
+			if os.RemoveAll(d.dir) == nil {
+				b.noteSourceFile(d.dir+string(filepath.Separator), "", true, d.what)
+			}
 		}
 	}
-	return nil
 }
 
 // collectDescendantUnitIDs returns every unit ID transitively contained under

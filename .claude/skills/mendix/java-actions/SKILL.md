@@ -13,12 +13,12 @@ description: "Create and call custom Java actions — extending Mendix with serv
 | 28-39 | Reference files |
 | 40-48 | When to Use This Skill |
 | 49-55 | Overview |
-| 56-385 | Part 2.5: Creating Java Actions in MDL |
-| 386-579 | Part 3: Calling Java Actions from MDL |
-| 580-593 | Validation Checklist |
-| 594-604 | Common Errors |
-| 605-612 | Related Documentation |
-| 613-694 | Quick Reference |
+| 56-394 | Part 2.5: Creating Java Actions in MDL |
+| 395-588 | Part 3: Calling Java Actions from MDL |
+| 589-603 | Validation Checklist |
+| 604-614 | Common Errors |
+| 615-622 | Related Documentation |
+| 623-704 | Quick Reference |
 
 <!-- /skill-index -->
 # Mendix Java Actions Skill
@@ -56,6 +56,15 @@ Java actions allow you to extend Mendix with custom Java code. The workflow is:
 ## Part 2.5: Creating Java Actions in MDL
 
 MDL supports defining Java actions with inline Java code using `create java action`.
+
+**The body is not in the model.** The statement stores the action (parameters,
+return type) in a unit and writes the `as $$ … $$` body to
+`javasource/<module>/actions/<Name>.java`. Commit that file with the `.mpr` and
+`mprcontents/`: a commit of the model alone gives a clone an action with no logic.
+`exec` names each file it writes there on its own line —
+`Wrote javasource/<module>/actions/<Name>.java (Java action body; commit it with the model)` —
+and ends with `Files changed outside the model: N (…)`. `mxcli git commit` stages
+them for you.
 
 ### Basic Syntax
 
@@ -585,6 +594,7 @@ Before deploying Java actions, verify:
 - [ ] All parameters are defined with correct types
 - [ ] Return type matches what you return in Java
 - [ ] Code is only between `begin user CODE` / `end user CODE` markers
+- [ ] `javasource/<module>/actions/<Name>.java` is committed with the model
 - [ ] Proper null checks for all parameters
 - [ ] Exception handling with logging
 - [ ] No hardcoded credentials or sensitive data

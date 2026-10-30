@@ -11,15 +11,15 @@ description: "Create, call and drop JavaScript actions — client-side logic cal
 | lines | section |
 |---|---|
 | 31-39 | When to Use This Skill |
-| 40-51 | Overview |
-| 52-97 | Syntax |
-| 98-159 | Examples |
-| 160-171 | Calling from a nanoflow |
-| 172-196 | The generated .js file |
-| 197-205 | Inspecting |
-| 206-214 | Validation Checklist |
-| 215-224 | Common Errors |
-| 225-229 | Related Documentation |
+| 40-57 | Overview |
+| 58-103 | Syntax |
+| 104-165 | Examples |
+| 166-177 | Calling from a nanoflow |
+| 178-202 | The generated .js file |
+| 203-211 | Inspecting |
+| 212-220 | Validation Checklist |
+| 221-230 | Common Errors |
+| 231-235 | Related Documentation |
 
 <!-- /skill-index -->
 # Mendix JavaScript Actions Skill
@@ -48,6 +48,12 @@ A JavaScript action is two things on disk:
 `CREATE JAVASCRIPT ACTION` writes **both**. The MDL body you provide becomes the
 function body (between the `BEGIN USER CODE` / `END USER CODE` markers), so it
 normally returns a `Promise`.
+
+The body lives only in the `.js` file, so commit `javascriptsource/` with the
+`.mpr` and `mprcontents/`; a commit of the model alone gives a clone an action
+with no logic. `exec` names each file it writes there
+(`Wrote javascriptsource/<module>/actions/<Name>.js (JavaScript action body; commit it with the model)`)
+and ends with `Files changed outside the model: N (…)`.
 
 ## Syntax
 

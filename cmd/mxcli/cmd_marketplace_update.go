@@ -316,10 +316,10 @@ func reportUpdate(out io.Writer, r *marketplace.UpdateResult) {
 	// Saying so here is the difference between a two-command fix and a day in
 	// diagnose-ce0463.md, which is where that error normally leads.
 	//
-	// The resync is named as `mxcli docker check`, not as bare `mx update-widgets`:
+	// The resync is named as `mxcli fix widgets`, not as bare `mx update-widgets`:
 	// the latter rewrites an MPR v2 project as v1 (measured on 11.12.1 — 200
-	// .mxunit files to 0, a 69 KB index to 14 MB), while docker check runs the
-	// same step under a storage-format snapshot (#808).
+	// .mxunit files to 0, a 69 KB index to 14 MB), while fix widgets writes the
+	// result back as v2 (#808). docker check then checks the project as stored.
 	fmt.Fprintln(out, "\n  Next, repair what a headless update leaves behind (expected, not a fault):")
 	fmt.Fprintln(out, "      mxcli fix widgets -p <project.mpr>             # CE0463")
 	fmt.Fprintln(out, "      mxcli fix design-properties -p <project.mpr>   # CE6087")

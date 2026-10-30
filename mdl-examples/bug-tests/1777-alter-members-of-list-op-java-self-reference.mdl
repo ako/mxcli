@@ -1,0 +1,119 @@
+mdl 1;
+-- ako/mxcli#1777 — a fragment an alter splices names a member of a stored
+-- list operation's, Java action's or self-reference retrieve's output
+--
+-- A fragment spliced by `alter microflow` (or `create or modify`) starts from
+-- the variables the stored flow declares, typed as `create microflow` types
+-- them. #1769 typed a retrieve over an association and a loop's iterator; the
+-- output of a list operation, of a Java action call and of a retrieve over a
+-- self-reference stayed untyped, so a member of one was refused with nothing
+-- written: "cannot qualify member "Code": the entity its variable holds is
+-- not known here …".
+--
+-- Now a list operation's output has its input list's type (the list for a
+-- filter, sort, tail, union, intersect, subtract or range; an element for a
+-- head or find), a Java action's result its declared return type (a list of
+-- its type parameter: the list its argument holds), and a self-reference
+-- retrieve what Mendix reads it as: the stored retrieve records no direction,
+-- and Mendix follows it from the FROM end, so a reference gives the one
+-- object and a reference set the list (measured on 11.13.0: a change on a
+-- self-reference retrieve builds, a count of it is CE0013).
+--
+-- Run on any project:
+--   mxcli exec mdl-examples/bug-tests/1777-alter-members-of-list-op-java-self-reference.mdl -p app.mpr
+--   mxcli bson dump -p app.mpr --type microflow --object MyModule.SUB_Shapes
+-- Expected: every alter reports "Altered microflow MyModule.SUB_Shapes"; the
+-- dump shows each find, filter and change on MyModule.OrderLine.Code,
+-- MyModule.OrderLine.Status or MyModule.Order.Code; mx check reports 0 errors,
+-- and exec of `describe microflow MyModule.SUB_Shapes` reports Unchanged.
+-- Before the fix: the first seven alters are refused, "cannot qualify member"
+-- (the last, over a self reference set, was typed by #1769) — measured on
+-- 11.13.0.
+
+create module MyModule;
+create persistent entity MyModule.Order (Code: String(50));
+create persistent entity MyModule.OrderLine (Code: String(50), Status: String(20));
+create association MyModule.OrderLine_Order from MyModule.OrderLine to MyModule.Order;
+create association MyModule.Order_Parent from MyModule.Order to MyModule.Order;
+create association MyModule.Order_Related from MyModule.Order to MyModule.Order type ReferenceSet;
+
+create java action MyModule.JA_GetOrder (Code: String) returns MyModule.Order as $$
+  return null;
+$$;
+
+create java action MyModule.JA_GetLines (Code: String) returns list of MyModule.OrderLine as $$
+  return new java.util.ArrayList<>();
+$$;
+
+create java action MyModule.JA_Shuffle<T> (Items: list of T) returns list of T as $$
+  return Items;
+$$;
+
+create microflow MyModule.SUB_Shapes ($Order: MyModule.Order, $Lines: List of MyModule.OrderLine)
+begin
+  $Open = filter $Lines by Status = 'Open';
+  $Sorted = sort $Lines by Code asc;
+  $First = head $Lines;
+  $Got = call java action MyModule.JA_GetOrder(Code = 'A');
+  $GotLines = call java action MyModule.JA_GetLines(Code = 'A');
+  $Shuffled = call java action MyModule.JA_Shuffle(Items = $Lines);
+  retrieve $Parent from $Order/MyModule.Order_Parent;
+  retrieve $Related from $Order/MyModule.Order_Related;
+  log info node 'Shapes' 'done';
+end;
+
+-- A filter's output: the list it filters.
+alter microflow MyModule.SUB_Shapes {
+  insert after $Related begin
+    $OpenA = find $Open by Code = 'A';
+  end;
+};
+
+-- A sort's output: the list it sorts.
+alter microflow MyModule.SUB_Shapes {
+  insert after $Related begin
+    $SortedB = filter $Sorted by Code = 'B';
+  end;
+};
+
+-- A head's output: one object of the list.
+alter microflow MyModule.SUB_Shapes {
+  insert after $Related begin
+    change $First (Status = 'Seen');
+  end;
+};
+
+-- A Java action returning an entity.
+alter microflow MyModule.SUB_Shapes {
+  insert after $Related begin
+    change $Got (Code = 'X');
+  end;
+};
+
+-- A Java action returning a list of an entity.
+alter microflow MyModule.SUB_Shapes {
+  insert after $Related begin
+    $GotOpen = find $GotLines by Status = 'Open';
+  end;
+};
+
+-- A Java action returning a list of its type parameter: the list it is given.
+alter microflow MyModule.SUB_Shapes {
+  insert after $Related begin
+    $ShuffledA = find $Shuffled by Code = 'A';
+  end;
+};
+
+-- A retrieve over a self-reference: the one object at the FROM end.
+alter microflow MyModule.SUB_Shapes {
+  insert after $Related begin
+    change $Parent (Code = 'P');
+  end;
+};
+
+-- A retrieve over a self reference set: the list (typed since #1769).
+alter microflow MyModule.SUB_Shapes {
+  insert after $Related begin
+    $RelatedA = find $Related by Code = 'A';
+  end;
+};

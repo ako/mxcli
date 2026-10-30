@@ -44,7 +44,16 @@ clears a description. A new action gets no descriptions and the return value nam
 ### The Java Source File
 
 The statement writes `javasource/<module>/actions/<Name>.java` the way mxbuild
-generates it, byte for byte, so the next build leaves it unchanged. The action's
+generates it, byte for byte, so the next build leaves it unchanged.
+
+The body is only in this file, not in the model, so commit `javasource/`
+together with the `.mpr` and `mprcontents/`. A commit of the model alone gives a
+clone an action with no logic. `mxcli exec` names each file it writes there on
+its own line, for example
+`Wrote javasource/sales/actions/JA_Ping.java (Java action body; commit it with the model)`,
+and ends the run with `Files changed outside the model: N (…)`. A rewrite that
+leaves the file's content as it was is not reported. `RENAME JAVA ACTION` moves
+the file and `DROP JAVA ACTION` removes it; both are reported the same way. The action's
 documentation -- the `/** ... */` before `CREATE` -- is the class javadoc above
 `public class`; a rewrite without one keeps the stored documentation, in the model
 and in the file. (Before ako/mxcli#1700 the file had no javadoc, so every rewrite

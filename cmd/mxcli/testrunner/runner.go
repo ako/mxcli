@@ -804,7 +804,16 @@ func execMDLScript(projectPath, mdl, namePattern string) error {
 	}
 	f.Close()
 
-	return execMxcli(projectPath, "exec", path, "-p", projectPath)
+	return execMxcli(projectPath, injectionExecArgs(path, projectPath)...)
+}
+
+// injectionExecArgs are the arguments of the `mxcli exec` that injects a
+// generated script. Everything it writes is removed again at cleanup — the
+// endpoint's Java source included (removeGeneratedJavaSource) — so exec must
+// not tell the user to commit the files it writes beside the model
+// (ako/mxcli#1618).
+func injectionExecArgs(scriptPath, projectPath string) []string {
+	return []string{"exec", scriptPath, "-p", projectPath, "--no-source-file-report"}
 }
 
 // cleanupCommands returns the MDL statements that put the project back the way it

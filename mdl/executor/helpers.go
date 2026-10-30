@@ -563,6 +563,54 @@ func microflowsNamed(ctx *ExecContext, name string) ([]*microflows.Microflow, er
 	return out, nil
 }
 
+// pinnedMicroflow is the microflow a describe is pinned to (ctx.describeID),
+// read by ID, when it is the named one; nil when there is no pin or the pinned
+// document is not that microflow, so the caller falls back to the name lookup.
+func pinnedMicroflow(ctx *ExecContext, h *ContainerHierarchy, name ast.QualifiedName) ([]*microflows.Microflow, error) {
+	if ctx.describeID == "" {
+		return nil, nil
+	}
+	mf, err := ctx.Backend.GetMicroflow(ctx.describeID)
+	if err != nil || mf == nil {
+		return nil, err
+	}
+	if mf.Name != name.Name || h.GetModuleName(h.FindModuleID(mf.ContainerID)) != name.Module {
+		return nil, nil
+	}
+	return []*microflows.Microflow{mf}, nil
+}
+
+// microflowsInModule is the microflows of one module, or of the project when
+// moduleName is "". A module's are found by their headers and decoded one by
+// one, so `show microflows in M` decodes M's microflows, not the project's
+// (ako/mxcli#1791).
+func microflowsInModule(ctx *ExecContext, h *ContainerHierarchy, moduleName string) ([]*microflows.Microflow, error) {
+	if moduleName == "" {
+		return ctx.Backend.ListMicroflows()
+	}
+	if _, ok := ctx.Backend.(microflowLookup); !ok {
+		return ctx.Backend.ListMicroflows()
+	}
+	hs, err := microflowHeaders(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []*microflows.Microflow
+	for _, hd := range hs {
+		if h.GetModuleName(h.FindModuleID(hd.ContainerID)) != moduleName {
+			continue
+		}
+		mf, err := ctx.Backend.GetMicroflow(hd.ID)
+		if err != nil {
+			return nil, err
+		}
+		if mf != nil {
+			out = append(out, mf)
+		}
+	}
+	return out, nil
+}
+
 // microflowHeaders is every microflow's ID, container, name and Excluded flag,
 // for a name set or an ID-to-name map: no flow is decoded where the backend
 // can avoid it.

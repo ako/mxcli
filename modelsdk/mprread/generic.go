@@ -112,6 +112,46 @@ func ListUnitsInContainer[T element.Element](r *mmpr.Reader, containerID model.I
 	return decodeUnits[T](refs, typeName, nil)
 }
 
+// UnitByID decodes the unit of type T whose ID is id, reading that unit only.
+// ok is false when there is no such unit or it is not a T.
+func UnitByID[T element.Element](r *mmpr.Reader, id model.ID) (unit Unit[T], ok bool, err error) {
+	typeName := bsonTypeName[T]()
+	ref, found, err := r.UnitByID(string(id))
+	if err != nil || !found || ref.Type != typeName {
+		return Unit[T]{}, false, err
+	}
+	units, err := decodeUnits[T]([]mmpr.UnitRef{ref}, typeName, nil)
+	if err != nil || len(units) == 0 {
+		return Unit[T]{}, false, err
+	}
+	return units[0], true, nil
+}
+
+// ListUnitsNamed decodes the units of type T whose top-level Name is name.
+// The names come from the reader's unit index, so on MPR v2 only the matching
+// units are opened, where filtering the listing on the stored Name opened
+// every unit of the type to read it (ako/mxcli#1791).
+func ListUnitsNamed[T element.Element](r *mmpr.Reader, name string) ([]Unit[T], error) {
+	hs, err := r.ListUnitHeaders(bsonTypeName[T]())
+	if err != nil {
+		return nil, err
+	}
+	var out []Unit[T]
+	for _, h := range hs {
+		if h.Name != name {
+			continue
+		}
+		u, ok, err := UnitByID[T](r, model.ID(h.ID))
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			out = append(out, u)
+		}
+	}
+	return out, nil
+}
+
 // UnitHeader is what a name listing needs of a unit, read without decoding it.
 type UnitHeader struct {
 	ID          model.ID
@@ -124,27 +164,17 @@ type UnitHeader struct {
 // type T without decoding any of them: for callers that build a name set or an
 // ID-to-name map and would otherwise decode the whole flow of every document.
 func ListUnitHeaders[T element.Element](r *mmpr.Reader) ([]UnitHeader, error) {
-	typeName := bsonTypeName[T]()
-	refs, err := r.ListUnitsByType(typeName)
+	hs, err := r.ListUnitHeaders(bsonTypeName[T]())
 	if err != nil {
 		return nil, err
 	}
-	out := make([]UnitHeader, 0, len(refs))
-	for _, ref := range refs {
-		if ref.Type != typeName {
-			continue
-		}
-		raw := bson.Raw(ref.Contents)
-		if err := raw.Validate(); err != nil {
-			return nil, fmt.Errorf("decode unit %s: %w", ref.ID, err)
-		}
-		name, _ := raw.Lookup("Name").StringValueOK()
-		excluded, _ := raw.Lookup("Excluded").BooleanOK()
+	out := make([]UnitHeader, 0, len(hs))
+	for _, h := range hs {
 		out = append(out, UnitHeader{
-			ID:          model.ID(codec.PeekID(raw)),
-			ContainerID: model.ID(ref.ContainerID),
-			Name:        name,
-			Excluded:    excluded,
+			ID:          model.ID(h.ID),
+			ContainerID: model.ID(h.ContainerID),
+			Name:        h.Name,
+			Excluded:    h.Excluded,
 		})
 	}
 	return out, nil

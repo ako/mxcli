@@ -265,6 +265,7 @@ type MockBackend struct {
 	WriteJavaSourceFileFunc        func(moduleName, actionName string, javaCode string, params []*javaactions.JavaActionParameter, returnType javaactions.CodeActionReturnType, extraImports []string, extraCode *string, documentation string) error
 	DeleteJavaSourceFileFunc       func(moduleName, actionName string) error
 	RenameJavaSourceFileFunc       func(moduleName, oldName, newName string) error
+	MoveJavaSourceFileFunc         func(fromModule, toModule, actionName string) (string, error)
 	ReadJavaSourceFileFunc         func(moduleName, actionName string) (string, error)
 	CreateJavaScriptActionFunc     func(jsa *types.JavaScriptAction) error
 	UpdateJavaScriptActionFunc     func(jsa *types.JavaScriptAction) error
@@ -272,6 +273,7 @@ type MockBackend struct {
 	WriteJavaScriptSourceFileFunc  func(moduleName, actionName string, jsCode string, params []*types.JavaActionParameter, returnType types.CodeActionReturnType) error
 	DeleteJavaScriptSourceFileFunc func(moduleName, actionName string) error
 	RenameJavaScriptSourceFileFunc func(moduleName, oldName, newName string) error
+	MoveJavaScriptSourceFileFunc   func(fromModule, toModule, actionName string) (string, error)
 
 	// WorkflowBackend
 	ListWorkflowsFunc  func() ([]*workflows.Workflow, error)

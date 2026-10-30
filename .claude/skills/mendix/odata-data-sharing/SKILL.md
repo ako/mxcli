@@ -12,15 +12,15 @@ description: "Share data between Mendix apps over OData — published services, 
 |---|---|
 | 30-42 | Reference files |
 | 43-52 | When to Use This Skill |
-| 53-71 | MetadataUrl Formats |
-| 72-123 | Refreshing the Cached Contract |
-| 124-152 | ServiceUrl Must Be a Constant |
-| 153-191 | Architecture Overview |
-| 192-224 | API Versioning |
-| 225-270 | Folder Organization |
-| 271-282 | Module Organization Conventions |
-| 283-304 | Checklist |
-| 305-332 | Exploration Commands |
+| 53-73 | MetadataUrl Formats |
+| 74-125 | Refreshing the Cached Contract |
+| 126-154 | ServiceUrl Must Be a Constant |
+| 155-193 | Architecture Overview |
+| 194-226 | API Versioning |
+| 227-272 | Folder Organization |
+| 273-284 | Module Organization Conventions |
+| 285-306 | Checklist |
+| 307-334 | Exploration Commands |
 
 <!-- /skill-index -->
 # OData Data Sharing Between Mendix Apps
@@ -64,6 +64,8 @@ long build-outs are next door:
 - Relative paths (with or without `./`) are **automatically converted** to absolute `file://` URLs in the Mendix model
 - This ensures Studio Pro can properly detect local file vs HTTP metadata sources (radio button in UI)
 - Example: `./metadata/service.xml` → `file:///absolute/path/to/project/metadata/service.xml`
+- Re-running the script from a checkout at another path (another machine, a moved folder, a git worktree) leaves that stored URL alone when it names the same project file, so the client reports `Unchanged` instead of being rewritten to the new path
+- `describe` prints a stored URL inside the project directory as `./<path>`, so a script generated from the model stays portable; executing it leaves the client unchanged
 
 **Path Resolution (before normalization):**
 - With project loaded (`-p` flag or REPL): relative paths are resolved against the `.mpr` file's directory

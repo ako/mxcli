@@ -26,6 +26,11 @@ type JavaBackend interface {
 	WriteJavaSourceFile(moduleName, actionName string, javaCode string, params []*javaactions.JavaActionParameter, returnType javaactions.CodeActionReturnType, extraImports []string, extraCode *string, documentation string) error
 	DeleteJavaSourceFile(moduleName, actionName string) error
 	RenameJavaSourceFile(moduleName, oldName, newName string) error
+	// MoveJavaSourceFile moves an action's source to another module's actions
+	// directory and rewrites its package line, refusing an occupied destination
+	// before touching anything. It returns the new project-relative path, or ""
+	// when there was no source to move.
+	MoveJavaSourceFile(fromModule, toModule, actionName string) (string, error)
 	ReadJavaSourceFile(moduleName, actionName string) (string, error)
 
 	CreateJavaScriptAction(jsa *types.JavaScriptAction) error
@@ -34,4 +39,7 @@ type JavaBackend interface {
 	WriteJavaScriptSourceFile(moduleName, actionName string, jsCode string, params []*types.JavaActionParameter, returnType types.CodeActionReturnType) error
 	DeleteJavaScriptSourceFile(moduleName, actionName string) error
 	RenameJavaScriptSourceFile(moduleName, oldName, newName string) error
+	// MoveJavaScriptSourceFile is MoveJavaSourceFile for a JavaScript action;
+	// its source names no module, so only the file moves.
+	MoveJavaScriptSourceFile(fromModule, toModule, actionName string) (string, error)
 }

@@ -6,7 +6,9 @@ package mpr
 import (
 	"bytes"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -77,6 +79,103 @@ func (r *Reader) ListUnitsByType(typePrefix string) ([]UnitRef, error) {
 		result[i] = UnitRef{ID: u.ID, ContainerID: u.ContainerID, Type: u.Type, Contents: u.Contents}
 	}
 	return result, nil
+}
+
+// UnitHeaderRef is a unit's identity and its top-level Name and Excluded.
+type UnitHeaderRef struct {
+	ID          string
+	ContainerID string
+	Name        string
+	Excluded    bool
+}
+
+// ListUnitHeaders lists the units of exactly typeName with their Name and
+// Excluded. On MPR v2 these come from the unit index, so a unit whose bytes the
+// index has seen is not opened: naming every folder or microflow used to open
+// every one of their files on each call (ako/mxcli#1791). MPR v1 reads the
+// blobs, which live in the one database file.
+func (r *Reader) ListUnitHeaders(typeName string) ([]UnitHeaderRef, error) {
+	if r.version != MPRVersionV2 {
+		units, err := r.listUnitsByType(typeName)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]UnitHeaderRef, 0, len(units))
+		for _, u := range units {
+			e := unitIndexEntryOf(u.Contents)
+			out = append(out, UnitHeaderRef{ID: u.ID, ContainerID: u.ContainerID, Name: e.Name, Excluded: e.Excluded})
+		}
+		return out, nil
+	}
+	if !r.unitCacheValid {
+		if err := r.buildUnitCache(); err != nil {
+			return nil, err
+		}
+	}
+	var out []UnitHeaderRef
+	for _, cu := range r.unitCache {
+		if cu.Type != typeName {
+			continue
+		}
+		name, excluded := cu.Name, cu.Excluded
+		if held, ok := r.overlaid(cu.ID); ok {
+			// Held after the cache was built: the held bytes are the unit now.
+			e := unitIndexEntryOf(held)
+			if e.Type != typeName {
+				continue
+			}
+			name, excluded = e.Name, e.Excluded
+		}
+		out = append(out, UnitHeaderRef{ID: cu.ID, ContainerID: cu.ContainerID, Name: name, Excluded: excluded})
+	}
+	return out, nil
+}
+
+// UnitByID returns the unit whose ID is id, reading that unit's contents only.
+// ok is false when the project has no such unit. A unit's ID is its
+// document's $ID, so a lookup of one document by ID needs no listing: the
+// catalog's source build described each microflow through a listing of them
+// all and opened millions of files on a large project (ako/mxcli#1789).
+func (r *Reader) UnitByID(id string) (unit UnitRef, ok bool, err error) {
+	if r.version != MPRVersionV2 {
+		return r.unitByIDV1(id)
+	}
+	if !r.unitCacheValid {
+		if err := r.buildUnitCache(); err != nil {
+			return UnitRef{}, false, err
+		}
+	}
+	for _, cu := range r.unitCache {
+		if cu.ID != id {
+			continue
+		}
+		contents, err := r.readMprContents(cu.ID)
+		if err != nil {
+			return UnitRef{}, false, err
+		}
+		return UnitRef{ID: cu.ID, ContainerID: cu.ContainerID, Type: cu.Type, Contents: contents}, true, nil
+	}
+	return UnitRef{}, false, nil
+}
+
+// unitByIDV1 is UnitByID on MPR v1, where the contents are a column.
+func (r *Reader) unitByIDV1(id string) (UnitRef, bool, error) {
+	blob := uuidToBlob(id)
+	if blob == nil {
+		return UnitRef{}, false, nil
+	}
+	var containerID, contents []byte
+	err := r.db.QueryRow("SELECT ContainerID, Contents FROM Unit WHERE UnitID = ?", blob).Scan(&containerID, &contents)
+	if errors.Is(err, sql.ErrNoRows) {
+		return UnitRef{}, false, nil
+	}
+	if err != nil {
+		return UnitRef{}, false, err
+	}
+	if held, ok := r.overlaid(id); ok {
+		contents = held
+	}
+	return UnitRef{ID: id, ContainerID: blobToUUID(containerID), Type: getTypeFromContents(contents), Contents: contents}, true, nil
 }
 
 // ListUnitsByTypeInContainer returns the units of exactly typeName whose
@@ -201,21 +300,21 @@ func (r *Reader) buildUnitCache() error {
 		}
 
 		unitUUID := blobToUUID(unitID)
-		var typeName string
+		var entry unitIndexEntry
 		if held, ok := r.overlaid(unitUUID); ok {
 			// Bytes held in memory are what the unit is now; its stored hash
 			// describes the file it will replace.
-			typeName = getTypeFromContents(held)
-		} else if known, ok := r.knownUnitType(hash); ok {
-			typeName = known
+			entry = unitIndexEntryOf(held)
+		} else if known, ok := r.knownUnit(hash); ok {
+			entry = known
 		} else {
 			contents, err := r.readMprContents(unitUUID)
 			if err != nil {
 				continue
 			}
 			opened++
-			typeName = getTypeFromContents(contents)
-			r.learnUnitType(contentsHash(contents), typeName)
+			entry = unitIndexEntryOf(contents)
+			r.learnUnit(contentsHash(contents), entry)
 		}
 		if hash != "" {
 			hashes[hash] = struct{}{}
@@ -224,7 +323,9 @@ func (r *Reader) buildUnitCache() error {
 			ID:              unitUUID,
 			ContainerID:     blobToUUID(containerID),
 			ContainmentName: containmentName,
-			Type:            typeName,
+			Type:            entry.Type,
+			Name:            entry.Name,
+			Excluded:        entry.Excluded,
 		})
 	}
 	if err := rows.Err(); err != nil {

@@ -108,6 +108,16 @@ lacks, from `modelsdk/canon/studiopro_property_floors.json`. Writers that derive
 a value for a newer key leave it out on older versions themselves, so the
 refusal only fires for something the statement asked for.
 
+An element whose `$Type` the project's version does not have yet is refused the
+same way, wherever it sits in the unit (`canon.UndeclaredTypeError`,
+ako/mxcli#1774). Each type's introduction version is in
+`modelsdk/canon/mendixmodelsdk_type_versions.json`, extracted from the Mendix
+Model SDK by `modelsdk/canon/gen_type_versions.go`. The check runs after the
+property shapes are lowered for the version, so a type with an older shape is
+written in that shape instead of being refused. The SDK's deletion versions are
+in the file too, but they are not enforced: a type the SDK renamed or moved
+keeps its storage name.
+
 The doctype integration gate measures this on every script. A new gap fails it.
 To record a new measurement into the table, run the gate with
 `MXCLI_PROPERTY_SETS_RECORD=<file>` and then run

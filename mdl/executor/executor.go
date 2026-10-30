@@ -307,6 +307,12 @@ type Executor struct {
 	untimedMu        sync.Mutex                         // protects untimed
 	untimed          *untimedWork                       // the running statement's untimed-work tracker (see untimed_work.go)
 	catalogGen       uint64                             // monotonic generation counter for catalog swaps
+
+	// Files changed beside the model (ako/mxcli#1618): a program run's, for
+	// its summary line, and whether the caller wants them reported at all —
+	// not when its writes are temporary (SetSourceFileReport).
+	sourceFiles        sourceFileLog
+	noSourceFileReport bool
 }
 
 // New creates a new executor with the given output writer.
@@ -817,11 +823,18 @@ func (e *Executor) beginTally() bool {
 	if e.tally == nil {
 		e.tally = &mutationTally{}
 	}
-	return e.tally.begin()
+	owns := e.tally.begin()
+	if owns {
+		e.sourceFiles.begin()
+	}
+	return owns
 }
 
-// flushTally writes the run's one-line summary and stands the tally down.
+// flushTally writes the run's one-line summaries and stands the tally down.
+// The files changed beside the model come last: what to stage is the line a
+// reader should finish on.
 func (e *Executor) flushTally() {
 	e.tally.flush(e.output)
+	e.sourceFiles.flush(e.output)
 	e.tally.end()
 }

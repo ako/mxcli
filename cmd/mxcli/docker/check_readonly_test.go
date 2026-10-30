@@ -97,8 +97,9 @@ func addProjectDirs(t *testing.T, dir string) {
 
 // stubTools replaces mx resolution and both mx invocations with stubs that
 // mutate the project they are pointed at the way the real tools do, and record
-// the paths they were given.
-func stubTools(t *testing.T) (seen *[]string) {
+// the paths they were given. Each widget named in staleWidgets gets a CE0463
+// from mx check until update-widgets has rewritten the model it checks.
+func stubTools(t *testing.T, staleWidgets ...string) (seen *[]string) {
 	t.Helper()
 	var paths []string
 	origResolve, origUW, origCheck := resolveMxForCheck, updateWidgetsCmd, mxCheckCmd
@@ -131,42 +132,63 @@ func stubTools(t *testing.T) (seen *[]string) {
 			return err
 		}
 		// mx reports the project it loaded by path in some messages.
-		fmt.Fprintf(w, "Loading %s\nThe app contains: 0 errors.\n", mprPath)
+		fmt.Fprintf(w, "Loading %s\n", mprPath)
+		if b, _ := os.ReadFile(mprPath); string(b) != "rewritten by update-widgets" && len(staleWidgets) > 0 {
+			for _, el := range staleWidgets {
+				fmt.Fprintln(w, ce0463Line(el))
+			}
+			fmt.Fprintf(w, "The app contains: %d errors.\n", len(staleWidgets))
+			return fmt.Errorf("exit status 1")
+		}
+		fmt.Fprintln(w, "The app contains: 0 errors.")
 		return nil
 	}
 	return &paths
 }
 
+// The project is untouched in every mode: the default on a clean project (one
+// check), the default on a project with a stale widget (the re-check runs
+// update-widgets — on the copy), --no-update-widgets, and --update-widgets.
 func TestCheck_DoesNotModifyProject(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
 		fixture       func(*testing.T) string
 		skipUpdate    bool
+		updateFirst   bool
+		staleWidgets  []string
 		wantUWOnACopy bool
 	}{
-		{"v1", v1Fixture, false, true},
-		{"v2", v2Fixture, false, true},
-		{"v1 --no-update-widgets", v1Fixture, true, false},
-		{"v2 --no-update-widgets", v2Fixture, true, false},
+		{"v1", v1Fixture, false, false, nil, false},
+		{"v2", v2Fixture, false, false, nil, false},
+		{"v1 stale widget", v1Fixture, false, false, []string{"Data grid 2 'dg'"}, true},
+		{"v2 stale widget", v2Fixture, false, false, []string{"Data grid 2 'dg'"}, true},
+		{"v1 --no-update-widgets", v1Fixture, true, false, []string{"Data grid 2 'dg'"}, false},
+		{"v2 --no-update-widgets", v2Fixture, true, false, []string{"Data grid 2 'dg'"}, false},
+		{"v1 --update-widgets", v1Fixture, false, true, []string{"Data grid 2 'dg'"}, true},
+		{"v2 --update-widgets", v2Fixture, false, true, []string{"Data grid 2 'dg'"}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mprPath := tc.fixture(t)
 			projectDir := filepath.Dir(mprPath)
 			addProjectDirs(t, projectDir)
-			seen := stubTools(t)
+			seen := stubTools(t, tc.staleWidgets...)
 
 			tmpRoot := t.TempDir()
 			t.Setenv("TMPDIR", tmpRoot)
 
 			before := treeState(t, projectDir)
 			var out bytes.Buffer
-			if err := Check(CheckOptions{
-				ProjectPath:       mprPath,
-				SkipUpdateWidgets: tc.skipUpdate,
-				Stdout:            &out,
-				Stderr:            io.Discard,
-			}); err != nil {
-				t.Fatalf("Check: %v\n%s", err, out.String())
+			err := Check(CheckOptions{
+				ProjectPath:        mprPath,
+				SkipUpdateWidgets:  tc.skipUpdate,
+				UpdateWidgetsFirst: tc.updateFirst,
+				Stdout:             &out,
+				Stderr:             io.Discard,
+			})
+			// The stored project fails exactly when it has a CE0463 and the
+			// mode checks it as stored.
+			if wantErr := len(tc.staleWidgets) > 0 && !tc.updateFirst; (err != nil) != wantErr {
+				t.Fatalf("Check error = %v, want error %v\n%s", err, wantErr, out.String())
 			}
 			after := treeState(t, projectDir)
 			if d := diffStates(before, after); len(d) > 0 {
@@ -182,9 +204,15 @@ func TestCheck_DoesNotModifyProject(t *testing.T) {
 					t.Errorf("mx was pointed at the project itself: %s", s)
 				}
 			}
-			ranUW := strings.HasPrefix((*seen)[0], "update-widgets ")
+			ranUW := false
+			for _, s := range *seen {
+				ranUW = ranUW || strings.HasPrefix(s, "update-widgets ")
+			}
 			if ranUW != tc.wantUWOnACopy {
 				t.Errorf("update-widgets ran = %v, want %v (%v)", ranUW, tc.wantUWOnACopy, *seen)
+			}
+			if first := strings.Fields((*seen)[0])[0]; tc.updateFirst != (first == "update-widgets") {
+				t.Errorf("first mx step = %q; update-widgets comes first only with --update-widgets (%v)", first, *seen)
 			}
 
 			// The output names the project, not the copy, and says what happened.
@@ -195,8 +223,11 @@ func TestCheck_DoesNotModifyProject(t *testing.T) {
 			if !strings.Contains(got, "Loading "+mprPath) {
 				t.Errorf("mx output not reported against the original path:\n%s", got)
 			}
-			if tc.wantUWOnACopy && !strings.Contains(got, "normalised on a temporary copy") {
+			if tc.updateFirst && !strings.Contains(got, "normalised on a temporary copy") {
 				t.Errorf("output does not say widgets were normalised on a copy:\n%s", got)
+			}
+			if tc.wantUWOnACopy && !tc.updateFirst && !strings.Contains(got, staleCE0463Label) {
+				t.Errorf("output does not label the stale widget's CE0463:\n%s", got)
 			}
 
 			// The copy is cleaned up.
@@ -359,7 +390,9 @@ func TestWithProjectCopy_SkipsNamedFoldersButNeverTheProject(t *testing.T) {
 // in different Mendix version - 10.24.13.86719" and exits 4; mx check reports 0
 // errors. The check carried on, as it should — and then closed with a note that
 // widget definitions "were normalised on a temporary copy", a few lines after
-// the warning that they were not.
+// the warning that they were not. Since #646 update-widgets runs first only with
+// --update-widgets; the default's re-check is TestCheck_FailedRecheckLeaves
+// CE0463Unlabelled.
 func TestCheck_FailedUpdateWidgetsIsNotReportedAsNormalised(t *testing.T) {
 	mprPath := v1Fixture(t)
 	stubTools(t)
@@ -370,7 +403,7 @@ func TestCheck_FailedUpdateWidgetsIsNotReportedAsNormalised(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 
 	var out bytes.Buffer
-	if err := Check(CheckOptions{ProjectPath: mprPath, Stdout: &out, Stderr: io.Discard}); err != nil {
+	if err := Check(CheckOptions{ProjectPath: mprPath, UpdateWidgetsFirst: true, Stdout: &out, Stderr: io.Discard}); err != nil {
 		t.Fatalf("a failed update-widgets must not stop the check: %v\n%s", err, out.String())
 	}
 	got := out.String()

@@ -482,6 +482,12 @@ func buildCatalog(ctx *ExecContext, full, isSource, communities bool, resolution
 	if isSource || communities {
 		full = true // both imply full (they read refs/source built in full mode)
 	}
+	// A build writes nothing to the project, and its passes read the same
+	// documents again and again — the source describes list whole document
+	// types per document. Each unit file is read from disk once (#1789): an
+	// open is cheap on macOS and expensive where every one is scanned
+	// (Windows Defender), which made one refresh take hours there.
+	defer ctx.CacheUnitReads()()
 
 	if carry, res := carryGraphAnalysis(cachedCatalogInfo(ctx), full, communities); carry {
 		communities, resolution = true, res

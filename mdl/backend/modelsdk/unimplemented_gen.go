@@ -880,6 +880,16 @@ func (unimplemented) MoveJavaAction(_ *javaactions.JavaAction) error {
 	return errUnimplemented("MoveJavaAction")
 }
 
+func (unimplemented) MoveJavaScriptSourceFile(_ string, _ string, _ string) (string, error) {
+	var r0 string
+	return r0, errUnimplemented("MoveJavaScriptSourceFile")
+}
+
+func (unimplemented) MoveJavaSourceFile(_ string, _ string, _ string) (string, error) {
+	var r0 string
+	return r0, errUnimplemented("MoveJavaSourceFile")
+}
+
 func (unimplemented) MoveMicroflow(_ *microflows.Microflow) error {
 	return errUnimplemented("MoveMicroflow")
 }

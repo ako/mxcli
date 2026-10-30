@@ -285,7 +285,7 @@ An MPR v1 project is passed straight through, since these tools write v1 nativel
 |---|---|---|
 | `mxcli fix widgets` | **yes** | the fix — after any headless install |
 | `mxcli fix design-properties` | **yes** | the fix — after any headless install |
-| `mxcli docker check` | no | runs the widget resync under a snapshot so the *check* is not tripped by CE0463; the stored model stays stale |
+| `mxcli docker check` | no | checks the stored project, so it reports the CE0463 a headless install leaves, and labels each one the resync clears as a stale widget definition (the resync runs on a temporary copy only) |
 | `mxcli widget sync` | yes, partial | reconciles widget schemas in mxcli's own code; clears 7 of 40 on the reference fixture |
 
 ## Step 5 — Before updating: has the module been edited?

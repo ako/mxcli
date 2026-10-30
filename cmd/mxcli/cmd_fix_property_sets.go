@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	mpr "github.com/mendixlabs/mxcli/modelsdk/mpr"
 	"github.com/spf13/cobra"
@@ -59,7 +60,15 @@ A unit holding a value in a key the project's version does not declare is
 reported and left alone — dropping the value would change the model. Like every
 mxcli write, the repair is refused while Studio Pro has the project open.
 
-Exits 1 when a unit could not be repaired, or, with --dry-run, when one needs it.`,
+The keys it adds come from values measured on Mendix versions. A key no
+measurement covers on the project's version is not filled, but it is found:
+Studio Pro writes the same property names on every element of a type, so a
+name some elements of a type carry and others lack is listed as MIXED, with the
+units on the smaller side, and left as it is. Report those with your Mendix
+version so the value can be measured.
+
+Exits 1 when a unit could not be repaired, when a MIXED name remains, or, with
+--dry-run, when a unit needs the repair.`,
 	Example: `  mxcli fix property-sets -p app.mpr --dry-run
   mxcli fix property-sets -p app.mpr`,
 	Args:          cobra.NoArgs,
@@ -128,6 +137,7 @@ func fixPropertySets(mprPath string, dryRun bool, out io.Writer) error {
 		changed        []mpr.PropertySetRepair
 		failed         []string
 		added, removed int
+		census         = mpr.NewPropertySetCensus()
 	)
 	for _, id := range ids {
 		var rep mpr.PropertySetRepair
@@ -140,12 +150,14 @@ func fixPropertySets(mprPath string, dryRun bool, out io.Writer) error {
 			failed = append(failed, fmt.Sprintf("  FAILED    %s%s: %v", id, repairLabel(rep), err))
 			continue
 		}
+		census.Count(rep)
 		if rep.Changed() {
 			changed = append(changed, rep)
 			added += rep.Added
 			removed += rep.Stripped
 		}
 	}
+	mixed := census.Mixed()
 
 	verb := "Completed"
 	if dryRun {
@@ -161,7 +173,7 @@ func fixPropertySets(mprPath string, dryRun bool, out io.Writer) error {
 		fmt.Fprintln(out, f)
 	}
 	switch {
-	case len(changed) == 0 && len(failed) == 0:
+	case len(changed) == 0 && len(failed) == 0 && len(mixed) == 0:
 		fmt.Fprintln(out, "Every unit already has the property names Studio Pro writes.")
 	case len(changed) > 0:
 		fmt.Fprintf(out, "\n%s %d unit(s): %d key(s) added, %d stripped.\n", verb, len(changed), added, removed)
@@ -172,10 +184,40 @@ func fixPropertySets(mprPath string, dryRun bool, out io.Writer) error {
 	if len(failed) > 0 {
 		fmt.Fprintf(out, "%d unit(s) could not be normalized and were left as they are.\n", len(failed))
 	}
-	if len(failed) > 0 || (dryRun && len(changed) > 0) {
+	reportMixedPropertyNames(out, mixed, pv.MajorVersion, pv.MinorVersion, pv.PatchVersion)
+	if len(failed) > 0 || len(mixed) > 0 || (dryRun && len(changed) > 0) {
 		return errPropertySetsRemain
 	}
 	return nil
+}
+
+// reportMixedPropertyNames lists the property names the elements of one $Type
+// disagree on after the repair (ako/mxcli#1505): Studio Pro writes the same
+// names on every element of a type, so each is a pair of revisions Mendix's
+// merge engine refuses to compare. The repair fills only keys with a value
+// measured on a Mendix version, so these are reported and left alone.
+func reportMixedPropertyNames(out io.Writer, mixed []mpr.MixedPropertyName, major, minor, patch int) {
+	if len(mixed) == 0 {
+		return
+	}
+	fmt.Fprintf(out, "\nProperty names that differ between elements of one type (no value measured on Mendix %d.%d.%d fills them):\n",
+		major, minor, patch)
+	for _, m := range mixed {
+		side := "only on"
+		if m.Without() {
+			side = "without it"
+		}
+		var units []string
+		for _, u := range m.Examples {
+			units = append(units, u.UnitID+repairLabel(u))
+		}
+		fmt.Fprintf(out, "  MIXED     %s.%s: on %d of %d element(s); %s: %s\n",
+			m.Type, m.Key, m.With, m.Elements, side, strings.Join(units, ", "))
+	}
+	fmt.Fprintf(out, "%d property name(s) left as they are. Mendix's merge engine cannot compare a revision of these "+
+		"elements with one that has the other set of names. mxcli fills a key only with the value Studio Pro was "+
+		"measured writing on a Mendix version; report the names above with your Mendix version so it can be measured.\n",
+		len(mixed))
 }
 
 // repairLabel names the unit (" [Microflows$Microflow Name]"), or "".

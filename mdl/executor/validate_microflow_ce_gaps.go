@@ -317,6 +317,37 @@ func (v *microflowValidator) checkDuplicateVariableNames(params []ast.MicroflowP
 	walk(body)
 }
 
+// FlowDefinedVariables returns every variable name the statements define,
+// nested bodies included, each once and in the order first defined: the
+// definitions MDL063 and MDL052 count. A flow's variable namespace is flat, so
+// two of these with one name are CE0111.
+//
+// It leaves out MDL063's two exemptions, which need resolved types (a void
+// call's output name, and a String contains/find that builds as a Change
+// Variable): its caller renames a body's variables per copy — the `mxcli test`
+// after-startup runner, which joins every test into one flow (ako/mxcli#1775) —
+// and renaming one name too many costs nothing, where missing one is CE0111.
+func FlowDefinedVariables(body []ast.MicroflowStatement) []string {
+	var names []string
+	seen := map[string]bool{}
+	var walk func(stmts []ast.MicroflowStatement)
+	walk = func(stmts []ast.MicroflowStatement) {
+		for _, s := range stmts {
+			for _, p := range statementProducedVars(s) {
+				if !seen[p.name] {
+					seen[p.name] = true
+					names = append(names, p.name)
+				}
+			}
+			for _, nested := range ast.StatementBodies(s) {
+				walk(nested)
+			}
+		}
+	}
+	walk(body)
+	return names
+}
+
 // statementProducedVars returns the variables a statement CREATES.
 //
 // The `OutputVariable` field is read by reflection rather than from a switch:

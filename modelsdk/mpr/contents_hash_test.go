@@ -119,9 +119,95 @@ func TestRepairContentsHashesRefusedWhileStudioProOpen(t *testing.T) {
 	}
 }
 
-func TestVerifyContentsHashesV1NotApplicable(t *testing.T) {
-	r := &Reader{version: MPRVersionV1}
-	if _, err := r.VerifyContentsHashes(); !errors.Is(err, ErrNotMPRv2) {
-		t.Fatalf("want ErrNotMPRv2, got %v", err)
+// ako/mxcli#1159: an MPR v1 project has no files, but it does have the
+// column, and Studio Pro fills it on every unit. A writer that forgot it (every
+// mxcli before the fix) left it describing the previous contents, or '' on an
+// inserted unit; the comparison is against the Contents column.
+
+// staleV1Unit replaces one Projects$Folder's Contents the way an mxcli before
+// #1159 did, leaving its ContentsHash alone. Returns the unit ID and the new bytes.
+func staleV1Unit(t *testing.T, w *Writer) (string, []byte) {
+	t.Helper()
+	id, stored := v1UnitOfType(t, w, "Projects$Folder")
+	changed := withFields(t, stored, map[string]any{"Name": "WrittenByOldMxcli"})
+	if _, err := w.reader.db.Exec(`UPDATE Unit SET Contents = ? WHERE UnitID = ?`, changed, uuidToBlob(id)); err != nil {
+		t.Fatal(err)
 	}
+	return id, changed
+}
+
+func TestVerifyContentsHashesV1CleanControl(t *testing.T) {
+	w := openV1FixtureWriter(t)
+	rep, err := w.ConcreteReader().VerifyContentsHashes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rep.Clean() || rep.Units != 20 || rep.Files != 0 || rep.Version != MPRVersionV1 {
+		t.Fatalf("Studio Pro-authored v1 fixture not clean: %+v", rep)
+	}
+}
+
+func TestVerifyContentsHashesV1DetectsStaleHash(t *testing.T) {
+	w := openV1FixtureWriter(t)
+	before := storedHash(t, w, v1FolderID(t, w))
+	id, changed := staleV1Unit(t, w)
+
+	rep, err := w.ConcreteReader().VerifyContentsHashes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Mismatches) != 1 || len(rep.MissingFiles) != 0 || len(rep.OrphanFiles) != 0 {
+		t.Fatalf("want exactly 1 mismatch, got %+v", rep)
+	}
+	m := rep.Mismatches[0]
+	if m.UnitID != id || m.Stored != before || m.Actual != hashOf(changed) || m.Path != "" {
+		t.Fatalf("wrong mismatch: %+v", m)
+	}
+	if m.Unit != "Projects$Folder WrittenByOldMxcli" {
+		t.Fatalf("mismatch does not name its unit: %q", m.Unit)
+	}
+}
+
+func TestVerifyContentsHashesV1ReportsEmptyHash(t *testing.T) {
+	w := openV1FixtureWriter(t)
+	id := v1FolderID(t, w)
+	if _, err := w.reader.db.Exec(`UPDATE Unit SET ContentsHash = '' WHERE UnitID = ?`, uuidToBlob(id)); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := w.ConcreteReader().VerifyContentsHashes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Mismatches) != 1 || rep.Mismatches[0].UnitID != id || rep.Mismatches[0].Stored != "" {
+		t.Fatalf("an inserted unit's empty hash is not reported: %+v", rep)
+	}
+}
+
+func TestRepairContentsHashesV1RewritesFromContents(t *testing.T) {
+	w := openV1FixtureWriter(t)
+	id, changed := staleV1Unit(t, w)
+
+	rep, n, err := w.RepairContentsHashes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 || len(rep.Mismatches) != 1 {
+		t.Fatalf("want 1 row repaired, got %d (%+v)", n, rep)
+	}
+	if got := storedHash(t, w, id); got != hashOf(changed) {
+		t.Fatalf("ContentsHash = %q, want %q", got, hashOf(changed))
+	}
+	if stale := staleV1Hashes(t, w); len(stale) != 0 {
+		t.Fatalf("still stale after repair: %v", stale)
+	}
+	// The contents are the source of truth and must be left alone.
+	if got, _ := w.reader.GetRawUnitBytes(id); string(got) != string(changed) {
+		t.Fatal("repair modified the unit's contents")
+	}
+}
+
+func v1FolderID(t *testing.T, w *Writer) string {
+	t.Helper()
+	id, _ := v1UnitOfType(t, w, "Projects$Folder")
+	return id
 }

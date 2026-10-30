@@ -159,6 +159,9 @@ func statementVersionGates(stmt ast.Statement) []versionGate {
 			gates = append(gates, versionGate{"microflows", "deep_link_url", "a microflow URL (deep link)",
 				"upgrade your project to 10.6+, or set the URL in Studio Pro"})
 		}
+		if bodyContains(s.Body, selectsWorkflowDefinition) {
+			gates = append(gates, workflowDefinitionSelectionGate)
+		}
 		return gates
 	case *ast.CreateNanoflowStmt:
 		// SYNCHRONIZE UNSYNCHRONIZED is the one mode with a floor inside
@@ -201,6 +204,7 @@ func statementVersionGates(stmt ast.Statement) []versionGate {
 		if workflowUsesNotificationEvents(activities) {
 			gates = append(gates, notificationEventsGate)
 		}
+		gates = append(gates, workflowTypeGates(activities, nil)...)
 		return append(gates, userTaskGates(activities)...)
 	case *ast.AlterWorkflowStmt:
 		// Workflows require Mendix 9.12+.
@@ -213,9 +217,94 @@ func statementVersionGates(stmt ast.Statement) []versionGate {
 		if workflowUsesNotificationEvents(added) {
 			gates = append(gates, notificationEventsGate)
 		}
+		var inserted []string
+		for _, op := range s.Operations {
+			if o, ok := op.(*ast.InsertBoundaryEventOp); ok {
+				inserted = append(inserted, o.EventType)
+			}
+		}
+		gates = append(gates, workflowTypeGates(added, inserted)...)
 		return append(gates, userTaskGates(added)...)
 	}
 	return nil
+}
+
+// The gates of the workflow activity and event TYPES mxcli writes that an
+// older Mendix does not have (ako/mxcli#1774). Each type's introduction is in
+// the Model SDK's version data (mendixmodelsdk 4.117.0), and the write path
+// refuses the type below it (canon.UndeclaredTypeError); these name the
+// statement first.
+var (
+	waitForNotificationGate = versionGate{"workflows", "wait_for_notification", "wait for notification",
+		"Workflows$WaitForNotificationActivity arrived in Mendix 10.0: upgrade the project"}
+	waitForTimerGate = versionGate{"workflows", "wait_for_timer", "wait for timer",
+		"Workflows$WaitForTimerActivity arrived in Mendix 10.6: upgrade the project"}
+	timerBoundaryEventGate = versionGate{"workflows", "timer_boundary_event", "boundary event timer",
+		"boundary events arrived in Mendix 10.14: upgrade the project"}
+	interruptingTimerBoundaryEventGate = versionGate{"workflows", "interrupting_timer_boundary_event",
+		"boundary event interrupting timer / non interrupting timer",
+		"the (non-)interrupting timer boundary events are Mendix 10.20 types; 10.14–10.19 store a plain timer " +
+			"boundary event, which mxcli writes for `boundary event timer …`, or upgrade the project"}
+	workflowDefinitionSelectionGate = versionGate{"workflows", "workflow_definition_selection",
+		"lock workflow / unlock workflow on a workflow",
+		"before Mendix 10.0 the lock and unlock actions name their workflow differently, which mxcli does not write: " +
+			"set it in Studio Pro, or upgrade the project"}
+)
+
+// workflowTypeGates are the gates of the wait activities and timer boundary
+// events among activities, and of the boundary events an `alter workflow`
+// inserts (their EventTypes), each once.
+func workflowTypeGates(activities []ast.WorkflowActivityNode, insertedEvents []string) []versionGate {
+	var notification, timer, plainTimer, interruptingTimer bool
+	event := func(eventType string) {
+		switch eventType {
+		case "Timer":
+			plainTimer = true
+		case "", "InterruptingTimer", "NonInterruptingTimer":
+			interruptingTimer = true
+		}
+	}
+	walkWorkflowActivities(activities, func(a ast.WorkflowActivityNode) {
+		switch a.(type) {
+		case *ast.WorkflowWaitForNotificationNode:
+			notification = true
+		case *ast.WorkflowWaitForTimerNode:
+			timer = true
+		}
+		for _, e := range workflowActivityBoundaryEvents(a) {
+			event(e.EventType)
+		}
+	})
+	for _, e := range insertedEvents {
+		event(e)
+	}
+	var gates []versionGate
+	if notification {
+		gates = append(gates, waitForNotificationGate)
+	}
+	if timer {
+		gates = append(gates, waitForTimerGate)
+	}
+	if plainTimer {
+		gates = append(gates, timerBoundaryEventGate)
+	}
+	if interruptingTimer {
+		gates = append(gates, interruptingTimerBoundaryEventGate)
+	}
+	return gates
+}
+
+// selectsWorkflowDefinition reports a lock or unlock that names its workflow
+// (by name or by variable): the action stores it as a
+// Workflows$WorkflowDefinition*Selection, a 10.0 type.
+func selectsWorkflowDefinition(st ast.MicroflowStatement) bool {
+	switch s := st.(type) {
+	case *ast.LockWorkflowStmt:
+		return s.Workflow != "" || s.WorkflowVariable != ""
+	case *ast.UnlockWorkflowStmt:
+		return s.Workflow != "" || s.WorkflowVariable != ""
+	}
+	return false
 }
 
 // userTaskGates are the gates of what the user tasks among activities state

@@ -22,6 +22,11 @@ func (e *Executor) executeInner(ctx context.Context, stmt ast.Statement) error {
 	// session (next statement fails with "not connected to a project").
 	before := e.backend
 	err := e.registry.Dispatch(ectx, stmt)
+	// What the statement wrote beside the model, after its own report and
+	// whether or not it then failed: a file on disk is there either way.
+	if ctx.Err() == nil {
+		e.reportSourceFileChanges(ectx.Backend, ectx.Output)
+	}
 	// Only sync back when the context has not been cancelled. Execute() runs
 	// executeInner in a goroutine with a wall-clock timeout; if the timeout
 	// fires, the goroutine keeps running but Execute() has already returned.

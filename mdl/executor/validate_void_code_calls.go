@@ -63,6 +63,11 @@ type voidCodeActions struct {
 	unknownIsVoid bool
 	// shared, when set, carries project resolutions across runs (the editor).
 	shared *CodeActionCache
+	// microflowNames, when set, names every stored microflow by ID, so a
+	// called microflow is read by ID rather than found by a name lookup that
+	// reads every microflow — once per call, per describe (#1789).
+	microflowNames func() map[model.ID]string
+	microflowIDs   map[string]model.ID
 
 	// declared types: which qualified names are enumerations and which are
 	// entities, for MDL043's wording (validate_declare_enum.go). The script's
@@ -171,6 +176,17 @@ func (r *voidCodeActions) resolveFlow(nanoflow bool, qn string) voidness {
 		if nanoflow {
 			objectType = "nanoflow"
 		}
+		if id, ok := r.microflowID(nanoflow, qn); ok {
+			contents, err := b.GetRawUnitBytes(id)
+			if err != nil || len(contents) == 0 {
+				return voidness{}
+			}
+			mf, err := b.ParseMicroflowBSON(contents, id, "")
+			if err != nil || mf == nil {
+				return voidness{}
+			}
+			return voidness{void: flowReturnsVoid(mf.ReturnType), known: true}
+		}
 		raw, err := b.GetRawUnitByName(objectType, qn)
 		if err != nil || raw == nil || len(raw.Contents) == 0 {
 			return voidness{}
@@ -181,6 +197,27 @@ func (r *voidCodeActions) resolveFlow(nanoflow bool, qn string) voidness {
 		}
 		return voidness{void: flowReturnsVoid(mf.ReturnType), known: true}
 	})
+}
+
+// microflowID is the ID of the stored microflow named qn, from microflowNames
+// inverted on first use. A name two microflows share (an excluded twin) has no
+// answer here, so the by-name lookup decides between them as before.
+func (r *voidCodeActions) microflowID(nanoflow bool, qn string) (model.ID, bool) {
+	if nanoflow || r.microflowNames == nil {
+		return "", false
+	}
+	if r.microflowIDs == nil {
+		r.microflowIDs = map[string]model.ID{}
+		for id, name := range r.microflowNames() {
+			if _, dup := r.microflowIDs[name]; dup {
+				r.microflowIDs[name] = ""
+			} else {
+				r.microflowIDs[name] = id
+			}
+		}
+	}
+	id := r.microflowIDs[qn]
+	return id, id != ""
 }
 
 // lookup answers key from the script, the caches, and finally the project

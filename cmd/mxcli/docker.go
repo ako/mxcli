@@ -185,19 +185,30 @@ compiles the theme into theme-cache/ and deployment/, and update-widgets
 rewrites the model. Build output, caches and VCS folders (deployment/,
 releases/, theme-cache/, .git/, node_modules/, ...) are not copied.
 
-By default, 'mx update-widgets' runs before 'mx check', on that copy, to
-normalize pluggable widget definitions and prevent false CE0463 errors.
-A CE0463 that normalisation clears is then not reported, although it still
-fails MxBuild and 'mxcli run --local' on the stored project. Use
---no-update-widgets to check the project as stored, and 'mxcli fix widgets'
-to apply the normalisation to the project.
+It checks the project as stored, which is what MxBuild and 'mxcli run --local'
+build, and the exit status is the stored project's. When the check finds CE0463
+("The definition of this widget has changed"), it runs 'mx update-widgets' on
+the same copy, checks it again, and labels each CE0463 in the stored project:
 
-If update-widgets fails, the check still runs, without the normalisation, and
-says so. update-widgets refuses a project whose Mendix version is not exactly
-mx's own ("Project is in different Mendix version", exit status 4) where mx
-check accepts it, so an mx of the project's minor but another patch checks the
-project and only skips the normalisation. 'mxcli setup mxbuild -p app.mpr'
-fetches the project's exact version.
+  at Data grid 2 'dgOrders': stale widget definition — ` + "`mxcli fix widgets`" + ` fixes it
+  at Combo box 'cbStatus': persists after update-widgets
+
+A stale definition is a widget instance older than its installed package;
+'mxcli fix widgets -p app.mpr' updates it in the project (as Studio Pro's
+"Update all widgets" does). One that persists is not cleared by a resync. The
+re-check costs a second mx check, so it runs only when there is a CE0463.
+
+  --no-update-widgets  check as stored and skip the re-check (no labels)
+  --update-widgets     normalise the copy first and check only that copy, as
+                       earlier releases did by default; it hides every CE0463
+                       a resync clears, which the stored project still fails on
+
+update-widgets refuses a project whose Mendix version is not exactly mx's own
+("Project is in different Mendix version", exit status 4) where mx check
+accepts it, so with an mx of the project's minor but another patch the check
+runs and the CE0463s go unlabelled (with --update-widgets: unnormalised), and
+it says so. 'mxcli setup mxbuild -p app.mpr' fetches the project's exact
+version.
 
 There is no Mendix version floor for check: Mendix 10 works (tested on 10.24).
 The 11.6.1 requirement is docker build's, for the Portable App Distribution.
@@ -212,6 +223,7 @@ Examples:
   mxcli docker check -p app.mpr
   mxcli docker check -p app.mpr --mxbuild-path /path/to/mendix
   mxcli docker check -p app.mpr --no-update-widgets
+  mxcli docker check -p app.mpr --update-widgets
 `,
 	Run: func(cmd *cobra.Command, args []string) {
 		projectPath, _ := cmd.Flags().GetString("project")
@@ -222,13 +234,15 @@ Examples:
 
 		mxbuildPath, _ := cmd.Flags().GetString("mxbuild-path")
 		noUpdateWidgets, _ := cmd.Flags().GetBool("no-update-widgets")
+		updateWidgets, _ := cmd.Flags().GetBool("update-widgets")
 
 		opts := docker.CheckOptions{
-			ProjectPath:       projectPath,
-			MxBuildPath:       mxbuildPath,
-			SkipUpdateWidgets: noUpdateWidgets,
-			Stdout:            os.Stdout,
-			Stderr:            os.Stderr,
+			ProjectPath:        projectPath,
+			MxBuildPath:        mxbuildPath,
+			SkipUpdateWidgets:  noUpdateWidgets,
+			UpdateWidgetsFirst: updateWidgets,
+			Stdout:             os.Stdout,
+			Stderr:             os.Stderr,
 		}
 
 		// Neither of these is something mx check reports (#972).
@@ -547,7 +561,9 @@ func init() {
 
 	// Check command flags
 	dockerCheckCmd.Flags().String("mxbuild-path", "", "Path to MxBuild/Mendix installation (used to find mx)")
-	dockerCheckCmd.Flags().Bool("no-update-widgets", false, "Skip 'mx update-widgets' before check")
+	dockerCheckCmd.Flags().Bool("no-update-widgets", false, "Check the project as stored without the update-widgets re-check that labels its CE0463 errors")
+	dockerCheckCmd.Flags().Bool("update-widgets", false, "Run 'mx update-widgets' on the temporary copy first and check only that normalised copy (hides CE0463 the stored project has)")
+	dockerCheckCmd.MarkFlagsMutuallyExclusive("no-update-widgets", "update-widgets")
 
 	// Init command flags
 	dockerInitCmd.Flags().StringP("output", "o", "", "Output directory (default: .docker/ next to MPR)")

@@ -9,21 +9,35 @@ Related: [`debug-bson.md`](debug-bson.md) for the general BSON diff workflow;
 [`WIDGET_BSON_VERSION_COMPATIBILITY.md`](../../docs/03-development/WIDGET_BSON_VERSION_COMPATIBILITY.md)
 for what is version-fragile and the per-minor onboarding record.
 
-## Before you measure anything: `docker check` clears CE0463 by default
+## Before you measure anything: which `docker check` you are reading
 
-`mxcli docker check` runs **`mx update-widgets` before `mx check`**, deliberately — it
-normalizes pluggable widget definitions to suppress the Case A noise below. So the plain
-command reports **0 errors** on a project that genuinely has a CE0463, and the repair
-also *mutates the project*, leaving it clean for any later check too.
+`mxcli docker check` checks the project **as stored** (ako/mxcli#568, #646), and when
+it finds CE0463 it already runs control 2 below for you: it re-checks its temporary
+copy after `mx update-widgets` and labels each CE0463 —
 
-```bash
-mxcli docker check -p app.mpr --no-update-widgets    # the only form that can see CE0463
+```
+  at Data grid 2 'dgOrders' (4×): stale widget definition — `mxcli fix widgets` fixes it
+  at Combo box 'cbStatus': persists after update-widgets
 ```
 
-This is documented in `docker check --help` and is not a defect, but it is the first
-thing that goes wrong in a CE0463 investigation: you check, you see zero errors, and you
-conclude there is nothing to find. Measured on 11.13.0: a page mxcli wrote reported
-`0 errors / Project check passed` with the default and **1 error, CE0463** with the flag.
+A *stale* one is Case A; one that *persists* is the candidate for Case B. The project
+itself is never touched (everything runs on a copy). Two flags change what it shows:
+
+```bash
+mxcli docker check -p app.mpr                        # stored project + labels (default)
+mxcli docker check -p app.mpr --no-update-widgets    # stored project, no re-check, no labels
+mxcli docker check -p app.mpr --update-widgets       # ONLY the resynced copy: hides Case A
+```
+
+`--update-widgets` was the default until #646, and it is the first thing that went wrong
+in CE0463 investigations: it reports 0 errors on a project that genuinely has a CE0463
+(measured on 11.13.0: a page mxcli wrote, `0 errors / Project check passed` that way and
+**1 error, CE0463** as stored). Findings and bug reports written before #646 that say
+"`docker check` passed" mean the resynced copy passed.
+
+mx check's text output does not name the page, so same-named widgets on different pages
+print the same line; the labels count them (`(4×)`, `(2 of 3)`). For page names, run
+`mx check -j out.json` on a copy (10.24+; 9.24's mx has no `-j`).
 
 **`mxcli check` is not an alternative.** It validates an MDL *script* — syntax,
 references, creation order, expression types — and never invokes mxbuild, so it cannot
@@ -47,7 +61,8 @@ These look identical in `mx check` output and have unrelated causes.
 2. **Does `mx update-widgets` clear it?** If yes, the BSON was structurally valid and
    correct for the version it was written against → Case A. Genuine template bugs do
    *not* clear this way (the Image stale default and the number-filter markerless
-   array both needed template fixes).
+   array both needed template fixes). A default `mxcli docker check` answers this per
+   CE0463 (*stale widget definition* vs *persists after update-widgets*); by hand:
 
 ```bash
 cp -r proj proj-ref && mx update-widgets proj-ref/App.mpr   # ALWAYS on a copy

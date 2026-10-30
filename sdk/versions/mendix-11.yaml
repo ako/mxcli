@@ -268,6 +268,26 @@ features:
       min_version: "11.9.0"
       mdl: "CALL AGENT MICROFLOW Module.InvokeAgent WITH (Param = '$WorkflowContext')"
       notes: "Workflows$AIAgentTaskActivity, introduced when Mendix 11.9 split MicroflowBasedActivity into CallMicroflowActivity + AIAgentTaskActivity. Absent from the 11.6 mxbuild, present from 11.10."
+    wait_for_notification:
+      min_version: "10.0.0"
+      mdl: "WAIT FOR NOTIFICATION Name;"
+      notes: "Workflows$WaitForNotificationActivity introduced in 10.0.0 (mendixmodelsdk 4.117.0, the type's versionInfo). The write refuses the type below it (canon.UndeclaredTypeError, ako/mxcli#1774)."
+    wait_for_timer:
+      min_version: "10.6.0"
+      mdl: "WAIT FOR TIMER Name addHours([%CurrentDateTime%], 1);"
+      notes: "Workflows$WaitForTimerActivity introduced in 10.6.0 (mendixmodelsdk 4.117.0; ako/mxcli#1774)."
+    timer_boundary_event:
+      min_version: "10.14.0"
+      mdl: "BOUNDARY EVENT TIMER addDays([%CurrentDateTime%], 1) { … }"
+      notes: "Workflows$TimerBoundaryEvent and the boundaryEvents of an activity introduced in 10.14.0 (mendixmodelsdk 4.117.0; ako/mxcli#1774). From 11.0 the bare form is MDL-WF07: no 11.x runtime has the class."
+    interrupting_timer_boundary_event:
+      min_version: "10.20.0"
+      mdl: "BOUNDARY EVENT [NON] INTERRUPTING TIMER addDays([%CurrentDateTime%], 1) { … }"
+      notes: "Workflows$InterruptingTimerBoundaryEvent and NonInterruptingTimerBoundaryEvent introduced in 10.20.0; 10.14–10.19 store a Workflows$TimerBoundaryEvent (mendixmodelsdk 4.117.0; ako/mxcli#1774)."
+    workflow_definition_selection:
+      min_version: "10.0.0"
+      mdl: "LOCK WORKFLOW Module.Workflow; UNLOCK WORKFLOW $Workflow;"
+      notes: "Lock/UnlockWorkflowAction.workflowSelection and the Workflows$WorkflowDefinition(Name|Object)Selection it holds introduced in 10.0.0; 9.21–9.24 store the workflow as the action's own Workflow (mendixmodelsdk 4.117.0; ako/mxcli#1774)."
     event_handlers:
       min_version: "10.7.0"
       mdl: "CREATE WORKFLOW … ON WORKFLOW EVENTS (…) MICROFLOW Module.Handler AS '…'"

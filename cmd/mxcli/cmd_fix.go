@@ -71,10 +71,11 @@ CE0463 "The definition of this widget has changed" is what a project reports
 when its stored widget instances are older than the widget packages installed
 beside them — the normal state after any headless module or widget install.
 
-'mxcli docker check' and 'mxcli docker build' already run this step, but on a
-temporary copy of the project, so the check passes and the stored model stays
-stale. This persists the resync instead, which is what Studio Pro's "Update all widgets"
-does. It is also more complete than 'mxcli widget sync', which reconciles widget
+'mxcli docker check' reports these against the stored project and labels each
+one this command clears as a "stale widget definition" (it runs the resync on a
+temporary copy to find out). 'mxcli docker build' runs the resync on its copy
+too, so it builds while the stored model stays stale. This persists the resync
+instead, which is what Studio Pro's "Update all widgets" does. It is also more complete than 'mxcli widget sync', which reconciles widget
 schemas itself and clears only part of the same errors.`,
 	Example: `  mxcli fix widgets -p app.mpr`,
 	Args:    cobra.NoArgs,

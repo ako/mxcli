@@ -33,8 +33,7 @@ func listMicroflows(ctx *ExecContext, moduleName string) error {
 		}
 	}
 
-	// Get all microflows
-	microflows, err := ctx.Backend.ListMicroflows()
+	microflows, err := microflowsInModule(ctx, h, moduleName)
 	if err != nil {
 		return mdlerrors.NewBackend("list microflows", err)
 	}
@@ -229,8 +228,13 @@ func describeMicroflowMode(ctx *ExecContext, name ast.QualifiedName, opts descri
 	microflowNames := getMicroflowNames(ctx, h)
 
 	// Find the microflow: getMicroflowNames above already named every
-	// microflow, so only the ones with this name are decoded.
-	allMicroflows, err := microflowsNamed(ctx, name.Name)
+	// microflow, so only the ones with this name are decoded. A describe the
+	// catalog's source build pinned to a document reads that document alone:
+	// the name lookup reads every microflow, once per describe (#1789).
+	allMicroflows, err := pinnedMicroflow(ctx, h, name)
+	if err == nil && allMicroflows == nil {
+		allMicroflows, err = microflowsNamed(ctx, name.Name)
+	}
 	if err != nil {
 		return mdlerrors.NewBackend("list microflows", err)
 	}
@@ -1698,6 +1702,9 @@ func microflowBodyWarnings(
 	var voids *voidCodeActions
 	if ctx != nil && ctx.Backend != nil {
 		voids = newVoidCodeActions(nil, func() backend.FullBackend { return ctx.Backend })
+		if h, err := getHierarchy(ctx); err == nil && h != nil {
+			voids.microflowNames = func() map[model.ID]string { return getMicroflowNames(ctx, h) }
+		}
 	}
 	out = append(out, duplicateOutputVariableWarnings(mf.ObjectCollection, voids.actionIsVoidCall)...)
 	out = append(out, irreducibleGraphWarnings(mf.ObjectCollection, declaredCrossed)...)

@@ -977,6 +977,16 @@ func (unsupportedBackend) MoveJavaAction(_ *javaactions.JavaAction) (err0 error)
 	return
 }
 
+func (unsupportedBackend) MoveJavaScriptSourceFile(_ string, _ string, _ string) (r0 string, err1 error) {
+	err1 = errUnsupported("MoveJavaScriptSourceFile")
+	return
+}
+
+func (unsupportedBackend) MoveJavaSourceFile(_ string, _ string, _ string) (r0 string, err1 error) {
+	err1 = errUnsupported("MoveJavaSourceFile")
+	return
+}
+
 func (unsupportedBackend) MoveMicroflow(_ *microflows.Microflow) (err0 error) {
 	err0 = errUnsupported("MoveMicroflow")
 	return

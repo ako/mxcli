@@ -4,6 +4,7 @@ package modelsdkbackend
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/mendixlabs/mxcli/sdk/workflows"
@@ -15,6 +16,10 @@ import (
 // call-microflow activity it resembles.
 func TestCreateWorkflow_AIAgentTaskRoundTrip(t *testing.T) {
 	proj := copyFixture(t)
+	// Workflows$AIAgentTaskActivity is an 11.9 type (absent from the 11.6
+	// mxbuild); the fixture is 11.6.6, which cannot store it (ako/mxcli#1774:
+	// TestCreateWorkflow_AIAgentTaskRefusedBelow11_9). Written where it exists.
+	setProductVersion(t, proj, "11.14.0")
 	b := New()
 	if err := b.Connect(proj); err != nil {
 		t.Fatalf("connect: %v", err)
@@ -105,5 +110,44 @@ func TestCreateWorkflow_AIAgentTaskRoundTrip(t *testing.T) {
 		if len(l) == 0 || fmt.Sprint(l[0]) != want {
 			t.Errorf("%s = %v, want marker %s", key, stored[key], want)
 		}
+	}
+}
+
+// On the 11.6.6 fixture the same workflow is refused: the 11.6 mxbuild has no
+// Workflows$AIAgentTaskActivity, so the project would not load, and the write
+// names the type instead (ako/mxcli#1774). A plain microflow call is written.
+func TestCreateWorkflow_AIAgentTaskRefusedBelow11_9(t *testing.T) {
+	proj := copyFixture(t)
+	b := New()
+	if err := b.Connect(proj); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = b.Disconnect() })
+	mod, err := b.GetModuleByName("MyFirstModule")
+	if err != nil || mod == nil {
+		t.Fatalf("GetModuleByName: %v", err)
+	}
+	workflow := func(name string, agent bool) *workflows.Workflow {
+		return &workflows.Workflow{
+			ContainerID: mod.ID,
+			Name:        name,
+			Parameter:   &workflows.WorkflowParameter{EntityRef: "MyFirstModule.Ctx"},
+			Flow: &workflows.Flow{Activities: []workflows.WorkflowActivity{
+				&workflows.StartWorkflowActivity{BaseWorkflowActivity: workflows.BaseWorkflowActivity{Name: "Start"}},
+				&workflows.CallMicroflowTask{
+					BaseWorkflowActivity: workflows.BaseWorkflowActivity{Name: "call", Caption: "Call"},
+					IsAgent:              agent,
+					Microflow:            "MyFirstModule.InvokeAgent",
+				},
+				&workflows.EndWorkflowActivity{BaseWorkflowActivity: workflows.BaseWorkflowActivity{Name: "End"}},
+			}},
+		}
+	}
+	err = b.CreateWorkflow(workflow("ZzAgent", true))
+	if err == nil || !strings.Contains(err.Error(), "Workflows$AIAgentTaskActivity (Mendix 11.9.0+)") {
+		t.Errorf("an agent task on 11.6.6 = %v, want it refused naming the type", err)
+	}
+	if err := b.CreateWorkflow(workflow("ZzPlain", false)); err != nil {
+		t.Errorf("control: a plain microflow call on 11.6.6 is refused: %v", err)
 	}
 }

@@ -97,7 +97,7 @@ func orderFixture(t *testing.T) (*ExecContext, *alterFlowContext) {
 			// candidates is not the order a variable is typed in.
 			over("SiblingLines", "LineOrder", "OrderLine_Order"),
 			over("LineOrder", "Line", "OrderLine_Order"),
-			over("Parent", "Order", "Order_Parent"),   // self-reference: which end is unknown
+			over("Parent", "Order", "Order_Parent"),   // self-reference: from the FROM end (#1777)
 			over("Nowhere", "Order", "Order_Missing"), // no such association
 			over("Unstarted", "NoSuchVariable", "OrderLine_Order"),
 			// A loop's iterator is an element of its list, and a retrieve in
@@ -118,8 +118,9 @@ func orderFixture(t *testing.T) (*ExecContext, *alterFlowContext) {
 // retrieve over an association has the type the association gives it from
 // the end it starts at — a list of the FROM entity from the TO end, the one
 // TO object from the FROM end, a list either way over a reference set, one
-// object either way over a one-to-one. What cannot be established stays
-// untyped, so a member of it is refused, not guessed.
+// object either way over a one-to-one, and over a self-reference what the FROM
+// end holds, which is how Mendix reads it (ako/mxcli#1777). What cannot be
+// established stays untyped, so a member of it is refused, not guessed.
 func TestStoredVariables_AssociationRetrieveIsTyped(t *testing.T) {
 	ctx, a := orderFixture(t)
 	varTypes, declared := a.storedVariables(ctx)
@@ -134,13 +135,14 @@ func TestStoredVariables_AssociationRetrieveIsTyped(t *testing.T) {
 		"LineOrder":    "Mod.Order",
 		"EachLine":     "Mod.OrderLine",
 		"EachOrder":    "Mod.Order",
+		"Parent":       "Mod.Order",
 	}
 	for v, w := range want {
 		if got := varTypes[v]; got != w {
 			t.Errorf("$%s: typed %q, want %q", v, got, w)
 		}
 	}
-	for _, v := range []string{"Parent", "Nowhere", "Unstarted", "ItOrder"} {
+	for _, v := range []string{"Nowhere", "Unstarted", "ItOrder"} {
 		if got, ok := varTypes[v]; ok {
 			t.Errorf("$%s: typed %q, want it left untyped", v, got)
 		}

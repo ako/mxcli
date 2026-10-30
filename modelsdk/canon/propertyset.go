@@ -59,6 +59,14 @@ import (
 // exists in versions it was not measured on is left out on them: the gap this
 // closes, not a new one. A nil version adds nothing.
 //
+// So Since is only as low as the oldest version anyone measured, and every
+// version below it keeps its gaps. Measured from 10.24.24 up, the table gave
+// 10.24.0–10.24.23 two of its rows, and a nanoflow re-created on 10.24.18
+// broke `mx diff` (ako/mxcli#1505); measure the lowest patch of a version line,
+// not the newest. Stripping a row's key from Studio Pro-authored elements and
+// letting `mx convert` write it back measures the row without any mxcli writer
+// leaving it out.
+//
 // # Limits
 //
 // It only ADDS. A key mxcli writes that Mendix's metamodel does not have is a

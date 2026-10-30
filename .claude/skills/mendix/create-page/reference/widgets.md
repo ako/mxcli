@@ -1292,9 +1292,12 @@ Notes:
   widget-version drift (embedded template vs the installed `Charts.mpk`), even for a
   chart with no series. Clear it with **`mxcli fix widgets -p app.mpr`**, which applies
   the widget normalization to the project and keeps your storage format.
-  `mxcli docker check`/`build` normalize only a **temporary copy**: the check then
-  passes while the stored project still fails MxBuild and `mxcli run --local` with
-  CE0463. `docker check --no-update-widgets` checks the project as stored.
+  `mxcli docker check` checks the stored project and labels each such CE0463
+  `stale widget definition — mxcli fix widgets fixes it`; a CE0463 labelled
+  `persists after update-widgets` is not drift, and `fix widgets` will not clear it.
+  `docker build` and `docker check --update-widgets` normalize only a **temporary
+  copy**, so they pass while the stored project still fails MxBuild and
+  `mxcli run --local` with CE0463.
   **Do NOT run bare `mx update-widgets` on an MPRv2 project** (one with an
   `mprcontents/` folder — everything `mxcli new` creates). `mx update-widgets` rewrites
   the project into the single-file v1 format and **deletes `mprcontents/`**, which

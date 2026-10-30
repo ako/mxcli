@@ -14,6 +14,7 @@ import (
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
+	"github.com/mendixlabs/mxcli/modelsdk/meta"
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 	"github.com/mendixlabs/mxcli/sdk/security"
 )
@@ -467,9 +468,28 @@ func listModules(ctx *ExecContext) error {
 	bizEventCounts := make(map[model.ID]int)
 	extDbCounts := make(map[model.ID]int)
 
-	// Count from units by type prefix (efficient single pass)
+	// Count from the unit types in one pass. Every count but entities is a
+	// count of units of one type, which the unit listing knows without opening
+	// a document; listing each type through its decoder read every page,
+	// snippet, flow, constant and Java action of the project (ako/mxcli#1791).
 	for _, u := range units {
 		modID := h.FindModuleID(u.ContainerID)
+		switch u.Type {
+		case "Enumerations$Enumeration":
+			enumCounts[modID]++
+		case "Forms$Page":
+			pageCounts[modID]++
+		case "Forms$Snippet":
+			snippetCounts[modID]++
+		case "Microflows$Microflow":
+			microflowCounts[modID]++
+		case "Microflows$Nanoflow":
+			nanoflowCounts[modID]++
+		case "Constants$Constant":
+			constantCounts[modID]++
+		case "JavaActions$JavaAction":
+			javaActionCounts[modID]++
+		}
 		switch {
 		case strings.HasPrefix(u.Type, "Rest$PublishedRestService"):
 			pubRestCounts[modID]++
@@ -486,67 +506,21 @@ func listModules(ctx *ExecContext) error {
 		}
 	}
 
-	// Count entities from domain models
+	// The System module's enumerations and Java actions are platform
+	// built-ins with no unit; the backend's listings add them, so count them
+	// the same way.
+	for _, e := range meta.BuildSystemEnumerations() {
+		enumCounts[h.FindModuleID(e.ContainerID)]++
+	}
+	for _, ja := range meta.BuildSystemJavaActions() {
+		javaActionCounts[h.FindModuleID(ja.ContainerID)]++
+	}
+
+	// Count entities from domain models: one unit per module holds them all.
 	if dms, err := ctx.Backend.ListDomainModels(); err == nil {
 		for _, dm := range dms {
 			modID := h.FindModuleID(dm.ContainerID)
 			entityCounts[modID] += len(dm.Entities)
-		}
-	}
-
-	// Count enumerations
-	if enums, err := ctx.Backend.ListEnumerations(); err == nil {
-		for _, enum := range enums {
-			modID := h.FindModuleID(enum.ContainerID)
-			enumCounts[modID]++
-		}
-	}
-
-	// Count pages
-	if pages, err := ctx.Backend.ListPages(); err == nil {
-		for _, p := range pages {
-			modID := h.FindModuleID(p.ContainerID)
-			pageCounts[modID]++
-		}
-	}
-
-	// Count snippets
-	if snippets, err := ctx.Backend.ListSnippets(); err == nil {
-		for _, s := range snippets {
-			modID := h.FindModuleID(s.ContainerID)
-			snippetCounts[modID]++
-		}
-	}
-
-	// Count microflows
-	if mfs, err := ctx.Backend.ListMicroflows(); err == nil {
-		for _, mf := range mfs {
-			modID := h.FindModuleID(mf.ContainerID)
-			microflowCounts[modID]++
-		}
-	}
-
-	// Count nanoflows
-	if nfs, err := ctx.Backend.ListNanoflows(); err == nil {
-		for _, nf := range nfs {
-			modID := h.FindModuleID(nf.ContainerID)
-			nanoflowCounts[modID]++
-		}
-	}
-
-	// Count constants
-	if constants, err := ctx.Backend.ListConstants(); err == nil {
-		for _, c := range constants {
-			modID := h.FindModuleID(c.ContainerID)
-			constantCounts[modID]++
-		}
-	}
-
-	// Count Java actions
-	if jas, err := ctx.Backend.ListJavaActions(); err == nil {
-		for _, ja := range jas {
-			modID := h.FindModuleID(ja.ContainerID)
-			javaActionCounts[modID]++
 		}
 	}
 

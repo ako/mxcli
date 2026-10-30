@@ -420,7 +420,7 @@ CREATE CONSUMED ODATA SERVICE MyModule.LocalService2 (
 **Note:** `MetadataUrl` supports three formats:
 - `https://...` or `http://...` — fetches from HTTP(S) endpoint
 - `file:///abs/path` — reads from local absolute path
-- `./path` or `path/file.xml` — reads from local relative path, **normalized to absolute `file://` in the model** for Studio Pro compatibility
+- `./path` or `path/file.xml` — reads from local relative path, **normalized to absolute `file://` in the model** for Studio Pro compatibility. A re-run from a checkout at another path keeps the stored URL when it names the same project file, and `describe` prints a stored URL inside the project as `./path`
 
 **Important:** `ServiceUrl` must always be a constant reference starting with `@` (e.g., `@Module.ConstantName`). Create a constant first:
 ```sql

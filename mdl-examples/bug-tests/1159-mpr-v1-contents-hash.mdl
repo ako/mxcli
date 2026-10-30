@@ -1,0 +1,41 @@
+mdl 1;
+-- ============================================================================
+-- ako/mxcli#1159: on an MPR v1 project (unit contents inside the .mpr, Mendix
+-- below 10.18) a unit write replaced Unit.Contents and left Unit.ContentsHash
+-- describing the old bytes; an inserted unit got ContentsHash ''. mx check and
+-- MxBuild never read the column, so the project checks and builds clean, but
+-- Studio Pro uses it to detect what changed.
+--
+-- Studio Pro fills ContentsHash = base64(SHA-256(Contents)) (standard base64,
+-- padded) on every v1 unit: 308 of 308 in a fresh 9.24.30 app.
+--
+-- Repro (needs a v1 project; any 9.x or 10.x below 10.18):
+--
+--   mxcli new App924 --version 9.24.30.51827 --theme none --layout none \
+--       --skip-init --skip-build
+--   mxcli exec mdl-examples/bug-tests/1159-mpr-v1-contents-hash.mdl -p App924/App924.mpr
+--
+-- then compare every row (the reporter's check):
+--
+--   import sqlite3, hashlib, base64
+--   c = sqlite3.connect('App924/App924.mpr')
+--   for uid, h, b in c.execute('select UnitID, ContentsHash, Contents from Unit'):
+--       if h != base64.b64encode(hashlib.sha256(bytes(b)).digest()).decode():
+--           print('stale:', bytes(uid).hex())
+--
+-- Before the fix it printed two rows: the DomainModel the entity rewrote
+-- (old hash) and the new microflow (empty hash). After it, none. A project an
+-- older mxcli left stale is repaired with `mxcli fix hashes -p App.mpr --repair`,
+-- which now compares v1 hashes against the Contents column.
+-- ============================================================================
+
+-- rewrites an existing unit: DomainModels$DomainModel
+create persistent entity MyFirstModule.Customer1159 (
+  "Name": String(100)
+);
+
+-- inserts a new unit
+create microflow MyFirstModule.ACT_1159 ()
+begin
+  log info node 'T1159' 'hello';
+end;

@@ -402,7 +402,7 @@ Re-running is free: a second run reports 0 units changed, because [idempotent wr
 |---|---|---|
 | `mxcli fix widgets` | **yes** | the fix — after any headless install |
 | `mxcli fix design-properties` | **yes** | the fix — after any headless install |
-| `mxcli docker check` | no | runs the widget resync on a temporary copy so the *check* is not tripped by CE0463; the stored model stays stale (`--no-update-widgets` checks it as stored) |
+| `mxcli docker check` | no | checks the project as stored, so it reports the CE0463 a headless install leaves, and labels each one the widget resync clears as a stale widget definition (the resync runs on a temporary copy only) |
 | `mxcli widget sync` | yes, partial | reconciles widget schemas in mxcli's own code; clears 7 of 40 on the reference fixture |
 
 CE6087 is distinct from `CE6083`, which is a *missing* design-property declaration and is fixed by installing everything the package ships — something `install` and `update` already do.

@@ -1,0 +1,37 @@
+-- ako/mxcli#1618 (mendixlabs/mxcli#1634): `exec` did not say it wrote files
+-- outside the model.
+--
+-- A code action's body is not in the model. `create java action … as $$ … $$`
+-- stores the action in a unit AND writes the body to
+-- javasource/<module>/actions/<Name>.java; a JavaScript action's goes to
+-- javascriptsource/<module>/actions/<Name>.js. `exec` printed only
+-- "Created java action: Probe1618.JA_Hello", so a workflow that commits the model
+-- (.mpr and mprcontents/) left the body untracked, and a clone got an action
+-- with no logic.
+--
+--   mxcli new JA --version 11.13.0 --theme none --layout none --skip-init --skip-build
+--   cd JA && git init -q && git add -A && git commit -qm base
+--   mxcli exec mdl-examples/bug-tests/1618-exec-names-files-beside-the-model.mdl -p JA.mpr
+--
+-- Expected: after each "Created … action" line, the file it wrote:
+--
+--   Wrote javasource/probe1618/actions/JA_Hello.java (Java action body; commit it with the model)
+--   Wrote javascriptsource/probe1618/actions/JS_Hello.js (JavaScript action body; commit it with the model)
+--
+-- and, last, "Files changed outside the model: 2 (javasource/,
+-- javascriptsource/). Stage them with the .mpr." — the two paths `git status`
+-- lists as untracked. Run it a second time: the files are unchanged, so neither
+-- line appears. `mxcli docker check` reports 0 errors.
+mdl 1;
+
+create module Probe1618;
+
+create or modify java action Probe1618.JA_Hello () returns String
+as $$
+return "hi";
+$$;
+
+create or modify javascript action Probe1618.JS_Hello () returns String
+as $$
+return "hi";
+$$;

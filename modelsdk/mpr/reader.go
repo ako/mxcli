@@ -47,7 +47,7 @@ type Reader struct {
 	// Unit table held at the last rebuild — what a persisted index keeps.
 	// v2TypesMu guards these and the unit cache rebuild.
 	v2TypesMu     sync.Mutex
-	v2Types       map[string]string
+	v2Types       map[string]unitIndexEntry
 	v2TypesLoaded bool
 	v2TypesDirty  bool
 	v2Hashes      map[string]struct{}
@@ -91,6 +91,10 @@ type cachedUnit struct {
 	ContainerID     string
 	ContainmentName string
 	Type            string
+	// Name and Excluded are the unit's top-level properties, known without
+	// opening its file once the index has seen its bytes (reader_units_v2.go).
+	Name     string
+	Excluded bool
 }
 
 // OpenOptions configures how the MPR file is opened.
@@ -408,6 +412,19 @@ func (r *Reader) ClearAllOverlays() {
 
 // GetRawUnitBytes returns the raw BSON bytes for a unit identified by its UUID string.
 func (r *Reader) GetRawUnitBytes(unitID string) ([]byte, error) {
+	return r.rawUnitBytes(r.db, unitID)
+}
+
+// rowQuerier is what reading one unit's v1 contents needs: *sql.DB and *sql.Tx
+// both satisfy it.
+type rowQuerier interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+// rawUnitBytes is GetRawUnitBytes with the v1 query run on q. A caller holding a
+// transaction must pass it: the pool has one connection (OpenWithOptions), the
+// transaction owns it, and a read through r.db would wait for it forever.
+func (r *Reader) rawUnitBytes(q rowQuerier, unitID string) ([]byte, error) {
 	// Fast path: return buffered bytes injected by BufferedUnitStore if present.
 	if len(r.overlay) > 0 {
 		if data, ok := r.overlay[unitID]; ok {
@@ -433,7 +450,7 @@ func (r *Reader) GetRawUnitBytes(unitID string) ([]byte, error) {
 		return nil, fmt.Errorf("invalid unit ID: %s", unitID)
 	}
 	var contents []byte
-	err := r.db.QueryRow("SELECT Contents FROM Unit WHERE UnitID = ?", blob).Scan(&contents)
+	err := q.QueryRow("SELECT Contents FROM Unit WHERE UnitID = ?", blob).Scan(&contents)
 	if err != nil {
 		return nil, fmt.Errorf("unit not found: %s", unitID)
 	}

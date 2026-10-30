@@ -58,7 +58,8 @@ import (
 //     Before, a path is its activities and nothing more (Studio Pro 9.4.0, the
 //     Marketplace's "Example project workflow extension" 2.0.0), and a project
 //     holding the marker does not load (TypeCacheUnknownTypeException). The
-//     floor checks property versions, never a type's own.
+//     property floor never saw it; the type floor (UndeclaredTypeError,
+//     ako/mxcli#1774) refuses it, so it is lowered first.
 //   - Workflows$ user task targeting: UserTargeting from 11.2.0, declared on
 //     the abstract UserTaskActivity; before, UserSource (ako/mxcli#1771). See
 //     lowerUserTargeting.
@@ -124,9 +125,9 @@ type shapeLowering struct {
 
 // endOfParallelSplitPathSince is the version that introduced the type
 // Workflows$EndOfParallelSplitPathActivity (mendixmodelsdk 4.117.0:
-// EndOfParallelSplitPathActivity.versionInfo introduced "10.21.0"). It is
-// written down here because the generated version data holds property
-// versions only, never a type's own.
+// EndOfParallelSplitPathActivity.versionInfo introduced "10.21.0"), read by
+// hand before the type data existed; TestTypeFloor_AgreesWithTheLowerings
+// keeps it equal to mendixmodelsdk_type_versions.json.
 var endOfParallelSplitPathSince = version.Version{Major: 10, Minor: 21}
 
 var placeholderWidgets = map[string]bool{"Forms$TextBox": true, "Forms$TextArea": true, "Forms$DatePicker": true}

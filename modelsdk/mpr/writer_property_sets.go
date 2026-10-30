@@ -24,6 +24,11 @@ type PropertySetRepair struct {
 	Name     string // the unit's Name, "" when it has none
 	Added    int
 	Stripped int
+
+	// normalized is the unit as the repair leaves it (the stored bytes when
+	// nothing changes), for a PropertySetCensus; nil when it could not be
+	// normalized.
+	normalized []byte
 }
 
 // Changed reports whether the unit's property-name sets differ from what is
@@ -103,6 +108,7 @@ func planPropertySetRepair(r *Reader, unitID string) (rep PropertySetRepair, sto
 	if err != nil {
 		return rep, stored, nil, err
 	}
+	rep.normalized = out
 	if len(out) == len(stored) && string(out) == string(stored) {
 		return rep, stored, out, nil
 	}
@@ -135,6 +141,10 @@ func planPropertySetRepair(r *Reader, unitID string) (rep PropertySetRepair, sto
 	return rep, stored, out, nil
 }
 
+// lowerToProjectShape is canon.LowerToProjectShape, a variable so a test can
+// stub the lowering and show what the checks after it see without it.
+var lowerToProjectShape = canon.LowerToProjectShape
+
 // normalizePropertySetsFor is normalizePropertySets for a given project
 // version, shared by the write path and the stored-unit repair.
 func normalizePropertySetsFor(pv *version.ProjectVersion, unitID string, contents []byte) ([]byte, error) {
@@ -145,7 +155,7 @@ func normalizePropertySetsFor(pv *version.ProjectVersion, unitID string, content
 	// Properties whose shape changed at a version are written in the project's
 	// shape first, so the floor sees the keys this version declares
 	// (ako/mxcli#1209).
-	lowered, err := canon.LowerToProjectShape(contents, &v)
+	lowered, err := lowerToProjectShape(contents, &v)
 	if err != nil {
 		return nil, fmt.Errorf("unit %s: %w", unitID, err)
 	}
@@ -155,7 +165,15 @@ func normalizePropertySetsFor(pv *version.ProjectVersion, unitID string, content
 	}
 	// A GUID-less user role gets its $ID as GUID — absent only, never changed
 	// (canon.FillMissingUserRoleGUIDs). Not a table row: the value is per role.
-	return canon.FillMissingUserRoleGUIDs(canon.CompletePropertySets(stripped, &v)), nil
+	out := canon.FillMissingUserRoleGUIDs(canon.CompletePropertySets(stripped, &v))
+	// An element whose $Type this version does not have yet makes the project
+	// unloadable (TypeCacheUnknownTypeException). What has an older shape was
+	// lowered above; what is left is refused, on the bytes that would land
+	// (ako/mxcli#1774).
+	if err := canon.UndeclaredTypeError(out, &v); err != nil {
+		return nil, fmt.Errorf("unit %s: %w", unitID, err)
+	}
+	return out, nil
 }
 
 // elementKeySets maps every document node in raw, by its containment path, to

@@ -7,7 +7,10 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/mendixlabs/mxcli/mdl/ast"
+	"github.com/mendixlabs/mxcli/mdl/executor"
 	"github.com/mendixlabs/mxcli/mdl/langver"
+	"github.com/mendixlabs/mxcli/mdl/visitor"
 )
 
 // suiteVersion is the language version a generated script is written in: the
@@ -158,7 +161,7 @@ func writeTestBlock(b *strings.Builder, tc TestCase, index int) {
 	}
 
 	// Collect variable names from the MDL body and rename them with suffix
-	varNames := extractVariableNames(tc.MDL)
+	varNames := extractVariableNames(tc.MDL, tc.Version)
 	renamedMDL := renameVariables(tc.MDL, varNames, suffix)
 
 	// Every assertion counts itself when evaluated; see assertionsEvaluatedVar.
@@ -223,7 +226,7 @@ func writeThrowsTestBlock(b *strings.Builder, tc TestCase, suffix string) {
 	b.WriteString(fmt.Sprintf("  DECLARE %s Boolean = false;\n", didThrowVar))
 
 	// Rename variables in the body
-	varNames := extractVariableNames(tc.MDL)
+	varNames := extractVariableNames(tc.MDL, tc.Version)
 	renamedMDL := renameVariables(tc.MDL, varNames, suffix)
 
 	lines := strings.Split(renamedMDL, "\n")
@@ -273,26 +276,39 @@ func writeExpectAssertion(b *strings.Builder, testID string, exp Expect, evaluat
 // varPattern matches $VariableName in MDL ($ followed by word characters).
 var varPattern = regexp.MustCompile(`\$([A-Za-z_][A-Za-z0-9_]*)`)
 
-// assignPattern matches "$var = call …" or "$var = create …" at the start of any
-// statement line inside the test body.
+// extractVariableNames returns the variables a test body defines, without the
+// `$`: every name a statement in it creates — a call, create, retrieve, declare,
+// list operation or aggregate, send rest request, execute database query, loop
+// iterator, anything with an output variable — nested bodies included.
 //
-// The keywords match in any case. MDL keywords are case-insensitive, and mdl 1
-// and `fmt` write them in lower case; matching only `CALL|CREATE` left
-// `$r = call microflow …` unrenamed, so two tests that both assigned `$r` declared
-// it twice in the one runner flow and injection failed with MDL063 (CE0111).
-// The `\b` keeps a value that merely starts with those letters from matching.
-var assignPattern = regexp.MustCompile(`(?mi)^\s*\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:call|create)\b`)
-
-// extractVariableNames finds all user-defined variable names in the MDL body.
-// Returns the set of variable names (without $ prefix).
-func extractVariableNames(mdl string) map[string]bool {
+// The after-startup runner joins every test into one microflow, whose variable
+// namespace is flat (an IF branch, a loop body or an error handler does not
+// open a scope), so each of these is renamed per test. The set used to come
+// from a pattern over the text that matched `$x = call|create` only: two tests
+// that defined one name any other way — even `retrieve $x` — declared it twice,
+// and injection failed with MDL063 (CE0111 "Duplicate variable name")
+// (ako/mxcli#1775). It is now read from the parsed body through the definition
+// MDL063 itself counts, so what the runner renames and what the validator
+// refuses cannot drift apart. A `$x = …` that changes a variable (with or
+// without `set`) defines nothing and is not in the set; its references are
+// renamed with the definition they change.
+//
+// A body that does not parse defines nothing here, as attachOnError leaves it
+// unwrapped: no renaming makes it parse, and the error the author then sees is
+// about their own text.
+func extractVariableNames(body string, v langver.Version) map[string]bool {
 	names := make(map[string]bool)
-
-	// Find assignment targets: $var = CALL MICROFLOW ... or $var = CREATE ...
-	for _, m := range assignPattern.FindAllStringSubmatch(mdl, -1) {
-		names[m[1]] = true
+	prog, errs := visitor.Build(bodyParsePrefix(v) + body + bodyParseSuffix)
+	if len(errs) > 0 || prog == nil {
+		return names
 	}
-
+	for _, stmt := range prog.Statements {
+		if mf, ok := stmt.(*ast.CreateMicroflowStmt); ok {
+			for _, name := range executor.FlowDefinedVariables(mf.Body) {
+				names[name] = true
+			}
+		}
+	}
 	return names
 }
 

@@ -1,0 +1,76 @@
+mdl 1;
+-- ako/mxcli#1774: a $Type newer than the project was written with no version
+-- gate, and the project then did not load. `exec` reported success; mx check
+-- 9.24.30 (and Studio Pro) died before checking anything:
+--
+--   TypeCacheUnknownTypeException: The type cache does not contain a type
+--   with qualified name Workflows$WaitForNotificationActivity.
+--
+-- The generated version data held PROPERTY floors only, so no write ever
+-- compared an element's own $Type with the project's version. It shipped four
+-- times (#1754, #1209, #1163, #1771) before every type's introduction version
+-- was taken from the Model SDK (modelsdk/canon/mendixmodelsdk_type_versions.json)
+-- and every unit write refused an element whose type the project does not
+-- have yet. `check -p` and exec's pre-flight name the statements below first
+-- (MDL-VERSION01), each at its type's floor (mendixmodelsdk 4.117.0):
+--
+--   wait for notification                          10.0   WaitForNotificationActivity
+--   wait for timer                                 10.6   WaitForTimerActivity
+--   boundary event [non] interrupting timer        10.20  (Non)InterruptingTimerBoundaryEvent
+--   lock / unlock workflow on a workflow           10.0   WorkflowDefinition*Selection
+--
+-- and `get workflows` (Microflows$GetWorkflowsAction, 10.4), which no gate
+-- names, is refused by the write itself.
+--
+-- Measured on fresh apps (`mxcli new … --skip-build`), exec then `mxcli docker
+-- check`:
+--   9.24.30.51827  before: a workflow with `wait for notification` and a
+--                  microflow with `get workflows` each made the project
+--                  unloadable (TypeCacheUnknownTypeException naming the type).
+--                  After: the first is refused by check -p and exec's
+--                  pre-flight, the second at write time, and the project is
+--                  byte-identical to before exec; mx check 0 errors.
+--   10.24.24, 11.13.0  this script: exec and mx check as before the fix.
+
+create module Probe1774;
+
+create persistent entity Probe1774.Request (
+  Title: String(100)
+);
+
+create microflow Probe1774.ACT_Validate ($WorkflowContext: Probe1774.Request)
+begin
+  log info node 'Probe1774' 'validate';
+end;
+
+create microflow Probe1774.ACT_Expired ($WorkflowContext: Probe1774.Request)
+begin
+  log info node 'Probe1774' 'expired';
+end;
+
+create workflow Probe1774.WF_Wait
+  parameter $WorkflowContext: Probe1774.Request
+  display 'Wait'
+begin
+  call microflow Probe1774.ACT_Validate as validate;
+  wait for timer WaitAnHour addHours([%CurrentDateTime%], 1);
+  wait for notification WaitForApproval;
+end workflow;
+
+-- The boundary event is inserted through the raw mutator, outside CREATE's
+-- encoder: the type floor runs on every unit write, so it covers both.
+alter workflow Probe1774.WF_Wait {
+  insert into validate { boundary event interrupting timer addDays([%CurrentDateTime%], 1) {
+    call microflow Probe1774.ACT_Expired;
+  } }
+};
+
+create microflow Probe1774.MF_Workflows (
+  $Request: Probe1774.Request,
+  $WfDef: System.WorkflowDefinition
+)
+begin
+  $Workflows = get workflows for $Request;
+  lock workflow $WfDef;
+  unlock workflow Probe1774.WF_Wait;
+end;

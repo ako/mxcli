@@ -11,7 +11,7 @@ This example demonstrates how to create consumed OData services using local meta
 
 ## Important Notes
 
-1. **Relative paths are normalized** — Any relative path is automatically converted to an absolute `file://` URL in the Mendix model for Studio Pro compatibility
+1. **Relative paths are normalized** — Any relative path is automatically converted to an absolute `file://` URL in the Mendix model for Studio Pro compatibility. Re-running the script from a checkout at another path keeps the stored URL when it names the same project file, and `describe` prints a stored URL inside the project as `./<path>` (ako/mxcli#1499)
 2. **ServiceUrl must be a constant** — Always use `@Module.ConstantName` format, not direct URLs
 
 ## Supported Formats

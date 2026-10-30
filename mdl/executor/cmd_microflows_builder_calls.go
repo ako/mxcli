@@ -442,11 +442,9 @@ func (fb *flowBuilder) addCallJavaActionAction(s *ast.CallJavaActionStmt) model.
 		ResultVariableName: s.OutputVariable,
 		UseReturnVariable:  s.OutputVariable != "",
 	}
-	if s.OutputVariable != "" && jaDef != nil && fb.varTypes != nil {
-		if varType := javaActionReturnVarType(jaDef.ReturnType); varType != "" {
+	if s.OutputVariable != "" && fb.varTypes != nil {
+		if varType := javaActionResultType(jaDef, javaActionArgVariables(s), fb.varTypes); varType != "" {
 			fb.varTypes[s.OutputVariable] = varType
-		} else if inferred := fb.inferGenericJavaActionReturnType(jaDef, s); inferred != "" {
-			fb.varTypes[s.OutputVariable] = inferred
 		}
 	}
 
@@ -485,32 +483,56 @@ func javaActionReturnVarType(returnType javaactions.CodeActionReturnType) string
 	return ""
 }
 
-// inferGenericJavaActionReturnType infers the element type of a generic
-// `ListType{Entity: ""}` Java action return by inspecting the caller's
-// variable-typed arguments. When the action parameters don't determine an
-// element type, the function returns "" and the caller records the declaration
-// as Unknown.
-func (fb *flowBuilder) inferGenericJavaActionReturnType(jaDef *javaactions.JavaAction, s *ast.CallJavaActionStmt) string {
-	if jaDef == nil || fb.varTypes == nil || s == nil {
+// javaActionResultType is the type a call of jaDef binds its result to,
+// "Module.Entity" or "List of Module.Entity": the declared return type, or —
+// for a list of a type parameter — the list the first of argVars that holds
+// one holds (varTypes), argVars being the variables the call passes as they
+// stand. "" when the result holds no entity or that is not known, and the
+// caller records the declaration as Unknown. It reads the definition and the
+// argument variables, not the statement, so a stored call's result can be
+// typed the way the full build (addCallJavaActionAction) types it
+// (ako/mxcli#1777).
+func javaActionResultType(jaDef *javaactions.JavaAction, argVars []string, varTypes map[string]string) string {
+	if jaDef == nil {
 		return ""
 	}
-	// ListType is always stored as a pointer by the parser; there is no value
-	// form in the SDK. Only the generic (Entity == "") case reaches the
-	// variable-type lookup below.
+	if varType := javaActionReturnVarType(jaDef.ReturnType); varType != "" {
+		return varType
+	}
+	if !returnsTypeParameterList(jaDef) {
+		return ""
+	}
+	return firstListType(argVars, varTypes)
+}
+
+// returnsTypeParameterList reports whether jaDef returns a list of one of its
+// type parameters, whose entity is the one a list argument holds. ListType is
+// always stored as a pointer by the parser; there is no value form in the SDK.
+func returnsTypeParameterList(jaDef *javaactions.JavaAction) bool {
 	t, ok := jaDef.ReturnType.(*javaactions.ListType)
-	if !ok || t.Entity != "" {
-		return ""
-	}
-	for _, arg := range s.Arguments {
-		varExpr, ok := arg.Value.(*ast.VariableExpr)
-		if !ok {
-			continue
-		}
-		if typ := fb.varTypes[varExpr.Name]; strings.HasPrefix(typ, "List of ") {
+	return ok && t.Entity == ""
+}
+
+// firstListType is the type of the first of vars that holds a list, or "".
+func firstListType(vars []string, varTypes map[string]string) string {
+	for _, v := range vars {
+		if typ := varTypes[v]; strings.HasPrefix(typ, "List of ") {
 			return typ
 		}
 	}
 	return ""
+}
+
+// javaActionArgVariables are the variables s passes as arguments as they
+// stand (`P = $Lines`), in the order it states them.
+func javaActionArgVariables(s *ast.CallJavaActionStmt) []string {
+	var vars []string
+	for _, arg := range s.Arguments {
+		if varExpr, ok := arg.Value.(*ast.VariableExpr); ok {
+			vars = append(vars, varExpr.Name)
+		}
+	}
+	return vars
 }
 
 // addCallJavaScriptActionAction creates a CALL JAVASCRIPT ACTION statement.
