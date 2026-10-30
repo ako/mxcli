@@ -12,14 +12,14 @@ description: "Audit a Mendix project against best practices for naming, security
 |---|---|
 | 29-36 | When to Use This Skill |
 | 37-96 | Assessment Workflow |
-| 97-353 | Quality Guidelines Reference |
-| 354-364 | Assessment Report Template |
-| 365-377 | Executive Summary |
-| 378-388 | project Metrics |
-| 389-401 | Automated Findings |
-| 402-421 | Manual Review Findings |
-| 422-437 | Recommendations |
-| 438-448 | Sources |
+| 97-354 | Quality Guidelines Reference |
+| 355-365 | Assessment Report Template |
+| 366-378 | Executive Summary |
+| 379-389 | project Metrics |
+| 390-402 | Automated Findings |
+| 403-422 | Manual Review Findings |
+| 423-438 | Recommendations |
+| 439-449 | Sources |
 
 <!-- /skill-index -->
 # Assess Mendix Project Quality
@@ -200,7 +200,7 @@ The Dutch Institute for Vulnerability Disclosure (DIVD) found widespread authori
 
 ### D. Maintainability
 
-**Enforced by rules:** QUAL001-QUAL004, CONV009, CONV012, CONV014, CONV020, MPR002, MPR004, MPR006
+**Enforced by rules:** QUAL001-QUAL004, CONV009, CONV012, CONV014, CONV020, CONV021, MPR002, MPR004, MPR006
 
 | Guideline | Rule/Check | Threshold |
 |-----------|-----------|-----------|
@@ -212,6 +212,7 @@ The Dutch Institute for Vulnerability Disclosure (DIVD) found widespread authori
 | Caption on exclusive splits | CONV012 | All decision points must have captions |
 | No "Continue" error handling | CONV014 | Never swallow errors silently |
 | No created object silently discarded | CONV020 | A persistent object created without commit is committed, returned or passed on |
+| Commit on the create/change, not after it | CONV021 | No Create/Change object activity directly followed by a Commit of the same object |
 | ACT_ microflows: thin controllers | CONV010 | Only page activities + submicroflow calls |
 
 **Manual checks:**

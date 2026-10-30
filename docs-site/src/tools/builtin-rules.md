@@ -40,6 +40,7 @@ The **lint rules** below run with `mxcli lint`. There is also a separate group o
 | **CONV013** | Error handling on external calls -- Ensures external service calls have error handling |
 | **CONV014** | No continue error handling -- Warns against using CONTINUE error handling without logging |
 | **CONV020** | Created object never persisted -- A microflow creates an object of a persistent entity without commit, and never commits, returns or passes it on, so the object is discarded when the microflow ends ([details](#conv020-details)) |
+| **CONV021** | Create/change then commit -- A Create or Change object activity without commit, directly followed by a Commit of the same object; one create/change with Commit set does both ([details](#conv021-details)) |
 | **MDL-FLOW01** | Un-describable branch structure -- Decision branches that re-enter each other's paths, so `DESCRIBE MICROFLOW` cannot render them as nested `IF`s without changing what they mean |
 | **MDL-MAP04** | First over an object-rooted import mapping -- An `import from mapping` or `rest call … returns mapping` activity already in the model stores Studio Pro's *First* (`ForceSingleOccurrence` or `Range.SingleObject`) over a mapping that returns one object. `mx check` reports 0 errors; the activity throws `key not found: Path(QName(None,),None,)` when it runs. `mxcli check` refuses the same statement in a script under the same ID; this finds activities written before that check existed, or with `exec --no-check`. A list-rooted mapping's *First* is legitimate and is not reported |
 
@@ -68,6 +69,36 @@ an association value on another object, `delete`, `rollback`, or the bare
 variable anywhere in an expression. The check is flow-insensitive: a commit on
 one branch only, or only in an error handler, counts, so that case is not
 reported. When the rule cannot tell, it stays quiet.
+
+### CONV021 details {#conv021-details}
+
+```sql
+$Order = create Shop.Order (Code = 'A1');
+commit $Order;
+```
+
+is two activities doing what one does. Studio Pro's Create object and Change
+object activities have a **Commit** option (Yes, Yes without events, No), and the
+expected way to model "create and save" or "change and save" is that option, not
+a separate Commit activity:
+
+```sql
+$Order = create Shop.Order (Code = 'A1') commit;
+```
+
+The suggestion carries the commit's settings over: a Commit with events becomes
+Commit **Yes**, one without events **Yes without events** (`commit without
+events`), and **Refresh in client** is kept if either activity had it (`refresh`).
+
+The rule reports a pair only when merging it cannot change what the microflow
+does:
+
+- it is in a **microflow**, the create/change has Commit **No**, and the commit
+  names the object it creates or changes;
+- the commit **directly** follows it on the normal flow (not an error handler
+  flow), and no other flow leads into the commit;
+- neither activity has **custom error handling**, which merging would move or
+  drop.
 
 ## Running Built-in Rules
 
