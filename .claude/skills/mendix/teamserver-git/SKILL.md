@@ -14,9 +14,9 @@ description: "Commit, branch and push a Mendix project in git the way Studio Pro
 | 42-55 | Branches: create them on the server |
 | 56-97 | Commit from the agent |
 | 98-112 | Push the branch and the notes together, and soon |
-| 113-132 | Never rewrite or merge model history with git |
-| 133-143 | Reading what Studio Pro recorded |
-| 144-152 | Checklist |
+| 113-134 | Never rewrite or merge model history with git |
+| 135-145 | Reading what Studio Pro recorded |
+| 146-154 | Checklist |
 
 <!-- /skill-index -->
 # Working with Git on a Mendix Team Server Project
