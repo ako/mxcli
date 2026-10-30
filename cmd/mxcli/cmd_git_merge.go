@@ -22,53 +22,71 @@ import (
 // cmd_git_merge.go: `mxcli git merge <ref>` — merge a branch the way Studio
 // Pro does. `git merge` runs first; when it stops on the model files (the
 // .mpr is SQLite and every .mxunit is BSON, so any two-sided model change is
-// a binary conflict), the conflict is handed to `mx git-merge` — the same
-// model-aware engine Studio Pro's own merge uses — with the three revisions
-// checked out into temporary worktrees. What mx resolves is committed as a
-// normal two-parent merge commit with the mx_metadata note; what it reports
-// as ManualResolutionRequired aborts the merge with the conflict list and a
-// pointer to Studio Pro, leaving nothing behind.
+// a binary conflict), the three revisions are handed to `mx merge` — the same
+// model-aware engine Studio Pro's own merge uses, over the base and theirs
+// checkouts and the working tree — with the project's Mendix version's mx.
+// What the engine resolves is staged, hash-checked and committed as a normal
+// two-parent merge commit with the mx_metadata note; what it reports as
+// ManualResolutionRequired (exit 2) aborts the merge with the conflict list
+// and a pointer to Studio Pro, leaving nothing behind; any other non-zero
+// exit is the engine failing, reported as such, also with a clean abort.
 
 var gitMergeCmd = &cobra.Command{
 	Use:   "merge <ref>",
-	Short: "Merge a branch with model-aware conflict resolution (mx git-merge)",
+	Short: "Merge a branch with model-aware conflict resolution (mx merge)",
 	Long: `Merge <ref> into the current branch, resolving model conflicts the way
 Studio Pro does.
 
 'git merge <ref>' runs first. A merge git resolves itself (disjoint files, a
 fast-forward) is committed and annotated like 'mxcli git commit' does. When
 git stops on the model files — the .mpr and the .mxunit units are binary, so
-two sides changing the model always conflict — the three revisions are
-checked out into temporary worktrees and 'mx git-merge BASE MINE THEIRS'
-(Studio Pro's own model-aware merge, resolved for the project's Mendix
-version) decides:
+two sides changing the model always conflict — the base and theirs revisions
+are checked out into temporary worktrees and the three project folders go to
+'mx merge BASE MINE THEIRS' (Studio Pro's own model-aware merge, resolved for
+the project's Mendix version):
 
-  - everything mx auto-resolves is staged and committed as the merge commit,
-    with the mx_metadata note attached (this keeps both sides — the usual
-    best outcome);
-  - a conflict mx reports as ManualResolutionRequired is never merged
-    silently: the merge is aborted, and both sides' changes are printed for
-    review — at property level, from 'mx diff' (e.g.
+  - everything the engine auto-resolves is staged, hash-checked and committed
+    as the merge commit, with the mx_metadata note attached (this keeps both
+    sides — the usual best outcome; the engine owns the .mpr, so a unit one
+    side added while the other changed existing ones is kept, not dropped);
+  - a conflict the engine reports as ManualResolutionRequired (exit 2) is
+    never merged silently: the merge is aborted, and both sides' changes are
+    printed for review — at property level, from 'mx diff' (e.g.
     "New type > Length: 100 → 150" on ours, "→ 200" on theirs). Then decide:
       --plan <file>  resolve per unit from the plan template written beside
                      the .mpr (<mpr>.merge-plan.json): set "take" to
                      "ours"/"theirs" per unit; the .mpr index is repaired
                      from the mixed files. Modified-on-both units only —
                      added/deleted/moved conflicts go to Studio Pro.
-      --ours / --theirs   take one side of every conflicted model file
-                     (deterministic; mx is not consulted again)
+      --ours / --theirs   take one side of every conflicted unit
+                     (deterministic; mx is not consulted again). The .mpr is
+                     taken from that side too and the result is hash-checked:
+                     when the sides' document sets differ (one added or
+                     deleted a unit), the commit is refused — a whole side
+                     would leave the other side's units orphaned on disk or
+                     listed with no file — and the merge is aborted. Resolve
+                     those in Studio Pro instead.
       Studio Pro (Version Control › Merge Changes Here) for mixed
                      within-unit resolutions — still the tool when a decision
                      must mix both sides inside one unit;
+  - any other engine exit is mx failing, not a decision: it is reported and
+    the merge is aborted cleanly;
   - a conflict in non-model files (text sources) is left in place for manual
-    resolution, like plain git.
+    resolution, like plain git: resolve them, 'git add' them, and re-run
+    this command — it finishes the merge (model conflicts included) and
+    commits.
+
+--ours/--theirs take one side of every conflicted unit — never a side of the
+.mpr without the hash check, because the .mpr lists every document: a whole
+side would drop the other side's added units and resurrect its deleted ones.
 
 The merge is refused while Studio Pro has the project open (.mpr.lock).
 MPR v2 projects only. The mx binary is resolved for the project's Mendix
 version (PATH, the mxcli cache, or the Studio Pro installation).`,
 	Example: `  mxcli git merge feature/orders -p app.mpr
   mxcli git merge origin/main -p app.mpr --push
-  mxcli git merge feature/orders -p app.mpr --theirs   # after reviewing the report`,
+  mxcli git merge feature/orders -p app.mpr --theirs   # after reviewing the report
+  mxcli git merge feature/orders -p app.mpr --plan app.mpr.merge-plan.json`,
 	Args:          cobra.ExactArgs(1),
 	RunE:          runGitMerge,
 	SilenceUsage:  true,
@@ -105,11 +123,17 @@ func runGitMerge(cmd *cobra.Command, args []string) error {
 	case theirs:
 		strategy = "theirs"
 	}
-	return mergeRun(project, ref, message, strategy, plan, push, mxRunners{merge: realMxGitMerge, diff: realMxDiff}, cmd.OutOrStdout())
+	return mergeRun(project, ref, message, strategy, plan, push, mxRunners{merge: realMxMerge, diff: realMxDiff}, cmd.OutOrStdout())
 }
 
 // mxRunners are the mx invocations, injected for tests.
-type mxMergeRunner func(base, mine, theirs string, shas [3]string) (int, string, error)
+//
+// merge runs the engine over the three PROJECT FOLDERS — the base checkout,
+// the working tree, the theirs checkout — and writes its result into the
+// working tree, App.mpr included. Exit 0 is a resolved merge, 2 is a decision
+// the engine could not make (its per-unit list is on stdout), anything else
+// is the engine failing.
+type mxMergeRunner func(baseDir, mineDir, theirsDir string, shas [3]string) (int, string, error)
 type mxDiffRunner func(base, mine, outJSON string) error
 
 type mxRunners struct {
@@ -117,19 +141,20 @@ type mxRunners struct {
 	diff  mxDiffRunner
 }
 
-// mergeRun is the command without its wiring. runMx is injected for tests.
-// mergeRun is the command without its wiring. runMx is injected for tests.
+// mergeRun is the command without its wiring. runners are injected for tests.
 //
 // Conflict handling is a three-step flow a human stays in charge of:
 //
 //  1. `git merge` runs; a merge it resolves itself is annotated and done.
-//  2. A model conflict goes to `mx git-merge` first — what it auto-resolves
-//     keeps both sides, which is almost always the best outcome — and is
-//     committed with the note.
-//  3. What mx reports as ManualResolutionRequired is never merged silently:
-//     with no strategy the merge is aborted and both sides' changes are
-//     printed for review; `--ours`/`--theirs` then take one side wholesale
-//     (mx is not consulted — the human has decided).
+//  2. A model conflict goes to `mx merge` over the three project folders
+//     first — what the engine auto-resolves keeps both sides, which is almost
+//     always the best outcome — and is committed with the note.
+//  3. What the engine reports as ManualResolutionRequired (exit 2) is never
+//     merged silently: with no strategy the merge is aborted and both sides'
+//     changes are printed for review; `--plan` then resolves per unit, and
+//     `--ours`/`--theirs` take one side of every conflicted unit, hash-gated
+//     so a side that would drop or orphan documents is refused. Any other
+//     engine exit is a failure, not a decision: reported, aborted cleanly.
 func mergeRun(mprPath, ref, message, strategy, plan string, push bool, runners mxRunners, out io.Writer) error {
 	switch strategy {
 	case "", "ours", "theirs":
@@ -161,20 +186,24 @@ func mergeRun(mprPath, ref, message, strategy, plan string, push bool, runners m
 		return applyPlan(root, repo, abs, mprPath, ref, plan, message, branch, push, out)
 	}
 
-	mergeOut, mergeErr := gitOutIn(root, nil, "merge", "--no-edit", ref)
-	if mergeErr == nil {
-		if strings.Contains(mergeOut, "Already up to date") {
-			fmt.Fprintln(out, "Already up to date.")
-			return nil
-		}
-		head := strings.TrimSpace(gitOutOr(root, "rev-parse", "HEAD"))
-		fmt.Fprintf(out, "Merged %s without model conflicts (%s).\n", ref, shortCommit(head))
-		return finishMerge(out, repo, head, branch, push)
-	}
-
-	// A ref that does not resolve fails before any conflict exists.
+	// A merge already in progress is resumed, not re-run: a previous run may
+	// have stopped on text conflicts, which the human resolved and staged
+	// since. Re-running git merge would only refuse ("not concluded").
 	if _, mhErr := gitOut(root, "rev-parse", "--verify", "--quiet", "MERGE_HEAD"); mhErr != nil {
-		return fmt.Errorf("git merge %s: %s", ref, firstLineOf(mergeOut))
+		mergeOut, mergeErr := gitOutIn(root, nil, "merge", "--no-edit", ref)
+		if mergeErr == nil {
+			if strings.Contains(mergeOut, "Already up to date") {
+				fmt.Fprintln(out, "Already up to date.")
+				return nil
+			}
+			head := strings.TrimSpace(gitOutOr(root, "rev-parse", "HEAD"))
+			fmt.Fprintf(out, "Merged %s without model conflicts (%s).\n", ref, shortCommit(head))
+			return finishMerge(out, repo, head, branch, push)
+		}
+		// A ref that does not resolve fails before any conflict exists.
+		if _, mhErr := gitOut(root, "rev-parse", "--verify", "--quiet", "MERGE_HEAD"); mhErr != nil {
+			return fmt.Errorf("git merge %s: %s", ref, firstLineOf(mergeOut))
+		}
 	}
 
 	conflicted := nulFields(gitOutOr(root, "diff", "--name-only", "--diff-filter=U", "-z"))
@@ -187,7 +216,7 @@ func mergeRun(mprPath, ref, message, strategy, plan string, push bool, runners m
 		}
 	}
 	if len(other) > 0 {
-		fmt.Fprintln(out, "Non-model conflicts, resolve by hand, then 'git add' and 'git commit':")
+		fmt.Fprintln(out, "Non-model conflicts, resolve by hand, then 'git add' them and re-run this command to resolve the model and commit:")
 		for _, p := range other {
 			fmt.Fprintf(out, "  %s\n", p)
 		}
@@ -198,27 +227,34 @@ func mergeRun(mprPath, ref, message, strategy, plan string, push bool, runners m
 	oursSha := strings.TrimSpace(gitOutOr(root, "rev-parse", "HEAD"))
 	theirsSha := strings.TrimSpace(gitOutOr(root, "rev-parse", "MERGE_HEAD"))
 
-	// The human has decided: take one side of every conflicted model file.
-	// Deterministic, and mx is not consulted — `git checkout --ours/--theirs`
-	// reads the conflicted stages directly.
+	// The human has decided: take one side of every conflicted model file. mx
+	// is not consulted — `git checkout --ours/--theirs` reads the conflicted
+	// stages directly. The .mpr is taken from the side too, and the result is
+	// hash-checked before committing: a whole side includes the .mpr's list of
+	// documents, so when the sides' document sets differ (one side added or
+	// deleted a unit) committing would orphan the other side's units or list
+	// units with no file. That refusal aborts the merge — it never commits a
+	// half-project.
 	if strategy != "" {
 		side := "--" + strategy
 		for _, p := range model {
 			if _, err := gitOutIn(root, nil, "checkout", side, "--", p); err != nil {
-				return fmt.Errorf("take the %s version of %s: %w", strategy, p, err)
+				return abortMerge(root, fmt.Errorf("take the %s version of %s: %w", strategy, p, err))
 			}
 		}
-		args := []string{"add", "--"}
-		args = append(args, model...)
-		if _, err := gitOutIn(root, nil, args...); err != nil {
-			return fmt.Errorf("stage the resolved model files: %w", err)
+		if err := repairOrRefuse(root, abs, out); err != nil {
+			return err
 		}
 		return commitTheMerge(root, repo, model, message, branch, push, out)
 	}
 
-	// mx first: what it auto-resolves keeps both sides, which is almost
-	// always better than taking one side wholesale.
-	// Check out the base and theirs revisions; MINE is the working tree.
+	// The engine first: what it auto-resolves keeps both sides, which is
+	// almost always better than taking one side wholesale. The base and
+	// theirs revisions are checked out as folders; MINE is the working tree.
+	// The engine writes its result into the working tree and owns the .mpr —
+	// its unit list carries both sides' added and deleted documents, so a
+	// unit one side added while the other changed existing ones is kept, not
+	// dropped.
 	tmp, err := os.MkdirTemp("", "mxcli-gitmerge-")
 	if err != nil {
 		return err
@@ -243,10 +279,13 @@ func mergeRun(mprPath, ref, message, strategy, plan string, push bool, runners m
 	version := projectMendixVersion(mprPath)
 	fmt.Fprintf(out, "Model files conflict (%s); merging the model with mx %s…\n",
 		strings.Join(shortNames(model), ", "), version)
+	// Folder mode: the engine takes the three project folders and writes its
+	// result into MINE — the working tree.
+	projRel := filepath.FromSlash(filepath.Dir(repo.MPRPath)) // "." at the repo root
 	code, mxOut, runErr := runners.merge(
-		filepath.Join(baseDir, filepath.FromSlash(repo.MPRPath)),
-		abs,
-		filepath.Join(theirsDir, filepath.FromSlash(repo.MPRPath)),
+		filepath.Join(baseDir, projRel),
+		filepath.Dir(abs),
+		filepath.Join(theirsDir, projRel),
 		[3]string{baseSha, oursSha, theirsSha},
 	)
 	if s := strings.TrimSpace(mxOut); s != "" {
@@ -254,9 +293,16 @@ func mergeRun(mprPath, ref, message, strategy, plan string, push bool, runners m
 	}
 	if runErr != nil {
 		cleanWorktrees()
-		return fmt.Errorf("mx git-merge failed: %w", runErr)
+		return abortMerge(root, fmt.Errorf("mx merge failed to run: %w", runErr))
 	}
-	if code != 0 {
+	if code != 0 && code != 2 {
+		// A crash, an unreadable base, anything but a merge decision: report
+		// the engine as failing and leave nothing behind. Only exit 2 asks
+		// for a decision.
+		cleanWorktrees()
+		return abortMerge(root, fmt.Errorf("mx merge failed (exit %d); the merge is aborted — if it persists, resolve in Studio Pro (Version Control › Merge Changes Here)", code))
+	}
+	if code == 2 {
 		// The review step: what each side changed, at property level (mx
 		// diff), plus a per-unit plan template. Then leave nothing behind —
 		// the human decides.
@@ -279,14 +325,20 @@ func mergeRun(mprPath, ref, message, strategy, plan string, push bool, runners m
 			return fmt.Errorf("the model merge has conflicts and aborting it failed (%v); resolve in Studio Pro", abortErr)
 		}
 		fmt.Fprintln(out, "Merge aborted; the working tree is back to the pre-merge state.")
-		return errors.New("the model merge needs a decision: re-run with --plan to resolve per unit, --ours/--theirs to take one side wholesale, or resolve in Studio Pro (Version Control › Merge Changes Here)")
+		return errors.New("the model merge needs a decision: re-run with --plan to resolve per unit, or resolve in Studio Pro (Version Control › Merge Changes Here)")
 	}
 
+	// Exit 0: the engine resolved the model into the working tree, .mpr
+	// included — both sides' document sets are in it. Stage, gate, commit.
 	args := []string{"add", "--"}
 	args = append(args, model...)
 	if _, err := gitOutIn(root, nil, args...); err != nil {
 		cleanWorktrees()
-		return fmt.Errorf("stage the resolved model files: %w", err)
+		return abortMerge(root, fmt.Errorf("stage the resolved model files: %w", err))
+	}
+	if err := repairOrRefuse(root, abs, out); err != nil {
+		cleanWorktrees()
+		return err
 	}
 	if err := commitTheMerge(root, repo, nil, message, branch, push, out); err != nil {
 		cleanWorktrees()
@@ -294,6 +346,34 @@ func mergeRun(mprPath, ref, message, strategy, plan string, push bool, runners m
 	}
 	cleanWorktrees()
 	return nil
+}
+
+// abortMerge backs a failed resolution out entirely — working tree, index and
+// MERGE_HEAD return to the pre-merge state — and returns the original error.
+// Every refusal on this command ends here: a half-done merge makes Studio Pro
+// re-run it (and choke) every time the project opens.
+func abortMerge(root string, err error) error {
+	if _, abortErr := gitOutIn(root, nil, "merge", "--abort"); abortErr != nil {
+		return fmt.Errorf("%w (aborting the merge failed too: %v — resolve it in Studio Pro)", err, abortErr)
+	}
+	return err
+}
+
+// repairOrRefuse is the hash gate every side- or plan-based resolution ends
+// with: ContentsHash values are repaired from the files on disk (the files
+// are the truth once units have been taken from both sides), and a MISSING or
+// ORPHAN entry — a unit the .mpr lists with no file behind it, or a file no
+// .mpr entry lists — refuses the commit: committing it would drop or orphan
+// documents. The refusal aborts the merge.
+func repairOrRefuse(root, mprPath string, out io.Writer) error {
+	err := fixHashes(mprPath, true, out)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, errHashIssuesRemain) {
+		return abortMerge(root, err)
+	}
+	return abortMerge(root, errors.New("refusing to commit: the ContentsHash index has MISSING or ORPHAN entries (see above) — the sides' document sets differ, and committing would drop or orphan units; resolve in Studio Pro (Version Control › Merge Changes Here)"))
 }
 
 // commitTheMerge commits the resolved merge (MERGE_HEAD is present), writes
@@ -370,15 +450,19 @@ func projectMendixVersion(mprPath string) string {
 	return v
 }
 
-// realMxGitMerge shells out to `mx git-merge -v …`, resolved for the
-// project's Mendix version.
-func realMxGitMerge(base, mine, theirs string, shas [3]string) (int, string, error) {
-	version := projectMendixVersion(mine)
+// realMxMerge shells out to `mx merge BASE MINE THEIRS` over the three
+// project folders, mx resolved for the project's Mendix version.
+func realMxMerge(baseDir, mineDir, theirsDir string, shas [3]string) (int, string, error) {
+	version := ""
+	if matches, _ := filepath.Glob(filepath.Join(mineDir, "*.mpr")); len(matches) > 0 {
+		version = projectMendixVersion(matches[0])
+	}
 	mxPath, err := docker.ResolveMxForVersion("", version)
 	if err != nil {
 		return 1, "", fmt.Errorf("no mx for Mendix %s: %w (model conflicts need it)", version, err)
 	}
-	cmd := exec.Command(mxPath, "git-merge", "-v", base, mine, theirs, shas[0], shas[1], shas[2])
+	cmd := exec.Command(mxPath, "merge", baseDir, mineDir, theirsDir)
+	docker.PrepareMxCommand(cmd)
 	b, err := cmd.CombinedOutput()
 	code := 0
 	if err != nil {
@@ -521,9 +605,11 @@ func writePlanTemplate(mprPath, baseSha, oursSha, theirsSha string, model []stri
 	return os.WriteFile(mprPath+".merge-plan.json", b, 0o644)
 }
 
-// applyPlan re-runs the merge (it must conflict the same way again), checks
-// the plan against those revisions, resolves per unit, repairs the .mpr index
-// from the mixed files and commits — with the note.
+// applyPlan re-runs the merge unless one is already in progress (it must
+// conflict the same way), checks the plan against those revisions, resolves
+// per unit, repairs the .mpr index from the mixed files and commits — with
+// the note. Every refusal after the merge started aborts it: a half-done
+// merge makes Studio Pro re-run it (and choke) on every open.
 func applyPlan(root string, repo *gitNoteRepo, mprAbs, mprPath, ref, planPath, message, branch string, push bool, out io.Writer) error {
 	raw, err := os.ReadFile(planPath)
 	if err != nil {
@@ -539,19 +625,22 @@ func applyPlan(root string, repo *gitNoteRepo, mprAbs, mprPath, ref, planPath, m
 		return fmt.Errorf("plan %s is not valid JSON: %w", planPath, err)
 	}
 
-	mergeOut, mergeErr := gitOutIn(root, nil, "merge", "--no-edit", ref)
-	if mergeErr == nil {
-		return errors.New("the merge no longer conflicts — the plan is unnecessary; nothing was done")
-	}
+	// An unfinished merge (text conflicts resolved and staged, say) is
+	// resumed; otherwise the merge runs and must conflict the same way.
 	if _, mhErr := gitOut(root, "rev-parse", "--verify", "--quiet", "MERGE_HEAD"); mhErr != nil {
-		return fmt.Errorf("git merge %s: %s", ref, firstLineOf(mergeOut))
+		mergeOut, mergeErr := gitOutIn(root, nil, "merge", "--no-edit", ref)
+		if mergeErr == nil {
+			return errors.New("the merge no longer conflicts — the plan is unnecessary; nothing was done")
+		}
+		if _, mhErr := gitOut(root, "rev-parse", "--verify", "--quiet", "MERGE_HEAD"); mhErr != nil {
+			return fmt.Errorf("git merge %s: %s", ref, firstLineOf(mergeOut))
+		}
 	}
 	baseSha := strings.TrimSpace(gitOutOr(root, "merge-base", "HEAD", "MERGE_HEAD"))
 	oursSha := strings.TrimSpace(gitOutOr(root, "rev-parse", "HEAD"))
 	theirsSha := strings.TrimSpace(gitOutOr(root, "rev-parse", "MERGE_HEAD"))
 	if plan.Base != baseSha || plan.Ours != oursSha || plan.Theirs != theirsSha {
-		_, _ = gitOutIn(root, nil, "merge", "--abort")
-		return errors.New("stale plan: the merge revisions moved since it was written; delete it and re-run the merge to regenerate")
+		return abortMerge(root, errors.New("stale plan: the merge revisions moved since it was written; delete it and re-run the merge to regenerate"))
 	}
 
 	conflicted := nulFields(gitOutOr(root, "diff", "--name-only", "--diff-filter=U", "-z"))
@@ -566,25 +655,25 @@ func applyPlan(root string, repo *gitNoteRepo, mprAbs, mprPath, ref, planPath, m
 	// (added on one side, deleted, moved) only Studio Pro can decide.
 	baseSnap, err := repo.snapshot(baseSha)
 	if err != nil {
-		return err
+		return abortMerge(root, err)
 	}
 	oursSnap, err := repo.snapshot(oursSha)
 	if err != nil {
-		return err
+		return abortMerge(root, err)
 	}
 	theirsSnap, err := repo.snapshot(theirsSha)
 	if err != nil {
-		return err
+		return abortMerge(root, err)
 	}
 	oursStatus := changeStatuses(computeModelChanges(baseSnap, oursSnap, nil))
 	theirsStatus := changeStatuses(computeModelChanges(baseSnap, theirsSnap, nil))
 	take := map[string]string{}
 	for _, u := range plan.Units {
 		if u.Take != "ours" && u.Take != "theirs" {
-			return fmt.Errorf("plan: unit %s has take %q (ours|theirs)", shortCommit(u.ID), u.Take)
+			return abortMerge(root, fmt.Errorf("plan: unit %s has take %q (ours|theirs)", shortCommit(u.ID), u.Take))
 		}
 		if oursStatus[u.ID] != "Modified" || theirsStatus[u.ID] != "Modified" {
-			return fmt.Errorf("plan: unit %s is %s on ours and %s on theirs — only modified-on-both conflicts can be planned; resolve it in Studio Pro", shortCommit(u.ID), statusOrNone(oursStatus[u.ID]), statusOrNone(theirsStatus[u.ID]))
+			return abortMerge(root, fmt.Errorf("plan: unit %s is %s on ours and %s on theirs — only modified-on-both conflicts can be planned; resolve it in Studio Pro", shortCommit(u.ID), statusOrNone(oursStatus[u.ID]), statusOrNone(theirsStatus[u.ID])))
 		}
 		take[u.ID] = u.Take
 	}
@@ -592,7 +681,7 @@ func applyPlan(root string, repo *gitNoteRepo, mprAbs, mprPath, ref, planPath, m
 	// Ours everywhere, then the planned units from theirs.
 	for _, p := range model {
 		if _, err := gitOutIn(root, nil, "checkout", "--ours", "--", p); err != nil {
-			return fmt.Errorf("take the ours version of %s: %w", p, err)
+			return abortMerge(root, fmt.Errorf("take the ours version of %s: %w", p, err))
 		}
 	}
 	for _, id := range conflictedUnitIDs(model) {
@@ -601,23 +690,22 @@ func applyPlan(root string, repo *gitNoteRepo, mprAbs, mprPath, ref, planPath, m
 		}
 		p := path.Join(repo.Contents, id[:2], id[2:4], id+".mxunit")
 		if _, err := gitOutIn(root, nil, "checkout", "--theirs", "--", p); err != nil {
-			return fmt.Errorf("take the theirs version of %s: %w", p, err)
+			return abortMerge(root, fmt.Errorf("take the theirs version of %s: %w", p, err))
 		}
 		fmt.Fprintf(out, "  %s: theirs\n", shortCommit(id))
 	}
 	// The .mpr index is ours; the mixed unit files have different bytes, so
-	// the hashes are rewritten from the files — files are the truth.
-	if err := fixHashes(mprPath, true, out); err != nil {
-		if !errors.Is(err, errHashIssuesRemain) {
-			return err
-		}
-		return errors.New("refusing to commit: the ContentsHash index has MISSING or ORPHAN entries (see above)")
+	// the hashes are rewritten from the files — files are the truth. The
+	// gate refuses (and aborts) when the sides' document sets differ: a unit
+	// theirs added is not in ours' .mpr, and committing would orphan it.
+	if err := repairOrRefuse(root, mprPath, out); err != nil {
+		return err
 	}
 
 	args := []string{"add", "--"}
 	args = append(args, model...)
 	if _, err := gitOutIn(root, nil, args...); err != nil {
-		return fmt.Errorf("stage the resolved model files: %w", err)
+		return abortMerge(root, fmt.Errorf("stage the resolved model files: %w", err))
 	}
 	return commitTheMerge(root, repo, nil, message, branch, push, out)
 }
@@ -637,14 +725,16 @@ func statusOrNone(s string) string {
 	return s
 }
 
-// realMxDiff shells out to `mx diff BASE MINE OUTPUT` (resolved like git-merge).
+// realMxDiff shells out to `mx diff BASE MINE OUTPUT` (resolved like the merge).
 func realMxDiff(base, mine, outJSON string) error {
 	version := projectMendixVersion(mine)
 	mxPath, err := docker.ResolveMxForVersion("", version)
 	if err != nil {
 		return fmt.Errorf("no mx for Mendix %s: %w", version, err)
 	}
-	if b, err := exec.Command(mxPath, "diff", base, mine, outJSON).CombinedOutput(); err != nil {
+	cmd := exec.Command(mxPath, "diff", base, mine, outJSON)
+	docker.PrepareMxCommand(cmd)
+	if b, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("mx diff: %v: %s", err, strings.TrimSpace(string(b)))
 	}
 	return nil

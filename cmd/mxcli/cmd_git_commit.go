@@ -261,6 +261,10 @@ func isJunkPath(rel, projDir string) bool {
 		return true
 	case strings.HasSuffix(strings.ToLower(base), ".mpr.lock"), strings.HasSuffix(strings.ToLower(base), ".mpr.bak"):
 		return true
+	// `mxcli git merge` writes the plan template beside the .mpr for the
+	// human to edit; it is working material, never project content.
+	case strings.HasSuffix(strings.ToLower(base), ".merge-plan.json"):
+		return true
 	}
 	inProject := f
 	if projDir != "." && projDir != "" {

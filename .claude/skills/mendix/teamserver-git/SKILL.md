@@ -117,11 +117,13 @@ git push origin <branch> refs/notes/mx_metadata
   is a binary conflict), and a textual merge of `mprcontents/` leaves an
   index that does not match the files. Model-aware merging exists in two
   forms: **`mxcli git merge <ref>`** from the command line (it hands the
-  conflict to `mx git-merge`, Studio Pro's own engine, and commits the
-  resolved model as a normal merge commit with the note), and **Version
+  conflict to `mx merge` over three project folders — Studio Pro's own
+  engine, Linux devcontainers included — and commits the resolved model as a
+  normal merge commit with the note), and **Version
   Control › Merge Changes Here** in Studio Pro (*Merge feature branch* or
   *Cherry Pick*) — which is also where the conflicts mx cannot auto-resolve
-  go. A conflict `mxcli git merge` cannot resolve aborts the merge cleanly.
+  go. A conflict `mxcli git merge` cannot resolve — and an engine failure —
+  aborts the merge cleanly; nothing is left half-done.
   Studio Pro's history on Team Server is linear for a reason: do not "fix"
   a conflicted model merge by hand-editing files.
 - **No `--amend` or force-push of a pushed commit.** Before pushing, an amend is
