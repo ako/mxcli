@@ -313,21 +313,19 @@ func (m *Mutator) SetActivityProperty(activityRef string, atPos int, prop string
 		return nil
 
 	case "targeting_microflow":
-		userTargeting := bson.D{
+		m.setUserTargeting(actDoc, bson.D{
 			{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
 			{Key: "$Type", Value: "Workflows$MicroflowUserTargeting"},
 			{Key: "Microflow", Value: value},
-		}
-		bsonnav.DSet(actDoc, "UserTargeting", userTargeting)
+		})
 		return nil
 
 	case "targeting_xpath":
-		userTargeting := bson.D{
+		m.setUserTargeting(actDoc, bson.D{
 			{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
 			{Key: "$Type", Value: "Workflows$XPathUserTargeting"},
 			{Key: "XPathConstraint", Value: value},
-		}
-		bsonnav.DSet(actDoc, "UserTargeting", userTargeting)
+		})
 		return nil
 
 	case "due_date":
@@ -768,6 +766,22 @@ func (m *Mutator) Save() error {
 // matching on $ID. Needed when appending new keys to an activity document,
 // because the slice header returned by findActivityByCaption cannot propagate
 // appends back to the parent bson.A.
+// setUserTargeting replaces a user task's targeting with targeting, in the
+// current (11.2) shape and in the place of whichever key stores it: below 11.2
+// that is UserSource (ako/mxcli#1771), which the write lowers it back to
+// (canon.LowerToProjectShape). Setting UserTargeting only where it already
+// existed changed nothing on such a task, and the statement still reported
+// success.
+func (m *Mutator) setUserTargeting(actDoc bson.D, targeting bson.D) {
+	for i := range actDoc {
+		if actDoc[i].Key == "UserTargeting" || actDoc[i].Key == "UserSource" {
+			actDoc[i] = bson.E{Key: "UserTargeting", Value: targeting}
+			return
+		}
+	}
+	m.replaceActivity(append(actDoc, bson.E{Key: "UserTargeting", Value: targeting}))
+}
+
 func (m *Mutator) replaceActivity(updated bson.D) {
 	actID := bsonnav.ExtractBinaryIDFromDoc(bsonnav.DGet(updated, "$ID"))
 	if actID == "" {

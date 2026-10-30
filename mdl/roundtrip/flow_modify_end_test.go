@@ -100,7 +100,7 @@ func TestFlowModify_ReturnValueIsSetInPlace(t *testing.T) {
 	if err := h.exec("mdl 1;\n" + edited); err != nil {
 		t.Fatalf("exec: %v", err)
 	}
-	if !strings.Contains(h.out.String(), "(spliced: 1 replaced)") {
+	if !strings.Contains(h.out.String(), "(spliced: 1 edited in place)") {
 		t.Errorf("want a splice report, got:\n%s", h.out.String())
 	}
 	after := h.flowUnit(t, "ConvertUUIDToURL")
@@ -140,7 +140,7 @@ func TestFlowModify_InsertBeforeChangedReturn(t *testing.T) {
 	if err := h.exec("mdl 1;\n" + edited); err != nil {
 		t.Fatalf("exec: %v", err)
 	}
-	if !strings.Contains(h.out.String(), "(spliced: 1 inserted, 1 replaced)") {
+	if !strings.Contains(h.out.String(), "(spliced: 1 inserted, 1 edited in place)") {
 		t.Errorf("want a splice report, got:\n%s", h.out.String())
 	}
 	requireKept(t, before, h.flowUnit(t, "ConvertUUIDToURL"), "")

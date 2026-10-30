@@ -70,9 +70,11 @@ func handlerObjects(t *testing.T, exec *Executor, name string) (map[model.ID]mod
 }
 
 // spliceStep runs src — check first, then exec — and asserts it is spliced
-// with exactly `changed` objects replaced and `added` new ones, nothing else
-// rebuilt or moved, that describe shows want, and that a second run is
-// Unchanged.
+// with exactly `changed` objects replaced by new ones and `added` new ones,
+// nothing else rebuilt or moved, that describe shows want, and that a second
+// run is Unchanged. An activity changed into the same kind of activity is
+// edited in place and keeps its $ID (ako/mxcli#1761), so it is not among the
+// `changed`: describe showing want is what says it was written.
 func spliceStep(t *testing.T, exec *Executor, out *bytes.Buffer, name, src string, changed, added int, want ...string) {
 	t.Helper()
 	before, _ := handlerObjects(t, exec, name)
@@ -133,19 +135,21 @@ func TestCreateOrModify_ActivityWithErrorHandlerIsSplicedInPlace(t *testing.T) {
 		return "mdl 1;\n" + src[strings.Index(src, "create or modify microflow MyFirstModule.HFlow"):]
 	}
 
+	// The call is edited in place (ako/mxcli#1761): it keeps its $ID, and
+	// describe shows the new argument.
 	t.Run("T1 call argument changed, handler unchanged", func(t *testing.T) {
 		_, call := handlerObjects(t, exec, "HFlow")
-		spliceStep(t, exec, out, "HFlow", flow(strings.Replace(handlerFlowSrc, "HSub(P = $P) on", "HSub(P = 'x') on", 1)), 1, 0,
+		spliceStep(t, exec, out, "HFlow", flow(strings.Replace(handlerFlowSrc, "HSub(P = $P) on", "HSub(P = 'x') on", 1)), 0, 0,
 			"HSub(P = 'x') on error without rollback begin", "log warning node 'Repro' 'failed';")
-		if _, now := handlerObjects(t, exec, "HFlow"); now == call {
-			t.Error("the call kept its $ID: the change was not written")
+		if _, now := handlerObjects(t, exec, "HFlow"); now != call {
+			t.Error("the call got a new $ID for a changed argument")
 		}
 	})
 	t.Run("T3 only the handler's log changed", func(t *testing.T) {
 		_, call := handlerObjects(t, exec, "HFlow")
 		src := strings.Replace(handlerFlowSrc, "HSub(P = $P) on", "HSub(P = 'x') on", 1)
 		src = strings.Replace(src, "'failed';", "'failed again';", 1)
-		spliceStep(t, exec, out, "HFlow", flow(src), 1, 0, "'failed again'", "HSub(P = 'x') on error")
+		spliceStep(t, exec, out, "HFlow", flow(src), 0, 0, "'failed again'", "HSub(P = 'x') on error")
 		if _, now := handlerObjects(t, exec, "HFlow"); now != call {
 			t.Error("the call was replaced for a change inside its handler")
 		}
@@ -153,7 +157,7 @@ func TestCreateOrModify_ActivityWithErrorHandlerIsSplicedInPlace(t *testing.T) {
 	t.Run("call and handler changed together", func(t *testing.T) {
 		src := strings.Replace(handlerFlowSrc, "HSub(P = $P) on", "HSub(P = 'y') on", 1)
 		src = strings.Replace(src, "'failed';", "'failed twice';", 1)
-		spliceStep(t, exec, out, "HFlow", flow(src), 2, 0, "HSub(P = 'y') on error", "'failed twice'")
+		spliceStep(t, exec, out, "HFlow", flow(src), 0, 0, "HSub(P = 'y') on error", "'failed twice'")
 	})
 	// A note on the activity is part of it: added or reworded with the
 	// activity unchanged otherwise, it is written, not dropped with the
@@ -162,21 +166,21 @@ func TestCreateOrModify_ActivityWithErrorHandlerIsSplicedInPlace(t *testing.T) {
 		src := strings.Replace(handlerFlowSrc, "HSub(P = $P) on", "HSub(P = 'y') on", 1)
 		src = strings.Replace(src, "'failed';", "'failed twice';", 1)
 		src = strings.Replace(src, "  call microflow MyFirstModule.HSub(", "  @annotation 'calls the sub'\n  call microflow MyFirstModule.HSub(", 1)
-		spliceStep(t, exec, out, "HFlow", flow(src), 1, 1, "@annotation 'calls the sub'", "HSub(P = 'y') on error")
+		spliceStep(t, exec, out, "HFlow", flow(src), 0, 1, "@annotation 'calls the sub'", "HSub(P = 'y') on error")
 	})
 	t.Run("note on the call reworded", func(t *testing.T) {
 		src := strings.Replace(handlerFlowSrc, "HSub(P = $P) on", "HSub(P = 'y') on", 1)
 		src = strings.Replace(src, "'failed';", "'failed twice';", 1)
 		src = strings.Replace(src, "  call microflow MyFirstModule.HSub(", "  @annotation 'calls the sub, once'\n  call microflow MyFirstModule.HSub(", 1)
-		// The stored note goes out with the activity, the reworded one comes
-		// in: two objects replaced.
-		spliceStep(t, exec, out, "HFlow", flow(src), 2, 0, "@annotation 'calls the sub, once'")
+		// The stored note goes out, the reworded one comes in: one object
+		// replaced. The call itself is the stored one.
+		spliceStep(t, exec, out, "HFlow", flow(src), 1, 0, "@annotation 'calls the sub, once'")
 		if desc := describeFlow(t, exec, "HFlow"); strings.Contains(desc, "'calls the sub'") {
 			t.Errorf("the old note is still there:\n%s", desc)
 		}
 	})
 	t.Run("T4 handler that returns", func(t *testing.T) {
-		spliceStep(t, exec, out, "HRet", strings.Replace(handlerRetSrc, "HSub(P = $P) on", "HSub(P = 'x') on", 1), 1, 0,
+		spliceStep(t, exec, out, "HRet", strings.Replace(handlerRetSrc, "HSub(P = $P) on", "HSub(P = 'x') on", 1), 0, 0,
 			"HSub(P = 'x') on error without rollback begin")
 	})
 
@@ -248,9 +252,17 @@ func TestAlter_ReplaceOfActivityWithErrorHandler(t *testing.T) {
 		if err := agreeExec(t, exec, src); err != nil {
 			t.Fatalf("refused: %v", err)
 		}
+		// The same kind of activity: the stored call, edited in place
+		// (ako/mxcli#1761) — every object keeps its $ID, and describe shows
+		// the new argument.
 		after, now := handlerObjects(t, exec, "HFlow")
-		if now == call || len(after) != len(before) {
-			t.Errorf("want the call alone replaced: %d -> %d objects", len(before), len(after))
+		if now != call || len(after) != len(before) {
+			t.Errorf("want the call edited in place: call %s -> %s, %d -> %d objects", call, now, len(before), len(after))
+		}
+		for id := range before {
+			if _, ok := after[id]; !ok {
+				t.Errorf("object %s got a new $ID", id)
+			}
 		}
 		for id, p := range before {
 			if q, ok := after[id]; ok && p != q {

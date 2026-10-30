@@ -711,38 +711,11 @@ func (fb *flowBuilder) addLoopStatement(s *ast.LoopStmt) model.ID {
 		}
 	}
 
-	// Build nested ObjectCollection for loop body
-	loopBuilder := &flowBuilder{
-		textLang:     fb.textLang,
-		posX:         innerStartX,
-		posY:         innerStartY,
-		baseY:        innerStartY,
-		spacing:      HorizontalSpacing,
-		varTypes:     fb.varTypes,     // Share variable scope
-		declaredVars: fb.declaredVars, // Share declared vars (fixes nil map panic)
-		measurer:     fb.measurer,     // Share measurer
-		backend:      fb.backend,      // Share backend
-		quiet:        fb.quiet,
-		hierarchy:    fb.hierarchy,    // Share hierarchy
-		restServices: fb.restServices, // Share REST services for parameter classification
-		isNanoflow:   fb.isNanoflow,
-		self:         fb.self,
-		scriptFlows:  fb.scriptFlows,
-		// Share the note registry, so a note declared outside the loop and
-		// referenced on a body activity attaches to the SAME Annotation rather
-		// than being refused. The describer emits exactly that (its label state
-		// is shared across the loop overlay), so a builder that refused it would
-		// reject its own DESCRIBE output.
-		//
-		// The resulting shape — Annotation in the parent collection, both
-		// AnnotationFlows in the parent collection, one destination inside the
-		// loop — was measured at 0 errors on mxbuild 11.13. mxbuild is the only
-		// oracle available here; Studio Pro is stricter in general, though this
-		// is the same split mxcli already ships for an ordinary loop-body note,
-		// whose flow is hoisted to the parent a few lines below. (#1077)
-		annotationsByLabel: fb.annotationsByLabel,
-		storedNotes:        fb.storedNotes,
-	}
+	// Build nested ObjectCollection for loop body. It shares the variable
+	// scope, the note registry and the guards (nestedBuilder), and not the
+	// label table: the LoopedActivity owns a collection a sequence flow may
+	// not leave.
+	loopBuilder := fb.nestedBuilder(innerStartX, innerStartY)
 
 	// Process loop body statements and connect them with flows.
 	// pendingCase carries the deferred case value a merge-less split leaves for
@@ -1092,37 +1065,8 @@ func (fb *flowBuilder) addWhileStatement(s *ast.WhileStmt) model.ID {
 		loopLeftX = loopCenterX - loopWidth/2
 	}
 
-	loopBuilder := &flowBuilder{
-		textLang:     fb.textLang,
-		posX:         innerStartX,
-		posY:         innerStartY,
-		baseY:        innerStartY,
-		spacing:      HorizontalSpacing,
-		varTypes:     fb.varTypes,
-		declaredVars: fb.declaredVars,
-		measurer:     fb.measurer,
-		backend:      fb.backend,
-		quiet:        fb.quiet,
-		hierarchy:    fb.hierarchy,
-		restServices: fb.restServices,
-		isNanoflow:   fb.isNanoflow,
-		self:         fb.self,
-		scriptFlows:  fb.scriptFlows,
-		// Share the note registry, so a note declared outside the loop and
-		// referenced on a body activity attaches to the SAME Annotation rather
-		// than being refused. The describer emits exactly that (its label state
-		// is shared across the loop overlay), so a builder that refused it would
-		// reject its own DESCRIBE output.
-		//
-		// The resulting shape — Annotation in the parent collection, both
-		// AnnotationFlows in the parent collection, one destination inside the
-		// loop — was measured at 0 errors on mxbuild 11.13. mxbuild is the only
-		// oracle available here; Studio Pro is stricter in general, though this
-		// is the same split mxcli already ships for an ordinary loop-body note,
-		// whose flow is hoisted to the parent a few lines below. (#1077)
-		annotationsByLabel: fb.annotationsByLabel,
-		storedNotes:        fb.storedNotes,
-	}
+	// A WHILE body is a loop body: same sharing as addLoopStatement's.
+	loopBuilder := fb.nestedBuilder(innerStartX, innerStartY)
 
 	// Body bookkeeping is addLoopStatement's, verbatim: a WHILE body is a loop
 	// body, so the same merge-less split needs the same handling. pendingCase

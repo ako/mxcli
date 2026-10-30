@@ -13,8 +13,8 @@
 --
 -- To reproduce: exec this file, then change `P = $P` to `P = 'x'` (or the
 -- handler's log text) and exec it again. The second run reports
--- `Modified microflow: BugTest1489.Flow (spliced: 1 replaced)`; the handler and
--- the merge it rejoins at keep their $IDs and positions. A third run writes
+-- `Modified microflow: BugTest1489.Flow (spliced: 1 edited in place)`; the call,
+-- the handler and the merge it rejoins at keep their $IDs and positions. A third run writes
 -- nothing. Changing the handler's kind is still refused.
 
 mdl 1;

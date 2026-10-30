@@ -179,6 +179,10 @@ features:
       mdl: "CREATE BUSINESS EVENT SERVICE Module.Name ..."
     odata_client:
       min_version: "10.0.0"
+    published_odata_service:
+      # ODataPublish$PublishedODataService2 is 10.4+; see mendix-10.yaml.
+      min_version: "10.4.0"
+      mdl: "CREATE PUBLISHED ODATA SERVICE Module.Name (...) { PUBLISH ENTITY ... }"
     odata_graphql:
       # A published OData service can also answer GraphQL — one boolean, same
       # resources, an extra endpoint. Introduced in Studio Pro 10.14 as an
@@ -240,6 +244,26 @@ features:
       min_version: "9.0.0"
     user_task:
       min_version: "9.0.0"
+    multi_user_task:
+      min_version: "9.22.0"
+      mdl: "MULTI USER TASK Vote 'Vote' PAGE M.TaskPage OUTCOMES 'Yes' { } 'No' { };"
+      notes: "Before 10.12 a Workflows$UserTask whose UserTaskCompletion is a MultiInputCompletion, introduced with consensus and veto in 9.22.0 (mendixmodelsdk 4.117.0; ako/mxcli#1771)."
+    multi_user_task_majority_threshold:
+      min_version: "10.0.0"
+      mdl: "MULTI USER TASK … DECIDE BY MAJORITY MORE THAN HALF | DECIDE BY THRESHOLD 60 PERCENT"
+      notes: "MajorityCompletionCriteria and ThresholdCompletionCriteria introduced in 10.0.0 (mendixmodelsdk 4.117.0; ako/mxcli#1771)."
+    multi_user_task_await_all:
+      min_version: "10.2.0"
+      mdl: "MULTI USER TASK … AWAIT ALL USERS"
+      notes: "MultiInputCompletion.awaitAllUsers introduced in 10.2.0, on MultiUserTaskActivity from 10.12 (mendixmodelsdk 4.117.0; ako/mxcli#1771)."
+    multi_user_task_microflow_rule:
+      min_version: "10.3.0"
+      mdl: "MULTI USER TASK … DECIDE BY MICROFLOW M.Decide"
+      notes: "MicroflowCompletionCriteria introduced in 10.3.0 (mendixmodelsdk 4.117.0; ako/mxcli#1771)."
+    group_targeting:
+      min_version: "11.2.0"
+      mdl: "USER TASK … TARGETING GROUPS XPATH [Name = 'Reviewers'] | TARGETING GROUPS MICROFLOW M.Groups"
+      notes: "XPathGroupTargeting and MicroflowGroupTargeting introduced in 11.2.0 with UserTaskActivity.userTargeting (mendixmodelsdk 4.117.0). Before 11.2 a user task's UserSource targets users only (ako/mxcli#1771)."
     ai_agent_task:
       min_version: "11.9.0"
       mdl: "CALL AGENT MICROFLOW Module.InvokeAgent WITH (Param = '$WorkflowContext')"

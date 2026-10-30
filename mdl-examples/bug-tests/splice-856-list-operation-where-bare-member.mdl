@@ -25,10 +25,10 @@
 --
 -- To reproduce: exec this file against a project. Expected:
 --   Created microflow: BugTest856.F
---   Modified microflow: BugTest856.F (spliced: 1 replaced)
+--   Modified microflow: BugTest856.F (spliced: 1 edited in place)
 -- Before the fix the second statement was refused and exec rolled the whole
 -- script back. Running the file again sets the declare back and forth, and
--- each statement again replaces the declare alone (spliced: 1 replaced).
+-- each statement again edits the declare alone (spliced: 1 edited in place).
 
 mdl 1;
 

@@ -1,0 +1,114 @@
+mdl 1;
+-- ============================================================================
+-- Issue ako/mxcli#1762 (mendixlabs/mxcli#1668) — a Timeline enumeration the
+-- widget hides, set to a non-default value, fails the build with CE0463
+-- ============================================================================
+--
+-- The Timeline's editorConfig hides properties six ways:
+--
+--   e.customVisualization ? hide(title, description, icon, timeIndication,
+--                                groupByDayOptions, groupByMonthOptions)   (1)
+--                         : hide(customIcon, customTitle, …)               (2)
+--   e.groupEvents || hide(groupAttribute, groupByKey, groupByDayOptions, …) (3)
+--   switch (e.groupByKey) { case "day":   hide(groupByMonthOptions)        (4)
+--                           case "month": hide(groupByDayOptions)          (5)
+--                           default:      hide(groupByDayOptions,
+--                                              groupByMonthOptions) }      (6)
+--
+-- mxcli read (2) and (3) only. Measured on mxbuild 11.13.0 with Timeline 3.2.2,
+-- one widget per variant, nothing else hidden set:
+--
+--   customVisualization: true,  groupByDayOptions: 'dayMonth'          → CE0463 (1)
+--   customVisualization: true,  groupByKey: 'month',
+--                               groupByMonthOptions: 'monthYear'       → CE0463 (1)
+--   groupByKey: 'day',   groupByMonthOptions: 'monthYear'              → CE0463 (4)
+--   groupByKey: 'month', groupByDayOptions: 'fullDate'                 → CE0463 (5)
+--   groupByKey: 'year',  groupByDayOptions / groupByMonthOptions set   → CE0463 (6)
+--   the same values where they are visible, or left out               → 0 errors
+--
+-- `check` and `exec` passed all of them. Now each is refused with MDL-WIDGET10
+-- — the verdict (3) already got — naming the property, the rule and the
+-- default; one the script leaves out is written at that default.
+--
+-- Verify (needs -p: the rules are lifted from the project's installed .mpk):
+--
+--   mxcli check 1762-timeline-hidden-enumeration.mdl -p app.mpr --references
+--     → passes; uncomment a statement below to see the MDL-WIDGET10 error
+--   mxcli exec 1762-timeline-hidden-enumeration.mdl -p app.mpr
+--   mxcli docker check -p app.mpr --no-update-widgets   # 0 errors
+--   describe page M1762.PageD, then exec it               # unchanged
+-- ============================================================================
+
+create module M1762;
+
+create non-persistent entity M1762.Ev (
+  Line: String(200),
+  WhoText: String(200),
+  At: DateTime
+);
+
+create microflow M1762.DS_Events () returns List of M1762.Ev as $Events
+begin
+  $Events = create list of M1762.Ev;
+  $E = create M1762.Ev ( Line = 'Created', WhoText = 'someone', At = [%CurrentDateTime%] );
+  add $E to $Events;
+  return $Events;
+end;
+
+-- The reporter's tlD, corrected: custom mode hides the format enumerations, so
+-- they are left out (written at their defaults).
+create or modify page M1762.PageD ( Title: 'D', Layout: Atlas_Core.Atlas_Default ) {
+  timeline tlD (
+    data: MICROFLOW M1762.DS_Events,
+    customVisualization: true, groupEvents: true, groupAttribute: At,
+    groupByKey: 'day', ungroupedEventsPosition: 'end'
+  ) {
+    customtitle d2 { dynamictext d2t (Content: '{1}', ContentParams: ({1} = Line)) }
+  }
+};
+
+-- The reporter's tlG, corrected: grouping by day shows only groupByDayOptions.
+create or modify page M1762.PageG ( Title: 'G', Layout: Atlas_Core.Atlas_Default ) {
+  timeline tlG (
+    data: MICROFLOW M1762.DS_Events,
+    title: '{1}', titleParams: ({1} = $currentObject/Line),
+    customVisualization: false, groupEvents: true, groupAttribute: At,
+    groupByKey: 'day', groupByDayOptions: 'fullDate', ungroupedEventsPosition: 'end'
+  )
+};
+
+-- Grouping by month shows only groupByMonthOptions.
+create or modify page M1762.PageM ( Title: 'M', Layout: Atlas_Core.Atlas_Default ) {
+  timeline tlM (
+    data: MICROFLOW M1762.DS_Events,
+    title: '{1}', titleParams: ({1} = $currentObject/Line),
+    groupAttribute: At, groupByKey: 'month', groupByMonthOptions: 'monthYear'
+  )
+};
+
+-- The failing shapes, kept as documentation. Uncomment one and re-run
+-- `mxcli check ... -p app.mpr`: MDL-WIDGET10 is an error, and `mx check`
+-- reports CE0463 on the same widget.
+--
+-- (1) hidden in custom mode:
+--
+-- create or modify page M1762.PageD1 ( Title: 'x', Layout: Atlas_Core.Atlas_Default ) {
+--   timeline tlD1 ( data: MICROFLOW M1762.DS_Events, customVisualization: true,
+--                   groupAttribute: At, groupByKey: 'day', groupByDayOptions: 'dayMonth' ) {
+--     customtitle d3 { dynamictext d3t (Content: '{1}', ContentParams: ({1} = Line)) }
+--   }
+-- };
+--
+-- (4) grouping by day hides the month format:
+--
+-- create or modify page M1762.PageG1 ( Title: 'x', Layout: Atlas_Core.Atlas_Default ) {
+--   timeline tlG1 ( data: MICROFLOW M1762.DS_Events, title: '{1}', titleParams: ({1} = $currentObject/Line),
+--                   groupAttribute: At, groupByKey: 'day', groupByMonthOptions: 'monthYear' )
+-- };
+--
+-- (6) grouping by year hides both:
+--
+-- create or modify page M1762.PageY1 ( Title: 'x', Layout: Atlas_Core.Atlas_Default ) {
+--   timeline tlY1 ( data: MICROFLOW M1762.DS_Events, title: '{1}', titleParams: ({1} = $currentObject/Line),
+--                   groupAttribute: At, groupByKey: 'year', groupByDayOptions: 'dayMonth' )
+-- };

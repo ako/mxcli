@@ -305,8 +305,9 @@ inserted, dropped, moved (dropped and inserted again) or replaced by one or more
 others (ako/mxcli#1693), and one replaced by one of the same kind in place
 (ako/mxcli#1106). The new activities are laid out among the body's nodes; when the
 body no longer fits, the loop box grows on its far side and what is drawn past the
-loop moves along. Only the changed activities get new `$ID`s — the loop, the rest of
-its body and everything outside it keep theirs. The loop's iterator is in scope, and
+loop moves along. Only the new activities get new `$ID`s — one replaced by the same
+kind of activity is the stored one edited and keeps its `$ID` and its action's
+(ako/mxcli#1761); the loop, the rest of its body and everything outside it keep theirs. The loop's iterator is in scope, and
 a nested loop's body is edited the same way. `create or modify` does this for a body
 whose statements change; `alter` for an activity of the body addressed by its handle.
 

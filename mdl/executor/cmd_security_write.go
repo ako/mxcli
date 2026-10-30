@@ -44,7 +44,9 @@ func execCreateModuleRole(ctx *ExecContext, s *ast.CreateModuleRoleStmt) error {
 		if mr.Description == autoDocumentRoleDescription {
 			oldQualified := s.Name.Module + "." + mr.Name
 			newQualified := s.Name.Module + "." + s.Name.Name
-			if err := ctx.Backend.AddModuleRole(ms.ID, s.Name.Name, s.Description); err != nil {
+			// Adopting the role takes it over: the marker description is not
+			// the author's documentation, so an unstated description clears it.
+			if err := ctx.Backend.AddModuleRole(ms.ID, s.Name.Name, s.DescriptionText()); err != nil {
 				return mdlerrors.NewBackend("create module role", err)
 			}
 			// If the casing actually changed, propagate the rename across every
@@ -64,8 +66,14 @@ func execCreateModuleRole(ctx *ExecContext, s *ast.CreateModuleRoleStmt) error {
 		if s.CreateOrModify {
 			// Re-running a security script must not fail on a role that is
 			// already there. AddModuleRole overwrites, so this also adopts a new
-			// description and the caller's casing.
-			if err := ctx.Backend.AddModuleRole(ms.ID, s.Name.Name, s.Description); err != nil {
+			// description and the caller's casing. A statement without a
+			// description clause keeps the stored one: passing "" erased it,
+			// reported only as "Modified" (ako/mxcli#1218).
+			description := mr.Description
+			if s.Description != nil {
+				description = *s.Description
+			}
+			if err := ctx.Backend.AddModuleRole(ms.ID, s.Name.Name, description); err != nil {
 				return mdlerrors.NewBackend("modify module role", err)
 			}
 			if !ctx.Quiet {
@@ -76,7 +84,7 @@ func execCreateModuleRole(ctx *ExecContext, s *ast.CreateModuleRoleStmt) error {
 		return mdlerrors.NewAlreadyExists("module role", s.Name.Module+"."+s.Name.Name)
 	}
 
-	if err := ctx.Backend.AddModuleRole(ms.ID, s.Name.Name, s.Description); err != nil {
+	if err := ctx.Backend.AddModuleRole(ms.ID, s.Name.Name, s.DescriptionText()); err != nil {
 		return mdlerrors.NewBackend("create module role", err)
 	}
 

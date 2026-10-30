@@ -624,6 +624,12 @@ func init() {
 			"-- stored flow before any operation runs; an ambiguous or unknown target is an error.\n" +
 			"-- Only the new activities, the rewired flows and the objects moved to make room change;\n" +
 			"-- every other element keeps its $ID, position and curve.\n" +
+			"-- REPLACE by one activity of the same kind (the same action: a filter's expression, a\n" +
+			"-- retrieve's where, a member's value, a call's argument changed) edits the stored\n" +
+			"-- activity: it keeps its $ID and those of its action and the parts that pair up — a\n" +
+			"-- member by its attribute or association, an argument by its parameter (ako/mxcli#1761).\n" +
+			"-- CREATE OR MODIFY reports it as `edited in place`; anything else replaced gets new\n" +
+			"-- element IDs, reported as `replaced with new element IDs`.\n" +
 			"-- Inside a loop body, plain activities are inserted, replaced and dropped the same way,\n" +
 			"-- the loop box growing when the body no longer fits (ako/mxcli#1693).\n" +
 			"-- REPLACE BODY OF <loop> keeps the loop itself (its $ID, position, iterator and list)\n" +
@@ -926,11 +932,16 @@ func init() {
 			"right and wraps onto a new row past 2880px; the line joining two rows leaves\n" +
 			"the bottom of one and arrives on top of the next. A guard (if … return; end\n" +
 			"if) drops its branch into the lane below and the main line carries straight\n" +
-			"on over it. A CASE of four or more branches leaves the split in three groups\n" +
-			"— top, right, bottom — so its lines do not cross. A statement that carries\n" +
-			"@position is never moved, and starts the row for what follows it. Prefer no\n" +
-			"@position at all to a few: hand-placed statements are not measured against\n" +
-			"what the builder puts around them. (#1154)\n\n" +
+			"on over it; a custom error handler's row hangs in that lane too, 130px under\n" +
+			"its activity. A statement that reaches into the lane — a decision, a loop, an\n" +
+			"activity with a handler of its own — waits for it to clear; a plain activity\n" +
+			"does not (ako/mxcli#1768). A CASE of four or more branches leaves the split\n" +
+			"in three groups — top, right, bottom — so its lines do not cross. A\n" +
+			"statement that carries @position is never moved, and starts the row for what\n" +
+			"follows it; the statements BEFORE it keep the places the builder derives for\n" +
+			"them, and only a @position on the first statement moves the start event.\n" +
+			"Prefer no @position at all to a few: hand-placed statements are not measured\n" +
+			"against what the builder puts around them. (#1154)\n\n" +
 			"@start and @merge position the two nodes that have no statement of their\n" +
 			"own, so each is written on the statement it belongs to. Omit @start and the\n" +
 			"start is placed one spacing unit left of the first activity, on its centre\n" +

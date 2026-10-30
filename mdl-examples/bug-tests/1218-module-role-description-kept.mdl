@@ -1,0 +1,34 @@
+mdl 1;
+-- ako/mxcli#1218: a bare `create or modify module role M.R;` silently erased
+-- the role's description.
+--
+-- Reported:
+--     $ mxcli exec probe.mdl -p Formula1Backend.mpr
+--     Modified module role: Formula1Backend.ApiUser
+-- and `show module roles` had the role's Description empty afterwards. The
+-- executor handed the statement's empty description to the backend, which
+-- overwrites; an omitted DESCRIPTION clause was read as "set it to ''".
+--
+-- An omitted clause now keeps what is stored, as an omitted user role property
+-- already did (ako/mxcli#707). `description ''` is the spelling that clears it.
+--
+--     mxcli exec 1218-module-role-description-kept.mdl -p app.mpr
+--     mxcli -p app.mpr -c "show module roles in Zz1218"
+--
+-- After the run Zz1218.ApiUser has the description from statement 1, and
+-- Zz1218.Cleared has none. Re-running the script reports `Unchanged` for the
+-- bare statement and `Modified` only where it states a different description.
+-- Measured on Mendix 11.13.0: `mx check` is 0 errors with the fault and
+-- without it, so only the stored description shows the difference.
+-- The unit test is mdl/executor/issue1218_module_role_description_test.go.
+
+create or modify module Zz1218;
+
+create or modify module role Zz1218.ApiUser description 'Read the published OData services. Nothing else.';
+
+-- The "make sure this role exists" idiom: keeps the description above.
+create or modify module role Zz1218.ApiUser;
+
+-- Stating an empty description is how a script clears one.
+create or modify module role Zz1218.Cleared description 'Temporary';
+create or modify module role Zz1218.Cleared description '';

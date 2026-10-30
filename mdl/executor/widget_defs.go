@@ -95,9 +95,8 @@ func RefreshWidgetDefinitions(projectPath string, force bool, output io.Writer) 
 			// Lift property-visibility rules from the widget's editorConfig.js
 			// (#574 Phase 2) so the generated .def.json carries the version-
 			// specific applicability logic. Merge with the hand-transcribed table
-			// rather than replace it: the static extractor skips compound/ternary
-			// guards (e.g. Timeline's `customVisualization ? hide([title,...])`),
-			// so the hand-authored fallback fills the keys the extractor misses.
+			// rather than replace it: the static extractor skips some guard
+			// shapes, so the hand-authored fallback fills the keys it misses.
 			// Extracted rules win on conflict (they're version-specific).
 			if rules := extractVisibilityRulesFromMPK(mpkPath, mpkDef.ID); len(rules) > 0 {
 				defJSON.PropertyVisibility = mergeVisibilityRules(rules, widgetVisibilityRules[mpkDef.ID])
@@ -442,20 +441,26 @@ func GenerateDefJSON(mpkDef *mpk.WidgetDefinition, mdlName string) *WidgetDefini
 // configurations. Until the JS extractor lands (#574 Phase 2), these are
 // transcribed by hand from each widget's compiled editorConfig.js.
 //
-// Only TextTemplate-typed hidden properties need entries: the populated-vs-null
-// ClientTemplate choice is what triggers CE0463. Properties hidden as
-// Expression/enum/Widgets slots don't carry a ClientTemplate and are omitted.
+// The entries cover TextTemplate properties only, and that is NOT a statement
+// that only TextTemplates matter. Any hidden property must hold its default: an
+// enumeration hidden at a non-default value is CE0463 just the same (Timeline's
+// groupByDayOptions in custom mode, ako/mxcli#1762). This table once made that
+// rule look recognised — `check` warned about the Timeline's hidden templates,
+// from here, while the enumerations in the very same hide went unchecked.
 //
 //	VideoPlayer (editorConfig.js):
 //	  "expression"===e.type && hidePropertiesIn(["videoUrl","posterUrl"])
 //	Timeline (editorConfig.js):
 //	  e.customVisualization ? hidePropertiesIn(["title","description","icon","timeIndication",...]) : ...
 //
+// The extractor now lifts the whole Timeline hide (3.1.1, 3.2.2 and 3.2.3 all
+// read 6 of 6), so its entry only matters for a package that ships no
+// editorConfig.
+//
 // mergeVisibilityRules returns the extracted rules plus any hand-authored fallback
 // rules whose PropertyKey the extractor did not cover. Extracted rules are
 // version-specific (lifted from the installed .mpk's editorConfig.js) and win on
-// conflict; the fallback fills the compound/ternary guards the static extractor
-// skips (e.g. Timeline `title`/`description` hidden when `customVisualization`).
+// conflict; the fallback fills guards the static extractor skips.
 func mergeVisibilityRules(extracted, fallback []types.WidgetVisibilityRule) []types.WidgetVisibilityRule {
 	if len(fallback) == 0 {
 		return extracted

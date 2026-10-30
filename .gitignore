@@ -73,4 +73,4 @@ snap-bson
 go-test-output.txt
 # MPR v2 unit-type index, written next to any project mxcli opens — including
 # the testdata/ fixtures tests open in place.
-.mxcli/unit-types.idx
+**/.mxcli/unit-types.idx

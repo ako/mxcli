@@ -53,11 +53,18 @@ func statementVersionGates(stmt ast.Statement) []versionGate {
 		return []versionGate{{"integration", "published_rest_grant_revoke", "grant access on published rest service",
 			"upgrade your project to 10.0+"}}
 	case *ast.CreateODataServiceStmt:
+		// The document mxcli writes, ODataPublish$PublishedODataService2, is
+		// 10.4+; before, a published OData service is a Rest$PublishedODataService,
+		// a different document mxcli does not write (ako/mxcli#1163).
+		gates := []versionGate{{"integration", "published_odata_service", "create published odata service",
+			"Before Mendix 10.4 a published OData service is a different document " +
+				"(Rest$PublishedODataService), which mxcli does not write. Publish it in Studio Pro, or upgrade the project."}}
 		if s.SupportsGraphQL {
-			return []versionGate{{"integration", "odata_graphql", "SupportsGraphQL on a published OData service",
+			gates = append(gates, versionGate{"integration", "odata_graphql", "SupportsGraphQL on a published OData service",
 				"Publishing a service as GraphQL as well arrived in Studio Pro 10.14. " +
-					"Remove SupportsGraphQL to publish OData only."}}
+					"Remove SupportsGraphQL to publish OData only."})
 		}
+		return gates
 	case *ast.CreateMessageDefinitionStmt:
 		return []versionGate{messageDefinitionDocumentGate("create message definition")}
 	case *ast.AlterSettingsStmt:
@@ -194,7 +201,7 @@ func statementVersionGates(stmt ast.Statement) []versionGate {
 		if workflowUsesNotificationEvents(activities) {
 			gates = append(gates, notificationEventsGate)
 		}
-		return gates
+		return append(gates, userTaskGates(activities)...)
 	case *ast.AlterWorkflowStmt:
 		// Workflows require Mendix 9.12+.
 		gates := []versionGate{{"workflows", "basic", "alter workflow",
@@ -206,9 +213,72 @@ func statementVersionGates(stmt ast.Statement) []versionGate {
 		if workflowUsesNotificationEvents(added) {
 			gates = append(gates, notificationEventsGate)
 		}
-		return gates
+		return append(gates, userTaskGates(added)...)
 	}
 	return nil
+}
+
+// userTaskGates are the gates of what the user tasks among activities state
+// that an older user task cannot store, each once (ako/mxcli#1771). Below 11.2
+// a task targets users only, and a multi-user task, its later rules and
+// `await all users` arrived in 9.22, 10.0, 10.3 and 10.2 (mendixmodelsdk
+// 4.117.0). The write refuses them too (canon.LowerToProjectShape); this names
+// the statement before anything is written.
+func userTaskGates(activities []ast.WorkflowActivityNode) []versionGate {
+	var groups, multi, majority, threshold, microflow, await bool
+	walkWorkflowActivities(activities, func(a ast.WorkflowActivityNode) {
+		ut, ok := a.(*ast.WorkflowUserTaskNode)
+		if !ok {
+			return
+		}
+		switch ut.Targeting.Kind {
+		case "group_xpath", "group_microflow":
+			groups = true
+		}
+		if !ut.IsMultiUser {
+			return
+		}
+		multi = true
+		await = await || ut.AwaitAllUsers
+		if ut.Completion != nil {
+			switch ut.Completion.Rule {
+			case "majority":
+				majority = true
+			case "threshold":
+				threshold = true
+			case "microflow":
+				microflow = true
+			}
+		}
+	})
+	var gates []versionGate
+	if groups {
+		gates = append(gates, versionGate{"workflows", "group_targeting", "targeting groups on a user task",
+			"Before Mendix 11.2 a user task targets users only: `targeting users xpath […]`, or a microflow " +
+				"returning users. Workflow groups arrived in 11.2."})
+	}
+	if multi {
+		gates = append(gates, versionGate{"workflows", "multi_user_task", "multi user task",
+			"Mendix added multi-user tasks in 9.22: use a user task, or upgrade the project"})
+	}
+	for _, r := range []struct {
+		used bool
+		rule string
+	}{{majority, "majority"}, {threshold, "threshold"}} {
+		if r.used {
+			gates = append(gates, versionGate{"workflows", "multi_user_task_majority_threshold", "decide by " + r.rule,
+				"Mendix added the majority and threshold rules in 10.0: decide by consensus or veto, or upgrade the project"})
+		}
+	}
+	if microflow {
+		gates = append(gates, versionGate{"workflows", "multi_user_task_microflow_rule", "decide by microflow",
+			"Mendix added deciding a multi-user task by a microflow in 10.3: decide by consensus or veto, or upgrade the project"})
+	}
+	if await {
+		gates = append(gates, versionGate{"workflows", "multi_user_task_await_all", "await all users",
+			"Mendix added `await all users` in 10.2: leave it out, so the task completes once its rule is met, or upgrade the project"})
+	}
+	return gates
 }
 
 // The floors of a flow call's `returns ( … )` mappings (ako/mxcli#977). The

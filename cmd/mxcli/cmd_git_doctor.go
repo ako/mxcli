@@ -26,20 +26,27 @@ Checked:
      endings inside .mxunit files; --fix rewrites any other value), and the
      mendix.* keys (Studio Pro's own bookkeeping) backfilled when missing —
      a value Studio Pro wrote stays.
-  2. The remote URL. Studio Pro can only use HTTPS; an SSH remote
-     (git@host:org/app.git or ssh://…) is rewritten to HTTPS by --fix. Other
-     non-HTTPS URLs are reported without being changed.
+  2. The remote URL, as configured. Studio Pro can only use HTTPS; an SSH
+     remote (git@host:org/app.git or ssh://…) is rewritten to HTTPS by --fix.
+     Other non-HTTPS URLs are reported without being changed. A
+     url.<base>.insteadOf rule in your git config that makes git use another
+     URL is reported too; --fix leaves it alone.
   3. The remote's refs/notes/mx_metadata. Absent or unreachable is a hint:
-     push the notes ref together with the branch.
+     push the notes ref together with the branch. When the remote has notes
+     the local ref does not hold (git clone never fetches refs/notes/*), the
+     commits are not judged: that is the finding, and --fix fetches the ref,
+     as a fast-forward only.
   4. Every commit's mx_metadata note. Missing notes make Studio Pro show
      "(unknown)"; a malformed note it cannot read at all. --fix computes real
      notes from the model (with -p), and falls back to a template note with a
      --version ModelerVersion where the model at a commit cannot be read.
      Notes Studio Pro wrote are never touched.
 
-Exits 1 while an issue remains, so the audit can gate CI. --fix does not push:
-push the branch and the notes ref together yourself.
+Exits 1 while an issue remains, so the audit can gate CI; fetch the notes
+first there. --fix does not push: push the branch and the notes ref together
+yourself.
 
+  git fetch <remote> refs/notes/mx_metadata:refs/notes/mx_metadata
   git push <remote> <branch> refs/notes/mx_metadata`,
 	Example: `  mxcli git doctor
   mxcli git doctor -p app.mpr --fix

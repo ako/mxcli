@@ -184,6 +184,75 @@ func TestTemplateWidgetValueTypeKeysAt10_15(t *testing.T) {
 	}
 }
 
+// typeKeySets returns the key set of every element of typeName in an encoded
+// document.
+func typeKeySets(t *testing.T, b []byte, typeName string) [][]string {
+	t.Helper()
+	var doc bsonv2.D
+	if err := bsonv2.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	var out [][]string
+	var walk func(v any)
+	walk = func(v any) {
+		switch x := v.(type) {
+		case bsonv2.D:
+			var keys []string
+			match := false
+			for _, e := range x {
+				keys = append(keys, e.Key)
+				if e.Key == "$Type" && e.Value == typeName {
+					match = true
+				}
+				walk(e.Value)
+			}
+			if match {
+				sort.Strings(keys)
+				out = append(out, keys)
+			}
+		case bsonv2.A:
+			for _, e := range x {
+				walk(e)
+			}
+		}
+	}
+	walk(doc)
+	return out
+}
+
+// CustomWidgets$WidgetReturnType: Type on every version, AssignableTo from
+// 9.20.0 (mendixmodelsdk 4.117.0). The vendored generator gave Type the row of
+// AssignableTo and left AssignableTo out, so on 9.0–9.19 the template's return
+// types lost the Type every one of them holds and kept an AssignableTo the
+// version does not have (ako/mxcli#1163). Studio Pro stores {EntityProperty,
+// IsList, Type} on 9.1.1 (208 of 208, the Marketplace's Employee Onboarding
+// app) and 9.4.0 (326 of 326, "Example project workflow extension" 2.0.0), and
+// adds AssignableTo by 9.24.3 (57 of 57, Multilevel Dynamic Workflow 1.0.0).
+func TestTemplateWidgetReturnTypeKeysAcrossMendix9_20(t *testing.T) {
+	for _, tt := range []struct {
+		pv   *types.ProjectVersion
+		want string
+	}{
+		{v(9, 18, 0), "$ID,$Type,EntityProperty,IsList,Type"},
+		{v(9, 20, 0), "$ID,$Type,AssignableTo,EntityProperty,IsList,Type"},
+		{v(9, 24, 30), "$ID,$Type,AssignableTo,EntityProperty,IsList,Type"},
+		{v(11, 13, 0), "$ID,$Type,AssignableTo,EntityProperty,IsList,Type"}, // control
+	} {
+		seen := 0
+		for _, id := range mwidgets.ListAvailableTemplates() {
+			for _, got := range typeKeySets(t, encodeTemplateWidget(t, id, tt.pv), "CustomWidgets$WidgetReturnType") {
+				seen++
+				if strings.Join(got, ",") != tt.want {
+					t.Errorf("%d.%d %s: WidgetReturnType keys %v, want %s", tt.pv.MajorVersion, tt.pv.MinorVersion, id, got, tt.want)
+				}
+			}
+		}
+		if seen == 0 {
+			t.Fatalf("%d.%d: no template holds a WidgetReturnType", tt.pv.MajorVersion, tt.pv.MinorVersion)
+		}
+	}
+}
+
 func containsKey(s []string, k string) bool {
 	for _, x := range s {
 		if x == k {

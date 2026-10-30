@@ -1,0 +1,42 @@
+mdl 1;
+-- ako/mxcli#1163: on Mendix 9.x a published OData service was refused with
+-- a message naming the wrong thing:
+--
+--   this Mendix 9.24.30 project cannot store
+--   ODataPublish$PublishedODataService2.IncludeMetadataByDefault (Mendix 10.8.0+)
+--
+-- That property is not the problem. The whole document mxcli writes,
+-- ODataPublish$PublishedODataService2, was introduced in 10.4.0
+-- (mendixmodelsdk). Before 10.4 a published OData service is a
+-- Rest$PublishedODataService, a different document that mxcli does not
+-- write. With the floor off, mx check 9.24.30 cannot load the project
+-- ("TypeCacheUnknownTypeException: ... ODataPublish$PublishedODataService2"),
+-- so lowering the property would have produced an unloadable app.
+--
+-- `mxcli check <this> -p <9.24 app>` now reports MDL-VERSION01 "create
+-- published odata service" before anything is written, and exec refuses the
+-- same way. On 10.4 and later the service is written as before.
+
+create module Probe1163OData;
+
+create persistent entity Probe1163OData.Customer (
+  Name: String(100),
+  Email: String(200) unique
+);
+
+create published odata service Probe1163OData.CustomerAPI (
+  Path: 'odata/customers/',
+  Version: '1.0.0',
+  ODataVersion: OData4,
+  Namespace: 'Probe1163OData.Customers',
+  ServiceName: 'Customer Service'
+)
+{
+  publish entity Probe1163OData.Customer as 'Customers' (
+    ReadMode: source
+  )
+  expose (
+    Email as 'customerId' (KEY, Filterable, Sortable),
+    Name
+  );
+};

@@ -13,6 +13,9 @@
 // remembers how far it is taken. Only an element that reaches down into that lane —
 // another decision, a loop box, an activity with an error handler under it — has to
 // wait for it to clear; a plain activity does not.
+//
+// An error handler's row is the lane's other occupant: it hangs ErrorHandlerPitch
+// under its activity and the main line carries on over it the same way.
 package executor
 
 import "github.com/mendixlabs/mxcli/mdl/ast"
@@ -48,6 +51,37 @@ func reachesBelowMainLine(stmt ast.MicroflowStatement, bounds Bounds) bool {
 	// A custom error handler's body is laid out under its activity and is not part
 	// of the activity's measured size.
 	return len(getErrorHandlerBody(stmt)) > 0
+}
+
+// handlerRowWidth is how wide the row of a statement's custom error handler is,
+// measured from the activity's left edge, or 0 when it has no handler body. The
+// row's first element is centred under the activity (addErrorHandlerFlow), so
+// the row starts where the activity does and runs right like a branch, end
+// event included.
+func (m *layoutMeasurer) handlerRowWidth(stmt ast.MicroflowStatement) int {
+	body := getErrorHandlerBody(stmt)
+	if len(body) == 0 {
+		return 0
+	}
+	return m.measureBranch(body).Width
+}
+
+// reserveHandlerRow marks the lane under the activity at activityX taken by its
+// error handler's row (ako/mxcli#1768, mendixlabs/mxcli#1672).
+//
+// The row is laid out ErrorHandlerPitch under its activity and runs right, and the
+// main line goes on one pitch after the activity regardless — which is right for a
+// plain activity, whose row is above the handler's. But the next activity with a
+// handler of its own started its row at its own x, inside this one: two consecutive
+// REST calls each with a three-element handler put the first handler's end event
+// and the second handler's first activity on the same point. clearLowerLane already
+// made such a statement wait for a reserved lane; the row just never reserved it.
+func (fb *flowBuilder) reserveHandlerRow(activityX int, body []ast.MicroflowStatement) {
+	if fb.measurer == nil || len(body) == 0 {
+		return
+	}
+	rowRight := activityX - ActivityWidth/2 + fb.measurer.measureBranch(body).Width
+	fb.reserveLowerLane(fb.posY, rowRight+laneGap)
 }
 
 // leftHalfOf is the distance from a statement's x to its left edge, as gapBetween
