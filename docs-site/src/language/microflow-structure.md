@@ -164,6 +164,11 @@ statements before it keep the places the builder derives for them, and only a
 or nothing: a few hand-placed statements are not measured against what is laid out
 around them.
 
+That is the default style. A project can choose another — the ELSE branch as a
+column under its decision, a guard's early return kept on the line, no wrapping —
+in a committed `layout-config.yaml`; flows written without `@position` then follow
+it. See [Choosing a layout style](../tools/flow-layout.md#choosing-a-layout-style).
+
 To re-arrange a flow that already exists — one drawn in Studio Pro, or one whose
 positions no longer fit after edits — run `mxcli layout flows`. It applies this
 same layout to the stored flow and changes nothing but coordinates; see
