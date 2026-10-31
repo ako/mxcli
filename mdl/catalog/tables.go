@@ -7,6 +7,11 @@ package catalog
 //
 // History:
 //
+//	30 (access rule id): permissions gains AccessRuleId and AccessRuleIndex,
+//	    which the linter selects — against a cached catalog without them every
+//	    permission query fails and the security rules report nothing
+//	    (ako/mxcli#1437). Also covers refs gaining the edges from message
+//	    definitions (ako/mxcli#1781, which shipped without a bump).
 //	29 (service microflow edges): refs gains the edges from an integration
 //	    service to the microflows it runs — a published OData resource's
 //	    read/change microflows, its actions and authentication microflow, a
@@ -156,7 +161,7 @@ package catalog
 //	    SnapshotSource / SourceId / SourceBranch / SourceRevision columns
 //	    from every row (issue #576).
 //	1 — initial flat schema with denormalized snapshot columns on every row.
-const CatalogSchemaVersion = "29"
+const CatalogSchemaVersion = "30"
 
 // MetaSchemaVersion is the catalog_meta key that records the schema version
 // the cache was built against.
@@ -1249,7 +1254,12 @@ func (c *Catalog) createTables() error {
 			DefaultMemberAccessRights TEXT,
 			ModuleName TEXT,
 			ProjectId TEXT,
-			SnapshotId TEXT
+			SnapshotId TEXT,
+			-- The entity access rule a row comes from, and that rule's position
+			-- on the entity (from 0). Empty / NULL for a page, flow or service
+			-- row, which no access rule produces (ako/mxcli#1437).
+			AccessRuleId TEXT,
+			AccessRuleIndex INTEGER
 		)`,
 
 		// constants — partial denormalization

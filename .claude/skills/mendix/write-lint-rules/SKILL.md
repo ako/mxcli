@@ -12,10 +12,10 @@ description: "Write custom Starlark lint rules in .claude/lint-rules/ that run b
 |---|---|
 | 25-67 | Rule File Structure |
 | 68-161 | Available Query Functions |
-| 162-606 | Object Properties |
-| 607-620 | Helper Functions |
-| 621-707 | Common Patterns |
-| 708-716 | Validation |
+| 162-591 | Object Properties |
+| 592-605 | Helper Functions |
+| 606-692 | Common Patterns |
+| 693-701 | Validation |
 
 <!-- /skill-index -->
 # Writing Custom Starlark Lint Rules
@@ -515,22 +515,7 @@ def count_not(node):
 | `timeout` | int | Configured timeout in milliseconds; `0` when none is set |
 | `module_name` | string | `"Sales"` |
 
-### permission
-
-Returned by `permissions()` (all types) or `permissions_for()` (entity-specific).
-
-| Property | Type | Example |
-|----------|------|---------|
-| `module_role_name` | string | `"Sales.Admin"` — qualified, so it compares directly against `user_role.module_roles` |
-| `element_type` | string | `"ENTITY"`, `"MICROFLOW"`, `"NANOFLOW"`, `"PAGE"`, `"ODATA_SERVICE"` (from `permissions()` only) |
-| `element_name` | string | `"Sales.Customer"` |
-| `module_name` | string | `"Sales"` |
-| `entity_name` | string | `"Sales.Customer"` (from `permissions_for()` only) |
-| `access_type` | string | `"CREATE"`, `"READ"`, `"WRITE"`, `"DELETE"` (entity), `"EXECUTE"` (microflow, nanoflow), `"VIEW"` (page), `"ACCESS"` (OData service), `"MEMBER_READ"`, `"MEMBER_WRITE"` |
-| `member_name` | string | Attribute name (for MEMBER_READ/MEMBER_WRITE) |
-| `xpath_constraint` | string | XPath constraint or empty |
-| `is_constrained` | bool | True if XPath constraint is set |
-| `default_member_access_rights` | string | The rule's "default rights for new members": `"None"`, `"ReadOnly"` or `"ReadWrite"`. Empty for non-entity permissions |
+The `permission` struct `permissions()` and `permissions_for()` return is in [catalog-tables.md](catalog-tables.md#permission).
 
 ### user_role
 | Property | Type | Example |

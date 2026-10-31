@@ -392,6 +392,12 @@ type Permission struct {
 	// DefaultMemberAccessRights is the rule's "default rights for new members"
 	// setting: None, ReadOnly or ReadWrite. Empty when not applicable.
 	DefaultMemberAccessRights string
+	// AccessRuleID is the $ID of the entity access rule this row comes from,
+	// and AccessRuleIndex that rule's position on the entity (from 0): rows
+	// sharing them are one rule (ako/mxcli#1437). "" and -1 for a row no access
+	// rule produces.
+	AccessRuleID    string
+	AccessRuleIndex int
 }
 
 // PermissionsFor returns an iterator over all permissions for a given entity.
@@ -399,7 +405,8 @@ func (ctx *LintContext) PermissionsFor(entityQualifiedName string) iter.Seq[Perm
 	return func(yield func(Permission) bool) {
 		rows, err := ctx.db.Query(`
 			SELECT ModuleRoleName, ElementName, MemberName, AccessType, XPathConstraint,
-			       COALESCE(DefaultMemberAccessRights, ''), ModuleName
+			       COALESCE(DefaultMemberAccessRights, ''), ModuleName,
+			       COALESCE(AccessRuleId, ''), COALESCE(AccessRuleIndex, -1)
 			FROM permissions
 			WHERE ElementType = 'ENTITY' AND ElementName = ?
 			ORDER BY ModuleRoleName, AccessType
@@ -414,7 +421,7 @@ func (ctx *LintContext) PermissionsFor(entityQualifiedName string) iter.Seq[Perm
 			var p Permission
 			var memberName, xpathConstraint, moduleName sql.NullString
 			err := rows.Scan(&p.ModuleRoleName, &p.EntityName, &memberName, &p.AccessType, &xpathConstraint,
-				&p.DefaultMemberAccessRights, &moduleName)
+				&p.DefaultMemberAccessRights, &moduleName, &p.AccessRuleID, &p.AccessRuleIndex)
 			if err != nil {
 				ctx.recordQueryError("PermissionsFor (row scan)", err)
 				continue
@@ -444,6 +451,12 @@ type AllPermission struct {
 	// DefaultMemberAccessRights is the rule's "default rights for new members"
 	// setting: None, ReadOnly or ReadWrite. Empty for non-entity permissions.
 	DefaultMemberAccessRights string
+	// AccessRuleID is the $ID of the entity access rule this row comes from,
+	// and AccessRuleIndex that rule's position on the entity (from 0): rows
+	// sharing them are one rule (ako/mxcli#1437). "" and -1 for a row no access
+	// rule produces.
+	AccessRuleID    string
+	AccessRuleIndex int
 }
 
 // Permissions returns an iterator over all permissions in the catalog.
@@ -456,7 +469,8 @@ func (ctx *LintContext) Permissions() iter.Seq[AllPermission] {
 			SELECT ModuleRoleName, ElementType, ElementName,
 				COALESCE(MemberName, ''), AccessType,
 				COALESCE(XPathConstraint, ''), COALESCE(DefaultMemberAccessRights, ''),
-				COALESCE(ModuleName, '')
+				COALESCE(ModuleName, ''),
+				COALESCE(AccessRuleId, ''), COALESCE(AccessRuleIndex, -1)
 			FROM permissions
 			ORDER BY ElementType, ElementName, ModuleRoleName, AccessType
 		`)
@@ -470,7 +484,7 @@ func (ctx *LintContext) Permissions() iter.Seq[AllPermission] {
 			var p AllPermission
 			if err := rows.Scan(&p.ModuleRoleName, &p.ElementType, &p.ElementName,
 				&p.MemberName, &p.AccessType, &p.XPathConstraint,
-				&p.DefaultMemberAccessRights, &p.ModuleName); err != nil {
+				&p.DefaultMemberAccessRights, &p.ModuleName, &p.AccessRuleID, &p.AccessRuleIndex); err != nil {
 				continue
 			}
 			p.IsConstrained = p.XPathConstraint != ""

@@ -1271,6 +1271,8 @@ func allPermissionToStarlark(p AllPermission) starlark.Value {
 		"is_constrained":               starlark.Bool(p.IsConstrained),
 		"module_name":                  starlark.String(p.ModuleName),
 		"default_member_access_rights": starlark.String(p.DefaultMemberAccessRights),
+		"access_rule_id":               starlark.String(p.AccessRuleID),
+		"access_rule_index":            starlark.MakeInt(p.AccessRuleIndex),
 	})
 }
 
@@ -1285,6 +1287,9 @@ func permissionToStarlark(p Permission) starlark.Value {
 		"xpath_constraint":             starlark.String(p.XPathConstraint),
 		"is_constrained":               starlark.Bool(p.IsConstrained),
 		"default_member_access_rights": starlark.String(p.DefaultMemberAccessRights),
+		// Rows sharing an access_rule_id are one access rule (ako/mxcli#1437).
+		"access_rule_id":    starlark.String(p.AccessRuleID),
+		"access_rule_index": starlark.MakeInt(p.AccessRuleIndex),
 	})
 }
 
