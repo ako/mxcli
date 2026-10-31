@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **MPR012 follows the app's Web UI client** (ako/mxcli#1287, mendixlabs/mxcli#1226) — a Mendix 11 app can still run the classic client, where the legacy static and dynamic image widgets build clean, but MPR012 warned on each of them that "mxbuild reports CE0582". On the classic client or in migration mode it is now an info-level note that the widget needs converting before the app switches; under the React client it stays a warning.
 - **A pluggable widget's hidden expression property is stored as Studio Pro stores it** (ako/mxcli#548) — a property the widget's editorConfig hides is written at its declared default, and for an Expression-typed one that default went into `PrimitiveValue` as well as `Expression` (every combo box's `customEditabilityExpression`, `PrimitiveValue: "false"`). Studio Pro leaves `PrimitiveValue` empty on all 939 Expression-typed values of ako/TestApp and PedApp; mx check accepted both, so the cost was a widget that differed from Studio Pro's.
 
 ## [0.29.0] - 2026-10-30
