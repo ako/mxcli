@@ -220,7 +220,7 @@ end;`)
 		{"btnDo", "Forms$CallNanoflowClientAction"},
 		{"dvGot", "Forms$NanoflowSource"},
 	} {
-		owner := firstOfType(t, namedDoc(t, doc, c.widget), c.owner)
+		owner := storedElementOfType(t, namedDoc(t, doc, c.widget), c.owner)
 		list, _ := bsonValue(owner, "ParameterMappings").(bson.A)
 		if len(list) != 2 {
 			t.Fatalf("%s: %s.ParameterMappings is %v, want a marker and one mapping", c.widget, c.owner, list)
@@ -231,8 +231,8 @@ end;`)
 	}
 }
 
-// firstOfType returns the first element of $Type typ inside doc.
-func firstOfType(t *testing.T, doc bson.D, typ string) bson.D {
+// storedElementOfType returns the first element of $Type typ inside doc.
+func storedElementOfType(t *testing.T, doc bson.D, typ string) bson.D {
 	t.Helper()
 	var found bson.D
 	var walk func(any)
