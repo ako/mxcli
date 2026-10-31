@@ -192,7 +192,7 @@ func pageFromGen(p *genPg.Page, containerID model.ID) *pages.Page {
 			ContainerID:  out.ID,
 			Name:         gp.Name(),
 			DefaultValue: gp.DefaultValue(),
-			IsRequired:   gp.IsRequired(),
+			IsRequired:   pageParameterIsRequired(gp),
 		}
 		pp.ID = model.ID(gp.ID())
 		// Object parameters carry an entity (rendered as the qualified entity
@@ -344,4 +344,22 @@ func (b *Backend) PageLayoutName(id model.ID) (string, error) {
 		return "", err
 	}
 	return backend.PageLayoutNameFromRaw(raw), nil
+}
+
+// pageParameterIsRequired is a stored page parameter's IsRequired. The property
+// is Mendix 11.5+ (mendixlabs/mxcli#1640): a parameter stored without it — every
+// one below 11.5 — is required, and only a stored false is optional. The gen
+// accessor alone reads an absent key as false, which would make every older
+// parameter look optional.
+func pageParameterIsRequired(gp *genPg.PageParameter) bool {
+	raw := gp.Raw()
+	if raw == nil {
+		return gp.IsRequired()
+	}
+	v, err := raw.LookupErr("IsRequired")
+	if err != nil {
+		return true
+	}
+	b, ok := v.BooleanOK()
+	return !ok || b
 }

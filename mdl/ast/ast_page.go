@@ -12,6 +12,10 @@ type PageParameter struct {
 	Name       string        // Parameter name (without $ prefix)
 	EntityType QualifiedName // Entity type (for backward compatibility; empty for primitives)
 	Type       DataType      // Full data type (primitives + entities)
+	// Optional is `$Name: Type optional`: Forms$PageParameter.IsRequired
+	// false, a Mendix 11.5+ page parameter the page can be opened without
+	// (mendixlabs/mxcli#1640). Snippet parameters have no such flag.
+	Optional bool
 }
 
 // PageVariable represents a page variable: $Name: DataType = 'defaultExpression'

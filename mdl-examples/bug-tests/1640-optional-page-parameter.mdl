@@ -1,0 +1,40 @@
+-- mendixlabs/mxcli#1640 (ako/mxcli#1649): an optional page parameter
+-- (Forms$PageParameter.IsRequired = false, Mendix 11.5+) was invisible to
+-- mxcli.
+--
+-- Symptom: on a page whose parameter Studio Pro marks not Required, opened by a
+-- menu item with no argument (mx check 0 errors), `describe page` printed
+--   Params: ( $Sale: MyFirstModule.Sale )
+-- `describe navigation` printed
+--   menu item 'Sale' ( OnClick: show page MyFirstModule.Sale_View(Sale = $currentObject) … )
+-- and executing that output was refused with MDL-PAGEARG01, so the navigation
+-- profile could no longer be changed from MDL.
+--
+-- Fix: `$Sale: Shop.Sale optional` writes IsRequired = false (refused below
+-- 11.5, MDL-VERSION01, and on a snippet parameter, MDL087); describe page
+-- prints it; and describe navigation passes no argument for an optional
+-- parameter with no stored mapping, so its output re-runs "Unchanged". A
+-- parameter stored without IsRequired (below 11.5) reads as required.
+--
+-- To verify: run this script on an 11.5+ project, then `mxcli docker check`:
+-- 0 errors (remove `optional` and the menu item is CE1571). In Studio Pro the
+-- parameter's Required box is unticked. `describe navigation Responsive` prints
+-- the Sale item without an argument.
+
+mdl 1;
+
+create module Shop;
+
+create persistent entity Shop.Sale (
+  Name: string(100)
+);
+
+create page Shop.Sale_View (
+  Title: 'Sale',
+  Layout: Atlas_Core.Atlas_Default,
+  Params: ( $Sale: Shop.Sale optional )
+) {
+  dataview dvSale (DataSource: $Sale) {
+    textbox tbName (Attribute: Name)
+  }
+};
