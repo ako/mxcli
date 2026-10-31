@@ -26,7 +26,7 @@ description: "Microflow syntax reference in MDL — every activity type, control
 | 579-595 | Validation Checklist |
 | 596-607 | Tips for Success |
 | 608-614 | Related Documentation |
-| 615-732 | Quick Reference |
+| 615-727 | Quick Reference |
 
 <!-- /skill-index -->
 # Mendix Microflow Skill
@@ -645,17 +645,12 @@ $var/Module.AssociationName/attribute   -- Chained
 
 ### Annotation Pattern
 ```mdl
-@position(200, 200)          -- optional: omit it and mxcli lays the flow out; to re-arrange an existing flow run `mxcli layout flows`
+@position(200, 200)          -- optional: omit it and mxcli lays the flow out in the project's layout-config.yaml style (never imitate a style with @position; keep, never hand-write, a `@mxcli-layout:` doc line); to re-arrange an existing flow run `mxcli layout flows`
 @caption 'Persist order'
 @color Green
 @annotation 'Note about the next activity'
 commit $Order;                                          -- Annotations apply here
 ```
-
-Layout *style* (whether an ELSE branch is a lane or a column, for example) is the
-project's `layout-config.yaml`, not something to imitate with `@position`. A
-`/** … */` line `@mxcli-layout: …` records the style a flow was drawn in — keep it
-when copying a described flow, and never write one by hand.
 
 ### Annotations Are Notes, and a Note Can Be Shared
 
