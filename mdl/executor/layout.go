@@ -59,6 +59,10 @@ type Bounds struct {
 // layoutMeasurer calculates dimensions of microflow statements
 type layoutMeasurer struct {
 	varTypes map[string]string
+	// layout is the style the flow is measured for; nil is the default
+	// (flowlayout.go). It must be the builder's, or the measured sizes are those
+	// of a different drawing.
+	layout *flowLayout
 }
 
 // measureStatements calculates the total bounds for a list of statements.
@@ -309,6 +313,16 @@ func (m *layoutMeasurer) measureIfStatement(s *ast.IfStmt) Bounds {
 		branchWidth = HorizontalSpacing / 2
 	}
 
+	elseColumn := m.layoutStyle().IfElse == IfElseColumn && (s.HasElse || len(s.ElseBody) > 0)
+	var column Bounds
+	if elseColumn {
+		column = m.measureColumn(s.ElseBody)
+		branchWidth = elseColumnBranchWidth(thenBounds, column)
+		if branchWidth == 0 {
+			branchWidth = HorizontalSpacing / 2
+		}
+	}
+
 	totalWidth := SplitWidth + HorizontalSpacing/2 + branchWidth + MergeSize
 	// A guard — `if X then ...; return; end if` with no ELSE — has no merge: its
 	// branch ends in an end event and the main line resumes straight after the
@@ -321,7 +335,10 @@ func (m *layoutMeasurer) measureIfStatement(s *ast.IfStmt) Bounds {
 
 	// Height depends on layout strategy
 	var totalHeight int
-	if len(s.ElseBody) > 0 {
+	if elseColumn {
+		// The column hangs under the split, below the TRUE body.
+		totalHeight = max(thenBounds.Height, ActivityHeight) + BranchGap + max(column.Height, ActivityHeight)
+	} else if len(s.ElseBody) > 0 {
 		// IF WITH ELSE: TRUE path horizontal (main line), FALSE path below
 		// Height = THEN branch height + gap + ELSE branch height
 		thenHeight := max(thenBounds.Height, ActivityHeight)

@@ -25,6 +25,10 @@ func (fb *flowBuilder) addIfStatement(s *ast.IfStmt) model.ID {
 
 	// Calculate branch width (max of both branches)
 	branchWidth := max(thenBounds.Width, elseBounds.Width)
+	elseColumn := fb.layoutStyle().IfElse == IfElseColumn && (s.HasElse || len(s.ElseBody) > 0)
+	if elseColumn {
+		branchWidth = elseColumnBranchWidth(thenBounds, fb.measurer.measureColumn(s.ElseBody))
+	}
 	if branchWidth == 0 {
 		branchWidth = HorizontalSpacing / 2
 	}
@@ -290,6 +294,10 @@ func (fb *flowBuilder) addIfStatement(s *ast.IfStmt) model.ID {
 		elseCenterY := centerY + thenH/2 + BranchGap + elseH/2
 		fb.posX = thenStartX
 		fb.posY = elseCenterY
+		var column *elseColumnCursor
+		if elseColumn {
+			column = fb.startElseColumn(splitX, centerY+thenH/2+BranchGap)
+		}
 		fb.endsWithReturn = false
 
 		var lastElseID model.ID
@@ -300,7 +308,9 @@ func (fb *flowBuilder) addIfStatement(s *ast.IfStmt) model.ID {
 		for i, stmt := range s.ElseBody {
 			thisAnchor := stmtOwnAnchor(stmt)
 			fb.atBodyTail = tailWithoutMerge && i == len(s.ElseBody)-1
+			column.begin(stmt)
 			actID := fb.addStatement(stmt)
+			column.end()
 			fb.atBodyTail = false
 			if fb.takeBranchJoin(lastElseID, splitID, "false", pendingElseCase, prevElseAnchor, falseBranchAnchor) {
 				pendingElseCase, pendingElseAnchor = "", nil
@@ -312,6 +322,9 @@ func (fb *flowBuilder) addIfStatement(s *ast.IfStmt) model.ID {
 					// First statement in ELSE - connect from split going down (false path).
 					// Same compositional rule as the THEN branch.
 					flow := newDownwardFlowWithCase(splitID, actID, "false")
+					if column != nil {
+						flow.DestinationConnectionIndex = AnchorTop
+					}
 					applyUserAnchors(flow, falseBranchAnchor, branchDestinationAnchor(falseBranchAnchor, thisAnchor))
 					fb.flows = append(fb.flows, flow)
 					// Rejoin a pending empty custom error handler from the
@@ -339,6 +352,9 @@ func (fb *flowBuilder) addIfStatement(s *ast.IfStmt) model.ID {
 						pendingElseAnchor = nil
 					} else {
 						flow = newHorizontalFlow(lastElseID, actID)
+					}
+					if column != nil {
+						flow.OriginConnectionIndex, flow.DestinationConnectionIndex = AnchorBottom, AnchorTop
 					}
 					applyUserAnchors(flow, originAnchor, destAnchor)
 					fb.flows = append(fb.flows, flow)
