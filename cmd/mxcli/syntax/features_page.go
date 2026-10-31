@@ -215,10 +215,10 @@ LIST IMPACT OF htmlelement;
 			"-- so a stored one round-trips through DESCRIBE (mendixlabs/mxcli#1057). Without\n" +
 			"-- it the widget is written with no image and mxbuild reports CE0436:\n" +
 			"STATICIMAGE imgLogo (Image: 'MyModule.Images.logo', Width: 64, Height: 64)\n\n" +
-			"-- Not supported by the React client — added in Mendix 10.7, and the only\n" +
-			"-- client on 11, so this is not a Mendix 11 rule. These are written correctly,\n" +
-			"-- but mxbuild reports CE0582 (\"not supported in React client\") on each\n" +
-			"-- wherever that client is enabled, and `mxcli lint` reports them as MPR012.\n" +
+			"-- Not supported by the React client (added in Mendix 10.7). These are written\n" +
+			"-- correctly, but mxbuild reports CE0582 (\"not supported in React client\") on\n" +
+			"-- each wherever that client is enabled, and `mxcli lint` reports them as MPR012\n" +
+			"-- (an info note while the app still runs the classic client).\n" +
 			"-- Prefer the alternative:\n" +
 			"--   STATICIMAGE    -> IMAGE\n" +
 			"--   DYNAMICIMAGE   -> IMAGE\n" +
