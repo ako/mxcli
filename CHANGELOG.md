@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - **A pluggable widget's hidden expression property is stored as Studio Pro stores it** (ako/mxcli#548) — a property the widget's editorConfig hides is written at its declared default, and for an Expression-typed one that default went into `PrimitiveValue` as well as `Expression` (every combo box's `customEditabilityExpression`, `PrimitiveValue: "false"`). Studio Pro leaves `PrimitiveValue` empty on all 939 Expression-typed values of ako/TestApp and PedApp; mx check accepted both, so the cost was a widget that differed from Studio Pro's.
+- **A source catalog build describes a project widget the same way every run** (#1799) — `refresh catalog full source` sometimes wrote a pluggable widget in the generic `pluggablewidget '<id>'` form instead of its own keyword (`vegachart …`), and since #1802 an incremental build kept that row until a `force`. Each parallel describe loaded its own widget registry, and with one definition that never counts as current (hand-made, or its `.mpk` removed), each load rewrote every `.def.json` while the other describes read them. The describes now share the build's registry, and a definition is replaced by rename, so no reader sees a half-written file.
 
 ## [0.29.0] - 2026-10-30
 

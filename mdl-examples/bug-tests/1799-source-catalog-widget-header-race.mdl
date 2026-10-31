@@ -1,0 +1,33 @@
+mdl 1;
+-- ako/mxcli#1799: a source catalog build described a project pluggable widget
+-- by its generic form on some runs and by its keyword on others, for the same
+-- unchanged project:
+--
+--   vegachart chartReplayWin ( spec: …
+--   pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartReplayWin ( spec: …
+--
+-- Repro, in a project that has the widget's .mpk in widgets/:
+--
+--   mxcli exec this-file.mdl -p App.mpr
+--   # one definition without a current generatorVersion stamp — a hand-made
+--   # one, or one whose .mpk was removed — keeps every load "stale"
+--   echo '{"widgetId":"acme.widget.Orphan","mdlName":"orphanwidget"}' \
+--     > .mxcli/widgets/aaorphan.def.json
+--   for i in 1 2 3 4 5 6; do
+--     mxcli -p App.mpr -c "refresh catalog full source force"
+--     sqlite3 .mxcli/catalog.db "select count(*) from source
+--       where instr(SourceText, 'pluggablewidget ''com.mendix.widget.web.accordion')>0"
+--   done
+--
+-- Before the fix the count was non-zero on some runs: every parallel describe
+-- loaded its own registry, each load rewrote the definitions (truncating
+-- them) because of the stale one, and a describe that read a truncated file
+-- lost the widget. After it, 0 on every run: the describes share the build's
+-- registry, and a definition is replaced by rename, never truncated.
+
+create or modify module WidgetProbe;
+
+create or modify page WidgetProbe.P1799 ( title: 'P1799', layout: Atlas_Core.Atlas_Default )
+{
+  accordion acc1
+};
