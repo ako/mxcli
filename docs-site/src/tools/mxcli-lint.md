@@ -64,6 +64,41 @@ mxcli lint -p app.mpr --exclude System --exclude Administration
 mxcli lint -p app.mpr --color
 ```
 
+## Baseline: Report Only New Findings
+
+On a mature app the existing backlog buries the findings about the change you
+just made. Record a baseline once, commit it, and compare against it afterwards:
+
+```bash
+# Record today's findings
+mxcli lint -p app.mpr --baseline lint-baseline.json --update-baseline
+
+# Later: report only what is not in the baseline
+mxcli lint -p app.mpr --baseline lint-baseline.json
+```
+
+The comparison prints a summary on stderr, so `--format json` and `--format sarif`
+stay clean:
+
+```
+Lint baseline lint-baseline.json: 1 new, 1518 already known, 0 fixed
+```
+
+- Only the **new** findings are reported, and the exit code follows them alone.
+- A finding is matched on its **rule and document** (the document's id where the
+  rule gives one, so renaming a document keeps its findings), not on its message.
+  Rewording a rule therefore does not make its findings new, while a further
+  finding of the same rule in the same document is.
+- A rule that **fails to run** is never absorbed by the baseline.
+- A run scoped with `--modules`, `--documents` or `--rules` sees only part of the
+  project: it reports new findings but not how many were fixed, and
+  `--update-baseline` refuses it, since recording it would drop every finding
+  outside the scope.
+- A missing or unreadable baseline file is an error, not "everything is new".
+
+The file is sorted JSON, so re-recording an unchanged project rewrites the same
+bytes and a committed baseline diffs only where findings changed.
+
 ## CI Integration
 
 ### GitHub Actions

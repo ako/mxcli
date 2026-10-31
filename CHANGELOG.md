@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`mxcli lint --baseline <file>` reports only new findings** (ako/mxcli#1328, mendixlabs/mxcli#1455) — record a baseline with `--update-baseline`, commit it, and later runs report only the findings it does not have, with an exit code that follows them alone and a `N new, M already known, K fixed` summary on stderr. Findings are matched on rule and document, not message, so rewording a rule does not make its findings new; a scoped run (`-m`, `-d`, `-r`) reports new findings but cannot update the baseline.
 - **Optional page parameters** (mendixlabs/mxcli#1640, ako/mxcli#1649) — `Params: ( $Sale: Shop.Sale optional )` is Studio Pro's unticked *Required* (`Forms$PageParameter.IsRequired = false`, Mendix 11.5+): the page can be opened with no argument, from a menu item for example, where a required parameter is CE1571. `create page`, `alter page … add parameters` and `describe page` all spell it. `describe navigation` no longer invents `(Sale = $currentObject)` for a menu item opening such a page, which made its output one `exec` refused (MDL-PAGEARG01) and left the navigation profile unchangeable from MDL. Below 11.5 `optional` is refused (MDL-VERSION01), and a snippet parameter cannot be optional (MDL087).
 
 ### Changed
