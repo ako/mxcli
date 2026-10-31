@@ -921,8 +921,10 @@ auto units and a responsive image — which `describe page` also omits, so a
 round trip neither loses them nor invents them.
 
 **CE0582** is reported for `staticimage` wherever it appears, by any app running
-the React client — which Mendix added in **10.7** and which is the only client on
-11, so this is not a Mendix 11 rule. The replacement is the pluggable `image`
+the React client — which Mendix added in **10.7**. A Mendix 11 app can still run the
+classic client (Web UI → `UseOptimizedClient` is `No` or `MigrationMode`), where these
+widgets build clean, and there MPR012 is an info-level "convert before switching" note
+instead of a warning. The replacement is the pluggable `image`
 widget, which takes the same `Image:`; Studio Pro offers the conversion from the
 CE0582 error's context menu. mxcli still writes it, because round-tripping a
 model that already contains one is the point — and `mxcli lint` reports it as
