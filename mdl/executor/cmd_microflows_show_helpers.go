@@ -1328,7 +1328,7 @@ func traverseFlow(
 		}
 
 		trueTerminates := branchFlowTerminatesBeforeMerge(trueFlow, mergeID, activityMap, flowsByOrigin, splitMergeMap)
-		isGuard := trueTerminates && flowLooksLikeGuardContinuation(falseFlow, obj, activityMap) && !hasExplicitFalseBranchAnchor(falseFlow)
+		isGuard := trueTerminates && flowLooksLikeGuardContinuation(ctx, falseFlow, obj, activityMap) && !hasExplicitFalseBranchAnchor(falseFlow)
 
 		if isGuard {
 			// A guard's THEN arm is followed by the false continuation.
@@ -1551,7 +1551,7 @@ func traverseFlowUntilMerge(
 		}
 
 		trueTerminates := branchFlowTerminatesBeforeMerge(trueFlow, nestedMergeID, activityMap, flowsByOrigin, splitMergeMap)
-		isGuard := trueTerminates && flowLooksLikeGuardContinuation(falseFlow, obj, activityMap) && !hasExplicitFalseBranchAnchor(falseFlow)
+		isGuard := trueTerminates && flowLooksLikeGuardContinuation(ctx, falseFlow, obj, activityMap) && !hasExplicitFalseBranchAnchor(falseFlow)
 
 		if isGuard {
 			// A guard's THEN arm is followed by the false continuation.
@@ -2214,7 +2214,7 @@ func emitEnumSplitStatement(
 	branches := []enumBranch{}
 	branchByDestination := map[model.ID]int{}
 	var elseFlow *microflows.SequenceFlow
-	for _, flow := range orderedEnumSplitFlows(findNormalFlows(flowsByOrigin[currentID]), activityMap) {
+	for _, flow := range orderedEnumSplitFlowsFor(ctx, findNormalFlows(flowsByOrigin[currentID]), activityMap) {
 		caseValue, ok := enumCaseValue(flow)
 		if !ok {
 			elseFlow = flow
@@ -2279,7 +2279,7 @@ func emitInheritanceSplitStatement(
 	}
 
 	var elseFlow *microflows.SequenceFlow
-	for _, flow := range orderedInheritanceSplitFlows(findNormalFlows(flowsByOrigin[currentID])) {
+	for _, flow := range orderedInheritanceSplitFlowsFor(ctx, findNormalFlows(flowsByOrigin[currentID]), activityMap) {
 		caseName, ok := inheritanceCaseName(flow, entityNames)
 		if !ok {
 			elseFlow = flow
@@ -2427,6 +2427,59 @@ func orderedEnumSplitFlows(flows []*microflows.SequenceFlow, activityMap map[mod
 	return ordered
 }
 
+// orderedEnumSplitFlowsFor is orderedEnumSplitFlows for the flow being described.
+// In a flow that records case-split columns (ako/mxcli#1832) every outcome after
+// the first leaves the split's bottom for the top of its own column: one side
+// pair and one depth, so the order is finished by how far right the column
+// stands. The tie-break is kept to that style: any other drawing reads as before.
+func orderedEnumSplitFlowsFor(ctx *ExecContext, flows []*microflows.SequenceFlow, activityMap map[model.ID]microflows.MicroflowObject) []*microflows.SequenceFlow {
+	ordered := orderedEnumSplitFlows(flows, activityMap)
+	if describesCaseColumns(ctx) {
+		sortColumnsLeftToRight(ordered, splitCaseOrder, activityMap)
+	}
+	return ordered
+}
+
+// orderedInheritanceSplitFlowsFor is orderedInheritanceSplitFlows for the flow
+// being described, finished left to right in a flow that records case-split
+// columns (see orderedEnumSplitFlowsFor).
+func orderedInheritanceSplitFlowsFor(ctx *ExecContext, flows []*microflows.SequenceFlow, activityMap map[model.ID]microflows.MicroflowObject) []*microflows.SequenceFlow {
+	ordered := orderedInheritanceSplitFlows(flows)
+	if describesCaseColumns(ctx) {
+		sortColumnsLeftToRight(ordered, inheritanceSplitCaseOrder, activityMap)
+	}
+	return ordered
+}
+
+func describesCaseColumns(ctx *ExecContext) bool {
+	return ctx != nil && ctx.describedFlowLayout != nil && ctx.describedFlowLayout.CaseSplit == CaseSplitColumns
+}
+
+// sortColumnsLeftToRight orders flows by their side pair's rank, then by how far
+// right their destination stands, then how far down. Columns share a top edge,
+// not a centre — a column starting with an end event has its centre higher than
+// one starting with an activity — so x decides, not y.
+func sortColumnsLeftToRight(flows []*microflows.SequenceFlow, rank func(*microflows.SequenceFlow) int, activityMap map[model.ID]microflows.MicroflowObject) {
+	at := func(f *microflows.SequenceFlow) model.Point {
+		if f != nil {
+			if obj := activityMap[f.DestinationID]; obj != nil {
+				return obj.GetPosition()
+			}
+		}
+		return model.Point{}
+	}
+	sort.SliceStable(flows, func(i, j int) bool {
+		if ri, rj := rank(flows[i]), rank(flows[j]); ri != rj {
+			return ri < rj
+		}
+		pi, pj := at(flows[i]), at(flows[j])
+		if pi.X != pj.X {
+			return pi.X < pj.X
+		}
+		return pi.Y < pj.Y
+	})
+}
+
 func orderedInheritanceSplitFlows(flows []*microflows.SequenceFlow) []*microflows.SequenceFlow {
 	ordered := append([]*microflows.SequenceFlow(nil), flows...)
 	sort.SliceStable(ordered, func(i, j int) bool {
@@ -2563,6 +2616,7 @@ func findBranchFlows(flows []*microflows.SequenceFlow) (trueFlow, falseFlow *mic
 }
 
 func flowLooksLikeGuardContinuation(
+	ctx *ExecContext,
 	flow *microflows.SequenceFlow,
 	split microflows.MicroflowObject,
 	activityMap map[model.ID]microflows.MicroflowObject,
@@ -2583,9 +2637,22 @@ func flowLooksLikeGuardContinuation(
 	// intentionally relies on mxcli's layout/anchor contract so a real false
 	// branch whose activities happen to be aligned with the split is not
 	// collapsed into a guard-style continuation during describe.
-	return dest.GetPosition().Y == split.GetPosition().Y &&
+	if dest.GetPosition().Y == split.GetPosition().Y &&
 		flow.OriginConnectionIndex == AnchorRight &&
-		flow.DestinationConnectionIndex == AnchorLeft
+		flow.DestinationConnectionIndex == AnchorLeft {
+		return true
+	}
+	// A flow drawn with `guard: true-right` (ako/mxcli#1832) continues straight
+	// down from the split's bottom instead. Only a flow that records that style is
+	// read this way: in any other the same shape is an ELSE column, and describing
+	// it as a guard would not rebuild where it is.
+	if ctx != nil && ctx.describedFlowLayout != nil && ctx.describedFlowLayout.Guard == GuardTrueRight {
+		return dest.GetPosition().X == split.GetPosition().X &&
+			dest.GetPosition().Y > split.GetPosition().Y &&
+			flow.OriginConnectionIndex == AnchorBottom &&
+			flow.DestinationConnectionIndex == AnchorTop
+	}
+	return false
 }
 
 // findErrorHandlerFlow returns the error handler flow from an activity's outgoing flows.

@@ -483,6 +483,8 @@ func describeNanoflow(ctx *ExecContext, name ast.QualifiedName) error {
 	wrapperMf := &microflows.Microflow{
 		ReturnType:       targetNf.ReturnType,
 		ObjectCollection: targetNf.ObjectCollection,
+		// The describer reads the layout style the nanoflow records (#1832).
+		Documentation: targetNf.Documentation,
 	}
 	prevDescribingReturnValue := ctx.DescribingMicroflowHasReturnValue
 	ctx.DescribingMicroflowHasReturnValue = microflowHasReturnValue(wrapperMf)
@@ -499,6 +501,7 @@ func describeNanoflow(ctx *ExecContext, name ast.QualifiedName) error {
 				ReturnType:         targetNf.ReturnType,
 				ReturnVariableName: targetNf.ReturnVariableName,
 				ObjectCollection:   targetNf.ObjectCollection,
+				Documentation:      targetNf.Documentation,
 			}, name, entityNames, microflowNames)()
 		}
 		activityLines := formatMicroflowActivities(ctx, wrapperMf, entityNames, microflowNames)
@@ -819,6 +822,7 @@ func formatMicroflowActivities(
 	if mf.ObjectCollection == nil {
 		return []string{"-- debug: ObjectCollection is nil"}
 	}
+	defer ctx.describingFlowLayout(mf.Documentation)()
 
 	// Build activity map by ID for flow traversal
 	activityMap := make(map[model.ID]microflows.MicroflowObject)
@@ -1005,6 +1009,7 @@ func formatMicroflowBodyWithSourceMap(
 	sourceMap map[string]elkSourceRange,
 	headerLineCount int,
 ) (warnings, body []string) {
+	defer ctx.describingFlowLayout(mf.Documentation)()
 	if mf.ObjectCollection == nil {
 		return nil, []string{"-- debug: ObjectCollection is nil"}
 	}

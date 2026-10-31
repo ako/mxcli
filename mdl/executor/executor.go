@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -281,9 +282,12 @@ type Executor struct {
 	output         io.Writer
 	guard          *outputGuard // line-limit wrapper around output
 	mprPath        string
-	scriptDir      string           // directory of the .mdl file being executed (see SetScriptDir)
-	langVersion    langver.Version  // `mdl <n>;` of the program being run (see enterLanguage)
-	describeLang   *langver.Version // the language DESCRIBE writes, when set (SetDescribeLanguage)
+	// flowLayoutOverride is the style `mxcli layout flows --style` lays out
+	// with, in place of the project's layout-config.yaml.
+	flowLayoutOverride *flowLayout
+	scriptDir          string           // directory of the .mdl file being executed (see SetScriptDir)
+	langVersion        langver.Version  // `mdl <n>;` of the program being run (see enterLanguage)
+	describeLang       *langver.Version // the language DESCRIBE writes, when set (SetDescribeLanguage)
 	// forwardFlowCalls is set when the run is all-or-nothing (SetForwardFlowCalls);
 	// scriptFlows then holds every flow the program being run declares.
 	forwardFlowCalls bool
@@ -334,6 +338,41 @@ func (e *Executor) SetBackendFactory(f BackendFactory) {
 // SetQuiet enables or disables quiet mode (suppresses connection/status messages).
 func (e *Executor) SetQuiet(quiet bool) {
 	e.quiet = quiet
+}
+
+// SetFlowLayoutStyle lays flows out in the named preset instead of the
+// project's layout-config.yaml. "" restores the project's style.
+func (e *Executor) SetFlowLayoutStyle(preset string) error {
+	if preset == "" {
+		e.flowLayoutOverride = nil
+		return nil
+	}
+	l, err := FlowLayoutPreset(preset)
+	if err != nil {
+		return err
+	}
+	e.flowLayoutOverride = l
+	return nil
+}
+
+// FlowLayoutStyle describes the style flows are laid out with and where it
+// comes from: the --style override, the project's layout-config.yaml, or the
+// default.
+func (e *Executor) FlowLayoutStyle() (style, source string, err error) {
+	ctx := e.newExecContext(context.Background())
+	l, err := ctx.ProjectFlowLayout()
+	if err != nil {
+		return "", "", err
+	}
+	switch {
+	case e.flowLayoutOverride != nil:
+		source = "--style"
+	case e.mprPath != "" && FindFlowLayoutConfig(filepath.Dir(e.mprPath)) != "":
+		source = FindFlowLayoutConfig(filepath.Dir(e.mprPath))
+	default:
+		source = "default (no " + flowLayoutConfigName + ")"
+	}
+	return l.String(), source, nil
 }
 
 // SetFormat sets the output format (table or json).

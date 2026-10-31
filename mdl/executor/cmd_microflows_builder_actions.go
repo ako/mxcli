@@ -492,6 +492,7 @@ func (fb *flowBuilder) addEnumSplit(s *ast.EnumSplitStmt) model.ID {
 		SplitCondition:    condition,
 		ErrorHandlingType: fb.ehType(nil),
 	}
+	splitIndex := len(fb.objects)
 	fb.objects = append(fb.objects, split)
 	splitID := split.ID
 	// applyPendingAnnotations, not applyAnnotations: only it records the
@@ -516,6 +517,22 @@ func (fb *flowBuilder) addEnumSplit(s *ast.EnumSplitStmt) model.ID {
 		if w > branchWidth {
 			branchWidth = w
 		}
+	}
+	// CaseSplitColumns: the first outcome on the line, the others as columns
+	// under the split (flowlayout.go).
+	caseCols := fb.layoutStyle().CaseSplit == CaseSplitColumns && len(branches) > 1
+	var plan caseColumns
+	firstShift := 0
+	if caseCols {
+		bodies := make([][]ast.MicroflowStatement, len(branches))
+		for i, br := range branches {
+			bodies[i] = br.body
+		}
+		plan = fb.measurer.planCaseColumns(splitX, bodies)
+		if len(branches[0].values) > 1 {
+			firstShift = firstCaseGroupShift
+		}
+		branchWidth = caseColumnsBranchWidth(fb.measurer.measureBranch(branches[0].body).Width+firstShift, plan, SplitWidth)
 	}
 	if branchWidth == 0 {
 		branchWidth = HorizontalSpacing / 2
@@ -563,6 +580,10 @@ func (fb *flowBuilder) addEnumSplit(s *ast.EnumSplitStmt) model.ID {
 	}
 
 	origins := enumSplitOriginAnchors(branchYs, centerY)
+	if caseCols {
+		branchYs[0], origins = centerY, nil
+	}
+	columnTop := 0
 	var caseAnchors []ast.CaseAnchor
 	if s.Annotations != nil {
 		caseAnchors = s.Annotations.CaseAnchors
@@ -581,6 +602,40 @@ func (fb *flowBuilder) addEnumSplit(s *ast.EnumSplitStmt) model.ID {
 		fb.posX = splitX + SplitWidth + HorizontalSpacing/2
 		fb.posY = branchY
 		fb.endsWithReturn = false
+		// Where a multi-value outcome's own merge goes, and how this outcome's
+		// first flows are drawn (sides for a column, the line for the first).
+		groupX, groupY := splitX+SplitWidth+HorizontalSpacing/4, branchY
+		var column *elseColumnCursor
+		if caseCols && i > 0 {
+			if columnTop == 0 {
+				// Every column starts under everything the first outcome drew.
+				_, bottom, _ := objectsExtent(fb.objects[splitIndex:])
+				columnTop = max(centerY+branchHeights[0]/2, bottom) + BranchGap
+			}
+			top := columnTop
+			if len(br.values) > 1 {
+				groupX, groupY = plan.x[i], top+MergeSize/2
+				top += MergeSize + BranchGap
+			}
+			column = fb.startElseColumn(plan.x[i], top)
+		} else if caseCols {
+			fb.posX += firstShift
+		}
+		caseFlowSides := func(from int) {
+			if !caseCols {
+				return
+			}
+			if column != nil {
+				setColumnFlowSides(fb.flows[from:], slot(i))
+				return
+			}
+			for _, f := range fb.flows[from:] {
+				f.OriginConnectionIndex, f.DestinationConnectionIndex = AnchorRight, AnchorLeft
+				if ec, ok := f.CaseValue.(microflows.EnumerationCase); ok {
+					slot(i).applyCaseAnchor(f, ec.Value)
+				}
+			}
+		}
 
 		lastID := model.ID("")
 		pendingCase := ""
@@ -589,7 +644,9 @@ func (fb *flowBuilder) addEnumSplit(s *ast.EnumSplitStmt) model.ID {
 		outerHandlers := fb.enterBranch()
 		for j, stmt := range br.body {
 			thisAnchor := stmtOwnAnchor(stmt)
+			column.begin(stmt)
 			actID := fb.addStatement(stmt)
+			column.end()
 			if fb.pendingJoin != nil {
 				// `join L` as the FIRST statement of a case body means the split
 				// itself goes to the merge, so the case flows are emitted with the
@@ -599,7 +656,9 @@ func (fb *flowBuilder) addEnumSplit(s *ast.EnumSplitStmt) model.ID {
 					fb.pendingJoin = nil
 					fb.labels().handled++
 					m := fb.mergeForLabel(label)
-					fb.addGroupedEnumSplitFlows(splitID, m.ID, br.values, slot(i), splitX+SplitWidth+HorizontalSpacing/4, branchY)
+					from := len(fb.flows)
+					fb.addGroupedEnumSplitFlows(splitID, m.ID, br.values, slot(i), groupX, groupY)
+					caseFlowSides(from)
 				} else {
 					fb.takePendingJoin(lastID, pendingCase, prevAnchor)
 				}
@@ -613,7 +672,9 @@ func (fb *flowBuilder) addEnumSplit(s *ast.EnumSplitStmt) model.ID {
 			// statement's @curve for applyFlowCurves (mendixlabs/mxcli#1414).
 			fb.applyPendingAnnotations(actID)
 			if lastID == "" {
-				fb.addGroupedEnumSplitFlows(splitID, actID, br.values, slot(i), splitX+SplitWidth+HorizontalSpacing/4, branchY)
+				from := len(fb.flows)
+				fb.addGroupedEnumSplitFlows(splitID, actID, br.values, slot(i), groupX, groupY)
+				caseFlowSides(from)
 				// The first statement in a case can carry @anchor(from:…,
 				// to:…) that should apply to the split→firstActivity flow.
 				// addGroupedEnumSplitFlows appends one flow per case value;
@@ -634,6 +695,9 @@ func (fb *flowBuilder) addEnumSplit(s *ast.EnumSplitStmt) model.ID {
 					pendingCase = ""
 				} else {
 					flow = newHorizontalFlow(lastID, actID)
+				}
+				if column != nil {
+					flow.OriginConnectionIndex, flow.DestinationConnectionIndex = AnchorBottom, AnchorTop
 				}
 				applyUserAnchors(flow, prevAnchor, thisAnchor)
 				fb.flows = append(fb.flows, flow)
@@ -661,7 +725,17 @@ func (fb *flowBuilder) addEnumSplit(s *ast.EnumSplitStmt) model.ID {
 		}
 		allBranchesReturn = false
 		if lastID == "" {
-			fb.addGroupedEnumSplitFlows(splitID, ensureMerge().ID, br.values, slot(i), splitX+SplitWidth+HorizontalSpacing/4, branchY)
+			from := len(fb.flows)
+			fb.addGroupedEnumSplitFlows(splitID, ensureMerge().ID, br.values, slot(i), groupX, groupY)
+			caseFlowSides(from)
+			if column != nil {
+				// An empty column goes straight from the split's bottom to the merge's.
+				for _, f := range fb.flows[from:] {
+					if f.DestinationID == ensureMerge().ID {
+						f.DestinationConnectionIndex = AnchorBottom
+					}
+				}
+			}
 		} else {
 			var tail *microflows.SequenceFlow
 			if pendingCase != "" {
@@ -671,6 +745,9 @@ func (fb *flowBuilder) addEnumSplit(s *ast.EnumSplitStmt) model.ID {
 			}
 			if origins != nil {
 				tail.DestinationConnectionIndex = mergeSideFor(fb.objectPosition(lastID), fb.objectPosition(ensureMerge().ID))
+			}
+			if column != nil {
+				tail.OriginConnectionIndex, tail.DestinationConnectionIndex = AnchorRight, AnchorBottom
 			}
 			fb.flows = append(fb.flows, tail)
 			fb.settleBranchFlow(lastID, ensureMerge().ID, nil, nil, false)
@@ -726,6 +803,7 @@ func (fb *flowBuilder) addStructuredInheritanceSplit(s *ast.InheritanceSplitStmt
 		ErrorHandlingType: microflows.ErrorHandlingTypeRollback,
 		VariableName:      s.Variable,
 	}
+	splitIndex := len(fb.objects)
 	fb.objects = append(fb.objects, split)
 	splitID := split.ID
 	// applyPendingAnnotations, not applyAnnotations: only it records the
@@ -746,6 +824,26 @@ func (fb *flowBuilder) addStructuredInheritanceSplit(s *ast.InheritanceSplitStmt
 			branchWidth = w
 		}
 	}
+	// CaseSplitColumns (flowlayout.go): the first case on the line, every other
+	// case with a body as a column under the split. The (empty) branch always
+	// exists; without a body it stays a flow straight to the merge.
+	columnBodies := make([][]ast.MicroflowStatement, 0, len(s.Cases)+1)
+	for _, c := range s.Cases {
+		columnBodies = append(columnBodies, c.Body)
+	}
+	if len(s.ElseBody) > 0 {
+		columnBodies = append(columnBodies, s.ElseBody)
+	}
+	caseCols := fb.layoutStyle().CaseSplit == CaseSplitColumns && len(columnBodies) > 1
+	var plan caseColumns
+	firstHeight := 0
+	if caseCols {
+		plan = fb.measurer.planCaseColumns(splitX, columnBodies)
+		first := fb.measurer.measureStatements(columnBodies[0])
+		firstHeight = max(first.Height, ActivityHeight)
+		branchWidth = caseColumnsBranchWidth(first.Width, plan, ActivityWidth)
+	}
+	columnTop := 0
 	if branchWidth == 0 {
 		branchWidth = HorizontalSpacing / 2
 	}
@@ -760,6 +858,9 @@ func (fb *flowBuilder) addStructuredInheritanceSplit(s *ast.InheritanceSplitStmt
 		order     int
 		anchor    *ast.FlowAnchors
 		handlers  pendingHandlers
+		// column says the branch is a CaseSplitColumns column, which rejoins the
+		// merge from below.
+		column bool
 	}
 	var branchTails []branchTail
 
@@ -780,6 +881,16 @@ func (fb *flowBuilder) addStructuredInheritanceSplit(s *ast.InheritanceSplitStmt
 		fb.posX = branchStartX
 		fb.posY = branchY
 		fb.endsWithReturn = false
+		var column *elseColumnCursor
+		if caseCols && branchNumber > 0 && branchNumber < len(plan.x) {
+			if columnTop == 0 {
+				_, bottom, _ := objectsExtent(fb.objects[splitIndex:])
+				columnTop = max(centerY+firstHeight/2, bottom) + BranchGap
+			}
+			column = fb.startElseColumn(plan.x[branchNumber], columnTop)
+		} else if caseCols {
+			fb.posY = centerY
+		}
 
 		var lastID model.ID
 		var prevAnchor *ast.FlowAnchors
@@ -788,7 +899,9 @@ func (fb *flowBuilder) addStructuredInheritanceSplit(s *ast.InheritanceSplitStmt
 		outerHandlers := fb.enterBranch()
 		for j, stmt := range body {
 			thisAnchor := stmtOwnAnchor(stmt)
+			column.begin(stmt)
 			actID := fb.addStatement(stmt)
+			column.end()
 			if fb.takeBranchJoin(lastID, splitID, caseValue, pendingCase, prevAnchor, nil) {
 				pendingCase = ""
 				continue
@@ -809,19 +922,22 @@ func (fb *flowBuilder) addStructuredInheritanceSplit(s *ast.InheritanceSplitStmt
 				} else {
 					flow = newDownwardFlowWithInheritanceCase(splitID, actID, caseValue)
 				}
+				if column != nil {
+					flow.DestinationConnectionIndex = AnchorTop
+				}
 				applyUserAnchors(flow, nil, thisAnchor)
 				fb.flows = append(fb.flows, flow)
 			} else {
+				flow := newHorizontalFlow(lastID, actID)
 				if pendingCase != "" {
-					flow := newHorizontalFlowWithCase(lastID, actID, pendingCase)
-					applyUserAnchors(flow, prevAnchor, thisAnchor)
-					fb.flows = append(fb.flows, flow)
+					flow = newHorizontalFlowWithCase(lastID, actID, pendingCase)
 					pendingCase = ""
-				} else {
-					flow := newHorizontalFlow(lastID, actID)
-					applyUserAnchors(flow, prevAnchor, thisAnchor)
-					fb.flows = append(fb.flows, flow)
 				}
+				if column != nil {
+					flow.OriginConnectionIndex, flow.DestinationConnectionIndex = AnchorBottom, AnchorTop
+				}
+				applyUserAnchors(flow, prevAnchor, thisAnchor)
+				fb.flows = append(fb.flows, flow)
 				fb.settleBranchFlow(lastID, actID, stmt, body[j+1:], branchEnds)
 			}
 			prevAnchor = thisAnchor
@@ -844,7 +960,7 @@ func (fb *flowBuilder) addStructuredInheritanceSplit(s *ast.InheritanceSplitStmt
 				// The tail's flow into the merge is drawn once every branch is
 				// built, and the handlers of its last activity are settled on
 				// it then, so they wait with it.
-				branchTails = append(branchTails, branchTail{id: lastID, caseValue: pendingCase, anchor: prevAnchor, handlers: fb.takePendingErrorHandlers()})
+				branchTails = append(branchTails, branchTail{id: lastID, caseValue: pendingCase, anchor: prevAnchor, handlers: fb.takePendingErrorHandlers(), column: column != nil})
 			}
 		}
 		fb.leaveBranch(outerHandlers)
@@ -905,15 +1021,15 @@ func (fb *flowBuilder) addStructuredInheritanceSplit(s *ast.InheritanceSplitStmt
 				applyInheritanceSplitCaseOrder(flow, tail.order)
 				fb.flows = append(fb.flows, flow)
 			} else {
+				flow := newHorizontalFlow(tail.id, merge.ID)
 				if tail.caseValue != "" {
-					flow := newHorizontalFlowWithCase(tail.id, merge.ID, tail.caseValue)
-					applyUserAnchors(flow, tail.anchor, nil)
-					fb.flows = append(fb.flows, flow)
-				} else {
-					flow := newHorizontalFlow(tail.id, merge.ID)
-					applyUserAnchors(flow, tail.anchor, nil)
-					fb.flows = append(fb.flows, flow)
+					flow = newHorizontalFlowWithCase(tail.id, merge.ID, tail.caseValue)
 				}
+				if tail.column {
+					flow.OriginConnectionIndex, flow.DestinationConnectionIndex = AnchorRight, AnchorBottom
+				}
+				applyUserAnchors(flow, tail.anchor, nil)
+				fb.flows = append(fb.flows, flow)
 				outerHandlers := fb.enterBranch()
 				fb.adoptPendingErrorHandlers(tail.handlers)
 				fb.settleBranchFlow(tail.id, merge.ID, nil, nil, false)
