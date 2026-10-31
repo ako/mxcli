@@ -59,6 +59,14 @@ func validateSnippetParameters(stmt ast.Statement) []linter.Violation {
 
 	var out []linter.Violation
 	for _, p := range params {
+		if p.Optional {
+			out = append(out, linter.Violation{
+				RuleID:   "MDL087",
+				Severity: linter.SeverityError,
+				Location: linter.Location{Module: name.Module, DocumentType: "snippet", DocumentName: name.Name},
+				Message:  optionalSnippetParameterMessage(name, p.Name),
+			})
+		}
 		caption := types.SnippetParameterTypeRule(pageParamBSONType(p.Type))
 		if caption == "" {
 			continue
@@ -84,6 +92,15 @@ func validateSnippetParameters(stmt ast.Statement) []linter.Violation {
 		})
 	}
 	return out
+}
+
+// optionalSnippetParameterMessage refuses `optional` on a snippet parameter:
+// Forms$SnippetParameter stores no IsRequired in any version, so the word
+// would be dropped (mendixlabs/mxcli#1640).
+func optionalSnippetParameterMessage(snippet ast.QualifiedName, param string) string {
+	return fmt.Sprintf("snippet '%s' declares parameter $%s optional — only a page parameter can be "+
+		"optional (Forms$PageParameter.IsRequired, Mendix 11.5+); a snippet parameter is always "+
+		"supplied by the snippet call. Remove `optional`", snippet.String(), param)
 }
 
 // paramTypeSourceName names a primitive parameter type the way MDL spells it,

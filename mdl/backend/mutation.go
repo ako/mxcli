@@ -20,6 +20,9 @@ type PageParameterSpec struct {
 	Name          string
 	PrimitiveType string
 	EntityName    string
+	// Optional writes a page parameter with IsRequired false (11.5+,
+	// mendixlabs/mxcli#1640). A snippet parameter has no such flag.
+	Optional bool
 }
 
 const (

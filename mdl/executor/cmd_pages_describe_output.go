@@ -1846,8 +1846,12 @@ func pageActionParameters(ctx *ExecContext, settings map[string]any, pageName st
 	if explicit := extractPageParameters(ctx, settings); explicit != "" {
 		return explicit
 	}
-	// No stored mapping: the target page's own parameters are the mapping, each
-	// bound to the row object the enclosing widget supplies.
+	// No stored mapping: the target page's own required parameters are the
+	// mapping, each bound to the row object the enclosing widget supplies. An
+	// optional one (11.5+) with no mapping is simply not passed — a menu item
+	// opens such a page with no argument, and inventing `= $currentObject`
+	// there made the description one exec refuses (MDL-PAGEARG01,
+	// mendixlabs/mxcli#1640).
 	var params []string
 	for _, name := range targetPageParameterNames(ctx, pageName) {
 		params = append(params, visitor.ParameterNameSpelling(name)+" = $currentObject")
@@ -1855,9 +1859,9 @@ func pageActionParameters(ctx *ExecContext, settings map[string]any, pageName st
 	return strings.Join(params, ", ")
 }
 
-// targetPageParameterNames returns the parameter names declared by a page, by
-// qualified name. Returns nil when the page cannot be resolved — a description
-// that omits an argument is better than one that invents a name.
+// targetPageParameterNames returns the required parameter names declared by a
+// page, by qualified name. Returns nil when the page cannot be resolved — a
+// description that omits an argument is better than one that invents a name.
 func targetPageParameterNames(ctx *ExecContext, qualifiedName string) []string {
 	module, name, ok := strings.Cut(qualifiedName, ".")
 	if !ok || module == "" || name == "" {
@@ -1880,7 +1884,7 @@ func targetPageParameterNames(ctx *ExecContext, qualifiedName string) []string {
 		}
 		var names []string
 		for _, param := range p.Parameters {
-			if param != nil && param.Name != "" {
+			if param != nil && param.Name != "" && param.IsRequired {
 				names = append(names, param.Name)
 			}
 		}
