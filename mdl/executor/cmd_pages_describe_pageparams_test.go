@@ -14,6 +14,13 @@ import (
 // parameter — the drill-down page a grid's link button opens.
 func pageParamFixture(t *testing.T, params ...string) *ExecContext {
 	t.Helper()
+	return pageParamFixtureWith(t, nil, params...)
+}
+
+// pageParamFixtureWith is pageParamFixture with the named parameters optional
+// (IsRequired false, Mendix 11.5+); every other one is required.
+func pageParamFixtureWith(t *testing.T, optional map[string]bool, params ...string) *ExecContext {
+	t.Helper()
 	mod := mkModule("Formula1Frontend")
 
 	target := &pages.Page{
@@ -21,12 +28,12 @@ func pageParamFixture(t *testing.T, params ...string) *ExecContext {
 		ContainerID: mod.ID,
 		Name:        "Race_Weekend",
 	}
-	for i, p := range params {
+	for _, p := range params {
 		target.Parameters = append(target.Parameters, &pages.PageParameter{
 			BaseElement: model.BaseElement{ID: model.ID("pp-" + p)},
 			ContainerID: target.ID,
 			Name:        p,
-			IsRequired:  i == 0,
+			IsRequired:  !optional[p],
 		})
 	}
 
@@ -80,6 +87,23 @@ func TestRenderShowPageAction_RecoversEveryParameter(t *testing.T) {
 	want := "show page Formula1Frontend.Race_Weekend(Race = $currentObject, Season = $currentObject)"
 	if got != want {
 		t.Errorf("got:  %s\nwant: %s", got, want)
+	}
+}
+
+// An optional parameter (Mendix 11.5+) with no stored mapping is not passed,
+// so describe recovers no argument for it — inventing one made a menu item's
+// description refused by exec (MDL-PAGEARG01, mendixlabs/mxcli#1640).
+func TestRenderShowPageAction_SkipsAnOptionalParameter(t *testing.T) {
+	ctx := pageParamFixtureWith(t, map[string]bool{"Season": true}, "Race", "Season")
+
+	got := renderClientActionMDL(ctx, showPageAction("Formula1Frontend.Race_Weekend", nil))
+	want := "show page Formula1Frontend.Race_Weekend(Race = $currentObject)"
+	if got != want {
+		t.Errorf("got:  %s\nwant: %s", got, want)
+	}
+	ctx = pageParamFixtureWith(t, map[string]bool{"Race": true}, "Race")
+	if got := renderClientActionMDL(ctx, showPageAction("Formula1Frontend.Race_Weekend", nil)); got != "show page Formula1Frontend.Race_Weekend" {
+		t.Errorf("a page whose only parameter is optional grew an argument: %s", got)
 	}
 }
 

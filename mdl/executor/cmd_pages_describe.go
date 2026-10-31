@@ -138,7 +138,12 @@ func describePage(ctx *ExecContext, name ast.QualifiedName) error {
 		params := []string{}
 		for _, p := range foundPage.Parameters {
 			typeName := pageParamTypeMDL(p)
-			params = append(params, fmt.Sprintf("$%s: %s", p.Name, typeName))
+			decl := fmt.Sprintf("$%s: %s", p.Name, typeName)
+			// An 11.5+ parameter the page can be opened without (#1640).
+			if !p.IsRequired {
+				decl += " optional"
+			}
+			params = append(params, decl)
 		}
 		props = append(props, fmt.Sprintf("Params: ( %s )", strings.Join(params, ", ")))
 	}

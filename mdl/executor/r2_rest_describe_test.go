@@ -154,7 +154,7 @@ func TestDescribePageHeaderMaps_InParens(t *testing.T) {
 		BaseElement: model.BaseElement{ID: nextID("pg")},
 		ContainerID: mod.ID,
 		Name:        "Edit",
-		Parameters:  []*pages.PageParameter{{Name: "Order", EntityName: "M.Order"}},
+		Parameters:  []*pages.PageParameter{{Name: "Order", EntityName: "M.Order", IsRequired: true}},
 	}
 	mb := &mock.MockBackend{
 		IsConnectedFunc: func() bool { return true },
