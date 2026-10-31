@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A source catalog build describes a project widget the same way every run** (#1799) — `refresh catalog full source` sometimes wrote a pluggable widget in the generic `pluggablewidget '<id>'` form instead of its own keyword (`vegachart …`), and since #1802 an incremental build kept that row until a `force`. Each parallel describe loaded its own widget registry, and with one definition that never counts as current (hand-made, or its `.mpk` removed), each load rewrote every `.def.json` while the other describes read them. The describes now share the build's registry, and a definition is replaced by rename, so no reader sees a half-written file.
+
 ## [0.29.0] - 2026-10-30
 
 Headline: **Write what the project's own Mendix version stores, and commit it the way Studio Pro does.** Every write is now checked against the element types and property shapes of the project's Mendix version, so a statement 9.x or 10.x cannot store is refused by `check -p` instead of leaving a project Studio Pro cannot open, and `mxcli git commit` / `git doctor` keep a plain-git history in the shape Studio Pro expects. Alongside it: workflows, pages and Java actions gain the settings a rewrite used to reset, `alter microflow` edits inside loop bodies, the debugger works end to end, and commands on large MPR v2 projects open only the files they need.

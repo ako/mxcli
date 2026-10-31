@@ -124,7 +124,7 @@ func RefreshWidgetDefinitions(projectPath string, force bool, output io.Writer) 
 				stats.Refreshed++
 			}
 
-			if err := os.WriteFile(outPath, freshData, 0644); err != nil {
+			if err := writeDefinitionFile(outPath, freshData); err != nil {
 				return stats, fmt.Errorf("failed to write %s: %w", outPath, err)
 			}
 			if output != nil {
@@ -142,6 +142,35 @@ func RefreshWidgetDefinitions(projectPath string, force bool, output io.Writer) 
 	}
 
 	return stats, nil
+}
+
+// writeDefinitionFile replaces a .def.json so that a reader sees the old
+// content or the new, never a part of either. Definitions are read while they
+// are refreshed — by another mxcli process, the language server, or (until
+// #1799) the describe workers of the same catalog build — and os.WriteFile
+// truncates first: a reader that lands in between gets an empty or half file,
+// fails to parse it, and loads a registry without that widget.
+//
+// The temporary file does not end in .def.json, so a directory scan never
+// reads it. Where the rename cannot replace the file (Windows, while a reader
+// holds it open), it falls back to the plain write.
+func writeDefinitionFile(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return os.WriteFile(path, data, 0644)
+	}
+	tmpPath := tmp.Name()
+	_, werr := tmp.Write(data)
+	cerr := tmp.Close()
+	if werr == nil && cerr == nil {
+		if err := os.Chmod(tmpPath, 0644); err == nil {
+			if err := os.Rename(tmpPath, path); err == nil {
+				return nil
+			}
+		}
+	}
+	_ = os.Remove(tmpPath)
+	return os.WriteFile(path, data, 0644)
 }
 
 // RefreshStaleWidgetDefinitions makes a project's `.mxcli/widgets/*.def.json`
