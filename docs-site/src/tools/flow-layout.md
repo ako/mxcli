@@ -24,7 +24,56 @@ The flow is described to MDL, every layout annotation (`@position`, `@anchor`,
 dropped, and it is built again as `CREATE` would build it. Only the geometry of
 that build is kept.
 
-## Only positions change
+## Choosing a layout style
+
+Teams draw flows differently, so the style is a project setting. Put a
+`layout-config.yaml` in the project's `.claude/` directory or next to the
+`.mpr` and commit it — everyone working on the project then lays flows out the
+same way:
+
+```yaml
+flows:
+  preset: true-right-false-down
+```
+
+| Preset | What it draws |
+|---|---|
+| `happy-line` (default) | The TRUE path on one horizontal line, the ELSE branch in a lane under it, left to right. |
+| `true-right-false-down` | The TRUE path on the line; the ELSE branch stacked top to bottom as a column under its decision, rejoining the merge from below. |
+
+A preset is a set of options, and an option overrides its preset:
+
+| Option | Values |
+|---|---|
+| `if-else` | `lanes` (default), `true-right-else-column` |
+
+An unknown key or value is an error, not a silent fallback to the default.
+`mxcli layout config -p app.mpr` shows the style in force and the file it came
+from. `CREATE MICROFLOW` / `CREATE NANOFLOW` without `@position` use it too.
+
+To try a style without committing it, pass `--style`:
+
+```bash
+mxcli layout flows -p app.mpr --module Sales --style true-right-false-down --dry-run
+```
+
+### The style a flow was drawn in travels with it
+
+A flow laid out in a style other than the default gets one line at the end of
+its documentation, which Studio Pro shows in the documentation pane:
+
+```
+@mxcli-layout: if-else=true-right-else-column
+```
+
+`DESCRIBE` and `CREATE OR MODIFY` use that line for that flow, whatever the
+project file says now. So a flow drawn in one style describes without `@position`
+noise after the project switches to another, and its description rebuilds the
+same geometry. Laying a flow out in the default style removes the line. If the
+line is deleted or unreadable, nothing breaks: `DESCRIBE` then prints the
+positions it can no longer derive, and a warning says why.
+
+## What changes
 
 The result is patched onto the stored flow rather than written in its place, so
 nothing but layout changes:
@@ -32,6 +81,9 @@ nothing but layout changes:
 - positions and sizes of activities, events, splits, merges and loops;
 - positions of parameters and notes (a note keeps its size);
 - the connection sides and curves of sequence flows.
+
+- the `@mxcli-layout:` line in the flow's documentation (above) — the rest of
+  the documentation is left byte for byte.
 
 Element IDs, captions, expressions and every property MDL cannot express are
 left exactly as stored. That is also why this works on flows drawn in Studio
@@ -69,6 +121,7 @@ writes nothing.
 | `Module.Flow ...` | Lay out these microflows or nanoflows. |
 | `--module <name>` | Lay out every microflow and nanoflow in this module (repeatable). |
 | `--dry-run` | Report what would move, write nothing. |
+| `--style <preset>` | Lay out in this preset instead of the project's `layout-config.yaml`. |
 | `--include-marketplace` | Also lay out flows in Marketplace modules. A module update replaces them, so this is normally pointless. |
 
 Either name flows or pass `--module`; laying out every flow in a project is too

@@ -50,11 +50,14 @@ type FlowLayoutResult struct {
 	Objects int    // objects in the flow
 	Moved   int    // objects whose position or size changed
 	Flows   int    // sequence flows whose anchors or curve changed
-	Refused string // why the flow was left alone; empty when it was laid out
+	// Restyled says the flow's @mxcli-layout documentation line changed: it is
+	// now laid out in a different style than the one it recorded.
+	Restyled bool
+	Refused  string // why the flow was left alone; empty when it was laid out
 }
 
 // Changed reports whether laying the flow out changes anything.
-func (r FlowLayoutResult) Changed() bool { return r.Moved > 0 || r.Flows > 0 }
+func (r FlowLayoutResult) Changed() bool { return r.Moved > 0 || r.Flows > 0 || r.Restyled }
 
 // LayoutFlow lays out one microflow or nanoflow (kind "microflow" or
 // "nanoflow"). With dryRun, it computes the result and writes nothing.
@@ -138,6 +141,14 @@ func layoutFlow(ctx *ExecContext, kind string, name ast.QualifiedName, dryRun bo
 	}
 	patched := plan.apply(doc)
 	res.Moved, res.Flows = plan.movedObjects, plan.changedFlows
+	// The flow now records the style it was laid out in (flowlayout_config.go).
+	// Only the marker line changes; the rest of the documentation is the stored
+	// text, not the description's normal form of it.
+	style, err := ctx.ProjectFlowLayout()
+	if err != nil {
+		return res, fmt.Errorf("layout config: %w", err)
+	}
+	res.Restyled = setLayoutString(patched, "Documentation", withFlowLayoutMarker(stored.documentation, *style))
 	if !res.Changed() || dryRun {
 		return res, nil
 	}
@@ -155,9 +166,10 @@ func layoutFlow(ctx *ExecContext, kind string, name ast.QualifiedName, dryRun bo
 // layoutGraph is the part of a flow the layout pairing needs, the same for a
 // microflow and a nanoflow.
 type layoutGraph struct {
-	id         model.ID
-	parameters []*microflows.MicroflowParameter
-	objects    *microflows.MicroflowObjectCollection
+	id            model.ID
+	parameters    []*microflows.MicroflowParameter
+	objects       *microflows.MicroflowObjectCollection
+	documentation string
 }
 
 func storedFlow(ctx *ExecContext, kind string, name ast.QualifiedName) (*layoutGraph, error) {
@@ -180,7 +192,7 @@ func storedFlow(ctx *ExecContext, kind string, name ast.QualifiedName) (*layoutG
 		if !ok {
 			return nil, mdlerrors.NewNotFound("microflow", name.String())
 		}
-		return &layoutGraph{id: mf.ID, parameters: mf.Parameters, objects: mf.ObjectCollection}, nil
+		return &layoutGraph{id: mf.ID, parameters: mf.Parameters, objects: mf.ObjectCollection, documentation: mf.Documentation}, nil
 	case "nanoflow":
 		all, err := ctx.Backend.ListNanoflows()
 		if err != nil {
@@ -192,7 +204,7 @@ func storedFlow(ctx *ExecContext, kind string, name ast.QualifiedName) (*layoutG
 		if !ok {
 			return nil, mdlerrors.NewNotFound("nanoflow", name.String())
 		}
-		return &layoutGraph{id: nf.ID, parameters: nf.Parameters, objects: nf.ObjectCollection}, nil
+		return &layoutGraph{id: nf.ID, parameters: nf.Parameters, objects: nf.ObjectCollection, documentation: nf.Documentation}, nil
 	}
 	return nil, fmt.Errorf("cannot lay out a %s", kind)
 }
@@ -216,7 +228,9 @@ func rebuildFlowLayout(ctx *ExecContext, kind string, name ast.QualifiedName) (*
 		return nil, fmt.Errorf("its description does not parse back (%v), so it does not round-trip through MDL", errs[0])
 	}
 
-	opts := buildFlowOpts{ResetLayout: true}
+	// Laid out in the project's style (or --style), not the one the flow records:
+	// re-styling a flow is what this is for.
+	opts := buildFlowOpts{ResetLayout: true, IgnoreRecordedLayout: true}
 	for _, stmt := range prog.Statements {
 		switch s := stmt.(type) {
 		case *ast.CreateMicroflowStmt:

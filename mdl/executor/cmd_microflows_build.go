@@ -37,6 +37,10 @@ type buildFlowOpts struct {
 	AllowCreate bool
 	ResetLayout bool
 	Quiet       bool
+	// IgnoreRecordedLayout lays the flow out in the project's style even when its
+	// documentation records another (flowlayout_config.go). `mxcli layout flows`
+	// sets it: re-laying a flow out in the current style is what it is for.
+	IgnoreRecordedLayout bool
 }
 
 // builtFlow is a Microflow assembled from a statement, plus what the write
@@ -279,6 +283,11 @@ func buildMicroflowFromStmt(ctx *ExecContext, s *ast.CreateMicroflowStmt, opts b
 	if preserveDocumentation {
 		mf.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existingDocumentation)
 	}
+	layout, doc, err := resolveFlowLayout(ctx, mf.Documentation, !opts.IgnoreRecordedLayout)
+	if err != nil {
+		return nil, err
+	}
+	mf.Documentation = doc
 	// A new flow starts with no allowed roles: access is the author's grant
 	// (mendixlabs/mxcli#1474).
 	if preserveAllowedRoles {
@@ -432,7 +441,8 @@ func buildMicroflowFromStmt(ctx *ExecContext, s *ast.CreateMicroflowStmt, opts b
 		spacing:       HorizontalSpacing,
 		varTypes:      varTypes,
 		declaredVars:  declaredVars,
-		measurer:      &layoutMeasurer{varTypes: varTypes},
+		measurer:      &layoutMeasurer{varTypes: varTypes, layout: layout},
+		layout:        layout,
 		allowWrap:     true,
 		backend:       flowBuildBackend(ctx.Backend),
 		quiet:         opts.Quiet,
@@ -588,6 +598,11 @@ func buildNanoflowFromStmt(ctx *ExecContext, s *ast.CreateNanoflowStmt, opts bui
 	if preserveDocumentation {
 		nf.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existingDocumentation)
 	}
+	layout, doc, err := resolveFlowLayout(ctx, nf.Documentation, !opts.IgnoreRecordedLayout)
+	if err != nil {
+		return nil, err
+	}
+	nf.Documentation = doc
 	// Authored only; absent leaves "" and the backend carries the stored level
 	// (mendixlabs/mxcli#1498).
 	if s.ExportLevel != nil {
@@ -734,7 +749,8 @@ func buildNanoflowFromStmt(ctx *ExecContext, s *ast.CreateNanoflowStmt, opts bui
 		spacing:      HorizontalSpacing,
 		varTypes:     varTypes,
 		declaredVars: declaredVars,
-		measurer:     &layoutMeasurer{varTypes: varTypes},
+		measurer:     &layoutMeasurer{varTypes: varTypes, layout: layout},
+		layout:       layout,
 		allowWrap:    true,
 		backend:      flowBuildBackend(ctx.Backend),
 		hierarchy:    hierarchy,

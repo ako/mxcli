@@ -217,13 +217,15 @@ Every flow mxcli lays out under a style other than `happy-line` gets one marker
 line at the end of its `Documentation`:
 
 ```
-@mxcli-layout: true-right-false-down
-@mxcli-layout: happy-line; wrap=snake; max-row-width=2000
+@mxcli-layout: if-else=true-right-else-column
+@mxcli-layout: if-else=true-right-else-column; wrap=snake
 ```
 
-The value is the preset followed by any options that differ from it, in a fixed
-key order, so the same settings always produce the same line and a re-layout is
-idempotent (ADR-0008).
+The value is every option that differs from the default, `key=value` in key
+order, so the same settings always produce the same line and a re-layout is
+idempotent (ADR-0008). It records options, not the preset name: a preset gains
+options as they are implemented, and a marker naming a preset would silently
+change meaning for flows already laid out with it.
 
 Rules:
 

@@ -35,9 +35,18 @@ The layout is the one CREATE MICROFLOW uses for a flow written without
 are sized to their bodies. Name the flows to lay out, or pass --module to lay
 out every microflow and nanoflow in a module.
 
-Only positions change: activity and event positions and sizes, parameter
+Positions change: activity and event positions and sizes, parameter
 positions, and the anchors and curves of sequence flows. Content, element IDs
-and everything else about the flow are left exactly as stored.
+and everything else about the flow are left exactly as stored, apart from
+the one documentation line described next.
+
+The style is the project's layout-config.yaml (in .claude/ or next to the
+.mpr; see 'mxcli layout config'), or the default when there is none. --style
+lays out in a preset instead, to try one. Each flow laid out in a style other
+than the default records it as an '@mxcli-layout:' line in its documentation,
+which DESCRIBE and CREATE OR MODIFY then keep using for that flow; laying it out
+in the default removes the line. That line is the one thing besides positions
+this command writes.
 
 A flow whose description does not rebuild into the same graph — something MDL
 cannot yet express — is skipped with the reason, never laid out by guesswork.
@@ -48,7 +57,8 @@ what would move first. Marketplace modules and System are never touched unless
 --include-marketplace is given.`,
 	Example: `  mxcli layout flows -p app.mpr MyModule.ACT_Order_Submit
   mxcli layout flows -p app.mpr --module MyModule
-  mxcli layout flows -p app.mpr --module MyModule --dry-run`,
+  mxcli layout flows -p app.mpr --module MyModule --dry-run
+  mxcli layout flows -p app.mpr --module MyModule --style true-right-false-down --dry-run`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runLayoutFlows(cmd, args)
 	},
@@ -59,9 +69,54 @@ func init() {
 		"module whose flows to lay out (repeatable)")
 	layoutFlowsCmd.Flags().BoolVar(&layoutDryRun, "dry-run", false,
 		"report what would move without writing")
+	layoutFlowsCmd.Flags().StringVar(&layoutFlowStyle, "style", "",
+		"lay out in this preset instead of the project's layout-config.yaml (happy-line, true-right-false-down)")
 	layoutFlowsCmd.Flags().BoolVar(&layoutIncludeMarketplace, "include-marketplace", false,
 		"also lay out flows in Marketplace modules (a module update replaces them, so this is normally pointless)")
 	layoutCmd.AddCommand(layoutFlowsCmd)
+	layoutCmd.AddCommand(layoutConfigCmd)
+}
+
+var layoutFlowStyle string
+
+var layoutConfigCmd = &cobra.Command{
+	Use:   "config",
+	Short: "Show the layout style microflows and nanoflows are laid out with",
+	Long: `Show the style CREATE MICROFLOW, CREATE NANOFLOW and 'mxcli layout flows'
+lay flows out with, and the file it comes from.
+
+The style is read from layout-config.yaml in the project's .claude/ directory or
+next to the .mpr — a committed file, so everyone working on the project lays
+flows out the same way:
+
+  flows:
+    preset: true-right-false-down   # happy-line (default) | true-right-false-down
+    if-else: true-right-else-column # lanes | true-right-else-column
+
+An unknown key or value is an error rather than a silent fallback.`,
+	Example: `  mxcli layout config -p app.mpr`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		projectPath, _ := cmd.Flags().GetString("project")
+		if projectPath == "" {
+			return fmt.Errorf("no project given: pass -p <project.mpr>")
+		}
+		exec, logger := newLoggedExecutor("subcommand")
+		defer logger.Close()
+		defer exec.Close()
+		exec.SetQuiet(true)
+		connectProg, _ := visitor.Build(fmt.Sprintf("CONNECT LOCAL '%s'", visitor.QuoteString(projectPath)))
+		for _, stmt := range connectProg.Statements {
+			if err := exec.Execute(stmt); err != nil {
+				return err
+			}
+		}
+		style, source, err := exec.FlowLayoutStyle()
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "Flow layout: %s\nFrom: %s\n", style, source)
+		return nil
+	},
 }
 
 // flowTarget is one flow to lay out.
@@ -86,6 +141,9 @@ func runLayoutFlows(cmd *cobra.Command, args []string) error {
 	defer logger.Close()
 	defer exec.Close()
 	exec.SetQuiet(true)
+	if err := exec.SetFlowLayoutStyle(layoutFlowStyle); err != nil {
+		return err
+	}
 	connectProg, _ := visitor.Build(fmt.Sprintf("CONNECT LOCAL '%s'", visitor.QuoteString(projectPath)))
 	for _, stmt := range connectProg.Statements {
 		if err := exec.Execute(stmt); err != nil {
@@ -194,6 +252,13 @@ func layoutFlowTargets(out io.Writer, exec *executor.Executor, targets []flowTar
 		default:
 			changed++
 			fmt.Fprintf(out, "%s: moved %d of %d objects, re-anchored %d flows\n", res.Name, res.Moved, res.Objects, res.Flows)
+		}
+		if res.Restyled && res.Refused == "" {
+			verb := "updates"
+			if layoutDryRun {
+				verb = "would update"
+			}
+			fmt.Fprintf(out, "%s: %s the %s line in its documentation\n", res.Name, verb, "@mxcli-layout:")
 		}
 	}
 

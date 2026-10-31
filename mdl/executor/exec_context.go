@@ -103,6 +103,15 @@ type ExecContext struct {
 	// ThemeRegistry holds cached theme design property definitions (lazy init).
 	ThemeRegistry *ThemeRegistry
 
+	// FlowLayoutOverride, when set, is the layout style flows are laid out with
+	// instead of the project's layout-config.yaml (`mxcli layout flows --style`).
+	FlowLayoutOverride *flowLayout
+	// projectFlowLayout caches the project's layout-config.yaml (see
+	// ProjectFlowLayout).
+	projectFlowLayout       *flowLayout
+	projectFlowLayoutErr    error
+	projectFlowLayoutLoaded bool
+
 	// widgetRegistry caches the widget definitions for this session. Loaded
 	// once via GetWidgetRegistry, because DESCRIBE PAGE consults it per widget
 	// and LoadWidgetRegistry reads .def.json files off disk.
