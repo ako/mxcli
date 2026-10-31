@@ -46,6 +46,11 @@ A preset is a set of options, and an option overrides its preset:
 | Option | Values |
 |---|---|
 | `if-else` | `lanes` (default), `true-right-else-column` |
+| `guard` | `return-below` (default): a guard's early return goes in the lane below and the happy path stays on the line. `true-right`: the early return carries straight on to the right, and the happy path drops from the decision's bottom onto a new line below. |
+
+A *guard* is an `if … then … return; end if` with no `else`. It has its own
+option because teams that want TRUE on the right for IF/ELSE mostly still want
+their guards to keep the happy path straight.
 
 An unknown key or value is an error, not a silent fallback to the default.
 `mxcli layout config -p app.mpr` shows the style in force and the file it came

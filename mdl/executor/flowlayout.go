@@ -32,10 +32,25 @@ const (
 	IfElseColumn
 )
 
+// GuardStyle is how a guard — `if X then …; return; end if`, no ELSE — is drawn.
+type GuardStyle int
+
+const (
+	// GuardReturnBelow: the TRUE branch with its early return goes in the lane
+	// under the split; the happy path carries straight on along the FALSE exit.
+	// The default.
+	GuardReturnBelow GuardStyle = iota
+	// GuardTrueRight: the TRUE branch carries straight on to the right, on the
+	// centre line; the happy path leaves the split's bottom and continues on a
+	// new line below, starting in the split's column.
+	GuardTrueRight
+)
+
 // flowLayout holds the layout decisions a style changes. Its zero value is the
 // default style.
 type flowLayout struct {
 	IfElse IfElseStyle
+	Guard  GuardStyle
 }
 
 // layoutStyle returns the builder's layout style; a builder without one uses the
@@ -173,4 +188,46 @@ func (m *layoutMeasurer) measureColumn(stmts []ast.MicroflowStatement) Bounds {
 // SplitWidth + HorizontalSpacing/2 to the right of it.
 func elseColumnBranchWidth(thenBounds, column Bounds) int {
 	return max(thenBounds.Width, column.Width-(SplitWidth+HorizontalSpacing/2))
+}
+
+// withDefaultSides returns anchors whose unset sides are from and to. A side the
+// script states is kept: an @anchor always wins over the style.
+func withDefaultSides(a *ast.FlowAnchors, from, to int) *ast.FlowAnchors {
+	out := ast.FlowAnchors{From: ast.AnchorSide(from), To: ast.AnchorSide(to)}
+	if a != nil {
+		if a.From != ast.AnchorSideUnset {
+			out.From = a.From
+		}
+		if a.To != ast.AnchorSideUnset {
+			out.To = a.To
+		}
+	}
+	return &out
+}
+
+// measureGuardTrueRight measures a statement list from a GuardTrueRight guard
+// on: the guard's branch on this line, everything after it on a new line below,
+// starting in the split's column. left is where the guard starts, lineHeight the
+// height of what the line held before it.
+//
+// The height is reported as if centred on the line, as every Bounds is: the
+// callers place things under a body at centre + Height/2, and the drop makes this
+// body reach far further below its line than above it. Twice the depth below is
+// what keeps them clear; the cost is room above the line that goes unused.
+func (m *layoutMeasurer) measureGuardTrueRight(guard *ast.IfStmt, rest []ast.MicroflowStatement, left, extent, lineHeight int) Bounds {
+	// guardBranchInset is measured from the split's centre; what follows a body
+	// (a merge) is placed from its left edge, so the split's left half is added.
+	// Without it the merge after a TRUE-right guard sat on the guard's end event.
+	branch := m.measureBranch(guard.ThenBody)
+	extent = max(extent, left+SplitWidth/2+guardBranchInset+branch.Width)
+	line := max(lineHeight, branch.Height, ActivityHeight)
+	after := m.measureStatements(rest)
+	if after.Width == 0 {
+		return Bounds{Width: extent, Height: line}
+	}
+	// The new line starts with its first element centred under the split: half an
+	// activity left of the split's left edge, at most.
+	extent = max(extent, left+after.Width)
+	below := line/2 + RowGap + max(after.Height, ActivityHeight)
+	return Bounds{Width: extent, Height: 2 * below}
 }

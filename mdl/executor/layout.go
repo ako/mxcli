@@ -81,7 +81,7 @@ func (m *layoutMeasurer) measureStatements(stmts []ast.MicroflowStatement) Bound
 	maxHeight := ActivityHeight
 
 	var prev ast.MicroflowStatement
-	for _, stmt := range stmts {
+	for i, stmt := range stmts {
 		bounds := m.measureStatement(stmt)
 		maxHeight = max(maxHeight, bounds.Height)
 		if bounds.Width == 0 {
@@ -93,6 +93,9 @@ func (m *layoutMeasurer) measureStatements(stmts []ast.MicroflowStatement) Bound
 		}
 		if left < laneBusy && reachesBelowMainLine(stmt, bounds) {
 			left = laneBusy
+		}
+		if guard, ok := stmt.(*ast.IfStmt); ok && isGuard(guard) && m.layoutStyle().Guard == GuardTrueRight {
+			return m.measureGuardTrueRight(guard, stmts[i+1:], left, extent, maxHeight)
 		}
 		if guard, ok := stmt.(*ast.IfStmt); ok && isGuard(guard) {
 			branchRight := left + guardBranchInset + m.measureBranch(guard.ThenBody).Width

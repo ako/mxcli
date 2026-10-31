@@ -1328,7 +1328,7 @@ func traverseFlow(
 		}
 
 		trueTerminates := branchFlowTerminatesBeforeMerge(trueFlow, mergeID, activityMap, flowsByOrigin, splitMergeMap)
-		isGuard := trueTerminates && flowLooksLikeGuardContinuation(falseFlow, obj, activityMap) && !hasExplicitFalseBranchAnchor(falseFlow)
+		isGuard := trueTerminates && flowLooksLikeGuardContinuation(ctx, falseFlow, obj, activityMap) && !hasExplicitFalseBranchAnchor(falseFlow)
 
 		if isGuard {
 			// A guard's THEN arm is followed by the false continuation.
@@ -1551,7 +1551,7 @@ func traverseFlowUntilMerge(
 		}
 
 		trueTerminates := branchFlowTerminatesBeforeMerge(trueFlow, nestedMergeID, activityMap, flowsByOrigin, splitMergeMap)
-		isGuard := trueTerminates && flowLooksLikeGuardContinuation(falseFlow, obj, activityMap) && !hasExplicitFalseBranchAnchor(falseFlow)
+		isGuard := trueTerminates && flowLooksLikeGuardContinuation(ctx, falseFlow, obj, activityMap) && !hasExplicitFalseBranchAnchor(falseFlow)
 
 		if isGuard {
 			// A guard's THEN arm is followed by the false continuation.
@@ -2563,6 +2563,7 @@ func findBranchFlows(flows []*microflows.SequenceFlow) (trueFlow, falseFlow *mic
 }
 
 func flowLooksLikeGuardContinuation(
+	ctx *ExecContext,
 	flow *microflows.SequenceFlow,
 	split microflows.MicroflowObject,
 	activityMap map[model.ID]microflows.MicroflowObject,
@@ -2583,9 +2584,22 @@ func flowLooksLikeGuardContinuation(
 	// intentionally relies on mxcli's layout/anchor contract so a real false
 	// branch whose activities happen to be aligned with the split is not
 	// collapsed into a guard-style continuation during describe.
-	return dest.GetPosition().Y == split.GetPosition().Y &&
+	if dest.GetPosition().Y == split.GetPosition().Y &&
 		flow.OriginConnectionIndex == AnchorRight &&
-		flow.DestinationConnectionIndex == AnchorLeft
+		flow.DestinationConnectionIndex == AnchorLeft {
+		return true
+	}
+	// A flow drawn with `guard: true-right` (ako/mxcli#1832) continues straight
+	// down from the split's bottom instead. Only a flow that records that style is
+	// read this way: in any other the same shape is an ELSE column, and describing
+	// it as a guard would not rebuild where it is.
+	if ctx != nil && ctx.describedFlowLayout != nil && ctx.describedFlowLayout.Guard == GuardTrueRight {
+		return dest.GetPosition().X == split.GetPosition().X &&
+			dest.GetPosition().Y > split.GetPosition().Y &&
+			flow.OriginConnectionIndex == AnchorBottom &&
+			flow.DestinationConnectionIndex == AnchorTop
+	}
+	return false
 }
 
 // findErrorHandlerFlow returns the error handler flow from an activity's outgoing flows.

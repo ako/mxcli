@@ -96,8 +96,9 @@ func firstOfType[T microflows.MicroflowObject](objects []microflows.MicroflowObj
 	return zero, false
 }
 
-// assertNoOverlap fails when two placed objects' boxes intersect. Loop boxes
-// contain their bodies, so a box containing another is not an overlap.
+// assertNoOverlap fails when two placed objects' boxes intersect. A loop box
+// contains its body, so an object inside a loop box is not an overlap; anything
+// else inside another box is.
 func assertNoOverlap(t *testing.T, objects []microflows.MicroflowObject) {
 	t.Helper()
 	type box struct{ l, t, r, b int }
@@ -109,7 +110,9 @@ func assertNoOverlap(t *testing.T, objects []microflows.MicroflowObject) {
 	for i := range objects {
 		for j := i + 1; j < len(objects); j++ {
 			a, b := boxOf(objects[i]), boxOf(objects[j])
-			if contains(a, b) || contains(b, a) {
+			_, iLoop := objects[i].(*microflows.LoopedActivity)
+			_, jLoop := objects[j].(*microflows.LoopedActivity)
+			if (iLoop && contains(a, b)) || (jLoop && contains(b, a)) {
 				continue
 			}
 			if a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b {

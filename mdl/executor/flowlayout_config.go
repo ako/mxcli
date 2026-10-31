@@ -85,6 +85,19 @@ var flowLayoutOptions = map[string]flowLayoutOption{
 		},
 		defaultValue: "lanes",
 	},
+	"guard": {
+		values: map[string]func(*flowLayout){
+			"return-below": func(l *flowLayout) { l.Guard = GuardReturnBelow },
+			"true-right":   func(l *flowLayout) { l.Guard = GuardTrueRight },
+		},
+		value: func(l flowLayout) string {
+			if l.Guard == GuardTrueRight {
+				return "true-right"
+			}
+			return "return-below"
+		},
+		defaultValue: "return-below",
+	},
 }
 
 func sortedLayoutKeys[V any](m map[string]V) []string {
@@ -294,4 +307,20 @@ func resolveFlowLayout(ctx *ExecContext, doc string, keepRecorded bool) (*flowLa
 		return nil, doc, fmt.Errorf("layout config: %w", err)
 	}
 	return l, withFlowLayoutMarker(doc, *l), nil
+}
+
+// describingFlowLayout records, for the description of one flow, the style its
+// documentation says it was laid out in, and returns the function that restores
+// what was recorded before. The describer reads a shape only that style draws
+// as the statement that drew it (flowLooksLikeGuardContinuation).
+func (ctx *ExecContext) describingFlowLayout(doc string) func() {
+	if ctx == nil {
+		return func() {}
+	}
+	prev := ctx.describedFlowLayout
+	ctx.describedFlowLayout = nil
+	if l, found, err := flowLayoutFromDocumentation(doc); found && err == nil {
+		ctx.describedFlowLayout = &l
+	}
+	return func() { ctx.describedFlowLayout = prev }
 }

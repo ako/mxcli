@@ -90,6 +90,10 @@ func (fb *flowBuilder) addIfStatement(s *ast.IfStmt) model.ID {
 	// Save current center line position
 	splitX := fb.posX
 	centerY := fb.posY // This is the center line for the happy path
+	// A TRUE-right guard in a branch moves that branch's happy path — and baseY
+	// with it — to a new line. That line ends with the branch: whatever follows
+	// this IF is back on the IF's own line.
+	savedBaseY := fb.baseY
 
 	// Decide whether the IF condition is a rule call or a plain expression.
 	// A rule-based split must be serialized as Microflows$RuleSplitCondition;
@@ -108,8 +112,12 @@ func (fb *flowBuilder) addIfStatement(s *ast.IfStmt) model.ID {
 		SplitCondition:    splitCondition,
 		ErrorHandlingType: fb.ehType(nil),
 	}
+	splitIndex := len(fb.objects)
 	fb.objects = append(fb.objects, split)
 	splitID := split.ID
+	// A guard drawn TRUE-right keeps its branch on the centre line and sends the
+	// happy path down to a new line (GuardTrueRight).
+	guardRight := isGuard(s) && fb.layoutStyle().Guard == GuardTrueRight
 
 	// Apply this IF's own annotations (e.g. @caption, @annotation) to the split
 	// BEFORE recursing into branch bodies. Otherwise a nested statement's annotations
@@ -469,6 +477,9 @@ func (fb *flowBuilder) addIfStatement(s *ast.IfStmt) model.ID {
 		// TRUE path: goes below the main line
 		thenH := max(thenBounds.Height, ActivityHeight)
 		thenCenterY := centerY + ActivityHeight/2 + BranchGap + thenH/2
+		if guardRight {
+			thenCenterY = centerY
+		}
 		fb.posX = thenStartX
 		fb.posY = thenCenterY
 		fb.endsWithReturn = false
@@ -490,6 +501,9 @@ func (fb *flowBuilder) addIfStatement(s *ast.IfStmt) model.ID {
 				if lastThenID == "" {
 					// First statement in THEN - connect from split going down with "true" case
 					flow := newDownwardFlowWithCase(splitID, actID, "true")
+					if guardRight {
+						flow = newHorizontalFlowWithCase(splitID, actID, "true")
+					}
 					applyUserAnchors(flow, trueBranchAnchor, branchDestinationAnchor(trueBranchAnchor, thisAnchor))
 					fb.flows = append(fb.flows, flow)
 				} else {
@@ -565,6 +579,8 @@ func (fb *flowBuilder) addIfStatement(s *ast.IfStmt) model.ID {
 		}
 	}
 
+	fb.baseY = savedBaseY
+
 	// If both branches end with RETURN, the flow terminates here
 	if bothReturn {
 		fb.endsWithReturn = true
@@ -588,17 +604,28 @@ func (fb *flowBuilder) addIfStatement(s *ast.IfStmt) model.ID {
 		// Position after the split, past the downward branch's horizontal extent.
 		afterSplit := splitX + HorizontalSpacing
 		afterBranch := thenStartX + thenBounds.Width + HorizontalSpacing/2
-		if !hasElseBody {
+		fb.posY = centerY
+		switch {
+		case guardRight:
+			// The branch took the centre line; the happy path drops from the split's
+			// bottom onto a new line, RowGap under everything the guard drew, starting
+			// in the split's column so the drop is straight. The new line has its own
+			// lane, so nothing is reserved.
+			_, bottom, _ := objectsExtent(fb.objects[splitIndex:])
+			fb.posX = splitX
+			fb.posY = bottom + RowGap + ActivityHeight/2
+			fb.baseY = fb.posY
+			noMergeExitAnchor = withDefaultSides(noMergeExitAnchor, AnchorBottom, AnchorTop)
+		case !hasElseBody:
 			// A guard: the branch is in the lane below and ends there, so the main
 			// line resumes right after the split — in the column the branch starts
 			// in, so the two line up — and the lane is marked taken.
 			fb.posX = thenStartX
 			fb.reserveLowerLane(centerY, thenStartX-ActivityWidth/2+thenBounds.Width+laneGap)
-		} else {
+		default:
 			fb.posX = max(afterSplit, afterBranch)
 			fb.reserveLowerLane(centerY, thenStartX-ActivityWidth/2+branchWidth+laneGap)
 		}
-		fb.posY = centerY
 		if noMergeExitID != "" {
 			fb.nextConnectionPoint = noMergeExitID
 			fb.nextFlowCase = noMergeExitCase

@@ -106,6 +106,9 @@ type ExecContext struct {
 	// FlowLayoutOverride, when set, is the layout style flows are laid out with
 	// instead of the project's layout-config.yaml (`mxcli layout flows --style`).
 	FlowLayoutOverride *flowLayout
+	// describedFlowLayout is the style the flow being described records in its
+	// documentation, nil when it records none (see describingFlowLayout).
+	describedFlowLayout *flowLayout
 	// projectFlowLayout caches the project's layout-config.yaml (see
 	// ProjectFlowLayout).
 	projectFlowLayout       *flowLayout
