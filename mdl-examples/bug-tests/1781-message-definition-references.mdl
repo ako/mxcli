@@ -1,0 +1,40 @@
+mdl 1;
+-- ako/mxcli#1781: a message definition that exposes an entity, its attributes
+-- and an association never appeared in `show references to` any of them, so
+-- renaming or deleting one looked safe while the definition still used it.
+--
+--   mxcli exec this-file.mdl -p App.mpr          -- Mendix 11.14 or older
+--   mxcli -p App.mpr -c "refresh catalog full; show references to Bug1781.Order"
+--
+-- Before the fix: the entity's references listed nothing from MD_Order. After
+-- it, MD_Order is listed as `mapping` for Bug1781.Order and Bug1781.Customer,
+-- and as `member` for each exposed attribute and the association.
+-- On 11.15+ the same holds for `create message definition` documents, whose
+-- source type is MESSAGE_DEFINITION instead of MESSAGE_DEFINITION_COLLECTION.
+
+create module Bug1781;
+
+create persistent entity Bug1781.Customer (
+  Name: String(100)
+);
+
+create persistent entity Bug1781.Order (
+  OrderId: Long,
+  Total: Decimal,
+  -- Not exposed: the control, which must get no edge from MD_Order.
+  Notes: String(200)
+);
+
+create association Bug1781.Order_Customer from Bug1781.Order to Bug1781.Customer;
+
+-- @version: ..11.14
+create message definition collection Bug1781.MD_Order
+{
+  definition OrderMessage for Bug1781.Order as 'Order' {
+    OrderId,
+    Total,
+    Bug1781.Order_Customer/Bug1781.Customer {
+      Name
+    }
+  }
+};

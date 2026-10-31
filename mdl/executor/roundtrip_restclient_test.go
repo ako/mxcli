@@ -142,13 +142,15 @@ func TestRoundtripRestClient_WithQueryParams(t *testing.T) {
   }
 };`
 
+	// Below 11.0 the statement's version gate (version_gates_documents.go)
+	// refuses it before the write is reached.
 	if !restClientHasMendix11Shapes(env) {
 		err := env.executeMDL(createMDL)
 		if err == nil {
-			t.Fatal("a Query: operation was accepted on a Mendix 10 project; want the QueryParameters refusal")
+			t.Fatal("a Query: operation was accepted on a Mendix 10 project; want the query-parameter version gate")
 		}
-		if !strings.Contains(err.Error(), "Rest$RestOperation.QueryParameters (Mendix 11.0.0+)") {
-			t.Fatalf("want the QueryParameters refusal, got: %v", err)
+		if !strings.Contains(err.Error(), "query: ( … ) on a REST operation requires Mendix 11.0.0+") {
+			t.Fatalf("want the query-parameter version gate, got: %v", err)
 		}
 		return
 	}

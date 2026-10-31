@@ -52,6 +52,11 @@ var memberRefSourceTypes = map[string]string{
 	"Workflows$Workflow":           RefObjectWorkflow,
 	"ImportMappings$ImportMapping": RefObjectImportMapping,
 	"ExportMappings$ExportMapping": RefObjectExportMapping,
+	// A message definition exposes an entity, its attributes and associations
+	// by qualified name (#1781). Before 11.15 the definitions sit inside a
+	// collection document; from 11.15 each is a document of its own.
+	"MessageDefinitions$MessageDefinitionCollection": RefObjectMessageDefinitionCollection,
+	"MessageDefinitions$MessageDefinition2":          RefObjectMessageDefinition,
 }
 
 // memberRefSkipKeys are string properties that hold prose or a document's own
@@ -180,14 +185,17 @@ func (s *edgeSet) sorted() []refEdge {
 	return s.edges
 }
 
-// memberRefsInUnit returns the member, enumeration and (for mappings) entity
-// edges one stored document makes.
+// memberRefsInUnit returns the member, enumeration and (for mappings and
+// message definitions) entity edges one stored document makes.
 func memberRefsInUnit(contents []byte, sourceType string, idx *memberRefIndex) []refEdge {
 	var doc bson.D
 	if err := bson.Unmarshal(contents, &doc); err != nil {
 		return nil
 	}
-	isMapping := sourceType == RefObjectImportMapping || sourceType == RefObjectExportMapping
+	// Only these name an entity by a bare string that is a use of it; anywhere
+	// else an entity name is matched by the typed reference extractors.
+	isMapping := sourceType == RefObjectImportMapping || sourceType == RefObjectExportMapping ||
+		sourceType == RefObjectMessageDefinitionCollection || sourceType == RefObjectMessageDefinition
 	var set edgeSet
 	walkBSONStrings(doc, "", func(key, v string) {
 		if memberRefSkipKeys[key] || v == "" {
