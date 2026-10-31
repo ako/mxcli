@@ -25,9 +25,18 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
+)
+
+// minRowWidth and maxRowWidthLimit bound max-row-width: narrower than a few
+// activities every statement starts a row of its own, and past the limit a
+// typo of an extra digit would quietly mean "never wrap" — which is `wrap: off`.
+const (
+	minRowWidth      = 4 * HorizontalSpacing
+	maxRowWidthLimit = 20000
 )
 
 // flowLayoutMarker starts the documentation line that records a flow's style.
@@ -63,8 +72,10 @@ var flowLayoutPresets = map[string]flowLayout{
 }
 
 // flowLayoutOption is one option key: its values and how each sets a flowLayout.
+// An option with a number for a value has parse instead of values.
 type flowLayoutOption struct {
 	values map[string]func(*flowLayout)
+	parse  func(*flowLayout, string) error
 	// value returns the option's spelling for a layout.
 	value func(flowLayout) string
 	// defaultValue is the spelling of the default style's value.
@@ -98,6 +109,34 @@ var flowLayoutOptions = map[string]flowLayoutOption{
 		},
 		defaultValue: "lanes",
 	},
+	"wrap": {
+		values: map[string]func(*flowLayout){
+			"rows": func(l *flowLayout) { l.Wrap = WrapRows },
+			"off":  func(l *flowLayout) { l.Wrap = WrapOff },
+		},
+		value: func(l flowLayout) string {
+			if l.Wrap == WrapOff {
+				return "off"
+			}
+			return "rows"
+		},
+		defaultValue: "rows",
+	},
+	"max-row-width": {
+		parse: func(l *flowLayout, v string) error {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < minRowWidth || n > maxRowWidthLimit {
+				return fmt.Errorf("%q is not a width in px from %d to %d", v, minRowWidth, maxRowWidthLimit)
+			}
+			if n == MaxRowWidth {
+				n = 0
+			}
+			l.MaxRowWidth = n
+			return nil
+		},
+		value:        func(l flowLayout) string { return strconv.Itoa(l.rowWidth()) },
+		defaultValue: strconv.Itoa(MaxRowWidth),
+	},
 	"guard": {
 		values: map[string]func(*flowLayout){
 			"return-below": func(l *flowLayout) { l.Guard = GuardReturnBelow },
@@ -129,6 +168,12 @@ func setFlowLayoutOption(l *flowLayout, key, value string) error {
 	opt, ok := flowLayoutOptions[key]
 	if !ok {
 		return fmt.Errorf("unknown layout option %q (known: %s)", key, strings.Join(sortedLayoutKeys(flowLayoutOptions), ", "))
+	}
+	if opt.parse != nil {
+		if err := opt.parse(l, value); err != nil {
+			return fmt.Errorf("layout option %s: %w", key, err)
+		}
+		return nil
 	}
 	set, ok := opt.values[value]
 	if !ok {

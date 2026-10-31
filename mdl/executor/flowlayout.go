@@ -61,12 +61,35 @@ const (
 	CaseSplitColumns
 )
 
+// WrapStyle is what the main line does when it gets long.
+type WrapStyle int
+
+const (
+	// WrapRows: past the row width the main line continues on a new row, back at
+	// the left (layout_rows.go). The default.
+	WrapRows WrapStyle = iota
+	// WrapOff: the main line never wraps, however long it gets.
+	WrapOff
+)
+
 // flowLayout holds the layout decisions a style changes. Its zero value is the
 // default style.
 type flowLayout struct {
 	IfElse    IfElseStyle
 	Guard     GuardStyle
 	CaseSplit CaseSplitStyle
+	Wrap      WrapStyle
+	// MaxRowWidth is where a row wraps; 0 is MaxRowWidth, the default. The
+	// default width is stored as 0, so a style says it the one way.
+	MaxRowWidth int
+}
+
+// rowWidth is the width a row wraps at.
+func (l flowLayout) rowWidth() int {
+	if l.MaxRowWidth > 0 {
+		return l.MaxRowWidth
+	}
+	return MaxRowWidth
 }
 
 // layoutStyle returns the builder's layout style; a builder without one uses the

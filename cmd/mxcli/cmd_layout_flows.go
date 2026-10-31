@@ -94,6 +94,8 @@ flows out the same way:
     if-else: true-right-else-column # lanes | true-right-else-column
     case-split: lanes               # lanes | first-right-rest-columns
     guard: return-below             # return-below | true-right
+    wrap: rows                      # rows | off
+    max-row-width: 2880             # px, 640..20000
 
 An unknown key or value is an error rather than a silent fallback.`,
 	Example: `  mxcli layout config -p app.mpr`,

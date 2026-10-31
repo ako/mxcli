@@ -47,6 +47,8 @@ A preset is a set of options, and an option overrides its preset:
 |---|---|
 | `if-else` | `lanes` (default), `true-right-else-column` |
 | `case-split` | `lanes` (default): a CASE's or type split's outcomes are stacked as lanes, each left to right. `first-right-rest-columns`: the first outcome, as written, stays on the line; every other one is a column under the decision, side by side in the order written. Put the happy case first. |
+| `wrap` | `rows` (default): past the row width the main line continues on a new row, back at the left. `off`: the main line never wraps. |
+| `max-row-width` | Where a row wraps, in px, from 640 to 20000. Default 2880 (two screens of Studio Pro canvas). |
 | `guard` | `return-below` (default): a guard's early return goes in the lane below and the happy path stays on the line. `true-right`: the early return carries straight on to the right, and the happy path drops from the decision's bottom onto a new line below. |
 
 A *guard* is an `if … then … return; end if` with no `else`. It has its own

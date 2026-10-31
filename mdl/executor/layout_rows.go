@@ -108,9 +108,10 @@ func (fb *flowBuilder) rowBottom() int {
 // lone end event on a row of its own, with a line running back across the diagram
 // to reach it.
 func (fb *flowBuilder) shouldWrap(stmt ast.MicroflowStatement, rest []ast.MicroflowStatement) bool {
-	if !fb.allowWrap {
+	if !fb.allowWrap || fb.layoutStyle().Wrap == WrapOff {
 		return false
 	}
+	rowWidth := fb.layoutStyle().rowWidth()
 	width := ActivityWidth
 	if fb.measurer != nil {
 		w := fb.measurer.measureStatement(stmt).Width
@@ -122,12 +123,12 @@ func (fb *flowBuilder) shouldWrap(stmt ast.MicroflowStatement, rest []ast.Microf
 	// The whole element has to fit, not just its starting column: a loop box 810px
 	// wide begun at 1290 past the row start ran the row to 2100, well past a screen.
 	used := fb.posX - fb.row.startX
-	if used+width <= MaxRowWidth {
+	if used+width <= rowWidth {
 		return false
 	}
 	// Past the limit — unless everything that is left fits in the overhang, in which
 	// case finishing on this row reads better than a stub of a row underneath.
-	if fb.measurer != nil && used+fb.measurer.measureStatements(rest).Width <= MaxRowWidth+RowOverhang {
+	if fb.measurer != nil && used+fb.measurer.measureStatements(rest).Width <= rowWidth+RowOverhang {
 		return false
 	}
 	return true

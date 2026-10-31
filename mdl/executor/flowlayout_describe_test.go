@@ -3,6 +3,7 @@
 package executor
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -142,5 +143,29 @@ func TestDescribeKeepsCaseOrderInCaseColumns(t *testing.T) {
 			t.Fatalf("%q missing or out of order in:\n%s", want, mdl)
 		}
 		last = i
+	}
+}
+
+func TestDescribeUsesTheRecordedWrap(t *testing.T) {
+	var body strings.Builder
+	for i := 0; i < 30; i++ {
+		fmt.Fprintf(&body, "  log info 'step %d';\n", i)
+	}
+	mdl := "create microflow MyFirstModule.ACT_Long () returns Boolean begin\n" + body.String() + "  return true;\nend;\n"
+	for _, l := range []flowLayout{{}, {Wrap: WrapOff}, {MaxRowWidth: 1200}} {
+		t.Run(l.String(), func(t *testing.T) {
+			exec, out := describeExecutor(t)
+			style := l
+			exec.flowLayoutOverride = &style
+			run(t, exec, mdl)
+			exec.flowLayoutOverride = nil
+			got := describeText(t, exec, out, "describe microflow MyFirstModule.ACT_Long")
+			if l.markerValue() != "" && !strings.Contains(got, flowLayoutMarker+" "+l.markerValue()) {
+				t.Fatalf("no marker for %s:\n%s", l, got)
+			}
+			if lines := layoutLines(got); len(lines) > 0 {
+				t.Errorf("printed layout annotations under the recorded style: %v", lines)
+			}
+		})
 	}
 }
