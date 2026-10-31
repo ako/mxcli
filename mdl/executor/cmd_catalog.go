@@ -542,6 +542,9 @@ func buildCatalog(ctx *ExecContext, full, isSource, communities bool, resolution
 	if isSource {
 		builder.SetSourceMode(true)
 		preWarmCache(ctx)
+		// Loaded here, on one goroutine, for the describe workers to share
+		// (parallelDescribeContext).
+		ctx.GetWidgetRegistry()
 		builder.SetDescribeFunc(func(objectType string, qualifiedName string, id string) (string, error) {
 			if hook := sourceDescribeHook; hook != nil {
 				hook(objectType, qualifiedName)
@@ -1037,25 +1040,8 @@ func captureDescribeParallel(ctx *ExecContext, objectType string, qualifiedName 
 	}
 	qn := ast.QualifiedName{Module: parts[0], Name: parts[1]}
 
-	// Create a goroutine-local context: shared backend + cache, own output buffer.
 	var buf bytes.Buffer
-	localCtx := &ExecContext{
-		Context: ctx.Context,
-		Output:  &buf,
-		Format:  ctx.Format,
-		Quiet:   ctx.Quiet,
-		Logger:  ctx.Logger,
-		Backend: ctx.Backend,
-		Cache:   ctx.Cache,
-		MprPath: ctx.MprPath,
-		// Pins the describe to this document rather than to whichever
-		// document of this name the lookup prefers (#1185).
-		describeID: id,
-		// The text feeds the search index, where layout annotations do not
-		// matter, and telling derived layout from authored rebuilds each flow
-		// several times — it made a full source refresh 2.3x slower (#766).
-		describeFullLayout: true,
-	}
+	localCtx := parallelDescribeContext(ctx, &buf, id)
 
 	describe := describeDispatch(objectType)
 	if describe == nil {
@@ -1066,6 +1052,37 @@ func captureDescribeParallel(ctx *ExecContext, objectType string, qualifiedName 
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+// parallelDescribeContext is the goroutine-local context one parallel describe
+// runs in: shared backend + cache + widget registry, own output buffer.
+//
+// The registry is the build's, loaded once before the fan-out. Each describe
+// used to load its own, and every load could rewrite the project's
+// .def.json files, so a worker that read a file another had just truncated
+// got a registry without that widget and described it in the generic
+// `pluggablewidget '<id>'` form — on some runs and not others (#1799). The
+// registry is read-only once loaded, so sharing it is safe.
+func parallelDescribeContext(ctx *ExecContext, out io.Writer, id model.ID) *ExecContext {
+	return &ExecContext{
+		widgetRegistry:       ctx.widgetRegistry,
+		widgetRegistryLoaded: ctx.widgetRegistryLoaded,
+		Context:              ctx.Context,
+		Output:               out,
+		Format:               ctx.Format,
+		Quiet:                ctx.Quiet,
+		Logger:               ctx.Logger,
+		Backend:              ctx.Backend,
+		Cache:                ctx.Cache,
+		MprPath:              ctx.MprPath,
+		// Pins the describe to this document rather than to whichever
+		// document of this name the lookup prefers (#1185).
+		describeID: id,
+		// The text feeds the search index, where layout annotations do not
+		// matter, and telling derived layout from authored rebuilds each flow
+		// several times — it made a full source refresh 2.3x slower (#766).
+		describeFullLayout: true,
+	}
 }
 
 // describeDocFunc renders one document as MDL into ctx.Output.
