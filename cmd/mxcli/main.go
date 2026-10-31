@@ -16,6 +16,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/executor"
 	"github.com/mendixlabs/mxcli/mdl/repl"
 	"github.com/mendixlabs/mxcli/mdl/visitor"
+	mpr "github.com/mendixlabs/mxcli/modelsdk/mpr"
 	"github.com/spf13/cobra"
 )
 
@@ -31,6 +32,10 @@ func main() {
 	// Show warning banner unless --quiet, -q, --help, -h, or --version is passed
 	if !shouldSuppressWarning() {
 		fmt.Fprint(os.Stderr, warningBanner)
+		// The first command on a project (after an upgrade, or on a fresh
+		// clone) opens every unit file to build the unit index; say so
+		// rather than stall unexplained (ako/mxcli#1806).
+		mpr.ColdUnitIndexNotice = os.Stderr
 	}
 
 	// Open the process session before cobra sees argv. Cobra validates a

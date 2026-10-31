@@ -5,6 +5,8 @@ package mpr
 import (
 	"bufio"
 	"bytes"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -59,6 +61,14 @@ const unitTypeIndexName = "unit-index-2.idx"
 // without it is ignored, so a format change only costs one cold start.
 const unitTypeIndexHeader = "mxcli-unit-index 2"
 
+// ColdUnitIndexNotice, when set, is told in one line that a reader is about to
+// build the unit index from nothing: no persisted index, or one in an older
+// format. That build opens every unit file once — on the first command after an
+// upgrade or on a fresh clone — and on Windows, where an open costs about a
+// millisecond, it is a visible stall with no explanation (ako/mxcli#1806). nil,
+// the default, says nothing: a library caller did not ask for stderr output.
+var ColdUnitIndexNotice io.Writer
+
 // unitIndexEntry is what the index knows of the unit whose bytes hash to its
 // key: everything derived from the top level of the document.
 type unitIndexEntry struct {
@@ -106,6 +116,31 @@ func (r *Reader) knownUnit(hash string) (unitIndexEntry, bool) {
 	}
 	e, ok := r.v2Types[hash]
 	return e, ok
+}
+
+// announceColdUnitIndex tells ColdUnitIndexNotice that this build starts from
+// an empty index and so opens every unit file. Only where the index is
+// persisted: without a path every build is cold, and a notice on every command
+// would promise a "once" that never comes. Called before buildUnitCache opens
+// its row query, so the count runs on a free connection.
+func (r *Reader) announceColdUnitIndex() {
+	w := ColdUnitIndexNotice
+	if w == nil || r.unitTypeIndexPath() == "" {
+		return
+	}
+	r.v2TypesMu.Lock()
+	r.knownUnit("") // loads the persisted index on first use
+	cold := len(r.v2Types) == 0
+	r.v2TypesMu.Unlock()
+	if !cold {
+		return
+	}
+	var units int
+	if err := r.db.QueryRow(`SELECT COUNT(*) FROM Unit`).Scan(&units); err != nil || units == 0 {
+		return
+	}
+	fmt.Fprintf(w, "Building the unit index for this project's %d units (once; later commands reuse .mxcli/%s)…\n",
+		units, unitTypeIndexName)
 }
 
 // learnUnit records a hash's entry. Caller holds v2TypesMu.

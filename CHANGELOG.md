@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Optional page parameters** (mendixlabs/mxcli#1640, ako/mxcli#1649) — `Params: ( $Sale: Shop.Sale optional )` is Studio Pro's unticked *Required* (`Forms$PageParameter.IsRequired = false`, Mendix 11.5+): the page can be opened with no argument, from a menu item for example, where a required parameter is CE1571. `create page`, `alter page … add parameters` and `describe page` all spell it. `describe navigation` no longer invents `(Sale = $currentObject)` for a menu item opening such a page, which made its output one `exec` refused (MDL-PAGEARG01) and left the navigation profile unchangeable from MDL. Below 11.5 `optional` is refused (MDL-VERSION01), and a snippet parameter cannot be optional (MDL087).
 
+### Changed
+
+- **The first command on a project says it is building the unit index** (ako/mxcli#1806) — after an upgrade to the `unit-index-2.idx` format, or on a fresh clone, one command opens every unit file to build the index, which on Windows is a visible stall. It now prints one line on stderr (`Building the unit index for this project's N units (once; …)`); `-q` / `MXCLI_QUIET` keep it silent.
+
 ### Fixed
 
 - **`show references to` an entity, attribute or association lists the message definitions that expose it** (#1781) — a message definition (the pre-11.15 collection, `MESSAGE_DEFINITION_COLLECTION`, and the 11.15+ document, `MESSAGE_DEFINITION`) was not walked for references, so impact analysis called an exposed entity or attribute unused. The entity edges are `mapping`, the attribute and association edges `member`, as for an import or export mapping.
