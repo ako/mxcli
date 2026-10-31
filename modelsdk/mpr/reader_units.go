@@ -322,6 +322,7 @@ func (r *Reader) listUnitsByTypeV2Where(typeName, containerID string, keep func(
 // comes from the type index when its ContentsHash is known there, so only new
 // and changed units are opened (reader_units_v2.go, mendixlabs/mxcli#1603).
 func (r *Reader) buildUnitCache() error {
+	r.announceColdUnitIndex()
 	rows, err := r.db.Query(`
 		SELECT UnitID, ContainerID, ContainmentName, COALESCE(ContentsHash, '')
 		FROM Unit
