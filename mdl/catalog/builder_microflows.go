@@ -51,8 +51,8 @@ func (b *Builder) buildMicroflows() error {
 	mfStmt, err := b.tx.Prepare(`
 		INSERT INTO microflows_data (Id, Name, QualifiedName, ModuleName, Folder, MicroflowType,
 			Description, ReturnType, ParameterCount, ActivityCount, TotalActivityCount,
-			Complexity, Excluded, ProjectId, SnapshotId)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			Complexity, Excluded, ApplyEntityAccess, ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
@@ -170,6 +170,7 @@ func (b *Builder) buildMicroflows() error {
 			countFlowActivities(mf.ObjectCollection, true),
 			complexity,
 			mf.Excluded,
+			mf.ApplyEntityAccess,
 			projectID, snapshotID,
 		)
 		if err != nil {
@@ -227,6 +228,7 @@ func (b *Builder) buildMicroflows() error {
 			countFlowActivities(nf.ObjectCollection, true),
 			complexity,
 			nf.Excluded,
+			false, // a nanoflow runs client-side: entity access always applies, there is no setting
 			projectID, snapshotID,
 		)
 		if err != nil {
@@ -281,6 +283,7 @@ func (b *Builder) buildMicroflows() error {
 			countFlowActivities(rule.ObjectCollection, true),
 			calculateRuleComplexity(rule),
 			rule.Excluded,
+			rule.ApplyEntityAccess,
 			projectID, snapshotID,
 		)
 		if err != nil {

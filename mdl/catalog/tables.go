@@ -7,6 +7,14 @@ package catalog
 //
 // History:
 //
+//	30 (flow settings, message definition edges): microflows_data gains
+//	    ApplyEntityAccess (ako/mxcli#1453), which the linter now selects with
+//	    Excluded — against a cached catalog without the column every
+//	    Microflows() query fails and every flow rule reports nothing. Also
+//	    covers refs gaining the edges from message definitions to the
+//	    entities, attributes and associations they expose (ako/mxcli#1781,
+//	    which shipped without a bump): a cached catalog kept answering "no
+//	    references" for them.
 //	29 (service microflow edges): refs gains the edges from an integration
 //	    service to the microflows it runs — a published OData resource's
 //	    read/change microflows, its actions and authentication microflow, a
@@ -156,7 +164,7 @@ package catalog
 //	    SnapshotSource / SourceId / SourceBranch / SourceRevision columns
 //	    from every row (issue #576).
 //	1 — initial flat schema with denormalized snapshot columns on every row.
-const CatalogSchemaVersion = "29"
+const CatalogSchemaVersion = "30"
 
 // MetaSchemaVersion is the catalog_meta key that records the schema version
 // the cache was built against.
@@ -344,6 +352,9 @@ func (c *Catalog) createTables() error {
 			TotalActivityCount INTEGER DEFAULT 0,
 			Complexity INTEGER DEFAULT 1,
 			Excluded BOOLEAN DEFAULT 0,
+			-- The flow's "Apply entity access" setting; always 0 for a nanoflow,
+			-- which has no such setting (ako/mxcli#1453).
+			ApplyEntityAccess BOOLEAN DEFAULT 0,
 			ProjectId TEXT,
 			SnapshotId TEXT
 		)`,

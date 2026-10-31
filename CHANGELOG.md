@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Lint rules can read the data guideline rules asked for** (ako/mxcli#1453, ako/mxcli#1301) — a microflow's `excluded` and `apply_entity_access`, an enumeration's `values` with their captions (so a rule can resolve `getCaption(Module.Enum.Value)`), `constant_values()` for the run-configuration values, and `project_settings()` (default language, OQL version, Java version, hash algorithm, time zone, rounding, decimal scale, optimistic locking, foreign keys, web client). The catalog schema moves to version 30, so a cached catalog is rebuilt once.
 - **Optional page parameters** (mendixlabs/mxcli#1640, ako/mxcli#1649) — `Params: ( $Sale: Shop.Sale optional )` is Studio Pro's unticked *Required* (`Forms$PageParameter.IsRequired = false`, Mendix 11.5+): the page can be opened with no argument, from a menu item for example, where a required parameter is CE1571. `create page`, `alter page … add parameters` and `describe page` all spell it. `describe navigation` no longer invents `(Sale = $currentObject)` for a menu item opening such a page, which made its output one `exec` refused (MDL-PAGEARG01) and left the navigation profile unchangeable from MDL. Below 11.5 `optional` is refused (MDL-VERSION01), and a snippet parameter cannot be optional (MDL087).
 
 ### Changed
