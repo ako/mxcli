@@ -51,6 +51,7 @@ mxcli lint -p app.mpr --exclude System --exclude Administration
 | CONV013 | quality | ErrorHandlingOnCalls - External calls (REST/WS/Java) need custom error handling |
 | CONV014 | quality | NoContinueErrorHandling - Don't silently swallow errors with Continue |
 | CONV020 | quality | CreatedObjectNeverPersisted - A microflow creates a persistent object without commit and never commits, returns or passes it on, so it is discarded |
+| CONV021 | quality | CreateChangeThenCommit - A create/change without commit directly followed by a Commit of the same object; set Commit on the create/change instead |
 
 ## Bundled Starlark Rules
 

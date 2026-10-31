@@ -54,7 +54,8 @@ func (d codecPageDeps) BuildDataGrid2Column(col *backend.DataGridColumnSpec, col
 // SerializeParameter builds a new page or snippet parameter through the same
 // converters CREATE writes with, so ALTER gets the same version gate on
 // IsRequired/DefaultValue (11.5+) and the same ParameterType shapes. A page
-// parameter MDL declares is always required with no default, as on CREATE.
+// parameter MDL declares is required unless it says `optional`, and has no
+// default, as on CREATE.
 func (d codecPageDeps) SerializeParameter(container backend.ContainerKind, p backend.PageParameterSpec) (bson.D, error) {
 	var el element.Element
 	switch container {
@@ -63,7 +64,7 @@ func (d codecPageDeps) SerializeParameter(container backend.ContainerKind, p bac
 			Name:       p.Name,
 			TypeName:   p.PrimitiveType,
 			EntityName: p.EntityName,
-			IsRequired: true,
+			IsRequired: !p.Optional,
 		}, d.b.ProjectVersion())
 	case backend.ContainerSnippet:
 		el = snippetParameterToGen(&pages.SnippetParameter{

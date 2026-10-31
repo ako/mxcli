@@ -626,6 +626,7 @@ FEEDBACK: F E E D B A C K;
 RULE: R U L E;
 REQUIRED: R E Q U I R E D;
 NULLABLE: N U L L A B L E;                 // MODIFY ATTRIBUTE … NULLABLE — clears NOT NULL (Bug 12a)
+OPTIONAL: O P T I O N A L;                 // Params: ( $P: Type OPTIONAL ) — an 11.5+ page parameter that is not required (mendixlabs/mxcli#1640)
 LOCALIZED: L O C A L I Z E D;              // DateTime [NOT] LOCALIZED — DateTimeAttributeType.LocalizeDate (#1373)
 ERROR: E R R O R;
 IGNORE: I G N O R E;

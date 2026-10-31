@@ -60,8 +60,11 @@ pageParameterList
     : pageParameter (COMMA pageParameter)*
     ;
 
+// `OPTIONAL` is Forms$PageParameter.IsRequired = false (Mendix 11.5+): the page
+// may be opened without an argument for it (mendixlabs/mxcli#1640). A snippet
+// parameter shares the rule and has no such flag; the executor refuses it there.
 pageParameter
-    : (IDENTIFIER | VARIABLE | QUOTED_IDENTIFIER) COLON dataType
+    : (IDENTIFIER | VARIABLE | QUOTED_IDENTIFIER) COLON dataType OPTIONAL?
     ;
 
 // A snippet parameter is a page parameter. There used to be a byte-identical

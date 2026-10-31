@@ -66,6 +66,7 @@ func buildPageParameter(paramCtx *parser.PageParameterContext) ast.PageParameter
 		Name:       name,
 		EntityType: entityType,
 		Type:       dataType,
+		Optional:   paramCtx.OPTIONAL() != nil,
 	}
 }
 

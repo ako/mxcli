@@ -18,7 +18,7 @@ The linting system provides:
 |----------|--------|-------|
 | MDL | MDL001-MDL007 | Naming conventions, empty microflows, domain model size |
 | Security | SEC001-SEC010 | Access rules, password policy, demo users, PII exposure |
-| Convention | CONV001-CONV020 | Best practice conventions, error handling |
+| Convention | CONV001-CONV021 | Best practice conventions, error handling |
 | Quality | QUAL001-QUAL004 | Complexity, documentation, long microflows |
 | Architecture | ARCH001-ARCH003 | Cross-module data, entity business keys |
 | Design | DESIGN001 | Entity attribute count |

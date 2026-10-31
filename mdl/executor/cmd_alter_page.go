@@ -221,9 +221,12 @@ func checkAddedParameterURLSegments(ctx *ExecContext, s *ast.AlterPageStmt, h *C
 // DataTypes $Type, anything else must name an entity that exists, and a snippet
 // takes entities only (MDL087 — mxbuild's CE0046 otherwise).
 func alterParameterSpec(ctx *ExecContext, s *ast.AlterPageStmt, containerType string, p ast.PageParameter) (backend.PageParameterSpec, error) {
-	spec := backend.PageParameterSpec{Name: p.Name}
+	spec := backend.PageParameterSpec{Name: p.Name, Optional: p.Optional}
 	bsonType := pageParamBSONType(p.Type)
 	if strings.EqualFold(containerType, "snippet") {
+		if p.Optional {
+			return spec, mdlerrors.NewValidation(optionalSnippetParameterMessage(s.PageName, p.Name))
+		}
 		if caption := types.SnippetParameterTypeRule(bsonType); caption != "" {
 			return spec, mdlerrors.NewValidationf(
 				"snippet '%s' cannot take parameter $%s with the primitive type %s — a snippet "+

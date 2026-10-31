@@ -145,6 +145,13 @@ features:
     page_parameters:
       min_version: "11.0.0"
       mdl: "CREATE PAGE Module.Name (Param: Type, ...) { ... }"
+    page_parameter_optional:
+      # Studio Pro's "Required" checkbox on a page parameter, unticked:
+      # Forms$PageParameter.IsRequired = false. The property is introduced in
+      # 11.5.0 (modelsdk/gen/pages/version.go, from the reflection data); below
+      # it every page parameter is required (mendixlabs/mxcli#1640).
+      min_version: "11.5.0"
+      mdl: "CREATE PAGE Module.Name (Params: ( $P: Module.Entity optional )) { ... }"
     page_variables:
       min_version: "11.0.0"
     flow_call_output_mappings:

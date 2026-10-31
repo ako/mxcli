@@ -33,6 +33,38 @@ var documentTypeGates = []statementTypeGate{
 		},
 	},
 	{
+		// `optional` writes Forms$PageParameter.IsRequired = false, a property
+		// below whose introduction every page parameter is required — the
+		// writer leaves it out there, so the word would be dropped
+		// (mendixlabs/mxcli#1640).
+		typeGate: typeGate{
+			versionGate: versionGate{"pages", "page_parameter_optional", "an optional page parameter",
+				"below 11.5 every page parameter is required: remove `optional` and pass an argument wherever the page is opened, or upgrade the project"},
+			types:      []string{"Forms$PageParameter"},
+			properties: []string{"Forms$PageParameter.IsRequired"},
+		},
+		applies: func(stmt ast.Statement) bool {
+			switch s := stmt.(type) {
+			case *ast.CreatePageStmtV3:
+				for _, p := range s.Parameters {
+					if p.Optional {
+						return true
+					}
+				}
+			case *ast.AlterPageStmt:
+				if strings.EqualFold(s.ContainerType, "SNIPPET") {
+					return false // refused for a snippet whatever the version
+				}
+				for _, op := range s.Operations {
+					if add, ok := op.(*ast.AddParameterOp); ok && add.Parameter.Optional {
+						return true
+					}
+				}
+			}
+			return false
+		},
+	},
+	{
 		typeGate: typeGate{
 			versionGate: versionGate{"pages", "snippet_parameters", "a snippet parameter",
 				"this version stores no snippet parameters (Forms$SnippetParameter): pass the object through the data context, or upgrade the project"},

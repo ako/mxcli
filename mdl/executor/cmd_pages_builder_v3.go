@@ -131,7 +131,9 @@ func (pb *pageBuilder) buildPageV3(s *ast.CreatePageStmtV3) (*pages.Page, error)
 			},
 			ContainerID: page.ID,
 			Name:        param.Name,
-			IsRequired:  true, // Page parameters are required by default
+			// Required unless the statement says `optional` (11.5+, gated in
+			// documentTypeGates; mendixlabs/mxcli#1640).
+			IsRequired: !param.Optional,
 		}
 
 		// Check if this is a primitive type or entity type
@@ -302,6 +304,9 @@ func (pb *pageBuilder) buildSnippetV3(s *ast.CreateSnippetStmtV3) (*pages.Snippe
 		// than written, which storage would allow and mxbuild would not
 		// (CE0046). Same rule check applies, so a script cannot pass one and
 		// fail the other (mendixlabs/mxcli#1028).
+		if param.Optional {
+			return nil, mdlerrors.NewValidation(optionalSnippetParameterMessage(s.Name, param.Name))
+		}
 		if caption := types.SnippetParameterTypeRule(pageParamBSONType(param.Type)); caption != "" {
 			return nil, mdlerrors.NewValidationf(
 				"snippet '%s' declares parameter $%s with the primitive type %s — a snippet "+
