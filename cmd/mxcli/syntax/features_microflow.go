@@ -880,6 +880,8 @@ func init() {
 			"position", "start", "anchor", "curve", "layout", "canvas",
 			"annotation", "caption", "color", "excluded", "bezier",
 			"disable activity", "disabled activity",
+			"layout style", "layout-config", "mxcli-layout", "else column",
+			"wrap", "row width",
 		},
 		Syntax: "@position(x, y)                       -- the activity's centre point\n" +
 			"@position(x, y)                       -- also on a PARAMETER, in the ( … ) list\n" +
@@ -977,7 +979,19 @@ func init() {
 			"never prints it: a whole flow declares its notes. (ako/mxcli#1695)\n\n" +
 			"position:/size: are the note's own geometry, omitted whenever they match\n" +
 			"what a rewrite re-derives (100px above the activity, stacked 60px per extra\n" +
-			"note, 200x50), so an ordinary note keeps the short form. (#1077)",
+			"note, 200x50), so an ordinary note keeps the short form. (#1077)\n\n" +
+			"LAYOUT STYLE — where mxcli puts what you leave unpositioned — is the\n" +
+			"project's layout-config.yaml (.claude/ or next to the .mpr), never something\n" +
+			"to imitate with @position. Leave positions out and the style applies:\n" +
+			"  flows:\n" +
+			"    preset: true-right-false-down   # happy-line (default)\n" +
+			"    if-else: true-right-else-column # ELSE as a column under its decision\n" +
+			"    case-split: first-right-rest-columns\n" +
+			"    guard: true-right               # early return on the line\n" +
+			"    wrap: off                       # or max-row-width: <px>\n" +
+			"`mxcli layout config` shows the style in force. A flow drawn in a non-default\n" +
+			"style carries a `@mxcli-layout: …` line in its /** … */ documentation: keep\n" +
+			"it when copying a described flow, never write one by hand. (ako/mxcli#1832)",
 		Example: "create microflow MyModule.ACT_Flow (\n  @position(145, 0)\n  $In: String\n)\nreturns String as $Out\nbegin\n" +
 			"  @start(145, 100)\n  @position(200, 100)\n  @anchor(from: bottom)\n" +
 			"  @curve(from: (40, -90), to: (-40, 90))\n  declare $Tmp String = $In;\n" +
