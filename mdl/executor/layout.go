@@ -59,6 +59,10 @@ type Bounds struct {
 // layoutMeasurer calculates dimensions of microflow statements
 type layoutMeasurer struct {
 	varTypes map[string]string
+	// layout is the style the flow is measured for; nil is the default
+	// (flowlayout.go). It must be the builder's, or the measured sizes are those
+	// of a different drawing.
+	layout *flowLayout
 }
 
 // measureStatements calculates the total bounds for a list of statements.
@@ -77,7 +81,7 @@ func (m *layoutMeasurer) measureStatements(stmts []ast.MicroflowStatement) Bound
 	maxHeight := ActivityHeight
 
 	var prev ast.MicroflowStatement
-	for _, stmt := range stmts {
+	for i, stmt := range stmts {
 		bounds := m.measureStatement(stmt)
 		maxHeight = max(maxHeight, bounds.Height)
 		if bounds.Width == 0 {
@@ -89,6 +93,9 @@ func (m *layoutMeasurer) measureStatements(stmts []ast.MicroflowStatement) Bound
 		}
 		if left < laneBusy && reachesBelowMainLine(stmt, bounds) {
 			left = laneBusy
+		}
+		if guard, ok := stmt.(*ast.IfStmt); ok && isGuard(guard) && m.layoutStyle().Guard == GuardTrueRight {
+			return m.measureGuardTrueRight(guard, stmts[i+1:], left, extent, maxHeight)
 		}
 		if guard, ok := stmt.(*ast.IfStmt); ok && isGuard(guard) {
 			branchRight := left + guardBranchInset + m.measureBranch(guard.ThenBody).Width
@@ -238,6 +245,22 @@ func (m *layoutMeasurer) measureStatement(stmt ast.MicroflowStatement) Bounds {
 }
 
 func (m *layoutMeasurer) measureEnumSplitStatement(s *ast.EnumSplitStmt) Bounds {
+	if m.layoutStyle().CaseSplit == CaseSplitColumns {
+		bodies := make([][]ast.MicroflowStatement, 0, len(s.Cases)+1)
+		for _, c := range s.Cases {
+			bodies = append(bodies, c.Body)
+		}
+		if len(s.ElseBody) > 0 {
+			bodies = append(bodies, s.ElseBody)
+		}
+		if len(bodies) > 1 {
+			shift := 0
+			if len(s.Cases) > 0 && len(s.Cases[0].Values) > 1 {
+				shift = firstCaseGroupShift
+			}
+			return m.measureCaseColumns(bodies, SplitWidth, shift)
+		}
+	}
 	maxBranchWidth := 0
 	var branchHeights []int
 	for _, c := range s.Cases {
@@ -268,6 +291,18 @@ func (m *layoutMeasurer) measureEnumSplitStatement(s *ast.EnumSplitStmt) Bounds 
 }
 
 func (m *layoutMeasurer) measureInheritanceSplitStatement(s *ast.InheritanceSplitStmt) Bounds {
+	if m.layoutStyle().CaseSplit == CaseSplitColumns {
+		bodies := make([][]ast.MicroflowStatement, 0, len(s.Cases)+1)
+		for _, c := range s.Cases {
+			bodies = append(bodies, c.Body)
+		}
+		if len(s.ElseBody) > 0 {
+			bodies = append(bodies, s.ElseBody)
+		}
+		if len(bodies) > 1 {
+			return m.measureCaseColumns(bodies, ActivityWidth, 0)
+		}
+	}
 	maxBranchWidth := 0
 	branchCount := len(s.Cases)
 	for _, c := range s.Cases {
@@ -309,6 +344,16 @@ func (m *layoutMeasurer) measureIfStatement(s *ast.IfStmt) Bounds {
 		branchWidth = HorizontalSpacing / 2
 	}
 
+	elseColumn := m.layoutStyle().IfElse == IfElseColumn && (s.HasElse || len(s.ElseBody) > 0)
+	var column Bounds
+	if elseColumn {
+		column = m.measureColumn(s.ElseBody)
+		branchWidth = elseColumnBranchWidth(thenBounds, column)
+		if branchWidth == 0 {
+			branchWidth = HorizontalSpacing / 2
+		}
+	}
+
 	totalWidth := SplitWidth + HorizontalSpacing/2 + branchWidth + MergeSize
 	// A guard — `if X then ...; return; end if` with no ELSE — has no merge: its
 	// branch ends in an end event and the main line resumes straight after the
@@ -321,7 +366,12 @@ func (m *layoutMeasurer) measureIfStatement(s *ast.IfStmt) Bounds {
 
 	// Height depends on layout strategy
 	var totalHeight int
-	if len(s.ElseBody) > 0 {
+	if elseColumn {
+		// The column hangs under the split, below the TRUE body.
+		// Reported as if centred on the line, as every Bounds is read: twice
+		// what reaches below it (see measureGuardTrueRight).
+		totalHeight = 2 * (max(thenBounds.Height, ActivityHeight)/2 + BranchGap + max(column.Height, ActivityHeight))
+	} else if len(s.ElseBody) > 0 {
 		// IF WITH ELSE: TRUE path horizontal (main line), FALSE path below
 		// Height = THEN branch height + gap + ELSE branch height
 		thenHeight := max(thenBounds.Height, ActivityHeight)

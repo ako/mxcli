@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 
 	"github.com/mendixlabs/mxcli/mdl/linter"
 )
@@ -26,6 +27,19 @@ func projectLintRules(projectDir string, warn io.Writer) []linter.Rule {
 	// Searched upward from the project, so one directory at the repo root
 	// serves an app in a subfolder (#904).
 	lintRulesDir := linter.FindLintRulesDir(projectDir)
+	if lintRulesDir == "" {
+		from := projectDir
+		if abs, err := filepath.Abs(projectDir); err == nil {
+			from = abs
+		}
+		// Legitimate (a scratch copy of the model, a CI checkout without
+		// .claude/), but it used to be silent: the smaller result read as a
+		// cleaner project — 210 findings from 17 rules instead of 1,984 from 49
+		// (ako/mxcli#1292).
+		fmt.Fprintf(warn, "Warning: no .claude/lint-rules/ directory was found from %s up to the repository root, "+
+			"so only the %d built-in rules run. Run 'mxcli init' to install the bundled Starlark rules.\n",
+			from, len(lintRules))
+	}
 	starlarkRules, loadFailures, err := linter.LoadStarlarkRulesFromDir(lintRulesDir)
 	if err != nil {
 		// Previously discarded in `lint`, which made an unreadable directory

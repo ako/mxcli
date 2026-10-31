@@ -196,6 +196,42 @@ func memberRefsFixture(t *testing.T) *Catalog {
 		}},
 	}
 
+	// A message definition exposes an entity, its attributes and an
+	// association, each by qualified name (#1781). Two storage shapes: before
+	// 11.15 the definitions sit inside a MessageDefinitionCollection; from 11.15
+	// each is a MessageDefinition2 document of its own.
+	exposedOrder := bson.D{
+		{Key: "$Type", Value: "MessageDefinitions$ExposedEntity"},
+		{Key: "Entity", Value: "Shop.Order"},
+		{Key: "Children", Value: bson.A{int32(2),
+			bson.D{
+				{Key: "$Type", Value: "MessageDefinitions$ExposedAttribute"},
+				{Key: "Attribute", Value: "Shop.Order.Total"},
+			},
+			bson.D{
+				{Key: "$Type", Value: "MessageDefinitions$ExposedAssociation"},
+				{Key: "Association", Value: "Shop.Order_Customer"},
+				{Key: "Entity", Value: "Shop.Customer"},
+			},
+		}},
+	}
+	mdCollectionRaw := bson.D{
+		{Key: "$Type", Value: "MessageDefinitions$MessageDefinitionCollection"},
+		{Key: "Name", Value: "MD_Order"},
+		{Key: "MessageDefinitions", Value: bson.A{int32(2),
+			bson.D{
+				{Key: "$Type", Value: "MessageDefinitions$EntityMessageDefinition"},
+				{Key: "Name", Value: "Order"},
+				{Key: "ExposedEntity", Value: exposedOrder},
+			},
+		}},
+	}
+	mdDocumentRaw := bson.D{
+		{Key: "$Type", Value: "MessageDefinitions$MessageDefinition2"},
+		{Key: "Name", Value: "MD2_Order"},
+		{Key: "ExposedEntity", Value: exposedOrder},
+	}
+
 	rawUnit := func(id, typ string, doc bson.D) *types.RawUnit {
 		b, err := bson.Marshal(doc)
 		if err != nil {
@@ -207,6 +243,8 @@ func memberRefsFixture(t *testing.T) *Catalog {
 		rawUnit("mf-1", "Microflows$Microflow", mfRaw),
 		rawUnit("pg-1", "Forms$Page", pageRaw),
 		rawUnit("im-1", "ImportMappings$ImportMapping", mappingRaw),
+		rawUnit("mdc-1", "MessageDefinitions$MessageDefinitionCollection", mdCollectionRaw),
+		rawUnit("md2-1", "MessageDefinitions$MessageDefinition2", mdDocumentRaw),
 	}
 
 	b := &Builder{
@@ -317,6 +355,39 @@ func TestReferencesReachMembersEnumerationsWorkflowsAndMappings(t *testing.T) {
 	// the walk matches names rather than emitting every attribute it knows.
 	if got := refsTo(t, cat, "Shop.Customer.Unused"); len(got) != 0 {
 		t.Errorf("unused attribute has references: %v", got)
+	}
+}
+
+// A message definition that exposes an entity, an attribute and an
+// association is a use of all three (#1781): without the edges, renaming or
+// deleting any of them looked safe while the definition still depended on it.
+// Both storage shapes, the collection and the 11.15+ document.
+func TestReferencesReachMessageDefinitions(t *testing.T) {
+	cat := memberRefsFixture(t)
+
+	for _, src := range []refRow{
+		{sourceType: "MESSAGE_DEFINITION_COLLECTION", sourceName: "Shop.MD_Order"},
+		{sourceType: "MESSAGE_DEFINITION", sourceName: "Shop.MD2_Order"},
+	} {
+		for _, w := range []refRow{
+			{src.sourceType, src.sourceName, "ENTITY", "Shop.Order", "mapping"},
+			{src.sourceType, src.sourceName, "ENTITY", "Shop.Customer", "mapping"},
+			{src.sourceType, src.sourceName, "ATTRIBUTE", "Shop.Order.Total", "member"},
+			{src.sourceType, src.sourceName, "ASSOCIATION", "Shop.Order_Customer", "member"},
+		} {
+			if got := refsTo(t, cat, w.targetName); got[w] != 1 {
+				t.Errorf("edge %s %s -> %s %s (%s): %d, want 1; refs to %s: %v",
+					w.sourceType, w.sourceName, w.targetType, w.targetName, w.kind, got[w], w.targetName, got)
+			}
+		}
+	}
+
+	// Control: what no definition exposes has no message-definition edge, so
+	// the edges above come from the exposure, not from every name the walk knows.
+	for r := range refsTo(t, cat, "Shop.Order.Code") {
+		if strings.HasPrefix(r.sourceType, "MESSAGE_DEFINITION") {
+			t.Errorf("unexposed attribute has a message-definition edge: %v", r)
+		}
 	}
 }
 

@@ -42,7 +42,7 @@ const (
 	RefKindXPath      = "xpath"      // An XPath constraint names an attribute, association or enumeration value
 	RefKindType       = "type"       // An attribute, parameter or variable is typed as an enumeration
 	RefKindValue      = "value"      // An expression names an enumeration value
-	RefKindMapping    = "mapping"    // An import or export mapping maps an entity
+	RefKindMapping    = "mapping"    // An import or export mapping maps an entity, or a message definition exposes one
 	RefKindSplit      = "split"      // A decision branches on an object being a specialization
 )
 
@@ -100,6 +100,9 @@ const (
 	RefObjectEnumerationValue       = "ENUMERATION_VALUE"
 	RefObjectImportMapping          = "IMPORT_MAPPING"
 	RefObjectExportMapping          = "EXPORT_MAPPING"
+	// Message definitions: the pre-11.15 collection and the 11.15+ document.
+	RefObjectMessageDefinitionCollection = "MESSAGE_DEFINITION_COLLECTION"
+	RefObjectMessageDefinition           = "MESSAGE_DEFINITION"
 )
 
 // RefSourceObjectTypes is every value that reaches refs.SourceType, and
@@ -127,6 +130,8 @@ var (
 		RefObjectProjectSettings,
 		RefObjectImportMapping,
 		RefObjectExportMapping,
+		RefObjectMessageDefinitionCollection,
+		RefObjectMessageDefinition,
 	}
 
 	RefTargetObjectTypes = []string{

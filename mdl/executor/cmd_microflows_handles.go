@@ -126,6 +126,7 @@ func formatMicroflowActivitiesWithHandles(
 	entityNames map[model.ID]string,
 	microflowNames map[model.ID]string,
 ) []string {
+	defer ctx.describingFlowLayout(mf.Documentation)()
 	cands, warnings, body, startLine := microflowTargets(ctx, mf, entityNames, microflowNames)
 
 	handlesAt := map[int][]string{}

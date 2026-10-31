@@ -81,11 +81,14 @@ type flowBuilder struct {
 	// textLang is the language a bare message/caption string is stored under
 	// (mendixlabs/mxcli#970). Empty means en_US, which keeps a zero-value
 	// flowBuilder — validateFlowBody builds one — behaving as before.
-	textLang            string
-	declaredVars        map[string]string // Declared primitive variables: name -> type (e.g., "$IsValid" -> "Boolean")
-	errors              []string          // Validation errors collected during build
-	measurer            *layoutMeasurer   // For measuring statement dimensions
-	nextConnectionPoint model.ID          // For compound statements: the exit point differs from entry point
+	textLang     string
+	declaredVars map[string]string // Declared primitive variables: name -> type (e.g., "$IsValid" -> "Boolean")
+	errors       []string          // Validation errors collected during build
+	measurer     *layoutMeasurer   // For measuring statement dimensions
+	// layout is the style the flow is laid out with (flowlayout.go); nil is the
+	// default, which is the layout mxcli has always drawn.
+	layout              *flowLayout
+	nextConnectionPoint model.ID // For compound statements: the exit point differs from entry point
 	// incomingRedirect, when set, instructs the next enclosing flow emission to
 	// terminate at this merge/activity ID instead of the most recently emitted
 	// activity. Used by retry-loop error handlers (where a merge is inserted
@@ -227,6 +230,7 @@ func (fb *flowBuilder) nestedBuilder(x, y int) *flowBuilder {
 		declaredVars: fb.declaredVars, // (fixes a nil map panic)
 		textLang:     fb.textLang,
 		measurer:     fb.measurer,
+		layout:       fb.layout, // a loop body is drawn in the flow's style
 		backend:      fb.backend,
 		quiet:        fb.quiet,
 		hierarchy:    fb.hierarchy,

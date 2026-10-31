@@ -231,18 +231,13 @@ Container Runtime:
 		}
 
 		// Create .claude directory for Claude-specific content (if Claude is selected)
-		var claudeDir, commandsDir, lintRulesDir string
+		var claudeDir, commandsDir string
 		if slices.Contains(tools, "claude") {
 			claudeDir = filepath.Join(absDir, ".claude")
 			commandsDir = filepath.Join(claudeDir, "commands")
-			lintRulesDir = filepath.Join(claudeDir, "lint-rules")
 
 			if err := os.MkdirAll(commandsDir, 0755); err != nil {
 				fmt.Fprintf(os.Stderr, "Error creating .claude/commands directory: %v\n", err)
-				os.Exit(1)
-			}
-			if err := os.MkdirAll(lintRulesDir, 0755); err != nil {
-				fmt.Fprintf(os.Stderr, "Error creating .claude/lint-rules directory: %v\n", err)
 				os.Exit(1)
 			}
 		}
@@ -262,18 +257,6 @@ Container Runtime:
 				fmt.Fprintf(os.Stderr, "Error creating .opencode/skills directory: %v\n", err)
 				os.Exit(1)
 			}
-
-			// Lint rules stay in .claude/lint-rules/ (read by mxcli lint).
-			// Ensure that directory exists even when claude tool is not selected.
-			if !slices.Contains(tools, "claude") {
-				if lintRulesDir == "" {
-					lintRulesDir = filepath.Join(absDir, ".claude", "lint-rules")
-				}
-				if err := os.MkdirAll(lintRulesDir, 0755); err != nil {
-					fmt.Fprintf(os.Stderr, "Error creating .claude/lint-rules directory: %v\n", err)
-					os.Exit(1)
-				}
-			}
 		}
 
 		// Seed the lint config. `mxcli lint` reads this regardless of which AI
@@ -281,6 +264,17 @@ Container Runtime:
 		if path, created := writeDefaultLintConfig(absDir); created {
 			fmt.Printf("  Created %s (System module excluded from lint)\n", filepath.Base(path))
 		}
+
+		// The bundled Starlark rules, for the same reason. Only claude and
+		// opencode wrote them, so `init --tool cursor` left lint running the Go
+		// rules alone — 17 rules instead of 49 on one project, silently
+		// (ako/mxcli#1292).
+		lintRulesDir := filepath.Join(absDir, ".claude", "lint-rules")
+		if err := os.MkdirAll(lintRulesDir, 0755); err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating .claude/lint-rules directory: %v\n", err)
+			os.Exit(1)
+		}
+		initBundledLintRules(lintRulesDir)
 
 		// Write the skills. One code path with the SessionStart refresh, so a
 		// fresh init and an upgraded project end up with byte-identical trees —
@@ -344,7 +338,7 @@ Container Runtime:
 				fmt.Printf("  Created %s\n", file.Path)
 			}
 
-			// Claude-specific: write commands and lint rules
+			// Claude-specific: write commands
 			if toolName == "claude" && commandsDir != "" {
 				cmdCount := 0
 				err = fs.WalkDir(commandsFS, "commands", func(path string, d fs.DirEntry, err error) error {
@@ -370,11 +364,9 @@ Container Runtime:
 				} else {
 					fmt.Printf("  Created %d command files in .claude/commands/\n", cmdCount)
 				}
-
-				initBundledLintRules(lintRulesDir)
 			}
 
-			// OpenCode-specific: write commands, lint rules, and skills
+			// OpenCode-specific: write commands and skills
 			if toolName == "opencode" && opencodeCommandsDir != "" {
 				cmdCount := 0
 				err = fs.WalkDir(commandsFS, "commands", func(path string, d fs.DirEntry, err error) error {
@@ -399,13 +391,6 @@ Container Runtime:
 					fmt.Fprintf(os.Stderr, "  Error writing OpenCode commands: %v\n", err)
 				} else {
 					fmt.Printf("  Created %d command files in .opencode/commands/\n", cmdCount)
-				}
-
-				// Only write lint rules from the OpenCode path when Claude is not also
-				// being initialised — the Claude path already writes the same files to
-				// .claude/lint-rules/ and we don't want duplicate log output or writes.
-				if !slices.Contains(tools, "claude") {
-					initBundledLintRules(lintRulesDir)
 				}
 
 				skillCount2, err := writeWrappedSkills(opencodeSkillsDir, wrapSkillContent)
