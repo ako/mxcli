@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **`show references to` an entity, attribute or association lists the message definitions that expose it** (#1781) — a message definition (the pre-11.15 collection, `MESSAGE_DEFINITION_COLLECTION`, and the 11.15+ document, `MESSAGE_DEFINITION`) was not walked for references, so impact analysis called an exposed entity or attribute unused. The entity edges are `mapping`, the attribute and association edges `member`, as for an import or export mapping.
 - **A pluggable widget's hidden expression property is stored as Studio Pro stores it** (ako/mxcli#548) — a property the widget's editorConfig hides is written at its declared default, and for an Expression-typed one that default went into `PrimitiveValue` as well as `Expression` (every combo box's `customEditabilityExpression`, `PrimitiveValue: "false"`). Studio Pro leaves `PrimitiveValue` empty on all 939 Expression-typed values of ako/TestApp and PedApp; mx check accepted both, so the cost was a widget that differed from Studio Pro's.
 
 ## [0.29.0] - 2026-10-30
