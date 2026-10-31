@@ -92,6 +92,7 @@ flows out the same way:
   flows:
     preset: true-right-false-down   # happy-line (default) | true-right-false-down
     if-else: true-right-else-column # lanes | true-right-else-column
+    case-split: lanes               # lanes | first-right-rest-columns
     guard: return-below             # return-below | true-right
 
 An unknown key or value is an error rather than a silent fallback.`,

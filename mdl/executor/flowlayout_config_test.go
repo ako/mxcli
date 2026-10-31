@@ -27,9 +27,9 @@ func TestLoadFlowLayoutConfig(t *testing.T) {
 		wantErr    string
 	}{
 		{"empty file is the default", "", flowLayout{}, ""},
-		{"preset", "flows:\n  preset: true-right-false-down\n", flowLayout{IfElse: IfElseColumn}, ""},
+		{"preset", "flows:\n  preset: true-right-false-down\n", flowLayout{IfElse: IfElseColumn, CaseSplit: CaseSplitColumns}, ""},
 		{"option", "flows:\n  if-else: true-right-else-column\n", flowLayout{IfElse: IfElseColumn}, ""},
-		{"option overrides preset", "flows:\n  preset: true-right-false-down\n  if-else: lanes\n", flowLayout{}, ""},
+		{"option overrides preset", "flows:\n  preset: true-right-false-down\n  if-else: lanes\n", flowLayout{CaseSplit: CaseSplitColumns}, ""},
 		{"unknown preset", "flows:\n  preset: zigzag\n", flowLayout{}, `unknown layout preset "zigzag"`},
 		{"unknown option", "flows:\n  if-els: lanes\n", flowLayout{}, `unknown layout option "if-els"`},
 		{"unknown value", "flows:\n  if-else: column\n", flowLayout{}, `unknown value "column"`},

@@ -2214,7 +2214,7 @@ func emitEnumSplitStatement(
 	branches := []enumBranch{}
 	branchByDestination := map[model.ID]int{}
 	var elseFlow *microflows.SequenceFlow
-	for _, flow := range orderedEnumSplitFlows(findNormalFlows(flowsByOrigin[currentID]), activityMap) {
+	for _, flow := range orderedEnumSplitFlowsFor(ctx, findNormalFlows(flowsByOrigin[currentID]), activityMap) {
 		caseValue, ok := enumCaseValue(flow)
 		if !ok {
 			elseFlow = flow
@@ -2279,7 +2279,7 @@ func emitInheritanceSplitStatement(
 	}
 
 	var elseFlow *microflows.SequenceFlow
-	for _, flow := range orderedInheritanceSplitFlows(findNormalFlows(flowsByOrigin[currentID])) {
+	for _, flow := range orderedInheritanceSplitFlowsFor(ctx, findNormalFlows(flowsByOrigin[currentID]), activityMap) {
 		caseName, ok := inheritanceCaseName(flow, entityNames)
 		if !ok {
 			elseFlow = flow
@@ -2425,6 +2425,59 @@ func orderedEnumSplitFlows(flows []*microflows.SequenceFlow, activityMap map[mod
 		return branchY(ordered[i]) < branchY(ordered[j])
 	})
 	return ordered
+}
+
+// orderedEnumSplitFlowsFor is orderedEnumSplitFlows for the flow being described.
+// In a flow that records case-split columns (ako/mxcli#1832) every outcome after
+// the first leaves the split's bottom for the top of its own column: one side
+// pair and one depth, so the order is finished by how far right the column
+// stands. The tie-break is kept to that style: any other drawing reads as before.
+func orderedEnumSplitFlowsFor(ctx *ExecContext, flows []*microflows.SequenceFlow, activityMap map[model.ID]microflows.MicroflowObject) []*microflows.SequenceFlow {
+	ordered := orderedEnumSplitFlows(flows, activityMap)
+	if describesCaseColumns(ctx) {
+		sortColumnsLeftToRight(ordered, splitCaseOrder, activityMap)
+	}
+	return ordered
+}
+
+// orderedInheritanceSplitFlowsFor is orderedInheritanceSplitFlows for the flow
+// being described, finished left to right in a flow that records case-split
+// columns (see orderedEnumSplitFlowsFor).
+func orderedInheritanceSplitFlowsFor(ctx *ExecContext, flows []*microflows.SequenceFlow, activityMap map[model.ID]microflows.MicroflowObject) []*microflows.SequenceFlow {
+	ordered := orderedInheritanceSplitFlows(flows)
+	if describesCaseColumns(ctx) {
+		sortColumnsLeftToRight(ordered, inheritanceSplitCaseOrder, activityMap)
+	}
+	return ordered
+}
+
+func describesCaseColumns(ctx *ExecContext) bool {
+	return ctx != nil && ctx.describedFlowLayout != nil && ctx.describedFlowLayout.CaseSplit == CaseSplitColumns
+}
+
+// sortColumnsLeftToRight orders flows by their side pair's rank, then by how far
+// right their destination stands, then how far down. Columns share a top edge,
+// not a centre — a column starting with an end event has its centre higher than
+// one starting with an activity — so x decides, not y.
+func sortColumnsLeftToRight(flows []*microflows.SequenceFlow, rank func(*microflows.SequenceFlow) int, activityMap map[model.ID]microflows.MicroflowObject) {
+	at := func(f *microflows.SequenceFlow) model.Point {
+		if f != nil {
+			if obj := activityMap[f.DestinationID]; obj != nil {
+				return obj.GetPosition()
+			}
+		}
+		return model.Point{}
+	}
+	sort.SliceStable(flows, func(i, j int) bool {
+		if ri, rj := rank(flows[i]), rank(flows[j]); ri != rj {
+			return ri < rj
+		}
+		pi, pj := at(flows[i]), at(flows[j])
+		if pi.X != pj.X {
+			return pi.X < pj.X
+		}
+		return pi.Y < pj.Y
+	})
 }
 
 func orderedInheritanceSplitFlows(flows []*microflows.SequenceFlow) []*microflows.SequenceFlow {

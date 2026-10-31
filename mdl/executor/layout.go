@@ -245,6 +245,22 @@ func (m *layoutMeasurer) measureStatement(stmt ast.MicroflowStatement) Bounds {
 }
 
 func (m *layoutMeasurer) measureEnumSplitStatement(s *ast.EnumSplitStmt) Bounds {
+	if m.layoutStyle().CaseSplit == CaseSplitColumns {
+		bodies := make([][]ast.MicroflowStatement, 0, len(s.Cases)+1)
+		for _, c := range s.Cases {
+			bodies = append(bodies, c.Body)
+		}
+		if len(s.ElseBody) > 0 {
+			bodies = append(bodies, s.ElseBody)
+		}
+		if len(bodies) > 1 {
+			shift := 0
+			if len(s.Cases) > 0 && len(s.Cases[0].Values) > 1 {
+				shift = firstCaseGroupShift
+			}
+			return m.measureCaseColumns(bodies, SplitWidth, shift)
+		}
+	}
 	maxBranchWidth := 0
 	var branchHeights []int
 	for _, c := range s.Cases {
@@ -275,6 +291,18 @@ func (m *layoutMeasurer) measureEnumSplitStatement(s *ast.EnumSplitStmt) Bounds 
 }
 
 func (m *layoutMeasurer) measureInheritanceSplitStatement(s *ast.InheritanceSplitStmt) Bounds {
+	if m.layoutStyle().CaseSplit == CaseSplitColumns {
+		bodies := make([][]ast.MicroflowStatement, 0, len(s.Cases)+1)
+		for _, c := range s.Cases {
+			bodies = append(bodies, c.Body)
+		}
+		if len(s.ElseBody) > 0 {
+			bodies = append(bodies, s.ElseBody)
+		}
+		if len(bodies) > 1 {
+			return m.measureCaseColumns(bodies, ActivityWidth, 0)
+		}
+	}
 	maxBranchWidth := 0
 	branchCount := len(s.Cases)
 	for _, c := range s.Cases {
@@ -340,7 +368,9 @@ func (m *layoutMeasurer) measureIfStatement(s *ast.IfStmt) Bounds {
 	var totalHeight int
 	if elseColumn {
 		// The column hangs under the split, below the TRUE body.
-		totalHeight = max(thenBounds.Height, ActivityHeight) + BranchGap + max(column.Height, ActivityHeight)
+		// Reported as if centred on the line, as every Bounds is read: twice
+		// what reaches below it (see measureGuardTrueRight).
+		totalHeight = 2 * (max(thenBounds.Height, ActivityHeight)/2 + BranchGap + max(column.Height, ActivityHeight))
 	} else if len(s.ElseBody) > 0 {
 		// IF WITH ELSE: TRUE path horizontal (main line), FALSE path below
 		// Height = THEN branch height + gap + ELSE branch height

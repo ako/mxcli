@@ -66,12 +66,7 @@ func TestDescribeUsesTheRecordedLayoutStyle(t *testing.T) {
 					l.Guard = GuardTrueRight
 					exec.flowLayoutOverride = &l
 				}
-				for _, stmt := range strings.Split(strings.TrimSpace(styledFlowsMDL), "end;\n\n") {
-					if !strings.HasSuffix(stmt, "end;") {
-						stmt += "end;"
-					}
-					run(t, exec, stmt)
-				}
+				run(t, exec, styledFlowsMDL)
 				// The project is back on the default style; the flows record theirs.
 				if err := exec.SetFlowLayoutStyle(""); err != nil {
 					t.Fatal(err)
@@ -87,5 +82,65 @@ func TestDescribeUsesTheRecordedLayoutStyle(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+const styledCaseSplitsMDL = `
+create or modify persistent entity MyFirstModule.Animal ( "Label": String(50) );
+create or modify persistent entity MyFirstModule.Dog generalization MyFirstModule.Animal ();
+create or modify persistent entity MyFirstModule.Cat generalization MyFirstModule.Animal ();
+
+create microflow MyFirstModule.ACT_Cases ($P: NanoflowCommons.GeocodingProvider, $A: MyFirstModule.Animal) returns String
+begin
+  case $P
+    when MapQuest then
+      log info 'map 1';
+      log info 'map 2';
+    when Google then
+      log info 'google';
+    when LocationIQ then
+      log info 'iq 1';
+      log info 'iq 2';
+      log info 'iq 3';
+    when Geocodio then
+      log info 'geocodio';
+    when (empty) then
+      log info 'none';
+  end case;
+  split type $A
+    when MyFirstModule.Dog then
+      log info 'dog';
+    when MyFirstModule.Cat then
+      log info 'cat 1';
+      log info 'cat 2';
+    when MyFirstModule.Animal then
+      log info 'animal';
+  end split;
+  return 'done';
+end;
+`
+
+func TestDescribeKeepsCaseOrderInCaseColumns(t *testing.T) {
+	exec, out := describeExecutor(t)
+	if err := exec.SetFlowLayoutStyle("true-right-false-down"); err != nil {
+		t.Fatal(err)
+	}
+	run(t, exec, styledCaseSplitsMDL)
+	if err := exec.SetFlowLayoutStyle(""); err != nil {
+		t.Fatal(err)
+	}
+	mdl := describeText(t, exec, out, "describe microflow MyFirstModule.ACT_Cases")
+	if got := layoutLines(mdl); len(got) > 0 {
+		t.Errorf("printed layout annotations under the recorded style: %v\n%s", got, mdl)
+	}
+	// The cases come back in the order they were written, not the order a
+	// column's sides would sort them in.
+	last := -1
+	for _, want := range []string{"when MapQuest", "when Google", "when LocationIQ", "when Geocodio", "when (empty)", "when MyFirstModule.Dog", "when MyFirstModule.Cat", "when MyFirstModule.Animal"} {
+		i := strings.Index(mdl, want)
+		if i < 0 || i < last {
+			t.Fatalf("%q missing or out of order in:\n%s", want, mdl)
+		}
+		last = i
 	}
 }

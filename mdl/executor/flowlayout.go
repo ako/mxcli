@@ -46,11 +46,27 @@ const (
 	GuardTrueRight
 )
 
+// CaseSplitStyle is how a CASE (enumeration split) or a split by type
+// (inheritance split) is drawn.
+type CaseSplitStyle int
+
+const (
+	// CaseSplitLanes: the outcomes are stacked as lanes, each running left to
+	// right. The default.
+	CaseSplitLanes CaseSplitStyle = iota
+	// CaseSplitColumns: the first outcome, in the order written, carries on along
+	// the centre line; every other outcome is a column under the split, top to
+	// bottom, the columns side by side left to right in case order. Each column
+	// rejoins the merge from below.
+	CaseSplitColumns
+)
+
 // flowLayout holds the layout decisions a style changes. Its zero value is the
 // default style.
 type flowLayout struct {
-	IfElse IfElseStyle
-	Guard  GuardStyle
+	IfElse    IfElseStyle
+	Guard     GuardStyle
+	CaseSplit CaseSplitStyle
 }
 
 // layoutStyle returns the builder's layout style; a builder without one uses the
@@ -230,4 +246,78 @@ func (m *layoutMeasurer) measureGuardTrueRight(guard *ast.IfStmt, rest []ast.Mic
 	extent = max(extent, left+after.Width)
 	below := line/2 + RowGap + max(after.Height, ActivityHeight)
 	return Bounds{Width: extent, Height: 2 * below}
+}
+
+// caseColumns plans the columns of a CaseSplitColumns split: outcome 0 is on the
+// centre line, outcome i > 0 is the column centred at x[i]. The columns are
+// placed by their MEASURED width, not by what turns out to be drawn, so the split
+// is exactly as wide as the measurer says it is and an enclosing body that made
+// room for it by measuring is not overrun.
+type caseColumns struct {
+	x []int
+	// span is how far the columns reach right, measured as a branch is: from the
+	// left edge of an activity centred under the split.
+	span int
+}
+
+func (m *layoutMeasurer) planCaseColumns(splitX int, bodies [][]ast.MicroflowStatement) caseColumns {
+	plan := caseColumns{x: make([]int, len(bodies))}
+	x := splitX
+	for i := 1; i < len(bodies); i++ {
+		w := max(m.measureColumn(bodies[i]).Width, ActivityWidth)
+		plan.x[i] = x
+		plan.span = x - splitX + w
+		x += w + BranchGap
+	}
+	return plan
+}
+
+// caseColumnsBranchWidth is the branch width the split's merge is placed after:
+// past the first outcome's line and past the columns, as for an ELSE column.
+func caseColumnsBranchWidth(firstWidth int, plan caseColumns, splitWidth int) int {
+	return max(firstWidth, plan.span-(splitWidth+HorizontalSpacing/2))
+}
+
+// firstCaseGroupShift is how far a CaseSplitColumns split moves its first
+// outcome's body right when that outcome has several values: their own merge
+// stands on the line where the body would begin. (The default lanes draw the
+// merge on top of the first activity; that is not changed here.)
+const firstCaseGroupShift = MergeSize + (HorizontalSpacing - ActivityWidth)
+
+// measureCaseColumns measures a CaseSplitColumns split. splitWidth is the split
+// object's own width (an inheritance split is activity-sized); firstShift is
+// firstCaseGroupShift when the first outcome has several values. The height is
+// reported as if centred on the line (see measureGuardTrueRight).
+func (m *layoutMeasurer) measureCaseColumns(bodies [][]ast.MicroflowStatement, splitWidth, firstShift int) Bounds {
+	if len(bodies) == 0 {
+		return Bounds{Width: splitWidth + HorizontalSpacing/2 + HorizontalSpacing/2 + MergeSize, Height: ActivityHeight}
+	}
+	first := m.measureBranch(bodies[0])
+	plan := m.planCaseColumns(0, bodies)
+	branchWidth := caseColumnsBranchWidth(first.Width+firstShift, plan, splitWidth)
+	if branchWidth == 0 {
+		branchWidth = HorizontalSpacing / 2
+	}
+	columnHeight := 0
+	for _, body := range bodies[1:] {
+		columnHeight = max(columnHeight, m.measureColumn(body).Height)
+	}
+	line := max(first.Height, ActivityHeight)
+	height := line
+	if len(bodies) > 1 {
+		height = 2 * (line/2 + BranchGap + max(columnHeight, ActivityHeight))
+	}
+	return Bounds{Width: splitWidth + HorizontalSpacing/2 + branchWidth + MergeSize, Height: height}
+}
+
+// setColumnFlowSides points the flows a split's outcome i > 0 starts with down
+// into its column: out of the bottom, into the top. The CASE's own @anchor for
+// the value is applied again on top, so a side the script states still wins.
+func setColumnFlowSides(flows []*microflows.SequenceFlow, slot splitCaseSlot) {
+	for _, f := range flows {
+		f.OriginConnectionIndex, f.DestinationConnectionIndex = AnchorBottom, AnchorTop
+		if ec, ok := f.CaseValue.(microflows.EnumerationCase); ok {
+			slot.applyCaseAnchor(f, ec.Value)
+		}
+	}
 }

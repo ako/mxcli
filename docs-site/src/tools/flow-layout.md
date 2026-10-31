@@ -39,13 +39,14 @@ flows:
 | Preset | What it draws |
 |---|---|
 | `happy-line` (default) | The TRUE path on one horizontal line, the ELSE branch in a lane under it, left to right. |
-| `true-right-false-down` | The TRUE path on the line; the ELSE branch stacked top to bottom as a column under its decision, rejoining the merge from below. |
+| `true-right-false-down` | The TRUE path on the line; the ELSE branch stacked top to bottom as a column under its decision, rejoining the merge from below. A CASE or split by type the same way: its first outcome on the line, every other outcome a column under it. |
 
 A preset is a set of options, and an option overrides its preset:
 
 | Option | Values |
 |---|---|
 | `if-else` | `lanes` (default), `true-right-else-column` |
+| `case-split` | `lanes` (default): a CASE's or type split's outcomes are stacked as lanes, each left to right. `first-right-rest-columns`: the first outcome, as written, stays on the line; every other one is a column under the decision, side by side in the order written. Put the happy case first. |
 | `guard` | `return-below` (default): a guard's early return goes in the lane below and the happy path stays on the line. `true-right`: the early return carries straight on to the right, and the happy path drops from the decision's bottom onto a new line below. |
 
 A *guard* is an `if … then … return; end if` with no `else`. It has its own

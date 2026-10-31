@@ -59,7 +59,7 @@ func FindFlowLayoutConfig(projectDir string) string {
 // changing how an already laid-out flow is read back.
 var flowLayoutPresets = map[string]flowLayout{
 	"happy-line":            {},
-	"true-right-false-down": {IfElse: IfElseColumn},
+	"true-right-false-down": {IfElse: IfElseColumn, CaseSplit: CaseSplitColumns},
 }
 
 // flowLayoutOption is one option key: its values and how each sets a flowLayout.
@@ -80,6 +80,19 @@ var flowLayoutOptions = map[string]flowLayoutOption{
 		value: func(l flowLayout) string {
 			if l.IfElse == IfElseColumn {
 				return "true-right-else-column"
+			}
+			return "lanes"
+		},
+		defaultValue: "lanes",
+	},
+	"case-split": {
+		values: map[string]func(*flowLayout){
+			"lanes":                    func(l *flowLayout) { l.CaseSplit = CaseSplitLanes },
+			"first-right-rest-columns": func(l *flowLayout) { l.CaseSplit = CaseSplitColumns },
+		},
+		value: func(l flowLayout) string {
+			if l.CaseSplit == CaseSplitColumns {
+				return "first-right-rest-columns"
 			}
 			return "lanes"
 		},
