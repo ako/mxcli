@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A pluggable widget's hidden expression property is stored as Studio Pro stores it** (ako/mxcli#548) — a property the widget's editorConfig hides is written at its declared default, and for an Expression-typed one that default went into `PrimitiveValue` as well as `Expression` (every combo box's `customEditabilityExpression`, `PrimitiveValue: "false"`). Studio Pro leaves `PrimitiveValue` empty on all 939 Expression-typed values of ako/TestApp and PedApp; mx check accepted both, so the cost was a widget that differed from Studio Pro's.
+
 ## [0.29.0] - 2026-10-30
 
 Headline: **Write what the project's own Mendix version stores, and commit it the way Studio Pro does.** Every write is now checked against the element types and property shapes of the project's Mendix version, so a statement 9.x or 10.x cannot store is refused by `check -p` instead of leaving a project Studio Pro cannot open, and `mxcli git commit` / `git doctor` keep a plain-git history in the shape Studio Pro expects. Alongside it: workflows, pages and Java actions gain the settings a rewrite used to reset, `alter microflow` edits inside loop bodies, the debugger works end to end, and commands on large MPR v2 projects open only the files they need.

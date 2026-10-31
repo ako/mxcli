@@ -455,7 +455,7 @@ func (e *PluggableWidgetEngine) Build(def *WidgetDefinition, w *ast.WidgetV3) (*
 	for _, mapping := range mappings {
 		if reset, hidden := hiddenSkip[strings.ToLower(mapping.PropertyKey)]; hidden {
 			if reset != "" && mapping.Operation == "primitive" {
-				builder.SetPrimitive(mapping.PropertyKey, reset)
+				resetToDeclaredDefault(builder, propertyTypeIDs, mapping.PropertyKey, reset)
 			}
 			continue
 		}
@@ -488,7 +488,7 @@ func (e *PluggableWidgetEngine) Build(def *WidgetDefinition, w *ast.WidgetV3) (*
 	// The set of properties that must be default-valued is the widget's to decide,
 	// not mxcli's; making it a subset of what MDL has words for was the mistake.
 	for propKey, reset := range unmappedHiddenResets(mappings, e.visibilityRules(def), hiddenSkip) {
-		builder.SetPrimitive(propKey, reset)
+		resetToDeclaredDefault(builder, propertyTypeIDs, propKey, reset)
 	}
 
 	// 4. Auto datasource: map AST DataSource to first DataSource-type property.
@@ -1028,6 +1028,21 @@ func unmappedHiddenResets(mappings []PropertyMapping, rules []types.WidgetVisibi
 		out[rule.PropertyKey] = reset
 	}
 	return out
+}
+
+// resetToDeclaredDefault writes a hidden property's declared default into the
+// slot its value type keeps it in. An Expression property keeps it in
+// Expression, with PrimitiveValue left empty: that is how Studio Pro stores
+// every one of the 939 Expression-typed values across ako/TestApp and PedApp,
+// and the primitive setter this used to call put a combo box's hidden
+// customEditabilityExpression default in both (ako/mxcli#548). Every other type
+// a reset reaches is a primitive.
+func resetToDeclaredDefault(builder backend.WidgetObjectBuilder, ids map[string]pages.PropertyTypeIDEntry, key, value string) {
+	if ids[key].ValueType == "Expression" {
+		builder.SetExpression(key, value)
+		return
+	}
+	builder.SetPrimitive(key, value)
 }
 
 // templateAttrPlaceholderRe matches `{AttrName}` placeholders in a text

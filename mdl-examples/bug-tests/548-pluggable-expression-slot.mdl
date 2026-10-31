@@ -1,0 +1,35 @@
+-- ako/mxcli#548: a pluggable widget's Expression-typed property was written
+-- with its value in PrimitiveValue as well as in Expression.
+--
+-- Symptom: the combo box below, written by mxcli, stored
+--   customEditabilityExpression  PrimitiveValue: "false"  Expression: "false"
+-- (`mxcli bson dump -p app.mpr --type page --object Shop.Thing_Edit`), where
+-- Studio Pro stores PrimitiveValue "" — on all 939 Expression-typed values of
+-- ako/TestApp and PedApp. mx check accepted both, so the only effect was that
+-- mxcli's widgets differed from Studio Pro's and a page saved by one never
+-- re-ran "Unchanged" against the other.
+--
+-- Cause and fix: a property the widget's editorConfig hides is reset to its
+-- declared default, and the reset used the primitive setter for every value
+-- type. It now writes an Expression property's default into Expression only.
+--
+-- To verify: run this script and dump the page; customEditabilityExpression
+-- has Expression "false" and PrimitiveValue "". Then save the page in Studio
+-- Pro: the value is unchanged.
+
+mdl 1;
+
+create module Shop;
+
+create enumeration Shop.Colour (Red 'Red', Blue 'Blue');
+
+create persistent entity Shop.Thing (
+  Colour: enumeration(Shop.Colour),
+  Name: string(100)
+);
+
+create page Shop.Thing_Edit (Title: 'Thing', Layout: Atlas_Core.Atlas_Default, Params: ($Thing: Shop.Thing)) {
+  dataview dvThing (DataSource: $Thing) {
+    combobox cbColour (Label: 'Colour', Attribute: Colour)
+  }
+};
