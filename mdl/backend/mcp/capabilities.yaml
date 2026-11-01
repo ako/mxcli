@@ -51,7 +51,7 @@ features:
     feature: "Enumerations"
     available: true
     requires_tools: [ped_create_document]
-    note: "CREATE (DROP via Concord)"
+    note: "CREATE / DROP (DROP via ped_delete_document on Studio Pro 11.16+, else Concord)"
   - key: constants
     feature: "Constants"
     available: true

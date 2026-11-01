@@ -288,6 +288,19 @@ func (c *Client) SupportsToolArg(tool, arg string) bool {
 	return c.toolArgs[tool][arg]
 }
 
+// HasTool reports whether the connected server advertises the named tool, from
+// the same cached tools/list probe as SupportsToolArg (false when the probe fails).
+func (c *Client) HasTool(tool string) bool {
+	if c.toolArgs == nil {
+		if _, err := c.ListTools(); err != nil {
+			c.toolArgs = map[string]map[string]bool{}
+			return false
+		}
+	}
+	_, ok := c.toolArgs[tool]
+	return ok
+}
+
 func (c *Client) CallTool(name string, arguments any) (*ToolResult, error) {
 	if c.trace.Enabled() {
 		target, detail := summarizeToolCall(name, arguments)

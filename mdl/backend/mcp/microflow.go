@@ -372,8 +372,8 @@ func (b *Backend) ListMicroflows() ([]*microflows.Microflow, error) {
 	return out, nil
 }
 
-// DeleteMicroflow drops a microflow via Concord's delete_document (PED has no
-// delete tool). Requires --mcp-concord; errors clearly otherwise.
+// DeleteMicroflow drops a microflow via deleteDocument: ped_delete_document where Studio Pro has it (11.16+), else
+// Concord (--mcp-concord).
 func (b *Backend) DeleteMicroflow(id model.ID) error {
 	mf, err := b.GetMicroflow(id)
 	if err != nil {
@@ -383,7 +383,7 @@ func (b *Backend) DeleteMicroflow(id model.ID) error {
 	if err != nil {
 		return fmt.Errorf("resolve module for microflow %q: %w", mf.Name, err)
 	}
-	return b.concordDeleteDocument(modName, mf.Name)
+	return b.deleteDocument(microflowDocType, modName, mf.Name)
 }
 
 // GetMicroflow resolves by ID, preferring session-created microflows.
