@@ -239,9 +239,8 @@ the index, so whatever you had staged is left exactly as it was.
 `.mxunit` is BSON, so two sides changing the model always meet a binary
 `CONFLICT (content)` — there is nothing for git's textual merge to work on.
 Studio Pro's *Merge Changes Here* resolves it with a model-aware merge, and
-that engine ships as a command: `mx merge BASE MINE THEIRS` over three
-project folders (it runs on Linux devcontainers too; the older `mx git-merge`
-file form is Windows-bound).
+that engine ships as a command: `mx merge BASE MINE THEIRS` over the three
+revisions' project files (it runs on Linux devcontainers too).
 
 `mxcli git merge <ref>` puts the two together:
 
@@ -252,15 +251,17 @@ mxcli git merge origin/main -p app.mpr --push
 
 `git merge <ref>` runs first; a merge git resolves itself (disjoint files,
 a fast-forward) is annotated with the mx_metadata note like `mxcli git
-commit` does. On a model-file conflict the base and theirs revisions are
-checked out into temporary worktrees and the three project folders go to
-`mx merge` (resolved for the project's Mendix version); the engine writes
-its result into the working tree and owns the `.mpr`:
+commit` does. On a model-file conflict the base, ours (a clean checkout of
+HEAD) and theirs revisions are checked out into temporary worktrees and the
+three projects' .mpr files go to `mx merge` (resolved for the project's
+Mendix version; MINE is never the working tree mid-merge — the engine
+chokes on the conflicted state); the engine writes its result into MINE and
+it is copied back, so the engine owns the `.mpr`:
 
-- what the engine auto-resolves is staged, hash-checked and committed as the
-  normal two-parent merge commit, with the note attached. The engine's
-  `.mpr` carries both sides' document sets, so a unit one side added while
-  the other changed existing ones is kept, not dropped;
+- what the engine auto-resolves is copied back, hash-checked, staged and
+  committed as the normal two-parent merge commit, with the note attached.
+  The engine's `.mpr` carries both sides' document sets, so a unit one side
+  added while the other changed existing ones is kept, not dropped;
 - a conflict the engine reports as `ManualResolutionRequired` (exit 2) is
   never merged silently: the merge is aborted, and **both sides' changes are
   printed for review** — at property level, from `mx diff` ("New type >
