@@ -30,6 +30,7 @@ Built-in rules check for:
   - Empty containers (MPR006) - layout containers with no children
   - Navigation page security (MPR007) - pages in navigation need allowed roles, and every user role must be able to open its home page
   - Gallery selection listener (MPR009) - DataView 'DataSource: selection X' needs gallery 'ItemSelectionMode: toggle' (Studio Pro CE3637)
+  - React-unsupported widgets (MPR012) - static/dynamic image, drop-down, legacy data grid, reference selector are CE0582 under the React client
   - Entity access rules (SEC001) - persistent entities need access rules
   - Password policy (SEC002) - password minimum length should be 8+
   - Demo users (SEC003) - demo users should be off at Production security
@@ -476,7 +477,7 @@ func builtinLintRules() []linter.Rule {
 		rules.NewDomainModelSizeRule(),
 		rules.NewValidationFeedbackRule(),
 		rules.NewImageSourceRule(),
-		rules.NewLegacyImageWidgetRule(),
+		rules.NewReactUnsupportedWidgetRule(),
 		rules.NewSnippetCallAppearanceRule(),
 		rules.NewEmptyContainerRule(),
 		rules.NewGallerySelectionListenerRule(),

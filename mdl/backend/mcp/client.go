@@ -54,8 +54,9 @@ type ClientOptions struct {
 	URL string
 	// Dial overrides the TCP address actually connected to, independent of the
 	// URL host. From a devcontainer this is typically host.docker.internal:7782.
-	// When empty it defaults to the URL host, or to host.docker.internal:<port>
-	// when the URL host is localhost/127.0.0.1.
+	// When empty the client dials the URL host, and for a localhost/127.0.0.1
+	// URL falls back to host.docker.internal:<port> when that fails and the
+	// name resolves (dialPlan).
 	Dial string
 	// Protocol is the MCP protocol version advertised (default 2025-06-18).
 	Protocol string
@@ -72,10 +73,7 @@ func NewClient(opts ClientOptions) (*Client, error) {
 	if u.Host == "" {
 		return nil, fmt.Errorf("MCP URL %q has no host", opts.URL)
 	}
-	dial := opts.Dial
-	if dial == "" {
-		dial = defaultDial(u.Host)
-	}
+	plan := dialPlan(u.Host, opts.Dial, opts.Dial == "" && hostDockerInternalReachable())
 	protocol := opts.Protocol
 	if protocol == "" {
 		protocol = "2025-06-18"
@@ -87,35 +85,72 @@ func NewClient(opts ClientOptions) (*Client, error) {
 		timeout = 90 * time.Second
 	}
 	return &Client{
-		http:     newHTTPClient(dial, timeout),
+		http:     newHTTPClient(plan, timeout),
 		endpoint: opts.URL,
 		protocol: protocol,
 	}, nil
 }
 
-// defaultDial maps a localhost endpoint to the Docker host gateway so the client
-// works from inside a devcontainer, while the Host header stays localhost. The
-// rewrite happens only when host.docker.internal is actually reachable — i.e.
-// inside a container. On the host (e.g. macOS, where host.docker.internal does
-// not resolve) it dials localhost directly, so `--mcp http://localhost:PORT/mcp`
-// works without an explicit --mcp-dial.
-func defaultDial(host string) string {
-	return dialFor(host, hostDockerInternalReachable())
+// dialPlan is the decision behind the client's dialer: the TCP addresses to
+// try, in order. An explicit --mcp-dial is the only one. Otherwise the URL's
+// own host comes first, and a localhost/127.0.0.1 endpoint falls back to
+// host.docker.internal:<port> when that name resolves, so the same command
+// works from a devcontainer, where loopback is the container and Studio Pro is
+// on the Docker host.
+//
+// The Docker name is the FALLBACK, never the first choice: "it resolves" does
+// not mean "inside a container". Docker Desktop for Windows writes the name
+// into the host's own hosts file, pointing at the machine's LAN address, and
+// Studio Pro listens on loopback only, so dialling it first timed out on the
+// very machine Studio Pro runs on (mendixlabs/mxcli#1684). Loopback first costs
+// a container one refused connection, which fails at once.
+func dialPlan(urlHost, explicit string, dockerResolves bool) []string {
+	if explicit != "" {
+		return []string{explicit}
+	}
+	h, port, err := net.SplitHostPort(urlHost)
+	if err != nil { // no port
+		h, port = urlHost, "80"
+	}
+	plan := []string{net.JoinHostPort(h, port)}
+	if (h == "localhost" || h == "127.0.0.1") && dockerResolves {
+		plan = append(plan, net.JoinHostPort(dockerHostName, port))
+	}
+	return plan
 }
 
-// dialFor is the pure decision behind defaultDial: rewrite a localhost endpoint to
-// the docker host gateway only when that gateway is reachable. Split out so both
-// branches are unit-testable without depending on the runtime environment.
-func dialFor(host string, dockerReachable bool) string {
-	h, port, err := net.SplitHostPort(host)
-	if err != nil { // no port
-		h, port = host, "80"
+// dialFirst connects to the first address in plan that accepts, and reports
+// every failure when none does.
+func dialFirst(ctx context.Context, plan []string, dial func(ctx context.Context, addr string) (net.Conn, error)) (net.Conn, error) {
+	var errs dialErrors
+	for _, addr := range plan {
+		conn, err := dial(ctx, addr)
+		if err == nil {
+			return conn, nil
+		}
+		if ctx.Err() != nil {
+			return nil, err
+		}
+		errs = append(errs, err)
 	}
-	if (h == "localhost" || h == "127.0.0.1") && dockerReachable {
-		return net.JoinHostPort(dockerHostName, port)
+	if len(errs) == 1 {
+		return nil, errs[0]
 	}
-	return host
+	return nil, errs
 }
+
+// dialErrors is every failed attempt of one dialFirst, in order.
+type dialErrors []error
+
+func (e dialErrors) Error() string {
+	parts := make([]string, len(e))
+	for i, err := range e {
+		parts[i] = err.Error()
+	}
+	return strings.Join(parts, "; then ")
+}
+
+func (e dialErrors) Unwrap() []error { return e }
 
 // dockerHostName is the gateway hostname Docker injects for reaching the host.
 const dockerHostName = "host.docker.internal"
@@ -125,9 +160,11 @@ var dockerHostOnce struct {
 	reachable bool
 }
 
-// hostDockerInternalReachable reports whether host.docker.internal resolves
-// (true inside a Docker/devcontainer with the host-gateway mapping, false on a
-// bare host). Resolved once and cached.
+// hostDockerInternalReachable reports whether host.docker.internal resolves:
+// inside a Docker/devcontainer with the host-gateway mapping, and also on a
+// Windows host with Docker Desktop, which puts the name in the hosts file. So
+// it decides whether a fallback exists, not where mxcli runs (dialPlan).
+// Resolved once and cached.
 func hostDockerInternalReachable() bool {
 	dockerHostOnce.Do(func() {
 		_, err := net.LookupHost(dockerHostName)
@@ -136,14 +173,16 @@ func hostDockerInternalReachable() bool {
 	return dockerHostOnce.reachable
 }
 
-func newHTTPClient(dialAddr string, timeout time.Duration) *http.Client {
-	// Pin every connection to dialAddr regardless of the request URL host, so
-	// the URL (and thus the Host header) can stay "localhost" while we actually
-	// connect to the host gateway.
+func newHTTPClient(plan []string, timeout time.Duration) *http.Client {
+	// Pin every connection to the plan's addresses regardless of the request URL
+	// host, so the URL (and thus the Host header) can stay "localhost" while we
+	// may actually connect to the host gateway.
 	tr := &http.Transport{
 		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
 			d := net.Dialer{Timeout: 5 * time.Second}
-			return d.DialContext(ctx, network, dialAddr)
+			return dialFirst(ctx, plan, func(ctx context.Context, addr string) (net.Conn, error) {
+				return d.DialContext(ctx, network, addr)
+			})
 		},
 		ForceAttemptHTTP2: false,
 	}
