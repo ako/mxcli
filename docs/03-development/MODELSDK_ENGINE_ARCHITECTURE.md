@@ -85,6 +85,9 @@ and break the MCP backend + the future format (ADR-0005). See `docs/11-proposals
 2. **Read its BSON**: `mxcli bson dump -p app.mpr --type <type> --object "Mod.Name"`, or the MCP/PED
    probe (`cmd/mcpprobe`) against a live Studio Pro.
 3. **Write `xToGen`** (+ `xFromGen` if reads/ALTER need it), registering any TypeDefaults / list markers.
+   An owner/key marker (`codec.RegisterPropertyListMarker`) is applied by every write to the stored lists
+   it does not rebuild as well (`canon.NormalizeListMarkers`), so register only a measured one:
+   `TestIssue1640_RegisteredListMarkersAreWhatStudioProStores` holds each against the fixtures.
 4. **`assignXIDs`** walks new sub-elements.
 5. **Pin the document against the reference** — re-serialize the reference element by element and assert
    the keys, markers and value types match. `mdl/scheduledevents` and `mdl/regularexpressions` are the

@@ -1,0 +1,67 @@
+-- ako/mxcli#1640: a list marker an older mxcli stored survived every rewrite.
+--
+-- Symptom: a Data grid 2 written before SortBar.SortItems was measured kept
+-- marker 3 through every `create or replace page`, also one that changed the
+-- page for real, where Studio Pro and a page created from nothing store 2:
+--   Home_Web   mxcli=3 SP=2   <-- the old page
+--   ZZ_A       mxcli=2 SP=2
+-- mx check, mx diff, lint and `fix property-sets` were all clean, so only a
+-- value-level diff against `mx convert -p` showed it.
+--
+-- Cause: an unchanged pluggable widget passes its stored Type and Object
+-- through byte for byte, and the stored list with them; the registered marker
+-- only reached the lists the encoder built. Every write now gives a list with a
+-- registered owner/key marker that marker (canon.NormalizeListMarkers).
+--
+-- Also: a populated nanoflow parameter list (the button's call below and the
+-- data view's nanoflow source) was written with marker 3, where Studio Pro
+-- writes 2 — 78 of 78 call nanoflow actions and 21 of 21 nanoflow sources in
+-- ako/TestApp and PedApp.
+--
+-- To verify the stale marker: it takes a page stored by an older build, so it
+-- is exercised in mdl/executor/issue1640_stale_list_marker_test.go, which
+-- plants SortItems 3 and re-runs this page with a widget added. To verify the
+-- nanoflow lists: run this script and dump Shop.Thing_View; both
+-- ParameterMappings lists start with 2.
+
+mdl 1;
+
+create module Shop;
+
+create persistent entity Shop.Thing (
+  Name: string(100)
+);
+
+create nanoflow Shop.NF_Do ($Thing: Shop.Thing)
+begin
+end;
+
+create nanoflow Shop.NF_Get ($Thing: Shop.Thing) returns Shop.Thing
+begin
+  return $Thing;
+end;
+
+create or modify page Shop.Thing_Overview (
+  Title: 'Things',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  dynamictext txtNew (Content: 'new')
+  container ctMain {
+    datagrid dgThings (DataSource: database from Shop.Thing sort by Name asc) {
+      column (Attribute: Name, Caption: 'Name')
+    }
+  }
+};
+
+create or modify page Shop.Thing_View (
+  Title: 'Thing',
+  Layout: Atlas_Core.Atlas_Default,
+  Params: ($Thing: Shop.Thing)
+) {
+  dataview dvThing (DataSource: $Thing) {
+    actionbutton btnDo (Caption: 'Do', Action: call nanoflow Shop.NF_Do(Thing = $currentObject))
+  }
+  dataview dvGot (DataSource: nanoflow Shop.NF_Get(Thing = $Thing)) {
+    textbox tbName (Attribute: Name)
+  }
+};
