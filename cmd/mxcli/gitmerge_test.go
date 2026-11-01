@@ -740,6 +740,37 @@ func TestGitMerge_ResumesAMergeAlreadyInProgress(t *testing.T) {
 	}
 }
 
+// A git merge that refuses to start (here: local changes it would overwrite)
+// writes its reason to stderr, not stdout; the error must carry it, or the
+// user is left with "git merge side: " and nothing after it.
+func TestGitMerge_RefusedMergeSaysWhy(t *testing.T) {
+	dir, mprPath := doctorNoteRepo(t)
+	doctorEnv(t, dir)
+	gitIn(t, dir, "switch", "-q", "-c", "side")
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("side\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "add", "notes.txt")
+	gitIn(t, dir, "commit", "-q", "-m", "side notes")
+	gitIn(t, dir, "switch", "-q", "feature")
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("uncommitted\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, plan := range []string{"", filepath.Join(t.TempDir(), "plan.json")} {
+		if plan != "" {
+			if err := os.WriteFile(plan, []byte(`{"units":[]}`), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var out bytes.Buffer
+		err := mergeRun(mprPath, "side", "", "", plan, false, mxRunners{}, &out)
+		if err == nil || !strings.Contains(err.Error(), "would be overwritten") {
+			t.Errorf("plan=%q: want git's reason in the error, got %v", plan, err)
+		}
+	}
+}
+
 // The plan template is working material: `mxcli git commit` never stages it.
 func TestJunkPath_CoversMergePlanTemplate(t *testing.T) {
 	if !isJunkPath("App.mpr.merge-plan.json", ".") {

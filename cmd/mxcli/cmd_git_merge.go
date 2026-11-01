@@ -208,9 +208,12 @@ func mergeRun(mprPath, ref, message, strategy, plan string, push bool, runners m
 			fmt.Fprintf(out, "Merged %s without model conflicts (%s).\n", ref, shortCommit(head))
 			return finishMerge(out, repo, head, branch, push)
 		}
-		// A ref that does not resolve fails before any conflict exists.
+		// A ref that does not resolve fails before any conflict exists, and
+		// so does a merge git refuses to start (local changes it would
+		// overwrite, no identity): git's reason is on stderr, which is the
+		// error — stdout holds at most an "Updating a..b" line.
 		if _, mhErr := gitOut(root, "rev-parse", "--verify", "--quiet", "MERGE_HEAD"); mhErr != nil {
-			return fmt.Errorf("git merge %s: %s", ref, firstLineOf(mergeOut))
+			return fmt.Errorf("git merge %s: %v", ref, mergeErr)
 		}
 	}
 
@@ -763,12 +766,12 @@ func applyPlan(root string, repo *gitNoteRepo, mprAbs, mprPath, ref, planPath, m
 	// An unfinished merge (text conflicts resolved and staged, say) is
 	// resumed; otherwise the merge runs and must conflict the same way.
 	if _, mhErr := gitOut(root, "rev-parse", "--verify", "--quiet", "MERGE_HEAD"); mhErr != nil {
-		mergeOut, mergeErr := gitOutIn(root, nil, "merge", "--no-edit", ref)
+		_, mergeErr := gitOutIn(root, nil, "merge", "--no-edit", ref)
 		if mergeErr == nil {
 			return errors.New("the merge no longer conflicts — the plan is unnecessary; nothing was done")
 		}
 		if _, mhErr := gitOut(root, "rev-parse", "--verify", "--quiet", "MERGE_HEAD"); mhErr != nil {
-			return fmt.Errorf("git merge %s: %s", ref, firstLineOf(mergeOut))
+			return fmt.Errorf("git merge %s: %v", ref, mergeErr)
 		}
 	}
 	baseSha := strings.TrimSpace(gitOutOr(root, "merge-base", "HEAD", "MERGE_HEAD"))
