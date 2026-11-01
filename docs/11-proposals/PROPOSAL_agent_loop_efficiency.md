@@ -668,6 +668,139 @@ estimates, not measurements. It is also a different kind of work from a Mendix
 app build. What travels is the arithmetic and the shares, both of which agree
 with the three earlier projects where they overlap.
 
+## A fifth lever, named by someone else's benchmark — and the floor this document never measured
+
+[microsoft/TokenEconomizer](https://github.com/microsoft/TokenEconomizer) (Apache 2.0,
+a plugin for Claude Code, Codex, Copilot CLI and Pi) attacks the same problem from the
+harness side rather than the tool side. It is worth reading here for one reason: two of
+its three mechanisms are levers this document already has, and the third is a term in
+the cost model that none of the four measured projects ever isolated.
+
+Its three mechanisms, as documented:
+
+| Mechanism | What it does |
+|---|---|
+| **Micro-skills** | Mines recurring failures from session history, states each as a fact at the start of later sessions once three sessions confirm it, drops it when a session contradicts it |
+| **Tool pruning** | Removes tool definitions unused across N consecutive sessions (default 5) from later sessions, via the agent's own settings |
+| **Failure-loop intervention** | Detects a stuck turn and tells the operator to stop it; never stops one itself |
+
+Its reported effect is 23.6% (Sonnet) to 30.9% (Opus) across 277 bug fixes in six
+repositories, with no measured loss of task success.
+
+### Its biggest lever is our smallest, and the inversion is arithmetic rather than opinion
+
+Tool pruning removes a **fixed** quantity `F` from every request. Its share of a bill is
+therefore `F / S̄` — the floor over the average context — which is not a property of the
+lever at all but of the session it is applied to:
+
+| | avg context `S̄` | `F` removed | share |
+|---|---|---|---|
+| TokenEconomizer's own measurement | 34.3 k | 9.9 k | **29%** |
+| BENCH-001 run 3 | 108 k | 9.9 k | 9.2% |
+| The chess build (1,784 calls, 655.7 M) | **368 k** | 9.9 k | **2.7%** |
+
+The same absolute saving is a 10× smaller percentage on our largest measured session
+than on their benchmark, and for the same reason this document already recorded in
+§"The benchmark systematically overstates every lever aimed at tool output": a short
+task is nearly all preamble, a long build is nearly all accumulated work. Their
+benchmark — 277 short bug fixes — is the maximum-flattering regime for a fixed-overhead
+lever. A multi-hour build is the minimum. **Their headline figure should not be expected
+to transfer, and the arithmetic says by how much it will not.**
+
+It is still worth doing, because unlike every other lever here it costs nothing
+recurring once paid. And mxcli has already paid part of it, with the same reasoning
+written down — `cmd/mxcli/init_claudemd_budget_test.go` caps the generated project
+CLAUDE.md at 6,000 bytes:
+
+> Measured on a real build (ako/CapTrackV4, 15 slices): 6,918 tokens × 15 sub-agent
+> contexts = ~104k tokens of re-read reference.
+
+**What is not capped is the skill index.** The frontmatter `description` of the 74
+synced skills is 20,611 bytes — roughly 5.2 k tokens, **3.4× the CLAUDE.md budget** —
+and it is in every request of every context that loads them. On the same 15-context
+build that justified the CLAUDE.md cap, that is ~78 k tokens of routing, against
+CLAUDE.md's 104 k. No test constrains it, and #906 is the precedent for what an
+unconstrained index does.
+
+The caveat that keeps this honest: the descriptions **are** the routing mechanism
+(CLAUDE.md says so outright), and §"Lever 5" found that a skill which does not route is
+indistinguishable from one that does not exist. So the move is shortening, not pruning.
+At 279 bytes per skill the index is already lean; cutting it to 150 saves ~0.7% of a
+chess-sized bill. A budget test is worth having for consistency and against drift. It is
+not worth calling a lever.
+
+### Lever 5 already is micro-skills — what is new is the miner, not the mechanism
+
+The `LD_PRELOAD` / libSkiaSharp gotcha in CLAUDE.md is exactly a micro-skill: an
+environment fact somebody paid tokens to discover, then hand-wrote into the preamble so
+nobody would pay again. §"Lever 5" states the same principle ("a workaround discovered
+in a session is a cost paid once per session per user until it becomes a diagnostic, a
+refusal or a skill") and the same failure mode (encoding something that was really a bug,
+or already known). TokenEconomizer's contribution is **automating the population** of
+that store from session history.
+
+The break-even is overwhelming, and unlike tool pruning it does not decay with session
+length. A 50-token fact in the preamble of the chess build costs `50 × 1,784 = 89 k`
+tokens. One five-call retry chain at 368 k per call costs **1.8 M**. A fact that
+prevents one chain pays for itself about twenty times over.
+
+Two things follow, and they point in different directions:
+
+1. **For anything we can fix, injecting a fact is the worse repair.** They inject
+   workarounds because they cannot change the tool; we own it. [#1620](https://github.com/ako/mxcli/issues/1620)
+   and the `run restart` readiness chain each remove a chain for every user at *zero*
+   recurring context cost, where a fact removes it for one project at 89 k. That is item
+   4c, and this is an argument for doing it rather than for working around it.
+2. **For environment facts, there is nothing to fix and the store is the answer** — a
+   missing postgres, a taken port, a devcontainer quirk, the Temurin FreeType collision.
+   That category is real, and mxcli is better placed to mine it than they are:
+   `diag session-report` already extracts retry chains **deterministically** from the
+   same transcripts, where TokenEconomizer spends a model call every three sessions.
+   Chains aggregated by normalised error message are candidate facts without a model in
+   the loop.
+
+Their own prompt-injection caveat bites harder here, and it decides the shape: facts
+mined from tool output become truth in every later session, while CLAUDE.md's standing
+posture is that repository content is data, not instructions. **Any miner we build
+proposes facts for review; it does not install them.**
+
+The failure-loop intervention is the one mechanism with no counterpart worth building.
+`diag loop-report` already names stuck loops after the fact, and an in-loop detector
+costs a model call per check to tell a human what they can see.
+
+### The floor itself — the term this cost model was missing
+
+The useful thing TokenEconomizer forces is a decomposition. This document measures
+`N × S`. But `S` is really `F + W`: a fixed preamble plus accumulated work, where **`F`
+is paid `N` times at full weight and never amortised.** Four projects in, `F` has never
+been measured — §"Caveats" guessed around 10% of 371 k without a number.
+
+`diag session-report` can measure it exactly, because the first model call's context
+*is* `F`, and it now does: `preamble_tokens` (the floor) and `preamble_paid_tokens`
+(Σ per conversation of floor × that conversation's calls, since each subagent carries
+its own, smaller preamble). Both are upper bounds — a resumed or already-compacted
+transcript starts with prior conversation in context and overstates the floor by that
+much.
+
+**This corrects item 3c, which is the largest lever in the sequencing table.** 3c claims
+`N × S / 2k` for a split across `k` phases. That is the *work* term only. Each phase
+re-pays the floor, so the true figure is `k × F + N × W / 2k`: the floor is a bound that
+splitting cannot go below, and past some `k` adding phases costs more than it saves.
+With `F` at 40 k, five phases carry 200 k of preamble before any work — still a large
+win against 655.7 M, but not the clean factor of `k` this document has been quoting. The
+optimum `k` is now computable rather than asserted, and it is `√(N × W / 2F)`.
+
+Item 3c's price was already stated as "one re-orientation per boundary". The floor says
+that price has a second half nobody was charging for.
+
+### What is measurable now, and what is not
+
+The field ships with the report, so the next session measures its own floor. What it
+cannot do is retrofit: the chess transcript is on the user's machine, and until
+`session-report` is run over it the 2.7% and the 40 k above are **computed from the
+published per-message figures, not measured here.** Running the new field over
+`43102ea9` settles both, and it is one command.
+
 ## What is actually asymmetric — and how little of it is irreducible
 
 An earlier draft said: "Vercel's agent writes a `.tsx` file and the work is
@@ -1190,8 +1323,10 @@ cache-read / cache-write / output tokens, wall and active time; Bash calls split
 into mxcli verbs, playwright, build, git and other; every call in one category
 (orientation, write, validate, apply, verify, diagnosis, retry, delegate,
 other); the costliest results ranked by **re-read cost = size × the model calls
-after it**; error → retry chains aggregated by normalised error; and repeated
-file reads and syntax/help/skill lookups. The rules are deliberately simple and
+after it**; error → retry chains aggregated by normalised error; repeated
+file reads and syntax/help/skill lookups; and the **preamble floor** — the first
+model call's context, which on a conversation that starts fresh is the fixed cost
+every later call re-reads before any work, times the calls that paid it. The rules are deliberately simple and
 stated in the docs ("Measuring Agent Sessions") so a number can be argued with.
 
 First run, over the 20 transcripts on the development machine (+76 subagents —
@@ -1210,6 +1345,9 @@ mxcli *contributor* sessions, not app builds, so the shape is not an app loop's)
 **The 20% is the figure that matters for ordering the levers.** Tool results
 explain about a fifth of the re-read bill; the other four fifths are the
 model's own turns, prompts and system context being re-read by every call.
+`preamble_paid_tokens` names a measured part of those four fifths for the first
+time — see §"A fifth lever", which is also why the figure matters for item 3c
+rather than only for ordering the levers.
 Lever 2 (shrink what each result adds) can only ever act on that fifth, and a
 large output is cheap when it arrives late — so a byte trimmed matters less than
 a call removed, which takes its whole turn's context growth with it. That is the
@@ -1241,12 +1379,13 @@ baseline is the first thing to record wherever it does.
 | 2d | **Count a killed `run` in `diag loop-report` rather than dropping it** — **shipped** | S | was: the restart bill is invisible, `run`'s reported wall time a floor built from 4 of 30 invocations. Now a 30 s `session_alive` heartbeat bounds every unclosed run from below, whatever killed it, and the report separates the measured total, the measured floor and an explicitly-labelled estimate |
 | 2e | **App lifecycle as commands** — `run --local --detach`, `run status`, `run wait`, `run stop`, `run restart`, taught in the run-local/run-app skills and the generated gate list — **shipped** | M | ~25–28% of all tool calls in measured sessions were hand-rolled `nohup`/poll/`pkill` loops; each becomes one call, and `exec … && run wait` is the per-change chain |
 | 3 | Publish the canonical `&&` chain in `projectGates` + skills (lever 1) | XS | the 5–8 → 1–2 collapse, with nothing built |
-| 3c | **One session per phase, each resumed from `brain brief` / `brain plan`** — taught in the generated CLAUDE.md and the bootstrap skill, not built | S | **the largest lever measured.** 79% of a 1,771-call build's bill is the conversation, not tool output, and splitting N calls across k near-empty phases is `N × S / 2k` — a factor of k, not a percentage. Its price is one re-orientation per boundary, which is what items 3b/4/4b actually buy (§"A fourth project") |
+| 3c | **One session per phase, each resumed from `brain brief` / `brain plan`** — taught in the generated CLAUDE.md and the bootstrap skill, not built | S | **the largest lever measured.** 79% of a 1,771-call build's bill is the conversation, not tool output, and splitting N calls across k near-empty phases is `N × S / 2k` — a factor of k, not a percentage. Its price is one re-orientation per boundary, which is what items 3b/4/4b actually buy (§"A fourth project"). **Corrected 2026-11-01**: `N × S / 2k` is the *work* term only — each phase re-pays the preamble floor `F`, so the figure is `k × F + N × W / 2k`, the floor is a bound splitting cannot go below, and the optimum k is `√(N × W / 2F)` rather than "as many as possible" (§"A fifth lever") |
 | 3d | **Stop the agent re-reading its own output** — a written-file summary it can consult, and `-c describe` over the model instead of `sed` over the script that built it | M | **the largest orientation shape at build scale**, and not the one 3b addresses: 559 file reads against 101 doc lookups, 154 of them repeats, and own-source ranges are 28% of the ten costliest results against the skills' 22%. One 17-line range was re-read by 504 later calls (§"Correction: orientation is the agent re-reading its own work") |
 | 3b | **Make consuming the skills cheap** — **first pass shipped 2026-10-10**: the generated CLAUDE.md now routes `syntax` before any skill, and `scripts/skill-index.py` puts a verified line-numbered section index at the head of all 74 (`make check-skill-index` in CI). Not yet done: moving the syntax that skills restate into `syntax` itself — code blocks are only 28% of skill bytes, so that is a smaller prize than it looked | M | the largest measured token item, and it displaces item 4. **Measured, leaning negative**: across runs 2 and 3 the skills' share of the re-read bill halved (68% -> 37%) and `syntax` sweeps took the freed share (23%), leaving the total 26% worse at a reproducible 59-61 calls against one pre-change point at 47. Missing datum is the control: two runs of `9ce90f32`. The identified surgical fix is to narrow the routing line against speculative sweeps, keeping the index (§"Run 3"). **Resized 2026-10-22**: the shape it targets is 5.3% of the benchmark's bill and 0.26% of a real build's, so its value is no longer as a token lever but as what makes a phase boundary cheap (item 3c) |
+| 3e | **Budget the skill index** — a test on the 74 synced skills' frontmatter `description` bytes, as `init_claudemd_budget_test.go` already does for the generated CLAUDE.md | XS | the index is 20,611 bytes (~5.2 k tokens, **3.4× the CLAUDE.md budget**) in every request of every context that loads it, and nothing constrains it; #906 is the precedent. Honest sizing: shortening it to 150 bytes/skill saves ~0.7% of a chess-sized bill, so this is drift protection, not a lever — and the descriptions **are** the routing, so it caps length, never count (§"A fifth lever") |
 | 4 | Terse/delta output for `exec`, `syntax` and the noisy listings (lever 2) | M | **promoted back to co-equal with 3b**: run 1's ~15% was the one run where that was true. Runs 2-3 put mxcli's own stdout at ~39% of the re-read cost (`syntax` 23%, the two `DESCRIBE`s 16%) against skill reads' 37%, because the agent substitutes between the two sources (§"Item 4 is no longer the junior partner") |
 | 4b | **`syntax --digest <doctype>`** — every signature for a doctype, no prose, one call | S | both post-change runs show the agent assembling exactly this by hand (`for t in …; do mxcli syntax $t; done`, 195 k + 105 k in run 3, plus a 90 k `syntax --json` dump). A cheaper sweep, rather than a rule against sweeping |
-| 4c | **Remove the recurring retry chains** — the unspliceable `create or modify`, the CE1613 association-attribute page reference, `injecting test microflows`, the `brain init` routing gap | M | 14% of run 3's model calls were retries, all resolved in one, most of them mxcli's fault. The only listed lever that removes *calls* rather than bytes — though the chess build puts retries at 4.5%, so the benchmark oversizes this one too. It also names two of ours: `check` rejecting the Live Sync `On tick` property on a widget mxcli itself writes, and `Failed to fetch` on the first assertion after `run restart`, the worst chain in the session at 5 retries |
+| 4c | **Remove the recurring retry chains** — the unspliceable `create or modify`, the CE1613 association-attribute page reference, `injecting test microflows`, the `brain init` routing gap | M | 14% of run 3's model calls were retries, all resolved in one, most of them mxcli's fault. The only listed lever that removes *calls* rather than bytes — though the chess build puts retries at 4.5%, so the benchmark oversizes this one too. It also names two of ours: `check` rejecting the Live Sync `On tick` property on a widget mxcli itself writes, and `Failed to fetch` on the first assertion after `run restart`, the worst chain in the session at 5 retries. Where a chain is **not** ours to fix (a missing postgres, a taken port, the Temurin FreeType collision), the same aggregated chains are candidate preamble facts — TokenEconomizer's micro-skills, except mined deterministically rather than with a model call every three sessions, and **proposed for review rather than installed**, because a fact mined from tool output is repository content (§"A fifth lever") |
 | 5 | Tiered verification rule in the skills (lever 3) | S | stops the default path at the cheapest sufficient gate |
 | 6 | Subagent trigger in the skills (lever 4) | XS | caps the worst tail — but price the handback: 10 delegations produced 3 of the 10 costliest results in the chess build (3.6 M), because a subagent saves its own context, not the caller's, unless what comes back is small |
 | 7 | Workarounds → diagnostics and skills (lever 5) | M, ongoing | compounds across all future sessions |
