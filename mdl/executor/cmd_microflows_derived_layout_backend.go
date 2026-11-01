@@ -10,6 +10,7 @@ import (
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 	"github.com/mendixlabs/mxcli/sdk/javaactions"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
+	"github.com/mendixlabs/mxcli/sdk/pages"
 )
 
 // layoutCheckBackend memoises the lookups the flow builder repeats on every
@@ -34,6 +35,10 @@ type layoutCheckBackend struct {
 	domainModels *memoResult[[]*domainmodel.DomainModel]
 
 	microflowHeaders *memoResult[[]types.DocumentHeader]
+	nanoflowHeaders  *memoResult[[]types.DocumentHeader]
+	pageHeaders      *memoResult[[]types.DocumentHeader]
+	snippetHeaders   *memoResult[[]types.DocumentHeader]
+	layoutHeaders    *memoResult[[]types.DocumentHeader]
 
 	moduleByName    map[string]memoResult[*model.Module]
 	microflowsNamed map[string]memoResult[[]*microflows.Microflow]
@@ -149,6 +154,42 @@ func (b *layoutCheckBackend) ListMicroflowHeaders() ([]types.DocumentHeader, err
 		}
 		return out, nil
 	})
+}
+
+// The header listings and GetSnippet keep the real backend's by-header
+// lookups visible through the memo, for the same reason as the microflow ones
+// above: without them a describe that rebuilds a nanoflow to derive its layout
+// decoded every nanoflow of the project (#1850).
+func (b *layoutCheckBackend) ListNanoflowHeaders() ([]types.DocumentHeader, error) {
+	return memoOnce(&b.nanoflowHeaders, func() ([]types.DocumentHeader, error) { return nanoflowHeaders(b.FullBackend) })
+}
+
+func (b *layoutCheckBackend) ListPageHeaders() ([]types.DocumentHeader, error) {
+	return memoOnce(&b.pageHeaders, func() ([]types.DocumentHeader, error) { return pageHeadersOf(b.FullBackend) })
+}
+
+func (b *layoutCheckBackend) ListSnippetHeaders() ([]types.DocumentHeader, error) {
+	return memoOnce(&b.snippetHeaders, func() ([]types.DocumentHeader, error) { return snippetHeaders(b.FullBackend) })
+}
+
+func (b *layoutCheckBackend) ListLayoutHeaders() ([]types.DocumentHeader, error) {
+	return memoOnce(&b.layoutHeaders, func() ([]types.DocumentHeader, error) { return layoutHeaders(b.FullBackend) })
+}
+
+func (b *layoutCheckBackend) GetSnippet(id model.ID) (*pages.Snippet, error) {
+	if l, ok := b.FullBackend.(snippetLookup); ok {
+		return l.GetSnippet(id)
+	}
+	all, err := b.ListSnippets()
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range all {
+		if s.ID == id {
+			return s, nil
+		}
+	}
+	return nil, nil
 }
 
 func (b *layoutCheckBackend) GetModuleByName(name string) (*model.Module, error) {

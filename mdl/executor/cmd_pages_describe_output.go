@@ -1808,7 +1808,9 @@ func getPageQualifiedName(ctx *ExecContext, pageID model.ID) string {
 	if pageID == "" {
 		return ""
 	}
-	allPages, err := ctx.Backend.ListPages()
+	// Headers, not decoded pages (#1850), and not the cached name map, which a
+	// page created earlier in the same script is missing from.
+	hs, err := pageHeaders(ctx)
 	if err != nil {
 		return ""
 	}
@@ -1816,10 +1818,9 @@ func getPageQualifiedName(ctx *ExecContext, pageID model.ID) string {
 	if err != nil {
 		return ""
 	}
-	for _, p := range allPages {
+	for _, p := range hs {
 		if p.ID == pageID {
-			modName := h.GetModuleName(h.FindModuleID(p.ContainerID))
-			return modName + "." + p.Name
+			return h.GetQualifiedName(p.ContainerID, p.Name)
 		}
 	}
 	return ""
@@ -1867,7 +1868,7 @@ func targetPageParameterNames(ctx *ExecContext, qualifiedName string) []string {
 	if !ok || module == "" || name == "" {
 		return nil
 	}
-	allPages, err := ctx.Backend.ListPages()
+	allPages, err := pagesWhere(ctx.Backend, func(n string) bool { return strings.EqualFold(n, name) })
 	if err != nil {
 		return nil
 	}

@@ -127,17 +127,19 @@ func (b *Backend) ListNanoflows() ([]*microflows.Nanoflow, error) {
 	return out, nil
 }
 
+// GetNanoflow decodes the nanoflow whose ID is id, and no other (#1850).
 func (b *Backend) GetNanoflow(id model.ID) (*microflows.Nanoflow, error) {
-	units, err := listUnits[*genMf.Nanoflow](b)
-	if err != nil {
+	u, ok, err := mprread.UnitByID[*genMf.Nanoflow](b.reader, id)
+	if err != nil || !ok {
 		return nil, err
 	}
-	for _, u := range units {
-		if model.ID(u.Element.ID()) == id {
-			return nanoflowFromGen(u.Element, u.ContainerID), nil
-		}
-	}
-	return nil, nil
+	return nanoflowFromGen(u.Element, u.ContainerID), nil
+}
+
+// ListNanoflowHeaders lists every nanoflow's ID, container, name and Excluded
+// flag without decoding any flow.
+func (b *Backend) ListNanoflowHeaders() ([]types.DocumentHeader, error) {
+	return unitHeaders[*genMf.Nanoflow](b)
 }
 
 // nanoflowFromGen mirrors microflowFromGen — nanoflows share the same parameter,

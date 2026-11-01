@@ -27,8 +27,8 @@ func describePage(ctx *ExecContext, name ast.QualifiedName) error {
 		return mdlerrors.NewBackend("build hierarchy", err)
 	}
 
-	// Find the page
-	allPages, err := ctx.Backend.ListPages()
+	// Find the page: only the pages of this name are decoded (#1850).
+	allPages, err := pagesWhere(ctx.Backend, func(n string) bool { return n == name.Name })
 	if err != nil {
 		return mdlerrors.NewBackend("list pages", err)
 	}
@@ -241,8 +241,8 @@ func describeSnippet(ctx *ExecContext, name ast.QualifiedName) error {
 		return mdlerrors.NewBackend("build hierarchy", err)
 	}
 
-	// Find the snippet
-	allSnippets, err := ctx.Backend.ListSnippets()
+	// Find the snippet: only the snippets of this name are decoded (#1850).
+	allSnippets, err := snippetsNamed(ctx.Backend, name.Name)
 	if err != nil {
 		return mdlerrors.NewBackend("list snippets", err)
 	}
@@ -639,7 +639,7 @@ func getBsonArrayMaps(v any) []map[string]any {
 
 // resolveLayoutName resolves a layout ID to its qualified name.
 func resolveLayoutName(ctx *ExecContext, layoutID model.ID) string {
-	layouts, err := ctx.Backend.ListLayouts()
+	layouts, err := layoutHeaders(ctx.Backend)
 	if err != nil {
 		return string(layoutID)
 	}
