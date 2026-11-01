@@ -605,6 +605,12 @@ func TestGitCommit_NothingToCommit(t *testing.T) {
 func gitInE(t *testing.T, dir string, args ...string) (string, error) {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	// The same fixed identity gitIn commits with: `git merge` needs one even
+	// when it stops on a conflict, and a host whose name gives git nothing to
+	// guess from (a bare "vm", no domain) refused the fixture's merge.
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com",
+		"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com")
 	b, err := cmd.CombinedOutput()
 	return string(b), err
 }

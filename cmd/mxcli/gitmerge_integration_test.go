@@ -112,6 +112,12 @@ func mergeIntegrationRepo(t *testing.T) (string, string, string) {
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(dir))
+	// The command's own git merge and commit run in this process: with the
+	// global config gone, they need an identity a hostname cannot supply.
+	t.Setenv("GIT_AUTHOR_NAME", "t")
+	t.Setenv("GIT_AUTHOR_EMAIL", "t@example.com")
+	t.Setenv("GIT_COMMITTER_NAME", "t")
+	t.Setenv("GIT_COMMITTER_EMAIL", "t@example.com")
 
 	bin := os.Getenv("MXCLI_BIN")
 	if bin == "" {
