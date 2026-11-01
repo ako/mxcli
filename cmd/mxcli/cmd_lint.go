@@ -34,6 +34,7 @@ Built-in rules check for:
   - Password policy (SEC002) - password minimum length should be 8+
   - Demo users (SEC003) - demo users should be off at Production security
   - Unreadable page data (SEC010) - a data widget's entity must be readable by the roles that open its page (at Production it renders empty)
+  - Reachable page not readable (SEC012) - every page a user role can reach shows only what the role may read (mxbuild CE2729)
   - Un-describable branch structure (MDL-FLOW01) - decision branches that do not nest, so DESCRIBE cannot render them faithfully
 
 Bundled Starlark rules (in .claude/lint-rules/):
@@ -485,10 +486,11 @@ func builtinLintRules() []linter.Rule {
 		rules.NewNoEntityAccessRulesRule(),
 		rules.NewWeakPasswordPolicyRule(),
 		rules.NewDemoUsersActiveRule(),
-		rules.NewPageEntityReadAccessRule(),  // SEC010 - full catalog (widgets, permissions)
-		rules.NewOverlappingActivitiesRule(), // MPR008 - requires BSON inspection
-		rules.NewLoopChildContainmentRule(),  // MPR011 - requires BSON inspection
-		rules.NewNoCommitInLoopRule(),        // CONV011-CONV014 - require BSON inspection
+		rules.NewPageEntityReadAccessRule(),    // SEC010 - full catalog (widgets, permissions)
+		rules.NewReachablePageReadAccessRule(), // SEC012 - full catalog (refs, navigation, permissions)
+		rules.NewOverlappingActivitiesRule(),   // MPR008 - requires BSON inspection
+		rules.NewLoopChildContainmentRule(),    // MPR011 - requires BSON inspection
+		rules.NewNoCommitInLoopRule(),          // CONV011-CONV014 - require BSON inspection
 		rules.NewExclusiveSplitCaptionRule(),
 		rules.NewErrorHandlingOnCallsRule(),
 		rules.NewNoContinueErrorHandlingRule(),
