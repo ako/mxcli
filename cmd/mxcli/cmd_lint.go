@@ -486,11 +486,11 @@ func builtinLintRules() []linter.Rule {
 		rules.NewNoEntityAccessRulesRule(),
 		rules.NewWeakPasswordPolicyRule(),
 		rules.NewDemoUsersActiveRule(),
-		rules.NewPageEntityReadAccessRule(),  // SEC010 - full catalog (widgets, permissions)
+		rules.NewPageEntityReadAccessRule(),   // SEC010 - full catalog (widgets, permissions)
 		rules.NewXPathAssociationAccessRule(), // SEC011 - full catalog (xpath_expressions, permissions)
-		rules.NewOverlappingActivitiesRule(), // MPR008 - requires BSON inspection
-		rules.NewLoopChildContainmentRule(),  // MPR011 - requires BSON inspection
-		rules.NewNoCommitInLoopRule(),        // CONV011-CONV014 - require BSON inspection
+		rules.NewOverlappingActivitiesRule(),  // MPR008 - requires BSON inspection
+		rules.NewLoopChildContainmentRule(),   // MPR011 - requires BSON inspection
+		rules.NewNoCommitInLoopRule(),         // CONV011-CONV014 - require BSON inspection
 		rules.NewExclusiveSplitCaptionRule(),
 		rules.NewErrorHandlingOnCallsRule(),
 		rules.NewNoContinueErrorHandlingRule(),
