@@ -83,6 +83,23 @@ type Report struct {
 	AvgContext  int64 `json:"avg_context_tokens"`
 	Compactions int   `json:"compactions"`
 
+	// PreambleTokens is the main conversation's fixed floor: what every model
+	// call re-reads before any work — system prompt, tool definitions, the
+	// skill index, CLAUDE.md. PreamblePaid is that floor times the calls that
+	// paid it, summed per conversation, because the preamble is never
+	// amortised and each subagent carries its own.
+	//
+	// Two things only this pair answers. How much of a session was fixed
+	// overhead rather than work — the share is PreamblePaid over the context
+	// read, and it falls as a session gets longer, so a lever aimed at the
+	// preamble is worth least exactly where the bill is biggest. And what a
+	// phase split costs: k phases re-pay the floor k times, so the floor is a
+	// bound that splitting cannot go below.
+	//
+	// Both are upper bounds — see Conversation.FirstContext.
+	PreambleTokens int64 `json:"preamble_tokens"`
+	PreamblePaid   int64 `json:"preamble_paid_tokens"`
+
 	ByTool     []Count       `json:"by_tool"`
 	Bash       BashBreakdown `json:"bash"`
 	ByCategory []Count       `json:"by_category"`
@@ -159,7 +176,14 @@ func Analyze(sessions []*Session, opts Options) Report {
 			} else {
 				rep.MainModelCalls += conv.ModelCalls
 				rep.ActiveSeconds += conv.Active.Seconds()
+				// The floor a project can act on is the main conversation's.
+				// Over several sessions the largest is the honest one to show:
+				// an average would hide the context a call actually starts at.
+				if conv.FirstContext > rep.PreambleTokens {
+					rep.PreambleTokens = conv.FirstContext
+				}
 			}
+			rep.PreamblePaid += conv.FirstContext * int64(conv.ModelCalls)
 			if !conv.First.IsZero() && (first.IsZero() || conv.First.Before(first)) {
 				first = conv.First
 			}

@@ -89,6 +89,15 @@ type Conversation struct {
 	// Active is wall time with idle gaps (over idleGap between two records)
 	// left out: a session resumed after a night is not a 12-hour session.
 	Active time.Duration
+	// FirstContext is the first model call's whole context: input + cache read
+	// + cache write. On a conversation that starts fresh this is the preamble
+	// — system prompt, tool definitions, the skill index, CLAUDE.md — before
+	// any work has accumulated, and every later call re-reads it in full.
+	//
+	// It is an UPPER bound. A resumed transcript, or one whose first record is
+	// already past a compaction, starts with prior conversation in context and
+	// overstates the preamble by that much.
+	FirstContext int64
 }
 
 // idleGap is the longest pause between two records still counted as work.
@@ -408,8 +417,12 @@ func imageTokens(b64 string) int {
 func finish(s *Session, builders map[string]*convBuilder, order []string) {
 	for _, key := range order {
 		b := builders[key]
-		for _, id := range b.order {
-			b.conv.Usage.add(b.usages[id])
+		for i, id := range b.order {
+			u := b.usages[id]
+			b.conv.Usage.add(u)
+			if i == 0 {
+				b.conv.FirstContext = u.Input + u.CacheRead + u.CacheWrite
+			}
 		}
 		// A file with records but no model call (a bare prompt, a snapshot)
 		// is not a conversation worth reporting.

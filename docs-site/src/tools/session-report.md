@@ -35,6 +35,7 @@ session ea54453f (+9 subagents)  2026-09-25 00:22  wall 31h06m (active 5h16m)
 model calls 1269 (main 470)  tool calls 1410  avg context 209k
 tokens: cache-read 261.0M  cache-write 4.6M  output 790k  input 2.6k
 tool results: 480k tokens, re-read cost 58.7M (22% of cache-read)
+preamble: 42k floor (main), 53.3M paid over 1269 calls in 10 contexts (20% of context read)
 tools: Bash 1222, Write 92, Edit 59, Read 12, Agent 9, …
 bash 1222: other 648, build 244, mxcli 213, git 117
   mxcli 371 invocations (90 calls chained >1): exec 89, check 75, docker check 61, …
@@ -62,6 +63,21 @@ lookups: 166 file reads, 31 repeats (…/skills/fix-issue.md ×5, …); 12 doc l
   compaction. The percentage is the share of the cache-read bill that tool
   results explain; the rest is prompts, system context and the model's own
   turns.
+- **preamble** — the first model call's context, which on a conversation that
+  starts fresh is the fixed cost before any work: system prompt, tool
+  definitions, the skill index, the project's CLAUDE.md. The preamble is
+  re-read in full by every call and never amortised, so the figure that matters
+  is *paid*: the floor times the calls that paid it, summed per conversation,
+  because each subagent carries its own and smaller one. Its share falls as a
+  session gets longer — a short task is nearly all preamble, a long build
+  nearly all accumulated work — which is why a lever aimed at the preamble is
+  worth least exactly where the bill is biggest.
+
+  It is an **upper bound**. A resumed transcript, or one whose first record is
+  already past a compaction, starts with prior conversation in context and
+  overstates the floor by that much; when the overstatement is large enough
+  that floor × calls exceeds the whole bill, the line says so instead of
+  printing a share over 100%.
 - **bash** — each Bash call once, under its most significant program: mxcli,
   playwright, build (make/go/npm/mx…), git, other. The mxcli line counts
   *invocations*: `exec a.mdl && docker check` is one call, two invocations.

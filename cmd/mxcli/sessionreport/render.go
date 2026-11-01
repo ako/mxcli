@@ -90,6 +90,7 @@ func Render(w io.Writer, r Report) {
 		fmt.Fprintf(w, "tool results: %s tokens, re-read cost %s (%s of cache-read)\n",
 			human(r.ResultTokens), human(r.ReReadCost), pct(int(r.ReReadCost/1000), int(r.Tokens.CacheRead/1000)))
 	}
+	renderPreamble(w, r)
 	if r.ToolCalls == 0 {
 		return
 	}
@@ -178,4 +179,33 @@ func joinCountsX(cs []Count, limit int) string {
 		parts = append(parts, fmt.Sprintf("%s ×%d", c.Name, c.N))
 	}
 	return strings.Join(parts, ", ")
+}
+
+// renderPreamble reports the fixed cost every model call re-reads before any
+// work, and what it came to over the session. The floor alone does not say
+// whether it is worth acting on — the share does, and it shrinks as a session
+// gets longer, which is the whole point of printing both.
+func renderPreamble(w io.Writer, r Report) {
+	total := r.Tokens.Input + r.Tokens.CacheRead + r.Tokens.CacheWrite
+	if total <= 0 || r.PreamblePaid <= 0 {
+		return
+	}
+	share := pct(int(r.PreamblePaid/1000), int(total/1000))
+	switch {
+	case r.PreamblePaid > total:
+		// Over the whole bill means the floor is not a floor: the transcript
+		// starts mid-conversation, so the first call's context is prior work
+		// as well as preamble. Say so rather than print a share over 100%.
+		fmt.Fprintf(w, "preamble: %s floor overstates it (resumed or already-compacted transcript: the first call carries prior conversation)\n",
+			human(r.PreambleTokens))
+	case r.Subagents > 0:
+		// With subagents the floor × calls arithmetic does not hold on the
+		// shown numbers — each conversation pays its own, smaller floor — so
+		// the multiplication is only spelled out when there is one context.
+		fmt.Fprintf(w, "preamble: %s floor (main), %s paid over %d calls in %d contexts (%s of context read)\n",
+			human(r.PreambleTokens), human(r.PreamblePaid), r.ModelCalls, r.Subagents+1, share)
+	default:
+		fmt.Fprintf(w, "preamble: %s floor × %d calls = %s (%s of context read)\n",
+			human(r.PreambleTokens), r.ModelCalls, human(r.PreamblePaid), share)
+	}
 }

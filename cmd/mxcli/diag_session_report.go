@@ -79,6 +79,9 @@ var diagSessionReportCmd = &cobra.Command{
 
   - model calls, tool calls by tool, cache-read / cache-write / output tokens,
     and wall time
+  - the preamble floor: what every call re-reads before any work (system
+    prompt, tool definitions, the skill index, CLAUDE.md), times the calls
+    that paid it, as a share of the context read
   - Bash calls split into mxcli commands, playwright, build, git and other
   - every call in one category: orientation, write, validate, apply, verify,
     diagnosis, retry, delegate, other
@@ -87,7 +90,9 @@ var diagSessionReportCmd = &cobra.Command{
   - repeated reads of the same file and repeated syntax/help/skill lookups
 
 Cost grows with calls × conversation size, so a result read early is paid for
-by every later call. diag loop-report counts mxcli processes from mxcli's own
+by every later call. The preamble is the floor under that: it is never
+amortised, so its share falls as a session gets longer — and k phases re-pay
+it k times. diag loop-report counts mxcli processes from mxcli's own
 logs; this reads the agent's transcript, so it also sees Read/Edit/Grep/Skill
 calls, result sizes and failures.
 
