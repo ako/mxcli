@@ -43,8 +43,8 @@ func (b *Backend) UpdateBusinessEventService(svc *model.BusinessEventService) er
 	return errCreatePathUnbuilt("business event service", svc.Name)
 }
 
-// DeleteBusinessEventService drops an existing service via Concord's delete_document
-// (PED has no delete tool), like other standalone documents. Requires --mcp-concord.
+// DeleteBusinessEventService drops an existing service via deleteDocument: ped_delete_document where Studio Pro has it (11.16+), else
+// Concord (--mcp-concord).
 func (b *Backend) DeleteBusinessEventService(id model.ID) error {
 	services, err := b.reader.ListBusinessEventServices()
 	if err != nil {
@@ -56,7 +56,7 @@ func (b *Backend) DeleteBusinessEventService(id model.ID) error {
 			if err != nil {
 				return fmt.Errorf("resolve module for business event service %q: %w", s.Name, err)
 			}
-			return b.concordDeleteDocument(modName, s.Name)
+			return b.deleteDocument(businessEventServiceDocType, modName, s.Name)
 		}
 	}
 	return fmt.Errorf("business event service %s not found", id)
