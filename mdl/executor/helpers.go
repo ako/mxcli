@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
+	"github.com/mendixlabs/mxcli/mdl/backend"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/mdl/folderpath"
 	"github.com/mendixlabs/mxcli/mdl/types"
@@ -632,12 +633,14 @@ func microflowHeaders(ctx *ExecContext) ([]types.DocumentHeader, error) {
 // pageHeaders lists every page's ID, container and name: without decoding a
 // page on the modelsdk backend.
 func pageHeaders(ctx *ExecContext) ([]types.DocumentHeader, error) {
-	if l, ok := ctx.Backend.(interface {
-		ListPageHeaders() ([]types.DocumentHeader, error)
-	}); ok {
+	return pageHeadersOf(ctx.Backend)
+}
+
+func pageHeadersOf(be backend.FullBackend) ([]types.DocumentHeader, error) {
+	if l, ok := be.(pageHeaderLister); ok {
 		return l.ListPageHeaders()
 	}
-	all, err := ctx.Backend.ListPages()
+	all, err := be.ListPages()
 	if err != nil {
 		return nil, err
 	}

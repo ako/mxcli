@@ -1471,8 +1471,9 @@ func extractSnippetRef(ctx *ExecContext, w map[string]any) string {
 		}
 		// Try binary ID and resolve to name
 		if formID := extractBinaryID(formCall["Form"]); formID != "" {
-			// Try to resolve the snippet name from ID
-			snippets, err := ctx.Backend.ListSnippets()
+			// Try to resolve the snippet name from ID: by its header,
+			// without decoding every snippet (#1850).
+			snippets, err := snippetHeaders(ctx.Backend)
 			if err == nil {
 				for _, s := range snippets {
 					if string(s.ID) == formID {
