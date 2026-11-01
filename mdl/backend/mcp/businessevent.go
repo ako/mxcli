@@ -12,8 +12,8 @@ import (
 // the document type outright ("Document type 'BusinessEvents$BusinessEventService'
 // cannot be created.") — it is off the create whitelist (and the schema is a
 // $element, not a $constructor). So CREATE / CREATE OR MODIFY are rejected; reads
-// (SHOW / DESCRIBE) delegate to the local .mpr; DROP of an existing service goes
-// through Concord, like other standalone documents.
+// (SHOW / DESCRIBE) delegate to the local .mpr; DROP of an existing service uses
+// ped_delete_document (11.16+), like other standalone documents.
 //
 // The domain model a business-events setup relies on — a published-event entity
 // (`extends BusinessEvents.PublishedBusinessEvent`, generalization is supported by
@@ -43,8 +43,8 @@ func (b *Backend) UpdateBusinessEventService(svc *model.BusinessEventService) er
 	return errCreatePathUnbuilt("business event service", svc.Name)
 }
 
-// DeleteBusinessEventService drops an existing service via Concord's delete_document
-// (PED has no delete tool), like other standalone documents. Requires --mcp-concord.
+// DeleteBusinessEventService drops an existing service via deleteDocument: ped_delete_document
+// (Studio Pro 11.16+).
 func (b *Backend) DeleteBusinessEventService(id model.ID) error {
 	services, err := b.reader.ListBusinessEventServices()
 	if err != nil {
@@ -56,7 +56,7 @@ func (b *Backend) DeleteBusinessEventService(id model.ID) error {
 			if err != nil {
 				return fmt.Errorf("resolve module for business event service %q: %w", s.Name, err)
 			}
-			return b.concordDeleteDocument(modName, s.Name)
+			return b.deleteDocument(businessEventServiceDocType, modName, s.Name)
 		}
 	}
 	return fmt.Errorf("business event service %s not found", id)

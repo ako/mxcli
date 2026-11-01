@@ -54,17 +54,9 @@ func newBackendFactory() func() backend.FullBackend {
 	// writes route to Studio Pro, reads come from -p.
 	if globalMCPURL != "" {
 		url, dial := globalMCPURL, globalMCPDial
-		concordURL, concordDial := globalMCPConcord, globalMCPConcordDial
-		saveOnExit, checkOnExit, runOnExit := globalMCPSave, globalMCPCheck, globalMCPRun
+		checkOnExit, runOnExit := globalMCPCheck, globalMCPRun
 		return func() backend.FullBackend {
-			b := mcpbackend.New(url, dial)
-			if concordURL != "" || saveOnExit || checkOnExit || runOnExit {
-				b = b.WithConcord(mcpbackend.ConcordConfig{
-					URL: concordURL, Dial: concordDial,
-					SaveOnExit: saveOnExit, CheckOnExit: checkOnExit, RunOnExit: runOnExit,
-				})
-			}
-			return b
+			return mcpbackend.New(url, dial).WithExitActions(mcpbackend.ExitActions{Check: checkOnExit, Run: runOnExit})
 		}
 	}
 	warnIfEngineRequested()

@@ -14,7 +14,7 @@ import (
 // Did you mean: Microflows$Microflow?") — its create whitelist covers microflows
 // but not nanoflows, despite the two sharing a structure. CREATE / CREATE OR MODIFY
 // are therefore rejected with an actionable error. DROP of an existing nanoflow
-// still works via Concord's delete_document, like microflows; reads delegate to the
+// uses ped_delete_document (11.16+), like microflows; reads delegate to the
 // local .mpr.
 
 // CreateNanoflow is gated on the capability model (capabilities.yaml /
@@ -35,8 +35,8 @@ func (b *Backend) UpdateNanoflow(nf *microflows.Nanoflow) error {
 	return errCreatePathUnbuilt("nanoflow", nf.Name)
 }
 
-// DeleteNanoflow drops an existing nanoflow via Concord's delete_document (PED has
-// no delete tool), like microflows. Requires --mcp-concord.
+// DeleteNanoflow drops an existing nanoflow via deleteDocument: ped_delete_document
+// (Studio Pro 11.16+).
 func (b *Backend) DeleteNanoflow(id model.ID) error {
 	nf, err := b.GetNanoflow(id)
 	if err != nil {
@@ -46,7 +46,7 @@ func (b *Backend) DeleteNanoflow(id model.ID) error {
 	if err != nil {
 		return fmt.Errorf("resolve module for nanoflow %q: %w", nf.Name, err)
 	}
-	return b.concordDeleteDocument(modName, nf.Name)
+	return b.deleteDocument(nanoflowDocType, modName, nf.Name)
 }
 
 // Nanoflow reads delegate to the local reader (nanoflows can't be created over MCP,

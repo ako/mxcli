@@ -281,8 +281,8 @@ func (b *Backend) upsertSessionWorkflow(wf *workflows.Workflow) {
 	b.sessionWorkflows = append(b.sessionWorkflows, wf)
 }
 
-// DeleteWorkflow drops a workflow via Concord's delete_document (PED has no delete
-// tool). Requires --mcp-concord.
+// DeleteWorkflow drops a workflow via deleteDocument: ped_delete_document
+// (Studio Pro 11.16+).
 func (b *Backend) DeleteWorkflow(id model.ID) error {
 	wf, err := b.GetWorkflow(id)
 	if err != nil {
@@ -292,7 +292,7 @@ func (b *Backend) DeleteWorkflow(id model.ID) error {
 	if err != nil {
 		return fmt.Errorf("resolve module for workflow %q: %w", wf.Name, err)
 	}
-	return b.concordDeleteDocument(modName, wf.Name)
+	return b.deleteDocument(workflowDocType, modName, wf.Name)
 }
 
 // ListWorkflows merges local (on-disk) workflows with those created this session.

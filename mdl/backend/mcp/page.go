@@ -105,8 +105,8 @@ func (b *Backend) ListPages() ([]*pages.Page, error) {
 	return out, nil
 }
 
-// DeletePage drops a page via Concord's delete_document (PED has no delete tool).
-// Requires --mcp-concord; errors clearly otherwise.
+// DeletePage drops a page via deleteDocument: ped_delete_document
+// (Studio Pro 11.16+).
 func (b *Backend) DeletePage(id model.ID) error {
 	page, err := b.GetPage(id)
 	if err != nil {
@@ -116,7 +116,7 @@ func (b *Backend) DeletePage(id model.ID) error {
 	if err != nil {
 		return fmt.Errorf("resolve module for page %q: %w", page.Name, err)
 	}
-	return b.concordDeleteDocument(modName, page.Name)
+	return b.deleteDocument(pageDocType, modName, page.Name)
 }
 
 // Page-related reads delegate to the local reader (the executor's page builder
