@@ -13,8 +13,8 @@ import (
 //
 // # Why this is correctness, not style
 //
-// The React client arrived in Mendix 10.7 and is the only client on 11, and
-// mxbuild reports CE0582 on each of these widgets whenever it is enabled —
+// The React client arrived in Mendix 10.7, and mxbuild reports CE0582 on each
+// of these widgets whenever it is enabled —
 // measured on 11.12.1, where a page carrying one is a build ERROR:
 //
 //	[error] [CE0582] "Widget static image is not supported in React client.
@@ -100,6 +100,7 @@ func LegacyImageWidget(widgetType string) (LegacyImage, bool) {
 func (r *LegacyImageWidgetRule) Check(ctx *linter.LintContext) []linter.Violation {
 	var violations []linter.Violation
 	native := ctx.NativePages()
+	classic := runsClassicClient(ctx)
 
 	for w := range ctx.Widgets() {
 		if ctx.IsExcluded(w.ModuleName) {
@@ -120,12 +121,20 @@ func (r *LegacyImageWidgetRule) Check(ctx *linter.LintContext) []linter.Violatio
 			docType = "snippet"
 		}
 
+		severity := r.DefaultSeverity()
+		message := fmt.Sprintf(
+			"%s '%s' in %s is not supported by the React client, which this app uses — mxbuild reports CE0582",
+			legacy.MendixTerm, w.Name, w.ContainerQualifiedName)
+		if classic {
+			severity = linter.SeverityInfo
+			message = fmt.Sprintf(
+				"%s '%s' in %s will need converting before the app switches to the React client (it builds on the client this app uses now)",
+				legacy.MendixTerm, w.Name, w.ContainerQualifiedName)
+		}
 		violations = append(violations, linter.Violation{
 			RuleID:   r.ID(),
-			Severity: r.DefaultSeverity(),
-			Message: fmt.Sprintf(
-				"%s '%s' in %s is not supported by the React client (Mendix 10.7+, the only client on 11) — mxbuild reports CE0582",
-				legacy.MendixTerm, w.Name, w.ContainerQualifiedName),
+			Severity: severity,
+			Message:  message,
 			Location: linter.Location{
 				Module:       w.ModuleName,
 				DocumentType: docType,
@@ -139,4 +148,26 @@ func (r *LegacyImageWidgetRule) Check(ctx *linter.LintContext) []linter.Violatio
 	}
 
 	return violations
+}
+
+// runsClassicClient reports whether the project's Web UI setting is anything
+// but the React client outright. A Mendix 11 app can still run the classic
+// client, and there these widgets build clean: 57 warnings that each said
+// "mxbuild reports CE0582" on an app at 0 errors (mendixlabs/mxcli#1226).
+// Migration mode is not the React client either — measured on 11.14.0, the same
+// CE0582 on a classic drop-down is an error under "Yes" and clean under "No"
+// and "MigrationMode" (usesReactClient in mdl/executor).
+//
+// Settings that cannot be read keep the warning: lint always has them, so an
+// unreadable value means something is wrong, not that the app is classic.
+func runsClassicClient(ctx *linter.LintContext) bool {
+	reader := ctx.Reader()
+	if reader == nil {
+		return false
+	}
+	ps, err := reader.GetProjectSettings()
+	if err != nil || ps == nil || ps.WebUI == nil || ps.WebUI.UseOptimizedClient == "" {
+		return false
+	}
+	return ps.WebUI.UseOptimizedClient != "Yes"
 }

@@ -19,6 +19,9 @@ func (fb *flowBuilder) buildFlowGraph(stmts []ast.MicroflowStatement, returns *a
 	if fb.measurer == nil {
 		fb.measurer = &layoutMeasurer{varTypes: fb.varTypes}
 	}
+	if fb.measurer.layout == nil {
+		fb.measurer.layout = fb.layout
+	}
 	if fb.declaredVars == nil {
 		fb.declaredVars = make(map[string]string)
 	}

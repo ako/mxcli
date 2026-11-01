@@ -51,7 +51,7 @@ func (r *Reader) StoredPropertySetGaps(unitID string) (PropertySetRepair, error)
 //
 // # Why this is not just another write
 //
-// Every write already normalizes (normalizePropertySets), so a unit that a
+// Every write already normalizes (normalizeForStorage), so a unit that a
 // statement rewrites is completed on the way. The units nothing rewrites are
 // not: a project built by an older mxcli keeps every gap in documents no
 // later statement touches — a module's Projects$ModuleSettings, a microflow

@@ -237,6 +237,11 @@ func init() {
 		MandatoryListMarkers: map[string]int32{"ParameterMappings": 2},
 		NullFields:           []string{"ProgressMessage", "ConfirmationInfo"},
 	})
+	// Populated too: 78 of 78 Forms$CallNanoflowClientAction.ParameterMappings
+	// in ako/TestApp and PedApp are marker 2, six of them holding mappings. The
+	// child type (Forms$NanoflowParameterMapping) has no marker of its own, so
+	// a populated list took the default, 3 (ako/mxcli#1640).
+	codec.RegisterPropertyListMarker("Forms$CallNanoflowClientAction", "ParameterMappings", 2)
 	// The workflow events' unset slots (ako/mxcli#832): a workflow call with
 	// no confirmation, and an admin-page action with no default page.
 	codec.RegisterTypeDefaults("Forms$CallWorkflowClientAction", codec.TypeDefaults{
@@ -258,6 +263,9 @@ func init() {
 	codec.RegisterTypeDefaults("Forms$NanoflowSource", codec.TypeDefaults{
 		MandatoryListMarkers: map[string]int32{"ParameterMappings": 2},
 	})
+	// And populated: 21 of 21 in ako/TestApp and PedApp, eight holding mappings
+	// (ako/mxcli#1640).
+	codec.RegisterPropertyListMarker("Forms$NanoflowSource", "ParameterMappings", 2)
 	// TextBox: many null slots when unbound (attribute ref, screen-reader label,
 	// source variable, label template, visibility/editability/native settings).
 	codec.RegisterTypeDefaults("Forms$TextBox", codec.TypeDefaults{

@@ -24,6 +24,7 @@ var nestedBuilderInherits = map[string]bool{
 	"declaredVars":         true,
 	"textLang":             true,
 	"measurer":             true,
+	"layout":               true, // a nested body is drawn in the flow's style (#1832)
 	"backend":              true,
 	"quiet":                true,
 	"hierarchy":            true,

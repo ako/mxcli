@@ -564,7 +564,7 @@ func (w *Writer) insertUnit(unitID, containerID, containmentName, unitType strin
 		return fmt.Errorf("invalid container ID (not a valid UUID): %q", containerID)
 	}
 
-	contents, normErr := w.normalizePropertySets(unitID, contents)
+	contents, normErr := w.normalizeForStorage(unitID, contents)
 	if normErr != nil {
 		return normErr
 	}
@@ -732,7 +732,7 @@ func (w *Writer) reconcileAgainst(unitID string, contents []byte, readStored fun
 	w.writesOffered++
 	// Normalised before comparing, so a rebuild of a Studio Pro document that
 	// differed from it only by the properties the writer leaves out is elided.
-	contents, err = w.normalizePropertySets(unitID, contents)
+	contents, err = w.normalizeForStorage(unitID, contents)
 	if err != nil {
 		return nil, false, err
 	}
@@ -1035,7 +1035,7 @@ func (w *Writer) UpdateUnitContainer(unitID, newContainerID string) error {
 	return nil
 }
 
-// normalizePropertySets gives every element exactly the property set Studio
+// normalizeForStorage gives every element exactly the property set Studio
 // Pro writes for its $Type on this project's version: keys the version does not
 // declare yet are stripped when empty and refused when they hold a value
 // (canon.StripUndeclaredProperties), then missing ones are added
@@ -1044,6 +1044,17 @@ func (w *Writer) UpdateUnitContainer(unitID, newContainerID string) error {
 // because a key too many or too few from ANY writer makes the document
 // unopenable or unmergeable (mendixlabs/mxcli#1373), and a fix per writer is
 // the list that never ends.
-func (w *Writer) normalizePropertySets(unitID string, contents []byte) ([]byte, error) {
-	return normalizePropertySetsFor(w.reader.ProjectVersion(), unitID, contents)
+//
+// Every registered list then gets the marker Studio Pro writes for it
+// (canon.NormalizeListMarkers). The encoder writes that marker for a list it
+// builds; a list a rewrite passes through as stored bytes — an unchanged
+// pluggable widget, an existing element's clean property, a mutator's in-place
+// edit — kept whatever an older build wrote, on every later rewrite
+// (ako/mxcli#1640).
+func (w *Writer) normalizeForStorage(unitID string, contents []byte) ([]byte, error) {
+	out, err := normalizePropertySetsFor(w.reader.ProjectVersion(), unitID, contents)
+	if err != nil {
+		return nil, err
+	}
+	return canon.NormalizeListMarkers(out), nil
 }
