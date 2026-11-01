@@ -34,6 +34,7 @@ Built-in rules check for:
   - Password policy (SEC002) - password minimum length should be 8+
   - Demo users (SEC003) - demo users should be off at Production security
   - Unreadable page data (SEC010) - a data widget's entity must be readable by the roles that open its page (at Production it renders empty)
+  - XPath through an unreadable association (SEC011) - a page data source's XPath may cross only associations the roles opening the page can read (at Production the page fails)
   - Un-describable branch structure (MDL-FLOW01) - decision branches that do not nest, so DESCRIBE cannot render them faithfully
 
 Bundled Starlark rules (in .claude/lint-rules/):
@@ -486,6 +487,7 @@ func builtinLintRules() []linter.Rule {
 		rules.NewWeakPasswordPolicyRule(),
 		rules.NewDemoUsersActiveRule(),
 		rules.NewPageEntityReadAccessRule(),  // SEC010 - full catalog (widgets, permissions)
+		rules.NewXPathAssociationAccessRule(), // SEC011 - full catalog (xpath_expressions, permissions)
 		rules.NewOverlappingActivitiesRule(), // MPR008 - requires BSON inspection
 		rules.NewLoopChildContainmentRule(),  // MPR011 - requires BSON inspection
 		rules.NewNoCommitInLoopRule(),        // CONV011-CONV014 - require BSON inspection
