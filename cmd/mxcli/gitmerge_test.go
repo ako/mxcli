@@ -776,3 +776,28 @@ func TestEngineManualIDs_FiltersAutoResolvedAndEmpty(t *testing.T) {
 		t.Errorf("manual ids: %v", ids)
 	}
 }
+
+// The review material follows the engine's conflict list: a unit the engine
+// auto-resolved (git still lists it — one side's stale ContentsHash index
+// content-merges cleanly) never lands in the plan template, and one only the
+// engine flags as manual does. The engine's list here names tMf manual and
+// tDM auto — the opposite of git's conflicted-unit list — so the test can
+// tell which one the plan was built from.
+func TestGitMerge_PlanTemplateFollowsEngineConflictList(t *testing.T) {
+	dir, mprPath := modelConflictRepo(t) // git's conflicted unit: tDM
+	doctorEnv(t, dir)
+	auto := `[{"UnitId":"` + tDM + `","Type":"MergeContents","ConflictResolutionDetails":"AutoResolved"},{"UnitId":"` + tMf + `","Type":"MergeContents","ConflictResolutionDetails":"ManualResolutionRequired"}]`
+	mx := mxRunners{merge: func(base, mine, theirs string, shas [3]string) (int, string, error) {
+		return 2, auto, nil
+	}}
+	var out bytes.Buffer
+	_ = mergeRun(mprPath, "side", "", "", "", false, mx, &out)
+	raw, err := os.ReadFile(mprPath + ".merge-plan.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), tMf) || strings.Contains(string(raw), tDM) {
+		t.Errorf("plan must hold only the engine's manual unit:\n%s", raw)
+	}
+	gitInE(t, dir, "merge", "--abort")
+}

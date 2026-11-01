@@ -319,7 +319,15 @@ func mergeRun(mprPath, ref, message, strategy, plan string, push bool, runners m
 	if code == 2 {
 		// The review step: what each side changed, at property level (mx
 		// diff), plus a per-unit plan template. Then leave nothing behind —
-		// the human decides.
+		// the human decides. The unit list follows the engine's own conflict
+		// list — git's can differ (a stale one-side index makes the engine
+		// content-merge a unit git sees as changed). Without a parsable
+		// list, fall back to git's conflicted units: err toward showing work
+		// rather than hiding it.
+		manual := engineManualIDs(parseEngineConflicts(mxOut))
+		if len(manual) == 0 {
+			manual = conflictedUnitIDs(model)
+		}
 		oursMpr := filepath.Join(oursDir, filepath.FromSlash(repo.MPRPath))
 		if runners.diff != nil {
 			oursJSON := filepath.Join(tmp, "ours-diff.json")
@@ -327,10 +335,10 @@ func mergeRun(mprPath, ref, message, strategy, plan string, push bool, runners m
 			d1 := runners.diff(filepath.Join(baseDir, filepath.FromSlash(repo.MPRPath)), oursMpr, oursJSON)
 			d2 := runners.diff(filepath.Join(baseDir, filepath.FromSlash(repo.MPRPath)), filepath.Join(theirsDir, filepath.FromSlash(repo.MPRPath)), theirsJSON)
 			if d1 == nil && d2 == nil {
-				fmt.Fprintln(out, propertyReport(oursJSON, theirsJSON, conflictedUnitIDs(model)))
+				fmt.Fprintln(out, propertyReport(oursJSON, theirsJSON, manual))
 			}
 		}
-		if err := writePlanTemplate(mprPath, baseSha, oursSha, theirsSha, model); err != nil {
+		if err := writePlanTemplate(mprPath, baseSha, oursSha, theirsSha, manual); err != nil {
 			fmt.Fprintf(out, "  (could not write the plan template: %v)\n", err)
 		} else {
 			fmt.Fprintf(out, "Plan template: %s — set \"take\" per unit, re-run with --plan.\n", filepath.Base(mprPath)+".merge-plan.json")
@@ -720,9 +728,9 @@ type planUnit struct {
 	Take string `json:"take"`
 }
 
-func writePlanTemplate(mprPath, baseSha, oursSha, theirsSha string, model []string) error {
+func writePlanTemplate(mprPath, baseSha, oursSha, theirsSha string, unitIDs []string) error {
 	tmpl := mergePlanTemplate{Base: baseSha, Ours: oursSha, Theirs: theirsSha}
-	for _, id := range conflictedUnitIDs(model) {
+	for _, id := range unitIDs {
 		tmpl.Units = append(tmpl.Units, planUnit{ID: id, Take: "ours"})
 	}
 	b, err := json.MarshalIndent(tmpl, "", "  ")
