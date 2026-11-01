@@ -152,7 +152,7 @@ After reviewing automated results, assess the following areas manually. The guid
 
 ### C. Security
 
-**Enforced by rules:** SEC001-SEC010, CONV006, CONV007, CONV008, MPR007
+**Enforced by rules:** SEC001-SEC011, CONV006, CONV007, CONV008, MPR007
 
 #### C.1 Entity Access
 
@@ -160,6 +160,7 @@ After reviewing automated results, assess the following areas manually. The guid
 |-----------|------|----------|
 | All persistent entities must have access rules | SEC001 | Critical |
 | Every role that opens a page can read the entities its grids, galleries and combo boxes list (else it renders empty at Production) | SEC010 | High |
+| Every association a page data source's XPath crosses is readable by the roles that open the page, on the entity the step starts from (else the page fails to open at Production) | SEC011 | High |
 | Every page a user role can reach shows only attributes and entities that role may read (else mxbuild fails with CE2729) | SEC012 | High |
 | Do not grant Create or Delete rights on entity access rules | CONV006 | High |
 | All entity access rules should have XPath constraints | CONV007 | High |
@@ -442,7 +443,7 @@ Overall Score: [X]/100 (from `mxcli report`)
 This skill incorporates guidelines from:
 - **Conventions.pdf** — Squad Apps internal best practices (14 categories, 80+ guidelines)
 - **CONV001-CONV017 lint rules** — Automated checks derived from Conventions.pdf
-- **MPR001-MPR007, SEC001-SEC010** — Built-in linter rules
+- **MPR001-MPR007, SEC001-SEC011** — Built-in linter rules
 - **ARCH, DESIGN, QUAL series** — Starlark architecture/quality rules
 - **Mendix Performance Best Practices** — Official Mendix documentation on performance optimization
 - **Mendix Security Best Practices** — Official Mendix documentation on security configuration
