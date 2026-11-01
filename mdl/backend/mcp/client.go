@@ -314,7 +314,18 @@ func (c *Client) CallTool(name string, arguments any) (*ToolResult, error) {
 		}
 		sb.WriteString(blk.Text)
 	}
-	return &ToolResult{IsError: tc.IsError, Text: sb.String()}, nil
+	text := sb.String()
+	return &ToolResult{IsError: tc.IsError || handlerFailed(text), Text: text}, nil
+}
+
+// handlerFailedPrefix opens the text Studio Pro returns when a tool's handler
+// throws. It arrives with isError:false (measured on 11.16.0, ped_delete_document:
+// "Error executing tool handler: Session 'mcp-server' not found"), so a caller
+// that trusts the flag would read a failed call as a success.
+const handlerFailedPrefix = "Error executing tool handler:"
+
+func handlerFailed(text string) bool {
+	return strings.HasPrefix(strings.TrimSpace(text), handlerFailedPrefix)
 }
 
 // call sends a JSON-RPC request and returns the matching response, handling
