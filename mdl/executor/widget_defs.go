@@ -19,8 +19,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/types"
@@ -34,6 +36,9 @@ type WidgetDefRefreshStats struct {
 	Refreshed int // content drifted — overwrote stale def
 	UpToDate  int // content matched — no write
 	Skipped   int // skipped (built-in or unparseable mpk)
+	// Unchanged reports that nothing was looked at: widgets/ and the
+	// definitions are as the same mxcli build left them (#1848).
+	Unchanged bool
 }
 
 // RefreshWidgetDefinitions scans projectDir/widgets/ for .mpk files and
@@ -64,84 +69,275 @@ func RefreshWidgetDefinitions(projectPath string, force bool, output io.Writer) 
 		return stats, fmt.Errorf("failed to create output directory: %w", err)
 	}
 
+	if !force && widgetStateUnchanged(projectDir) {
+		stats.Unchanged = true
+		return stats, nil
+	}
+
 	// Built-in registry — definitions hand-crafted in sdk/widgets/definitions/
 	// (COMBOBOX, GALLERY, DATAGRID, filters, …). Skip those when extracting
 	// from the project; the built-in def overrides any .mpk-derived one.
 	builtinRegistry, _ := NewWidgetRegistry()
 
-	for _, mpkPath := range matches {
-		mpkDefs, err := mpk.ParseMPKAll(mpkPath)
-		if err != nil {
-			log.Printf("warning: skipping %s: %v", filepath.Base(mpkPath), err)
-			stats.Skipped++
-			continue
-		}
+	widgets, unparseable := scanProjectWidgets(matches)
+	stats.Skipped += unparseable
 
-		// A single .mpk can bundle many widgets (e.g. Charts.mpk); emit a def
-		// for each, not just the first.
-		for _, mpkDef := range mpkDefs {
-			mdlName := DeriveMDLName(mpkDef.ID)
-			filename := strings.ToLower(mdlName) + ".def.json"
-			outPath := filepath.Join(outputDir, filename)
+	for _, w := range widgets {
+		mpkPath, mpkDef, mdlName := w.mpkPath, w.def, w.mdlName
+		filename := strings.ToLower(mdlName) + ".def.json"
+		outPath := filepath.Join(outputDir, filename)
 
-			if builtinRegistry != nil {
-				if _, ok := builtinRegistry.GetByWidgetID(mpkDef.ID); ok {
-					stats.Skipped++
-					continue
-				}
-			}
-
-			defJSON := GenerateDefJSON(mpkDef, mdlName)
-			// Lift property-visibility rules from the widget's editorConfig.js
-			// (#574 Phase 2) so the generated .def.json carries the version-
-			// specific applicability logic. Merge with the hand-transcribed table
-			// rather than replace it: the static extractor skips some guard
-			// shapes, so the hand-authored fallback fills the keys it misses.
-			// Extracted rules win on conflict (they're version-specific).
-			if rules := extractVisibilityRulesFromMPK(mpkPath, mpkDef.ID); len(rules) > 0 {
-				defJSON.PropertyVisibility = mergeVisibilityRules(rules, widgetVisibilityRules[mpkDef.ID])
-			}
-			freshData, err := json.MarshalIndent(defJSON, "", "  ")
-			if err != nil {
-				log.Printf("warning: skipping %s: %v", mpkDef.ID, err)
+		if builtinRegistry != nil {
+			if _, ok := builtinRegistry.GetByWidgetID(mpkDef.ID); ok {
 				stats.Skipped++
 				continue
 			}
-			freshData = append(freshData, '\n')
+		}
 
-			existingData, existsErr := os.ReadFile(outPath)
-			switch {
-			case existsErr != nil:
-				stats.Extracted++
-			case bytes.Equal(existingData, freshData):
-				if force {
-					stats.Refreshed++
-				} else {
-					stats.UpToDate++
-					continue
-				}
-			default:
+		defJSON := GenerateDefJSON(mpkDef, mdlName)
+		// Lift property-visibility rules from the widget's editorConfig.js
+		// (#574 Phase 2) so the generated .def.json carries the version-
+		// specific applicability logic. Merge with the hand-transcribed table
+		// rather than replace it: the static extractor skips some guard
+		// shapes, so the hand-authored fallback fills the keys it misses.
+		// Extracted rules win on conflict (they're version-specific).
+		if rules := extractVisibilityRulesFromMPK(mpkPath, mpkDef.ID); len(rules) > 0 {
+			defJSON.PropertyVisibility = mergeVisibilityRules(rules, widgetVisibilityRules[mpkDef.ID])
+		}
+		freshData, err := json.MarshalIndent(defJSON, "", "  ")
+		if err != nil {
+			log.Printf("warning: skipping %s: %v", mpkDef.ID, err)
+			stats.Skipped++
+			continue
+		}
+		freshData = append(freshData, '\n')
+
+		existingData, existsErr := os.ReadFile(outPath)
+		switch {
+		case existsErr != nil:
+			stats.Extracted++
+		case bytes.Equal(existingData, freshData):
+			if force {
 				stats.Refreshed++
+			} else {
+				stats.UpToDate++
+				continue
 			}
+		default:
+			stats.Refreshed++
+		}
 
-			if err := writeDefinitionFile(outPath, freshData); err != nil {
-				return stats, fmt.Errorf("failed to write %s: %w", outPath, err)
+		if err := writeDefinitionFile(outPath, freshData); err != nil {
+			return stats, fmt.Errorf("failed to write %s: %w", outPath, err)
+		}
+		if output != nil {
+			kind := "custom"
+			if mpkDef.IsPluggable {
+				kind = "pluggable"
 			}
-			if output != nil {
-				kind := "custom"
-				if mpkDef.IsPluggable {
-					kind = "pluggable"
-				}
-				marker := "+"
-				if existsErr == nil {
-					marker = "~"
-				}
-				fmt.Fprintf(output, "  %s %-12s %-20s %s\n", marker, kind, mdlName, mpkDef.ID)
+			marker := "+"
+			if existsErr == nil {
+				marker = "~"
 			}
+			fmt.Fprintf(output, "  %s %-12s %-20s %s\n", marker, kind, mdlName, mpkDef.ID)
 		}
 	}
 
+	saveWidgetState(projectDir)
 	return stats, nil
+}
+
+// projectWidget is one widget of a project's widgets/*.mpk, with the MDL name
+// its definition is written under.
+type projectWidget struct {
+	mpkPath string
+	def     *mpk.WidgetDefinition
+	mdlName string
+}
+
+// scanProjectWidgets parses the given .mpk files and names every widget in
+// them. A package bundles one widget or many (Charts.mpk). The second count
+// is the packages that could not be parsed.
+//
+// Names are assigned over the whole project rather than per widget, because
+// two widget IDs can derive the same name: KeyboardShortcut.mpk, a legacy
+// custom widget, and itvisors.KeyboardShortcut.mpk, its pluggable successor,
+// are both KEYBOARDSHORTCUT. Each overwrote the other's definition on every
+// refresh, so one widget had none and every refresh rewrote both (#1848).
+// Everything that maps a widget to its definition file must name it here.
+func scanProjectWidgets(mpkPaths []string) ([]projectWidget, int) {
+	var widgets []projectWidget
+	unparseable := 0
+	seenID := map[string]bool{}
+	for _, mpkPath := range mpkPaths {
+		defs, err := mpk.ParseMPKAll(mpkPath)
+		if err != nil {
+			log.Printf("warning: skipping %s: %v", filepath.Base(mpkPath), err)
+			unparseable++
+			continue
+		}
+		for _, def := range defs {
+			// The same widget installed twice is one widget.
+			if seenID[def.ID] {
+				continue
+			}
+			seenID[def.ID] = true
+			widgets = append(widgets, projectWidget{mpkPath: mpkPath, def: def, mdlName: DeriveMDLName(def.ID)})
+		}
+	}
+
+	byName := map[string][]int{}
+	taken := map[string]bool{}
+	for i, w := range widgets {
+		byName[w.mdlName] = append(byName[w.mdlName], i)
+		taken[w.mdlName] = true
+	}
+	names := make([]string, 0, len(byName))
+	for name, idx := range byName {
+		if len(idx) > 1 {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		idx := byName[name]
+		// The pluggable widget keeps the keyword (the one people build with
+		// today), then the lowest ID, so the outcome does not depend on the
+		// order the packages are read in.
+		sort.Slice(idx, func(a, b int) bool {
+			wa, wb := widgets[idx[a]].def, widgets[idx[b]].def
+			if wa.IsPluggable != wb.IsPluggable {
+				return wa.IsPluggable
+			}
+			return wa.ID < wb.ID
+		})
+		for _, i := range idx[1:] {
+			widgets[i].mdlName = qualifiedMDLName(widgets[i].def, taken)
+			taken[widgets[i].mdlName] = true
+			log.Printf("info: widgets %s and %s both derive %s; %s is registered as %s",
+				widgets[idx[0]].def.ID, widgets[i].def.ID, name, widgets[i].def.ID, widgets[i].mdlName)
+		}
+	}
+	return widgets, unparseable
+}
+
+// genericIDSegments are widget-ID segments that say nothing about whose widget
+// it is, so they do not make a name distinct.
+var genericIDSegments = map[string]bool{"com": true, "mendix": true, "widget": true, "widgets": true, "web": true, "native": true}
+
+// qualifiedMDLName names a widget whose derived name another widget keeps: its
+// vendor segment in front (itvisors.keyboardshortcut.KeyboardShortcut →
+// ITVISORSKEYBOARDSHORTCUT), CUSTOM in front for a legacy custom widget with no
+// such segment (KeyboardShortcut.widget.KeyboardShortcut →
+// CUSTOMKEYBOARDSHORTCUT), and a number behind as the last resort.
+func qualifiedMDLName(def *mpk.WidgetDefinition, taken map[string]bool) string {
+	base := DeriveMDLName(def.ID)
+	parts := strings.Split(def.ID, ".")
+	last := parts[len(parts)-1]
+	var candidates []string
+	for _, seg := range parts[:len(parts)-1] {
+		seg = identifierPart(seg)
+		if seg == "" || strings.EqualFold(seg, last) || genericIDSegments[strings.ToLower(seg)] {
+			continue
+		}
+		candidates = append(candidates, strings.ToUpper(seg)+base)
+		break
+	}
+	if !def.IsPluggable {
+		candidates = append(candidates, "CUSTOM"+base)
+	}
+	for _, c := range candidates {
+		if !taken[c] {
+			return c
+		}
+	}
+	for n := 2; ; n++ {
+		if c := fmt.Sprintf("%s%d", base, n); !taken[c] {
+			return c
+		}
+	}
+}
+
+// identifierPart keeps the letters, digits and underscores of s.
+func identifierPart(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			return r
+		}
+		return -1
+	}, s)
+}
+
+// widgetStateFile records what the last refresh saw, beside the definitions.
+// It does not end in .def.json, so no definition scan reads it.
+const widgetStateFile = "refresh-state.json"
+
+// widgetStateFingerprint names the running mxcli build. A refresh is skipped
+// only for the build that wrote the state: another may generate different
+// definitions from the same packages. "" never skips. Tests replace it.
+var widgetStateFingerprint = sourceFingerprint
+
+type widgetRefreshState struct {
+	Fingerprint string            `json:"fingerprint"`
+	Files       map[string]string `json:"files"` // project-relative path → size|mtime
+}
+
+// widgetFiles stats every widgets/*.mpk and .mxcli/widgets/*.def.json. A
+// stat, unlike a read, does not make Windows Defender scan the file.
+func widgetFiles(projectDir string) map[string]string {
+	files := map[string]string{}
+	for _, pattern := range []string{
+		filepath.Join(projectDir, "widgets", "*.mpk"),
+		filepath.Join(projectDir, ".mxcli", "widgets", "*.def.json"),
+	} {
+		matches, _ := filepath.Glob(pattern)
+		for _, m := range matches {
+			fi, err := os.Stat(m)
+			if err != nil {
+				continue
+			}
+			rel, err := filepath.Rel(projectDir, m)
+			if err != nil {
+				rel = m
+			}
+			files[filepath.ToSlash(rel)] = fmt.Sprintf("%d|%d", fi.Size(), fi.ModTime().UnixNano())
+		}
+	}
+	return files
+}
+
+// widgetStateUnchanged reports whether the packages and definitions are
+// exactly as the last refresh by this mxcli build left them, so refreshing
+// again would only re-read every .mpk to rewrite nothing. That is the normal
+// case for a refresh after a model edit (#1848).
+func widgetStateUnchanged(projectDir string) bool {
+	fp := widgetStateFingerprint()
+	if fp == "" {
+		return false
+	}
+	data, err := os.ReadFile(filepath.Join(projectDir, ".mxcli", "widgets", widgetStateFile))
+	if err != nil {
+		return false
+	}
+	var prev widgetRefreshState
+	if json.Unmarshal(data, &prev) != nil || prev.Fingerprint != fp {
+		return false
+	}
+	return maps.Equal(prev.Files, widgetFiles(projectDir))
+}
+
+// saveWidgetState records what this refresh left behind. Best-effort: without
+// it the next refresh just does the work again.
+func saveWidgetState(projectDir string) {
+	fp := widgetStateFingerprint()
+	if fp == "" {
+		return
+	}
+	data, err := json.Marshal(widgetRefreshState{Fingerprint: fp, Files: widgetFiles(projectDir)})
+	if err != nil {
+		return
+	}
+	_ = writeDefinitionFile(filepath.Join(projectDir, ".mxcli", "widgets", widgetStateFile), data)
 }
 
 // writeDefinitionFile replaces a .def.json so that a reader sees the old
@@ -751,60 +947,54 @@ func RegenerateWidgetDocs(projectPath string) (int, error) {
 	var widgetNames []string
 	var withoutRouting []string
 
-	for _, mpkPath := range matches {
-		// A bundled .mpk (e.g. Charts.mpk) contains many widgetFiles; ParseMPK
-		// returns only the first, so docs previously omitted all but one chart
-		// widget. ParseMPKAll documents every widget in the bundle (issue #679
-		// applied the same fix to the def-generation loop above; bug 9a).
-		mpkDefs, err := mpk.ParseMPKAll(mpkPath)
-		if err != nil {
+	// A bundled .mpk (e.g. Charts.mpk) contains many widgetFiles; every one is
+	// documented, not just the first (issue #679, bug 9a). The names are the
+	// ones the definitions were written under.
+	widgets, _ := scanProjectWidgets(matches)
+	for _, w := range widgets {
+		mpkDef, mdlName := w.def, w.mdlName
+		filename := strings.ToLower(mdlName) + ".md"
+
+		// Load the matching .def.json, falling back to the embedded definition.
+		//
+		// Built-in widgets like COMBOBOX and GALLERY have hand-crafted
+		// definitions in sdk/widgets/definitions/ and are deliberately not
+		// extracted per-project, so their .def.json never exists. Reading only
+		// from disk therefore documented nine widgets — combobox, gallery, the
+		// four data-grid filters, dropdownsort, image, barcodescanner — with an
+		// MDL example missing every child block, as if extraction had failed.
+		// The registry has had their routing all along.
+		var def *WidgetDefinition
+		defPath := filepath.Join(defsDir, strings.ToLower(mdlName)+".def.json")
+		if data, err := os.ReadFile(defPath); err == nil {
+			def = &WidgetDefinition{}
+			if jsonErr := json.Unmarshal(data, def); jsonErr != nil {
+				def = nil
+			}
+		}
+		if def == nil && registry != nil {
+			if embedded, ok := registry.Get(mdlName); ok {
+				def = embedded
+			}
+		}
+
+		doc := widgetDocMarkdown(mpkDef, def, mdlName)
+		if writeErr := writeToAll(docsDirs, filename, doc); writeErr != nil {
+			log.Printf("warning: failed to write %s: %v", filename, writeErr)
 			continue
 		}
-		for _, mpkDef := range mpkDefs {
-			mdlName := DeriveMDLName(mpkDef.ID)
-			filename := strings.ToLower(mdlName) + ".md"
-
-			// Load the matching .def.json, falling back to the embedded definition.
-			//
-			// Built-in widgets like COMBOBOX and GALLERY have hand-crafted
-			// definitions in sdk/widgets/definitions/ and are deliberately not
-			// extracted per-project, so their .def.json never exists. Reading only
-			// from disk therefore documented nine widgets — combobox, gallery, the
-			// four data-grid filters, dropdownsort, image, barcodescanner — with an
-			// MDL example missing every child block, as if extraction had failed.
-			// The registry has had their routing all along.
-			var def *WidgetDefinition
-			defPath := filepath.Join(defsDir, strings.ToLower(mdlName)+".def.json")
-			if data, err := os.ReadFile(defPath); err == nil {
-				def = &WidgetDefinition{}
-				if jsonErr := json.Unmarshal(data, def); jsonErr != nil {
-					def = nil
-				}
-			}
-			if def == nil && registry != nil {
-				if embedded, ok := registry.Get(mdlName); ok {
-					def = embedded
-				}
-			}
-
-			doc := widgetDocMarkdown(mpkDef, def, mdlName)
-			if writeErr := writeToAll(docsDirs, filename, doc); writeErr != nil {
-				log.Printf("warning: failed to write %s: %v", filename, writeErr)
-				continue
-			}
-			if def == nil {
-				withoutRouting = append(withoutRouting, mdlName)
-			}
-
-			kind := "CUSTOMWIDGET"
-			if mpkDef.IsPluggable {
-				kind = "PLUGGABLEWIDGET"
-			}
-			indexEntries = append(indexEntries, fmt.Sprintf("| `%s` | [%s](%s) | `%s` | %s | %d |",
-				kind, mdlName, filename, mpkDef.ID, mpkDef.Name, len(mpkDef.Properties)))
-			widgetNames = append(widgetNames, mpkDef.Name)
-			generated++
+		if def == nil {
+			withoutRouting = append(withoutRouting, mdlName)
 		}
+
+		kind := "CUSTOMWIDGET"
+		if mpkDef.IsPluggable {
+			kind = "PLUGGABLEWIDGET"
+		}
+		indexEntries = append(indexEntries, fmt.Sprintf("| `%s` | [%s](%s) | `%s` | %s | %d |",
+			kind, mdlName, filename, mpkDef.ID, mpkDef.Name, len(mpkDef.Properties)))
+		widgetNames = append(widgetNames, mpkDef.Name)
+		generated++
 	}
 
 	skill := widgetSkillMarkdown(indexEntries, widgetNames, withoutRouting)

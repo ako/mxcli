@@ -539,7 +539,8 @@ func buildNanoflowFromStmt(ctx *ExecContext, s *ast.CreateNanoflowStmt, opts bui
 	// "Mark as used" has no MDL spelling; the rebuild hardcoded false, so a
 	// rewrite cleared it. A new nanoflow still starts unmarked.
 	existingMarkAsUsed := false
-	existingNanoflows, err := ctx.Backend.ListNanoflows()
+	// Only the nanoflows of this name are decoded, not the project's (#1850).
+	existingNanoflows, err := nanoflowsNamed(ctx.Backend, s.Name.Name)
 	if err != nil {
 		return nil, mdlerrors.NewBackend("check existing nanoflows", err)
 	}

@@ -254,4 +254,14 @@ mxcli widget extract --mpk widgets/MyWidget.mpk    # writes a .def.json
 mxcli widget init -p app.mpr                        # extract defs for all project widgets
 ```
 
+A widget's MDL keyword is the last segment of its ID (`com.mendix.widget.web.combobox.Combobox`
+→ `COMBOBOX`). When two installed widgets derive the same keyword, the pluggable one keeps it
+and the other is named with its vendor in front (`itvisors.keyboardshortcut.KeyboardShortcut`
+→ `ITVISORSKEYBOARDSHORTCUT`), or with `CUSTOM` in front for a legacy custom widget
+(`KeyboardShortcut.widget.KeyboardShortcut` → `CUSTOMKEYBOARDSHORTCUT`). `mxcli widget list`
+shows which name each widget got.
+
+`refresh catalog` refreshes these definitions too, but skips that step when no `.mpk` or
+`.def.json` file has changed since the last refresh by the same mxcli build.
+
 See [Marketplace Content](marketplace.md) for downloading and installing packages.
