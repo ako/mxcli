@@ -12,14 +12,14 @@ description: "Audit a Mendix project against best practices for naming, security
 |---|---|
 | 29-36 | When to Use This Skill |
 | 37-96 | Assessment Workflow |
-| 97-355 | Quality Guidelines Reference |
-| 356-366 | Assessment Report Template |
-| 367-379 | Executive Summary |
-| 380-390 | project Metrics |
-| 391-403 | Automated Findings |
-| 404-423 | Manual Review Findings |
-| 424-439 | Recommendations |
-| 440-450 | Sources |
+| 97-356 | Quality Guidelines Reference |
+| 357-367 | Assessment Report Template |
+| 368-380 | Executive Summary |
+| 381-391 | project Metrics |
+| 392-404 | Automated Findings |
+| 405-424 | Manual Review Findings |
+| 425-440 | Recommendations |
+| 441-451 | Sources |
 
 <!-- /skill-index -->
 # Assess Mendix Project Quality
