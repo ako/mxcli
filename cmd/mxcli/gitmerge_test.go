@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -85,15 +86,13 @@ func addConflictRepo(t *testing.T) (string, string) {
 	t.Helper()
 	dir, mprPath := doctorNoteRepo(t)
 	ours := baseUnits(t)
-	oursAdd := "11111111-0000-0000-0000-000000000009"
-	ours[oursAdd] = tUnit{tMod, unitDoc(t, "Microflows$Microflow", "ACT_Ours")}
+	ours[addOursID] = tUnit{tMod, unitDoc(t, "Microflows$Microflow", "ACT_Ours")}
 	writeProject(t, dir, "11.13.0", ours)
 	gitIn(t, dir, "add", "-A")
 	gitIn(t, dir, "commit", "-q", "-m", "ours adds a microflow")
 	gitIn(t, dir, "switch", "-q", "-c", "side", "HEAD~1")
 	theirs := baseUnits(t)
-	theirsAdd := "11111111-0000-0000-0000-00000000000a"
-	theirs[theirsAdd] = tUnit{tMod, unitDoc(t, "Microflows$Microflow", "ACT_Theirs")}
+	theirs[addTheirsID] = tUnit{tMod, unitDoc(t, "Microflows$Microflow", "ACT_Theirs")}
 	writeProject(t, dir, "11.13.0", theirs)
 	gitIn(t, dir, "add", "-A")
 	gitIn(t, dir, "commit", "-q", "-m", "theirs adds a microflow")
@@ -116,6 +115,12 @@ func unitRel(id string) string {
 var (
 	mainSideKey = bsonKeyValue("DocA", "main")
 	sideKey     = bsonKeyValue("DocB", "side")
+)
+
+// The units each side adds in addConflictRepo.
+const (
+	addOursID   = "11111111-0000-0000-0000-000000000009"
+	addTheirsID = "11111111-0000-0000-0000-00000000000a"
 )
 
 func okRunner(out string) mxMergeRunner {
@@ -157,9 +162,47 @@ func TestGitMerge_CleanMergeTextFileWritesNote(t *testing.T) {
 	}
 }
 
+// fakeEngineResult simulates the engine having written its merge result into
+// the MINE project folder: it overwrites dstDir's project with srcDir's
+// (the .mpr and all of mprcontents, extras in dst removed).
+func fakeEngineResult(t *testing.T, srcDir, dstDir string) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(srcDir, "App.mpr"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dstDir, "App.mpr"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(dstDir, "mprcontents")); err != nil {
+		t.Fatal(err)
+	}
+	srcContents := filepath.Join(srcDir, "mprcontents")
+	_ = filepath.WalkDir(srcContents, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(srcContents, p)
+		if err != nil {
+			return err
+		}
+		dst := filepath.Join(dstDir, "mprcontents", rel)
+		if d.IsDir() {
+			return os.MkdirAll(dst, 0o755)
+		}
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(dst, raw, 0o644)
+	})
+}
+
 func TestGitMerge_ModelConflictAutoResolvedByMx(t *testing.T) {
 	dir, mprPath := modelConflictRepo(t)
 	doctorEnv(t, dir)
+	oursUnits := baseUnits(t)
+	oursUnits[tDM] = tUnit{tMod, unitDoc(t, "DomainModels$DomainModel", "", mainSideKey)}
 
 	var gotBase, gotMine, gotTheirs string
 	var gotShas [3]string
@@ -167,25 +210,30 @@ func TestGitMerge_ModelConflictAutoResolvedByMx(t *testing.T) {
 	runner := mxRunners{merge: func(base, mine, theirs string, shas [3]string) (int, string, error) {
 		gotBase, gotMine, gotTheirs, gotShas = base, mine, theirs, shas
 		// The worktrees are removed when the merge finishes; check inside.
-		_, baseHasMprErr := os.Stat(filepath.Join(base, "App.mpr"))
-		_, theirsHasMprErr := os.Stat(filepath.Join(theirs, "App.mpr"))
+		_, baseHasMprErr := os.Stat(base)
+		_, theirsHasMprErr := os.Stat(theirs)
 		baseHasMpr, theirsHasMpr = baseHasMprErr == nil, theirsHasMprErr == nil
+		// The engine writes its result into MINE.
+		writeProject(t, filepath.Dir(mine), "11.13.0", oursUnits)
 		return 0, "Merge successful.", nil
 	}}
 	var out bytes.Buffer
 	if err := mergeRun(mprPath, "side", "", "", "", false, runner, &out); err != nil {
 		t.Fatalf("mergeRun: %v\n%s", err, out.String())
 	}
-	// Folder mode: the three args are project folders, and MINE is the
-	// working tree — the engine writes its result there.
-	if gotMine != dir {
-		t.Errorf("runner's mine = %q, want the working project folder %q", gotMine, dir)
+	// File form: the three args are the revisions' .mpr paths, and MINE is a
+	// clean worktree at HEAD — never the working tree mid-merge.
+	if filepath.Base(gotMine) != "App.mpr" {
+		t.Errorf("runner's mine = %q, want the project's .mpr path", gotMine)
+	}
+	if filepath.Dir(gotMine) == dir {
+		t.Errorf("runner's mine = the working tree %q; MINE must be a clean worktree", dir)
 	}
 	if !baseHasMpr {
-		t.Errorf("runner's base folder %q must hold the project's .mpr", gotBase)
+		t.Errorf("runner's base %q must hold the project's .mpr", gotBase)
 	}
 	if !theirsHasMpr {
-		t.Errorf("runner's theirs folder %q must hold the project's .mpr", gotTheirs)
+		t.Errorf("runner's theirs %q must hold the project's .mpr", gotTheirs)
 	}
 	if gotShas[0] == "" || gotShas[1] == gotShas[0] || gotShas[2] == gotShas[1] {
 		t.Errorf("shas must be base/ours/theirs distinct: %v", gotShas)
@@ -200,6 +248,80 @@ func TestGitMerge_ModelConflictAutoResolvedByMx(t *testing.T) {
 	}
 	if !strings.Contains(noteOn(t, dir, "HEAD"), `"HasModelerVersion":true`) {
 		t.Errorf("merge commit has no note:\n%s", noteOn(t, dir, "HEAD"))
+	}
+	// The hash gate repairs the .mpr; staging must come after it, or the
+	// commit would carry the pre-repair bytes and the tree would stay dirty.
+	if st := gitOutT(t, dir, "status", "--porcelain"); strings.TrimSpace(st) != "" {
+		t.Errorf("working tree not clean after the merge:\n%s", st)
+	}
+}
+
+// The engine owns the .mpr, so its result carries both sides' document sets:
+// a unit each side added must all be on disk and in the index after the merge.
+func TestGitMerge_KeepsUnitsBothSidesAdded(t *testing.T) {
+	dir, mprPath := addConflictRepo(t)
+	doctorEnv(t, dir)
+	merged := baseUnits(t)
+	merged[addOursID] = tUnit{tMod, unitDoc(t, "Microflows$Microflow", "ACT_Ours")}
+	merged[addTheirsID] = tUnit{tMod, unitDoc(t, "Microflows$Microflow", "ACT_Theirs")}
+
+	runner := mxRunners{merge: func(base, mine, theirs string, shas [3]string) (int, string, error) {
+		writeProject(t, filepath.Dir(mine), "11.13.0", merged)
+		return 0, "Merge successful.", nil
+	}}
+	var out bytes.Buffer
+	if err := mergeRun(mprPath, "side", "", "", "", false, runner, &out); err != nil {
+		t.Fatalf("mergeRun: %v\n%s", err, out.String())
+	}
+	for _, id := range []string{addOursID, addTheirsID} {
+		if _, err := os.Stat(filepath.Join(dir, unitRel(id))); err != nil {
+			t.Errorf("unit %s must exist after the merge: %v", id, err)
+		}
+	}
+	parents := strings.Fields(gitOutT(t, dir, "rev-list", "--parents", "-n", "1", "HEAD"))
+	if len(parents) != 3 {
+		t.Fatalf("want a two-parent merge commit, got %v", parents)
+	}
+	if err := fixHashes(mprPath, false, &out); err != nil {
+		t.Errorf("hashes drift after the merge: %v\n%s", err, out.String())
+	}
+	if st := gitOutT(t, dir, "status", "--porcelain"); strings.TrimSpace(st) != "" {
+		t.Errorf("working tree not clean after the merge:\n%s", st)
+	}
+}
+
+// A deletion the engine resolved travels with its result: a unit file the
+// result no longer has is removed from the working tree, not left behind as
+// an orphan the hash gate would refuse.
+func TestGitMerge_CopyBackRemovesUnitsTheResultDrops(t *testing.T) {
+	dir, mprPath := addConflictRepo(t)
+	doctorEnv(t, dir)
+
+	runner := mxRunners{merge: func(base, mine, theirs string, shas [3]string) (int, string, error) {
+		// result = theirs: theirs' project is the merged outcome, without
+		// ours' added unit.
+		fakeEngineResult(t, filepath.Dir(theirs), filepath.Dir(mine))
+		return 0, "Merge successful.", nil
+	}}
+	var out bytes.Buffer
+	if err := mergeRun(mprPath, "side", "", "", "", false, runner, &out); err != nil {
+		t.Fatalf("mergeRun: %v\n%s", err, out.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, unitRel(addOursID))); !os.IsNotExist(err) {
+		t.Errorf("ours' unit must be gone with the engine's result: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, unitRel(addTheirsID))); err != nil {
+		t.Errorf("theirs' unit must be on disk: %v", err)
+	}
+	parents := strings.Fields(gitOutT(t, dir, "rev-list", "--parents", "-n", "1", "HEAD"))
+	if len(parents) != 3 {
+		t.Fatalf("want a two-parent merge commit, got %v", parents)
+	}
+	if err := fixHashes(mprPath, false, &out); err != nil {
+		t.Errorf("hashes drift after the merge: %v\n%s", err, out.String())
+	}
+	if st := gitOutT(t, dir, "status", "--porcelain"); strings.TrimSpace(st) != "" {
+		t.Errorf("working tree not clean after the merge:\n%s", st)
 	}
 }
 

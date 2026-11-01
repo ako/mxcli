@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path"
@@ -23,9 +24,11 @@ import (
 // Pro does. `git merge` runs first; when it stops on the model files (the
 // .mpr is SQLite and every .mxunit is BSON, so any two-sided model change is
 // a binary conflict), the three revisions are handed to `mx merge` — the same
-// model-aware engine Studio Pro's own merge uses, over the base and theirs
-// checkouts and the working tree — with the project's Mendix version's mx.
-// What the engine resolves is staged, hash-checked and committed as a normal
+// model-aware engine Studio Pro's own merge uses — as three .mpr paths over
+// clean checkouts (base, ours at HEAD, theirs), never the working tree
+// mid-merge, with the project's Mendix version's mx. The engine writes its
+// result into MINE, which is copied back into the working tree. What the
+// engine resolves is hash-checked, staged and committed as a normal
 // two-parent merge commit with the mx_metadata note; what it reports as
 // ManualResolutionRequired (exit 2) aborts the merge with the conflict list
 // and a pointer to Studio Pro, leaving nothing behind; any other non-zero
@@ -40,15 +43,18 @@ Studio Pro does.
 'git merge <ref>' runs first. A merge git resolves itself (disjoint files, a
 fast-forward) is committed and annotated like 'mxcli git commit' does. When
 git stops on the model files — the .mpr and the .mxunit units are binary, so
-two sides changing the model always conflict — the base and theirs revisions
-are checked out into temporary worktrees and the three project folders go to
-'mx merge BASE MINE THEIRS' (Studio Pro's own model-aware merge, resolved for
-the project's Mendix version):
+two sides changing the model always conflict — the base, ours (a clean
+checkout of HEAD) and theirs revisions are checked out into temporary
+worktrees and the three projects' .mpr files go to
+'mx merge BASE MINE THEIRS' (Studio Pro's own model-aware merge, resolved
+for the project's Mendix version). MINE is never the working tree mid-merge:
+the engine chokes on the conflicted state. Its result is copied back:
 
-  - everything the engine auto-resolves is staged, hash-checked and committed
-    as the merge commit, with the mx_metadata note attached (this keeps both
-    sides — the usual best outcome; the engine owns the .mpr, so a unit one
-    side added while the other changed existing ones is kept, not dropped);
+  - everything the engine auto-resolves is copied back, hash-checked,
+    staged and committed as the merge commit, with the mx_metadata note
+    attached (this keeps both sides — the usual best outcome; the engine
+    owns the .mpr, so a unit one side added while the other changed
+    existing ones is kept, not dropped);
   - a conflict the engine reports as ManualResolutionRequired (exit 2) is
     never merged silently: the merge is aborted, and both sides' changes are
     printed for review — at property level, from 'mx diff' (e.g.
@@ -128,12 +134,13 @@ func runGitMerge(cmd *cobra.Command, args []string) error {
 
 // mxRunners are the mx invocations, injected for tests.
 //
-// merge runs the engine over the three PROJECT FOLDERS — the base checkout,
-// the working tree, the theirs checkout — and writes its result into the
-// working tree, App.mpr included. Exit 0 is a resolved merge, 2 is a decision
-// the engine could not make (its per-unit list is on stdout), anything else
+// merge runs the engine as `mx merge -v BASE MINE THEIRS` over the three
+// revisions' project files — clean checkouts of base, ours (HEAD) and
+// theirs — and writes its result into MINE. The -v conflict list (one JSON
+// array on one stdout line) is what the review step reports from. Exit 0 is
+// a resolved merge, 2 is a decision the engine could not make, anything else
 // is the engine failing.
-type mxMergeRunner func(baseDir, mineDir, theirsDir string, shas [3]string) (int, string, error)
+type mxMergeRunner func(baseMpr, mineMpr, theirsMpr string, shas [3]string) (int, string, error)
 type mxDiffRunner func(base, mine, outJSON string) error
 
 type mxRunners struct {
@@ -146,8 +153,9 @@ type mxRunners struct {
 // Conflict handling is a three-step flow a human stays in charge of:
 //
 //  1. `git merge` runs; a merge it resolves itself is annotated and done.
-//  2. A model conflict goes to `mx merge` over the three project folders
-//     first — what the engine auto-resolves keeps both sides, which is almost
+//  2. A model conflict goes to `mx merge` over the three revisions' .mpr
+//     files (clean worktrees; the result is copied back from MINE) first —
+//     what the engine auto-resolves keeps both sides, which is almost
 //     always the best outcome — and is committed with the note.
 //  3. What the engine reports as ManualResolutionRequired (exit 2) is never
 //     merged silently: with no strategy the merge is aborted and both sides'
@@ -249,29 +257,36 @@ func mergeRun(mprPath, ref, message, strategy, plan string, push bool, runners m
 	}
 
 	// The engine first: what it auto-resolves keeps both sides, which is
-	// almost always better than taking one side wholesale. The base and
-	// theirs revisions are checked out as folders; MINE is the working tree.
-	// The engine writes its result into the working tree and owns the .mpr —
-	// its unit list carries both sides' added and deleted documents, so a
-	// unit one side added while the other changed existing ones is kept, not
-	// dropped.
+	// almost always better than taking one side wholesale. The three
+	// revisions are checked out as clean worktrees; MINE is the one at HEAD,
+	// never the working tree mid-merge — the engine chokes on the conflicted
+	// state (measured: it exits 129 when theirs deleted a document). Its
+	// result lands in MINE and is copied back.
 	tmp, err := os.MkdirTemp("", "mxcli-gitmerge-")
 	if err != nil {
 		return err
 	}
 	baseDir := filepath.Join(tmp, "base")
+	oursDir := filepath.Join(tmp, "ours")
 	theirsDir := filepath.Join(tmp, "theirs")
 	if _, err := gitOutIn(root, nil, "worktree", "add", "--detach", baseDir, baseSha); err != nil {
 		os.RemoveAll(tmp)
 		return fmt.Errorf("check out the merge base: %w", err)
 	}
+	if _, err := gitOutIn(root, nil, "worktree", "add", "--detach", oursDir, oursSha); err != nil {
+		_, _ = gitOutIn(root, nil, "worktree", "remove", "--force", baseDir)
+		os.RemoveAll(tmp)
+		return fmt.Errorf("check out HEAD: %w", err)
+	}
 	if _, err := gitOutIn(root, nil, "worktree", "add", "--detach", theirsDir, theirsSha); err != nil {
 		_, _ = gitOutIn(root, nil, "worktree", "remove", "--force", baseDir)
+		_, _ = gitOutIn(root, nil, "worktree", "remove", "--force", oursDir)
 		os.RemoveAll(tmp)
 		return fmt.Errorf("check out %s: %w", ref, err)
 	}
 	cleanWorktrees := func() {
 		_, _ = gitOutIn(root, nil, "worktree", "remove", "--force", baseDir)
+		_, _ = gitOutIn(root, nil, "worktree", "remove", "--force", oursDir)
 		_, _ = gitOutIn(root, nil, "worktree", "remove", "--force", theirsDir)
 		_ = os.RemoveAll(tmp)
 	}
@@ -279,13 +294,12 @@ func mergeRun(mprPath, ref, message, strategy, plan string, push bool, runners m
 	version := projectMendixVersion(mprPath)
 	fmt.Fprintf(out, "Model files conflict (%s); merging the model with mx %s…\n",
 		strings.Join(shortNames(model), ", "), version)
-	// Folder mode: the engine takes the three project folders and writes its
-	// result into MINE — the working tree.
-	projRel := filepath.FromSlash(filepath.Dir(repo.MPRPath)) // "." at the repo root
+	// File form: the engine takes the three revisions' project files; MINE is
+	// the clean worktree at HEAD.
 	code, mxOut, runErr := runners.merge(
-		filepath.Join(baseDir, projRel),
-		filepath.Dir(abs),
-		filepath.Join(theirsDir, projRel),
+		filepath.Join(baseDir, filepath.FromSlash(repo.MPRPath)),
+		filepath.Join(oursDir, filepath.FromSlash(repo.MPRPath)),
+		filepath.Join(theirsDir, filepath.FromSlash(repo.MPRPath)),
 		[3]string{baseSha, oursSha, theirsSha},
 	)
 	if s := strings.TrimSpace(mxOut); s != "" {
@@ -306,10 +320,11 @@ func mergeRun(mprPath, ref, message, strategy, plan string, push bool, runners m
 		// The review step: what each side changed, at property level (mx
 		// diff), plus a per-unit plan template. Then leave nothing behind —
 		// the human decides.
+		oursMpr := filepath.Join(oursDir, filepath.FromSlash(repo.MPRPath))
 		if runners.diff != nil {
 			oursJSON := filepath.Join(tmp, "ours-diff.json")
 			theirsJSON := filepath.Join(tmp, "theirs-diff.json")
-			d1 := runners.diff(filepath.Join(baseDir, filepath.FromSlash(repo.MPRPath)), abs, oursJSON)
+			d1 := runners.diff(filepath.Join(baseDir, filepath.FromSlash(repo.MPRPath)), oursMpr, oursJSON)
 			d2 := runners.diff(filepath.Join(baseDir, filepath.FromSlash(repo.MPRPath)), filepath.Join(theirsDir, filepath.FromSlash(repo.MPRPath)), theirsJSON)
 			if d1 == nil && d2 == nil {
 				fmt.Fprintln(out, propertyReport(oursJSON, theirsJSON, conflictedUnitIDs(model)))
@@ -328,17 +343,26 @@ func mergeRun(mprPath, ref, message, strategy, plan string, push bool, runners m
 		return errors.New("the model merge needs a decision: re-run with --plan to resolve per unit, or resolve in Studio Pro (Version Control › Merge Changes Here)")
 	}
 
-	// Exit 0: the engine resolved the model into the working tree, .mpr
-	// included — both sides' document sets are in it. Stage, gate, commit.
-	args := []string{"add", "--"}
-	args = append(args, model...)
-	if _, err := gitOutIn(root, nil, args...); err != nil {
+	// Exit 0: the engine resolved the model into MINE, the clean worktree at
+	// HEAD. Copy its result into the working tree — units the result dropped
+	// go with it — gate the .mpr, and only then stage and commit: the gate
+	// repairs hashes from the files, so staging must come after it, or the
+	// commit would carry the pre-repair .mpr.
+	if err := copyEngineResult(root, repo, oursDir); err != nil {
 		cleanWorktrees()
-		return abortMerge(root, fmt.Errorf("stage the resolved model files: %w", err))
+		return abortMerge(root, fmt.Errorf("copy the engine's merge result: %w", err))
 	}
 	if err := repairOrRefuse(root, abs, out); err != nil {
 		cleanWorktrees()
 		return err
+	}
+	// Stage the whole model surface, not just the conflicted paths: a unit
+	// the engine's result dropped was never conflicted, and its deletion
+	// must be staged too.
+	if _, err := gitOutIn(root, nil, "add", "-A", "--",
+		filepath.FromSlash(repo.MPRPath), filepath.FromSlash(repo.Contents)); err != nil {
+		cleanWorktrees()
+		return abortMerge(root, fmt.Errorf("stage the resolved model files: %w", err))
 	}
 	if err := commitTheMerge(root, repo, nil, message, branch, push, out); err != nil {
 		cleanWorktrees()
@@ -346,6 +370,67 @@ func mergeRun(mprPath, ref, message, strategy, plan string, push bool, runners m
 	}
 	cleanWorktrees()
 	return nil
+}
+
+// copyEngineResult copies the engine's merged model files — the .mpr and
+// every .mxunit under mprcontents — from the MINE worktree into the working
+// tree, removing working-tree units the result no longer has (a deletion the
+// engine resolved). Non-model files are untouched, so a human's staged text
+// resolutions survive as they are.
+func copyEngineResult(root string, repo *gitNoteRepo, mineDir string) error {
+	srcContents := filepath.Join(mineDir, filepath.FromSlash(repo.Contents))
+	dstContents := filepath.Join(root, filepath.FromSlash(repo.Contents))
+	if err := copyFile(
+		filepath.Join(mineDir, filepath.FromSlash(repo.MPRPath)),
+		filepath.Join(root, filepath.FromSlash(repo.MPRPath)),
+	); err != nil {
+		return err
+	}
+	present := map[string]bool{}
+	err := filepath.WalkDir(srcContents, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(d.Name(), ".mxunit") {
+			return nil
+		}
+		rel, err := filepath.Rel(srcContents, p)
+		if err != nil {
+			return err
+		}
+		present[filepath.ToSlash(rel)] = true
+		return copyFile(p, filepath.Join(dstContents, rel))
+	})
+	if err != nil {
+		return err
+	}
+	return filepath.WalkDir(dstContents, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(d.Name(), ".mxunit") {
+			return nil
+		}
+		rel, err := filepath.Rel(dstContents, p)
+		if err != nil {
+			return err
+		}
+		if !present[filepath.ToSlash(rel)] {
+			return os.Remove(p)
+		}
+		return nil
+	})
+}
+
+func copyFile(src, dst string) error {
+	raw, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(dst, raw, 0o644)
 }
 
 // abortMerge backs a failed resolution out entirely — working tree, index and
@@ -450,18 +535,16 @@ func projectMendixVersion(mprPath string) string {
 	return v
 }
 
-// realMxMerge shells out to `mx merge BASE MINE THEIRS` over the three
-// project folders, mx resolved for the project's Mendix version.
-func realMxMerge(baseDir, mineDir, theirsDir string, shas [3]string) (int, string, error) {
-	version := ""
-	if matches, _ := filepath.Glob(filepath.Join(mineDir, "*.mpr")); len(matches) > 0 {
-		version = projectMendixVersion(matches[0])
-	}
+// realMxMerge shells out to `mx merge -v BASE MINE THEIRS` over the three
+// revisions' project files, mx resolved for the project's Mendix version;
+// -v makes the engine print its per-unit conflict list.
+func realMxMerge(baseMpr, mineMpr, theirsMpr string, shas [3]string) (int, string, error) {
+	version := projectMendixVersion(mineMpr)
 	mxPath, err := docker.ResolveMxForVersion("", version)
 	if err != nil {
 		return 1, "", fmt.Errorf("no mx for Mendix %s: %w (model conflicts need it)", version, err)
 	}
-	cmd := exec.Command(mxPath, "merge", baseDir, mineDir, theirsDir)
+	cmd := exec.Command(mxPath, "merge", "-v", baseMpr, mineMpr, theirsMpr)
 	docker.PrepareMxCommand(cmd)
 	b, err := cmd.CombinedOutput()
 	code := 0
