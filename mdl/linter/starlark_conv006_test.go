@@ -39,9 +39,10 @@ func TestCONV006GroupsByEntity(t *testing.T) {
 			('e3','Draft','App.Draft','App','','NON_PERSISTENT','','',1,1,0,0,0, 0,0,0,0)`,
 		`CREATE TABLE permissions (ModuleRoleName TEXT, ElementType TEXT, ElementName TEXT,
 			MemberName TEXT, AccessType TEXT, XPathConstraint TEXT,
-			DefaultMemberAccessRights TEXT, ModuleName TEXT)`,
+			DefaultMemberAccessRights TEXT, ModuleName TEXT,
+			AccessRuleId TEXT, AccessRuleIndex INTEGER)`,
 		// Two access rules for App.User on Logboek: its CREATE must be listed once.
-		`INSERT INTO permissions VALUES
+		`INSERT INTO permissions (ModuleRoleName, ElementType, ElementName, MemberName, AccessType, XPathConstraint, DefaultMemberAccessRights, ModuleName) VALUES
 			('App.Admin','ENTITY','App.Logboek',NULL,'CREATE','','ReadWrite','App'),
 			('App.Admin','ENTITY','App.Logboek',NULL,'DELETE','','ReadWrite','App'),
 			('App.Admin','ENTITY','App.Logboek',NULL,'READ','','ReadWrite','App'),

@@ -12,10 +12,10 @@ description: "Write custom Starlark lint rules in .claude/lint-rules/ that run b
 |---|---|
 | 25-67 | Rule File Structure |
 | 68-163 | Available Query Functions |
-| 164-558 | Object Properties |
-| 559-572 | Helper Functions |
-| 573-659 | Common Patterns |
-| 660-668 | Validation |
+| 164-543 | Object Properties |
+| 544-557 | Helper Functions |
+| 558-644 | Common Patterns |
+| 645-653 | Validation |
 
 <!-- /skill-index -->
 # Writing Custom Starlark Lint Rules
@@ -537,22 +537,7 @@ def count_not(node):
 | `timeout` | int | Configured timeout in milliseconds; `0` when none is set |
 | `module_name` | string | `"Sales"` |
 
-### permission
-
-Returned by `permissions()` (all types) or `permissions_for()` (entity-specific).
-
-| Property | Type | Example |
-|----------|------|---------|
-| `module_role_name` | string | `"Sales.Admin"` — qualified, so it compares directly against `user_role.module_roles` |
-| `element_type` | string | `"ENTITY"`, `"MICROFLOW"`, `"NANOFLOW"`, `"PAGE"`, `"ODATA_SERVICE"` (from `permissions()` only) |
-| `element_name` | string | `"Sales.Customer"` |
-| `module_name` | string | `"Sales"` |
-| `entity_name` | string | `"Sales.Customer"` (from `permissions_for()` only) |
-| `access_type` | string | `"CREATE"`, `"READ"`, `"WRITE"`, `"DELETE"` (entity), `"EXECUTE"` (microflow, nanoflow), `"VIEW"` (page), `"ACCESS"` (OData service), `"MEMBER_READ"`, `"MEMBER_WRITE"` |
-| `member_name` | string | Attribute name (for MEMBER_READ/MEMBER_WRITE) |
-| `xpath_constraint` | string | XPath constraint or empty |
-| `is_constrained` | bool | True if XPath constraint is set |
-| `default_member_access_rights` | string | The rule's "default rights for new members": `"None"`, `"ReadOnly"` or `"ReadWrite"`. Empty for non-entity permissions |
+The `permission` struct `permissions()` and `permissions_for()` return is in [catalog-tables.md](catalog-tables.md#permission).
 
 The structs `user_roles()`, `module_roles()`, `role_mappings()`, `project_security()`, `languages()` and `project_settings()` return — `user_role`, `module_role`, `role_mapping`, `project_security`, `language`, `project_settings` — are in [security-and-settings.md](security-and-settings.md).
 

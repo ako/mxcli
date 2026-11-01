@@ -69,11 +69,23 @@ func (b *Builder) buildPermissions() error {
 	}
 	defer stmt.Close()
 
+	// Entity rows also name the access rule they come from, so a rule can
+	// group them per access rule instead of guessing by XPath and rights
+	// (mendixlabs/mxcli#1539, ako/mxcli#1437).
+	ruleStmt, err := b.tx.Prepare(`
+		INSERT INTO permissions (ModuleRoleName, ElementType, ElementName, MemberName, AccessType, XPathConstraint, DefaultMemberAccessRights, ModuleName, ProjectId, SnapshotId, AccessRuleId, AccessRuleIndex)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer ruleStmt.Close()
+
 	projectID := b.catalog.projectID
 	snapshotID := b.snapshot.ID
 	permCount := 0
 
-	permCount += b.buildEntityPermissions(stmt, projectID, snapshotID)
+	permCount += b.buildEntityPermissions(ruleStmt, projectID, snapshotID)
 	permCount += b.buildMicroflowPermissions(stmt, projectID, snapshotID)
 	permCount += b.buildNanoflowPermissions(stmt, projectID, snapshotID)
 	permCount += b.buildPagePermissions(stmt, projectID, snapshotID)
@@ -102,7 +114,8 @@ func (b *Builder) buildEntityPermissions(stmt *Stmt, projectID, snapshotID strin
 		for _, ent := range dm.Entities {
 			entityQN := moduleName + "." + ent.Name
 
-			for _, rule := range ent.AccessRules {
+			for ruleIndex, rule := range ent.AccessRules {
+				ruleID := string(rule.ID)
 				// Each access rule can apply to multiple module roles
 				roleNames := rule.ModuleRoleNames
 				if len(roleNames) == 0 {
@@ -125,24 +138,24 @@ func (b *Builder) buildEntityPermissions(stmt *Stmt, projectID, snapshotID strin
 				for _, roleName := range roleNames {
 					// Entity-level permissions
 					if rule.AllowCreate {
-						stmt.Exec(roleName, PermissionElementEntity, entityQN, nil, AccessTypeCreate, xpath, defaultRights, moduleName, projectID, snapshotID)
+						stmt.Exec(roleName, PermissionElementEntity, entityQN, nil, AccessTypeCreate, xpath, defaultRights, moduleName, projectID, snapshotID, ruleID, ruleIndex)
 						count++
 					}
 					if hasRead {
-						stmt.Exec(roleName, PermissionElementEntity, entityQN, nil, AccessTypeRead, xpath, defaultRights, moduleName, projectID, snapshotID)
+						stmt.Exec(roleName, PermissionElementEntity, entityQN, nil, AccessTypeRead, xpath, defaultRights, moduleName, projectID, snapshotID, ruleID, ruleIndex)
 						count++
 					}
 					if hasWrite {
-						stmt.Exec(roleName, PermissionElementEntity, entityQN, nil, AccessTypeWrite, xpath, defaultRights, moduleName, projectID, snapshotID)
+						stmt.Exec(roleName, PermissionElementEntity, entityQN, nil, AccessTypeWrite, xpath, defaultRights, moduleName, projectID, snapshotID, ruleID, ruleIndex)
 						count++
 					}
 					if rule.AllowDelete {
-						stmt.Exec(roleName, PermissionElementEntity, entityQN, nil, AccessTypeDelete, xpath, defaultRights, moduleName, projectID, snapshotID)
+						stmt.Exec(roleName, PermissionElementEntity, entityQN, nil, AccessTypeDelete, xpath, defaultRights, moduleName, projectID, snapshotID, ruleID, ruleIndex)
 						count++
 					}
 
 					// Member-level permissions
-					count += b.emitMemberPermissions(stmt, rule, ent, roleName, entityQN, xpath, defaultRights, moduleName, projectID, snapshotID)
+					count += b.emitMemberPermissions(stmt, rule, ruleID, ruleIndex, ent, roleName, entityQN, xpath, defaultRights, moduleName, projectID, snapshotID)
 				}
 			}
 		}
@@ -182,7 +195,7 @@ func entityAccessFromMemberRights(rule *domainmodel.AccessRule) (hasRead, hasWri
 // emitMemberPermissions emits MEMBER_READ/MEMBER_WRITE rows for entity attributes and associations.
 // When MemberAccesses is non-empty, use explicit per-member rights.
 // When MemberAccesses is empty, expand DefaultMemberAccessRights to all attributes.
-func (b *Builder) emitMemberPermissions(stmt *Stmt, rule *domainmodel.AccessRule, ent *domainmodel.Entity,
+func (b *Builder) emitMemberPermissions(stmt *Stmt, rule *domainmodel.AccessRule, ruleID string, ruleIndex int, ent *domainmodel.Entity,
 	roleName, entityQN, xpath, defaultRights, moduleName, projectID, snapshotID string) int {
 	count := 0
 
@@ -198,11 +211,11 @@ func (b *Builder) emitMemberPermissions(stmt *Stmt, rule *domainmodel.AccessRule
 			}
 
 			if ma.AccessRights == domainmodel.MemberAccessRightsReadOnly || ma.AccessRights == domainmodel.MemberAccessRightsReadWrite {
-				stmt.Exec(roleName, PermissionElementEntity, entityQN, memberName, AccessTypeMemberRead, xpath, defaultRights, moduleName, projectID, snapshotID)
+				stmt.Exec(roleName, PermissionElementEntity, entityQN, memberName, AccessTypeMemberRead, xpath, defaultRights, moduleName, projectID, snapshotID, ruleID, ruleIndex)
 				count++
 			}
 			if ma.AccessRights == domainmodel.MemberAccessRightsReadWrite {
-				stmt.Exec(roleName, PermissionElementEntity, entityQN, memberName, AccessTypeMemberWrite, xpath, defaultRights, moduleName, projectID, snapshotID)
+				stmt.Exec(roleName, PermissionElementEntity, entityQN, memberName, AccessTypeMemberWrite, xpath, defaultRights, moduleName, projectID, snapshotID, ruleID, ruleIndex)
 				count++
 			}
 		}
@@ -210,11 +223,11 @@ func (b *Builder) emitMemberPermissions(stmt *Stmt, rule *domainmodel.AccessRule
 		// Expand default to all attributes
 		for _, attr := range ent.Attributes {
 			if rule.DefaultMemberAccessRights == domainmodel.MemberAccessRightsReadOnly || rule.DefaultMemberAccessRights == domainmodel.MemberAccessRightsReadWrite {
-				stmt.Exec(roleName, PermissionElementEntity, entityQN, attr.Name, AccessTypeMemberRead, xpath, defaultRights, moduleName, projectID, snapshotID)
+				stmt.Exec(roleName, PermissionElementEntity, entityQN, attr.Name, AccessTypeMemberRead, xpath, defaultRights, moduleName, projectID, snapshotID, ruleID, ruleIndex)
 				count++
 			}
 			if rule.DefaultMemberAccessRights == domainmodel.MemberAccessRightsReadWrite {
-				stmt.Exec(roleName, PermissionElementEntity, entityQN, attr.Name, AccessTypeMemberWrite, xpath, defaultRights, moduleName, projectID, snapshotID)
+				stmt.Exec(roleName, PermissionElementEntity, entityQN, attr.Name, AccessTypeMemberWrite, xpath, defaultRights, moduleName, projectID, snapshotID, ruleID, ruleIndex)
 				count++
 			}
 		}
