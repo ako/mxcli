@@ -157,3 +157,22 @@ def check():
                                  location=loc))
     return out
 ```
+
+### permission
+
+Returned by `permissions()` (all types) or `permissions_for()` (entity-specific).
+
+| Property | Type | Example |
+|----------|------|---------|
+| `module_role_name` | string | `"Sales.Admin"` — qualified, so it compares directly against `user_role.module_roles` |
+| `element_type` | string | `"ENTITY"`, `"MICROFLOW"`, `"NANOFLOW"`, `"PAGE"`, `"ODATA_SERVICE"` (from `permissions()` only) |
+| `element_name` | string | `"Sales.Customer"` |
+| `module_name` | string | `"Sales"` |
+| `entity_name` | string | `"Sales.Customer"` (from `permissions_for()` only) |
+| `access_type` | string | `"CREATE"`, `"READ"`, `"WRITE"`, `"DELETE"` (entity), `"EXECUTE"` (microflow, nanoflow), `"VIEW"` (page), `"ACCESS"` (OData service), `"MEMBER_READ"`, `"MEMBER_WRITE"` |
+| `member_name` | string | Attribute name (for MEMBER_READ/MEMBER_WRITE) |
+| `xpath_constraint` | string | XPath constraint or empty |
+| `is_constrained` | bool | True if XPath constraint is set |
+| `default_member_access_rights` | string | The rule's "default rights for new members": `"None"`, `"ReadOnly"` or `"ReadWrite"`. Empty for non-entity permissions |
+| `access_rule_id` | string | The entity access rule the row comes from: rows sharing it are one rule, so a rule can count an entity's access rules or list one rule's module roles exactly. Empty for a page, flow or service permission |
+| `access_rule_index` | int | That access rule's position on the entity, from 0; `-1` when `access_rule_id` is empty |
