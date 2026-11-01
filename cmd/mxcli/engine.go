@@ -55,8 +55,14 @@ func newBackendFactory() func() backend.FullBackend {
 	if globalMCPURL != "" {
 		url, dial := globalMCPURL, globalMCPDial
 		checkOnExit, runOnExit := globalMCPCheck, globalMCPRun
+		// --mcp-trace / --mcp-verbose: the executor prints each statement, the
+		// backend's client each PED call under it. Without the backend's half
+		// the trace showed statements only, which reads as "nothing was sent to
+		// Studio Pro" (mendixlabs/mxcli#1684).
+		tracer := mcpTracer()
 		return func() backend.FullBackend {
-			return mcpbackend.New(url, dial).WithExitActions(mcpbackend.ExitActions{Check: checkOnExit, Run: runOnExit})
+			return mcpbackend.New(url, dial).WithTracer(tracer).
+				WithExitActions(mcpbackend.ExitActions{Check: checkOnExit, Run: runOnExit})
 		}
 	}
 	warnIfEngineRequested()
