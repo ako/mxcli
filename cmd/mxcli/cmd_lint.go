@@ -93,6 +93,17 @@ Examples:
   mxcli lint -p app.mpr -m MyModule -m AnotherModule
   mxcli lint -p app.mpr -d Sales.ACT_Order
   mxcli lint -p app.mpr -d Sales.ACT_Order -r CONV011
+  mxcli lint -p app.mpr --baseline lint-baseline.json --update-baseline
+  mxcli lint -p app.mpr --baseline lint-baseline.json
+
+--baseline reports only the findings that are not in a recorded baseline, so the
+result on a mature app is about the change just made, not the backlog; the exit
+code follows the new findings alone. --update-baseline records the current
+findings there instead (commit the file). A finding is matched on its rule and
+its document, not its message, so rewording a rule does not make its findings
+new. A run scoped with --modules, --documents or --rules sees only part of the
+project: it reports new findings but not how many were fixed, and cannot update
+the baseline.
 
 --documents scopes a run to named documents, so a structural question about one
 microflow costs a fraction of a project-wide lint and needs no baseline diff to
@@ -108,6 +119,31 @@ modules, and findings that are not about those documents are not reported.
 		onlyRules, _ := cmd.Flags().GetStringSlice("rules")
 		moduleFilter, _ := cmd.Flags().GetStringSlice("modules")
 		documentFilter, _ := cmd.Flags().GetStringSlice("documents")
+		baselinePath, _ := cmd.Flags().GetString("baseline")
+		updateBaseline, _ := cmd.Flags().GetBool("update-baseline")
+		scoped := len(onlyRules) > 0 || len(moduleFilter) > 0 || len(documentFilter) > 0
+		if updateBaseline && baselinePath == "" {
+			fmt.Fprintln(os.Stderr, "Error: --update-baseline needs --baseline <file> to write to")
+			os.Exit(1)
+		}
+		// A scoped run sees part of the project; recording it would drop every
+		// other finding from the baseline, and the next full run would report
+		// them all as new.
+		if updateBaseline && scoped {
+			fmt.Fprintln(os.Stderr, "Error: --update-baseline records the whole project; drop --modules, --documents and --rules")
+			os.Exit(1)
+		}
+		// Loaded before connecting, for the same reason as the --documents check
+		// below: a typo in the path should not wait for a catalog build.
+		var baseline *linter.Baseline
+		if baselinePath != "" && !updateBaseline {
+			b, err := linter.LoadBaseline(baselinePath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			baseline = b
+		}
 		// Checked before connecting: a malformed filter is the caller's typo, and
 		// making them wait for a catalog build to hear about it is the slow half
 		// of the problem --documents exists to fix.
@@ -277,6 +313,26 @@ modules, and findings that are not about those documents are not reported.
 			violations = keepDocumentViolations(violations, documentFilter)
 		}
 
+		// Baseline: record the findings, or keep only the new ones. On stderr,
+		// so the summary cannot corrupt --format json/sarif.
+		if updateBaseline {
+			if err := linter.WriteBaseline(baselinePath, violations); err != nil {
+				fmt.Fprintf(os.Stderr, "Error writing lint baseline: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Fprintf(os.Stderr, "Recorded %d finding(s) in the lint baseline %s\n", len(violations), baselinePath)
+		} else if baseline != nil {
+			cmp := baseline.Compare(violations)
+			violations = cmp.New
+			if scoped {
+				fmt.Fprintf(os.Stderr, "Lint baseline %s: %d new, %d already known (a scoped run: fixed findings are not counted)\n",
+					baselinePath, len(cmp.New), cmp.Unchanged)
+			} else {
+				fmt.Fprintf(os.Stderr, "Lint baseline %s: %d new, %d already known, %d fixed\n",
+					baselinePath, len(cmp.New), cmp.Unchanged, cmp.Fixed)
+			}
+		}
+
 		// Output results
 		outputFormat := linter.OutputFormat(format)
 		formatter := linter.GetFormatter(outputFormat, useColor)
@@ -311,9 +367,10 @@ modules, and findings that are not about those documents are not reported.
 		// corrupt --format json/sarif.
 		reportBrainGap(projectDir)
 
-		// Exit with error if there are errors
+		// Exit with error if there are errors — the new ones, against a
+		// baseline. Recording a baseline accepts what it records.
 		summary := linter.Summarize(violations)
-		if summary.Errors > 0 {
+		if summary.Errors > 0 && !updateBaseline {
 			os.Exit(1)
 		}
 	},

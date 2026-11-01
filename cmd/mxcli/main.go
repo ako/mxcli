@@ -418,6 +418,8 @@ func init() {
 	lintCmd.Flags().StringSliceP("rules", "r", nil, "Only run these rule IDs (e.g. -r MPR001 -r SEC001)")
 	lintCmd.Flags().StringSliceP("modules", "m", nil, "Only lint the specified modules (comma-separated or repeated)")
 	lintCmd.Flags().StringSliceP("documents", "d", nil, "Only lint these documents, by qualified name (e.g. Sales.ACT_Order); comma-separated or repeated")
+	lintCmd.Flags().String("baseline", "", "Report only findings not recorded in this baseline file (exit code follows the new ones)")
+	lintCmd.Flags().Bool("update-baseline", false, "Record the current findings in the --baseline file instead of comparing")
 
 	// Report command flags
 	reportCmd.Flags().StringP("format", "f", "markdown", "Output format: markdown, json, html")
