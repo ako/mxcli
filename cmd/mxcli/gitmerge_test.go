@@ -777,6 +777,37 @@ func TestEngineManualIDs_FiltersAutoResolvedAndEmpty(t *testing.T) {
 	}
 }
 
+// A plan unit that is not modified on both sides is refused outright — the
+// gate that also makes the engine's list and git's index unable to disagree
+// dangerously: a unit git resolved on its own (one-side or no change, even
+// behind a stale ContentsHash index) never passes "modified on both", so it
+// can never be silently skipped to ours by the theirs loop.
+func TestGitMerge_PlanRefusesUnitsNotModifiedOnBoth(t *testing.T) {
+	dir, mprPath := modelConflictRepo(t) // git conflicts tDM; tMf untouched by both
+	doctorEnv(t, dir)
+	base := strings.TrimSpace(gitOutT(t, dir, "merge-base", "HEAD", "side"))
+	ours := strings.TrimSpace(gitOutT(t, dir, "rev-parse", "HEAD"))
+	theirs := strings.TrimSpace(gitOutT(t, dir, "rev-parse", "side"))
+	plan := fmt.Sprintf(`{"base":%q,"ours":%q,"theirs":%q,"units":[{"id":%q,"take":"theirs"}]}`,
+		base, ours, theirs, tMf)
+	planPath := filepath.Join(dir, "merge-plan.json")
+	if err := os.WriteFile(planPath, []byte(plan), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	noMx := mxRunners{}
+	var out bytes.Buffer
+	err := mergeRun(mprPath, "side", "", "", planPath, false, noMx, &out)
+	if err == nil || !strings.Contains(err.Error(), "only modified-on-both conflicts can be planned") {
+		t.Fatalf("want the modified-on-both refusal, got %v\n%s", err, out.String())
+	}
+	if _, mhErr := gitOut(dir, "rev-parse", "--verify", "--quiet", "MERGE_HEAD"); mhErr == nil {
+		t.Error("MERGE_HEAD still present: the refusal must abort the merge")
+	}
+	if uu := gitOutT(t, dir, "diff", "--name-only", "--diff-filter=U"); strings.TrimSpace(uu) != "" {
+		t.Errorf("working tree not restored:\n%s", uu)
+	}
+}
+
 // The review material follows the engine's conflict list: a unit the engine
 // auto-resolved (git still lists it — one side's stale ContentsHash index
 // content-merges cleanly) never lands in the plan template, and one only the
