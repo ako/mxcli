@@ -37,7 +37,7 @@ Example:
 			fmt.Fprintln(os.Stderr, "Error: mcp capabilities requires -p <project.mpr> (reads come from the local project)")
 			os.Exit(1)
 		}
-		b := mcpbackend.New(globalMCPURL, globalMCPDial)
+		b := mcpbackend.New(globalMCPURL, globalMCPDial).WithTracer(mcpTracer())
 		if globalMCPConcord != "" {
 			b = b.WithConcord(mcpbackend.ConcordConfig{URL: globalMCPConcord, Dial: globalMCPConcordDial})
 		}

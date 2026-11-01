@@ -43,8 +43,8 @@ func (b *Backend) UpdateEnumeration(enum *model.Enumeration) error {
 	return fmt.Errorf("modifying enumeration %q is not yet supported by the MCP backend (create a new one, or edit it in Studio Pro)", enum.Name)
 }
 
-// DeleteEnumeration drops an enumeration via Concord's delete_document (PED has
-// no delete tool). Requires --mcp-concord; errors clearly otherwise.
+// DeleteEnumeration drops an enumeration via deleteDocument: ped_delete_document where Studio Pro has it (11.16+), else
+// Concord (--mcp-concord).
 func (b *Backend) DeleteEnumeration(id model.ID) error {
 	enum, err := b.GetEnumeration(id)
 	if err != nil {
@@ -54,7 +54,7 @@ func (b *Backend) DeleteEnumeration(id model.ID) error {
 	if err != nil {
 		return fmt.Errorf("resolve module for enumeration %q: %w", enum.Name, err)
 	}
-	if err := b.concordDeleteDocument(modName, enum.Name); err != nil {
+	if err := b.deleteDocument(enumerationDocType, modName, enum.Name); err != nil {
 		return err
 	}
 	b.forgetSessionEnum(modName, enum.Name)

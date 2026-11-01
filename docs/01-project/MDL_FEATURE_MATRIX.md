@@ -110,7 +110,7 @@ live distinction is **MPR vs MCP**.
 | **Modules** | Y | Y | Y | P | CREATE only (flushes to disk); no module DROP |
 | **Entities** | Y | Y | Y | Y | CREATE/DROP; ALTER add/drop/rename/docs — MODIFY *type* rejected (PED can't migrate) |
 | **Associations** | Y | Y | Y | P | Within-module CREATE/DROP; no custom delete behavior; cross-module / external N |
-| **Enumerations** | Y | Y | Y | P | CREATE; DROP via Concord; ALTER (modify values) N |
+| **Enumerations** | Y | Y | Y | P | CREATE; DROP via `ped_delete_document` (Studio Pro 11.16+) or Concord; ALTER (modify values) N |
 | **Microflows** | Y | Y | Y | P | Broad CREATE (most actions + control flow); rejects show-page, cast, retrieve sort/range, inheritance/rule splits |
 | **Nanoflows** | Y | Y | Y | N | **Not creatable** — PED's `ped_create_document` rejects `Microflows$Nanoflow` (create whitelist covers microflows, not nanoflows); CREATE/ALTER rejected with a clear error. DROP of an existing nanoflow works via Concord. |
 | **Pages** | Y | Y | Y | P | CREATE + ALTER via `pg_*`; widget/data-source coverage grows one type at a time |
@@ -122,7 +122,7 @@ live distinction is **MPR vs MCP**.
 | **Constants** | Y | Y | Y | P | CREATE / CREATE OR MODIFY (value + exposed-to-client) / DROP (via Concord); type limited to String/Integer/Decimal/Boolean/DateTime; in-place type change rejected; documentation not carried |
 | **OData Clients / Services** | Y | Y | Y | N | Not wired |
 | **External Entities** | Y | Y | Y | N | Not wired |
-| **Business Events** | Y | Y | Y | P | SHOW/DESCRIBE read the local `.mpr`; DROP via Concord. **CREATE/ALTER blocked** — PED won't create `BusinessEvents$BusinessEventService` (off the create whitelist). The supporting domain model (published-event entities `extends BusinessEvents.PublishedBusinessEvent`, constants) IS creatable. |
+| **Business Events** | Y | Y | Y | P | SHOW/DESCRIBE read the local `.mpr`; DROP via `ped_delete_document` (Studio Pro 11.16+) or Concord. **CREATE/ALTER blocked** — PED won't create `BusinessEvents$BusinessEventService` (off the create whitelist). The supporting domain model (published-event entities `extends BusinessEvents.PublishedBusinessEvent`, constants) IS creatable. |
 | **Navigation** | Y | Y | Y | N | Not wired |
 | **Project Settings** | Y | Y | Y | N | Not wired |
 

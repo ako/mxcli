@@ -5,6 +5,7 @@ package mcp
 import (
 	_ "embed"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -242,6 +243,9 @@ func (b *Backend) CapabilityReport() string {
 	fmt.Fprintf(&sb, "Studio Pro MCP server : %s %s\n", orUnknown(caps.ServerName), orUnknown(caps.ServerVersion))
 	fmt.Fprintf(&sb, "Project Mendix version: %s\n", orUnknown(caps.ProjectVersion))
 	concord := "not connected — DROP of standalone docs (enum/microflow/page/…) is unavailable"
+	if slices.Contains(caps.Tools, "ped_delete_document") {
+		concord = "not connected — DROP of standalone docs uses ped_delete_document"
+	}
 	if caps.ConcordConnected {
 		concord = "connected"
 	}

@@ -56,8 +56,13 @@ func newBackendFactory() func() backend.FullBackend {
 		url, dial := globalMCPURL, globalMCPDial
 		concordURL, concordDial := globalMCPConcord, globalMCPConcordDial
 		saveOnExit, checkOnExit, runOnExit := globalMCPSave, globalMCPCheck, globalMCPRun
+		// --mcp-trace / --mcp-verbose: the executor prints each statement, the
+		// backend's client each PED call under it. Without the backend's half
+		// the trace showed statements only, which reads as "nothing was sent to
+		// Studio Pro" (mendixlabs/mxcli#1684).
+		tracer := mcpTracer()
 		return func() backend.FullBackend {
-			b := mcpbackend.New(url, dial)
+			b := mcpbackend.New(url, dial).WithTracer(tracer)
 			if concordURL != "" || saveOnExit || checkOnExit || runOnExit {
 				b = b.WithConcord(mcpbackend.ConcordConfig{
 					URL: concordURL, Dial: concordDial,
