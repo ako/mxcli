@@ -322,17 +322,17 @@ func onlyHideStatementsBefore(prefix string) bool {
 			return false
 		}
 		name := strings.TrimRight(call[:open], " ")
-		loc := hideCallTailRE.FindStringIndex(name)
-		if loc == nil || loc[1] != len(name) {
+		at := hideCallTail(name)
+		if at < 0 {
 			return false
 		}
-		p = trimNamespacePrefix(strings.TrimRight(name[:loc[0]], " "))
+		p = trimNamespacePrefix(strings.TrimRight(name[:at], " "))
 	}
 }
 
 func trimNamespacePrefix(p string) string {
-	if loc := nsPrefixRE.FindStringIndex(p); loc != nil {
-		return strings.TrimRight(p[:loc[0]], " ")
+	if at := nsPrefix(p); at >= 0 {
+		return strings.TrimRight(p[:at], " ")
 	}
 	return p
 }
