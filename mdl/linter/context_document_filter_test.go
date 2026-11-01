@@ -31,7 +31,7 @@ import (
 func twoInOneModuleDB(t *testing.T) catalog.CatalogDB {
 	t.Helper()
 	db := setupModuleFilterDB(t)
-	if _, err := db.Exec(`INSERT INTO microflows VALUES (?, ?, ?, ?, '', 'Microflow', '', '', 0, 0, 0, 0)`,
+	if _, err := db.Exec(`INSERT INTO microflows (Id, Name, QualifiedName, ModuleName, Folder, MicroflowType, Description, ReturnType, ParameterCount, ActivityCount, TotalActivityCount, Complexity) VALUES (?, ?, ?, ?, '', 'Microflow', '', '', 0, 0, 0, 0)`,
 		"ModB_mf2", "ModB_Sibling", "ModB.Sibling", "ModB"); err != nil {
 		t.Fatalf("insert sibling microflow: %v", err)
 	}

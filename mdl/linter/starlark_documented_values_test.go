@@ -118,8 +118,9 @@ func everyKindFixtureDB(t *testing.T) catalog.CatalogDB {
 		`CREATE TABLE microflows (
 			Id TEXT, Name TEXT, QualifiedName TEXT, ModuleName TEXT, Folder TEXT,
 			MicroflowType TEXT, Description TEXT, ReturnType TEXT,
-			ParameterCount INTEGER, ActivityCount INTEGER, TotalActivityCount INTEGER DEFAULT 0, Complexity INTEGER)`,
-		`INSERT INTO microflows VALUES
+			ParameterCount INTEGER, ActivityCount INTEGER, TotalActivityCount INTEGER DEFAULT 0, Complexity INTEGER,
+			Excluded INTEGER DEFAULT 0, ApplyEntityAccess INTEGER DEFAULT 0)`,
+		`INSERT INTO microflows (Id, Name, QualifiedName, ModuleName, Folder, MicroflowType, Description, ReturnType, ParameterCount, ActivityCount, TotalActivityCount, Complexity) VALUES
 			('f1','MF','Sales.MF','Sales','','MICROFLOW','','',0,0,0,1),
 			('f2','NF','Sales.NF','Sales','','NANOFLOW','','',0,0,0,1),
 			('f3','RU','Sales.RU','Sales','','RULE','','',0,0,0,1)`,

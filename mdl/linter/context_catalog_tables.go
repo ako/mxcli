@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"iter"
+	"strings"
 )
 
 // Typed iterators over catalog tables that existed before any Starlark builtin
@@ -444,6 +445,49 @@ func (ctx *LintContext) Modules() iter.Seq[Module] {
 				continue
 			}
 			if !yield(mod) {
+				return
+			}
+		}
+	}
+}
+
+// ConstantValue is a constant's value in one run configuration
+// (Settings → Configurations), which overrides the constant's default there.
+type ConstantValue struct {
+	Constant      string // Module.Constant
+	Configuration string
+	Value         string
+}
+
+// ConstantValues iterates the constant values the run configurations set, for
+// constants outside System and the Marketplace (ako/mxcli#1453). A
+// configuration that does not override a constant has no row: it runs on the
+// constant's default_value.
+func (ctx *LintContext) ConstantValues() iter.Seq[ConstantValue] {
+	return func(yield func(ConstantValue) bool) {
+		rows, err := ctx.db.Query(fmt.Sprintf(`
+			SELECT cv.ConstantName, cv.ConfigurationName, COALESCE(cv.Value, '')
+			FROM constant_values cv
+			LEFT JOIN modules m ON substr(cv.ConstantName, 1, instr(cv.ConstantName, '.') - 1) = m.Name
+			WHERE %s
+			ORDER BY cv.ConstantName, cv.ConfigurationName
+		`, notPlatformModule("m")))
+		if err != nil {
+			ctx.recordQueryError("ConstantValues", err)
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var c ConstantValue
+			if err := rows.Scan(&c.Constant, &c.Configuration, &c.Value); err != nil {
+				ctx.recordQueryError("ConstantValues (row scan)", err)
+				continue
+			}
+			if module, _, ok := strings.Cut(c.Constant, "."); ok && ctx.IsExcluded(module) {
+				continue
+			}
+			if !yield(c) {
 				return
 			}
 		}
