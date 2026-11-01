@@ -330,6 +330,15 @@ re-markers it. It hides until that first rewrite, which makes a census the right
 instrument: the stored marker per (owner `$Type`, key) across the Studio
 Pro-authored fixtures, registered rather than inferred.
 
+**A registration reaches only the lists the encoder builds.** A rewrite passes
+plenty of a stored document through as bytes — an unchanged pluggable widget's
+Type and Object, an existing element's clean properties — and a marker an older
+build wrote there outlived the registration that fixed it, on every later
+rewrite (#1640: `drop page` + the same MDL gave 2, the rewrite kept 3). The
+writer now applies each owner/key registration to the whole unit on every write;
+that makes a wrong registration rewrite Studio Pro's bytes, so the census is a
+test, not a one-off.
+
 **A refusal keyed on "the stored document lacks the key" conflates two different
 facts.** "This project's version has no such property" and "the writer that
 created this document left it out" need opposite treatment, and only the
