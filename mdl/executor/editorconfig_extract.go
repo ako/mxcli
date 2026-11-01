@@ -29,10 +29,22 @@ type editorConfigExtractStats struct {
 // the group properties that make an authored widget fail CE0463 (upstream #931).
 var hideCallRE = regexp.MustCompile(`hide(?:Property|Properties|NestedProperties)In\(`)
 
-// hideCallTailRE matches a hide call's NAME where it ends a string, so
-// stripGroupSiblings can tell a hide sibling from any other comma-separated
+// hideCallTail returns where a hide call's NAME starts when it ends s, or -1,
+// so stripGroupSiblings can tell a hide sibling from any other comma-separated
 // expression.
-var hideCallTailRE = regexp.MustCompile(`hide(?:Property|Properties|NestedProperties)In$`)
+//
+// It is a suffix test rather than a `…$` regexp on purpose: s is everything
+// before the call, and an end-anchored regexp still scans it from the start.
+// Run once per hide call, that made the extractor quadratic in the size of the
+// editorConfig.js — 0.5 s for the 400 KB one in Maps, on every refresh (#1848).
+func hideCallTail(s string) int {
+	for _, name := range [...]string{"hidePropertyIn", "hidePropertiesIn", "hideNestedPropertiesIn"} {
+		if strings.HasSuffix(s, name) {
+			return len(s) - len(name)
+		}
+	}
+	return -1
+}
 
 // aliasAssignRE finds `IDENT=OBJ.PROP` (a `var x=e.selection`-style alias).
 // Resolution is scoped to the enclosing function body (see enclosingAliases),
@@ -684,10 +696,28 @@ func enclosingOpener(js string, pos int) int {
 	return -1
 }
 
-// nsPrefixRE matches the widget-editor namespace prefix before a hide call — the
-// minifier names it per widget (`_.`, `D.`, `M.`, `j.`, `A.`, …), so it must be
-// matched generically rather than hard-coded to `_.`.
-var nsPrefixRE = regexp.MustCompile(`[A-Za-z_$][\w$]*\.$`)
+// nsPrefix returns where the widget-editor namespace prefix before a hide call
+// starts when it ends s (`<ident>.`), or -1. The minifier names it per widget
+// (`_.`, `D.`, `M.`, `j.`, `A.`, …), so it must be matched generically rather
+// than hard-coded to `_.`. A suffix scan, not a regexp, for the reason given
+// at hideCallTail.
+func nsPrefix(s string) int {
+	if !strings.HasSuffix(s, ".") {
+		return -1
+	}
+	start := len(s) - 1
+	for start > 0 && isIdentByte(s[start-1]) {
+		start--
+	}
+	// An identifier does not start with a digit: skip leading ones.
+	for start < len(s)-1 && s[start] >= '0' && s[start] <= '9' {
+		start++
+	}
+	if start == len(s)-1 {
+		return -1
+	}
+	return start
+}
 
 // parseGuard reads the guard expression immediately preceding a hide call and
 // converts it to a WidgetVisibilityCondition. callStart points at the hide
@@ -704,8 +734,8 @@ var nsPrefixRE = regexp.MustCompile(`[A-Za-z_$][\w$]*\.$`)
 func parseGuard(js string, callStart int, itemIdent string) (types.WidgetVisibilityCondition, string, bool, bool, []types.WidgetVisibilityCondition) {
 	pre := strings.TrimRight(js[:callStart], " ")
 	// Strip the widget-editor namespace prefix (any `<ident>.`, not just `_.`).
-	if loc := nsPrefixRE.FindStringIndex(pre); loc != nil {
-		pre = pre[:loc[0]]
+	if at := nsPrefix(pre); at >= 0 {
+		pre = pre[:at]
 	}
 	pre = strings.TrimRight(pre, " ")
 	// Strip an optional grouping paren: `cond && ( hide(...), … )` groups several
@@ -1716,13 +1746,13 @@ func stripGroupSiblingsRaw(pre string) string {
 			return pre
 		}
 		head := strings.TrimRight(body[:open], " ")
-		loc := hideCallTailRE.FindStringIndex(head)
-		if loc == nil || loc[1] != len(head) {
+		at := hideCallTail(head)
+		if at < 0 {
 			return pre // not a hide call — do not cross this comma
 		}
-		pre = strings.TrimRight(head[:loc[0]], " ")
-		if l := nsPrefixRE.FindStringIndex(pre); l != nil {
-			pre = strings.TrimRight(pre[:l[0]], " ")
+		pre = strings.TrimRight(head[:at], " ")
+		if l := nsPrefix(pre); l >= 0 {
+			pre = strings.TrimRight(pre[:l], " ")
 		}
 	}
 }
