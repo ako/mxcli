@@ -41,9 +41,13 @@ of routing through MCP, see
 | `--mcp-verbose` | Print each PED tool call the backend makes (to stderr). |
 | `--mcp-trace` | Print each MDL command with the PED tool calls it makes (implies `--mcp-verbose`). |
 
-If `--mcp-dial` is omitted and the URL host is `localhost`/`127.0.0.1`, mxcli
-defaults the dial target to `host.docker.internal:<port>` — the right behaviour
-from inside a devcontainer.
+If `--mcp-dial` is omitted, mxcli connects to the URL's own host first. For a
+`localhost`/`127.0.0.1` URL it then falls back to `host.docker.internal:<port>`
+when that name resolves — the Docker host, which is where Studio Pro is when
+mxcli runs in a devcontainer. Loopback comes first because the Docker name
+resolves on more machines than containers: Docker Desktop for Windows adds it to
+the hosts file, pointing at the LAN address, where Studio Pro does not listen.
+With `--mcp-dial` given, that address is the only one tried.
 
 ## From a devcontainer (the common case)
 

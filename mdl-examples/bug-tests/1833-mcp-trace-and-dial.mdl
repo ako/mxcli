@@ -1,0 +1,20 @@
+-- ako/mxcli#1833 (mendixlabs/mxcli#1684): two defects of `--mcp`, found while
+-- checking a report that `exec --mcp` wrote the .mpr instead of Studio Pro.
+--
+-- 1. `--mcp-trace` / `--mcp-verbose` printed each statement but no PED call:
+--    the MCP backend the CLI builds never got the tracer. A run that sent the
+--    write to Studio Pro read as one that sent nothing.
+-- 2. Without `--mcp-dial`, a `localhost` URL was dialled as
+--    host.docker.internal whenever that name resolved. Docker Desktop for
+--    Windows adds it to the hosts file (the LAN address), so on the machine
+--    Studio Pro runs on the connection timed out: `dial tcp <LAN IP>:7782`.
+--
+-- To verify, with Studio Pro open on a throwaway app and its MCP server on 7782:
+--   mxcli exec 1833-mcp-trace-and-dial.mdl -p App.mpr --mcp http://localhost:7782/mcp --mcp-trace
+-- The trace lists `→ ped_create_document` and `→ ped_check_errors` under the
+-- statement, and the connection needs no --mcp-dial (on Windows with Docker
+-- Desktop installed too). The constant appears in Studio Pro's App Explorer.
+
+mdl 1;
+
+create constant MyFirstModule.McpTraceProbe (Type: String, DefaultValue: 'probe');
