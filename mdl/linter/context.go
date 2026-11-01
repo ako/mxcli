@@ -635,6 +635,12 @@ type Microflow struct {
 	// at any depth (mendixlabs/mxcli#1266).
 	TotalActivityCount int
 	Complexity         int // McCabe cyclomatic complexity
+	// Excluded is "Exclude from project": the flow is not built or run, so a
+	// guideline rule usually skips it (ako/mxcli#1453).
+	Excluded bool
+	// ApplyEntityAccess is the flow's "Apply entity access" setting. Always
+	// false for a nanoflow, which has no such setting.
+	ApplyEntityAccess bool
 }
 
 // DocumentNoun is what to call this document in a lint message and in
@@ -670,7 +676,8 @@ func (ctx *LintContext) Microflows() iter.Seq[Microflow] {
 		rows, err := ctx.db.Query(fmt.Sprintf(`
 			SELECT mf.Id, mf.Name, mf.QualifiedName, mf.ModuleName, mf.Folder,
 			       mf.MicroflowType, mf.Description, mf.ReturnType,
-			       mf.ParameterCount, mf.ActivityCount, mf.TotalActivityCount, mf.Complexity
+			       mf.ParameterCount, mf.ActivityCount, mf.TotalActivityCount, mf.Complexity,
+			       COALESCE(mf.Excluded, 0), COALESCE(mf.ApplyEntityAccess, 0)
 			FROM microflows mf
 			LEFT JOIN modules m ON mf.ModuleName = m.Name
 			WHERE %s AND %s
@@ -686,7 +693,8 @@ func (ctx *LintContext) Microflows() iter.Seq[Microflow] {
 			var mf Microflow
 			var desc, retType, folder sql.NullString
 			err := rows.Scan(&mf.ID, &mf.Name, &mf.QualifiedName, &mf.ModuleName, &folder,
-				&mf.MicroflowType, &desc, &retType, &mf.ParameterCount, &mf.ActivityCount, &mf.TotalActivityCount, &mf.Complexity)
+				&mf.MicroflowType, &desc, &retType, &mf.ParameterCount, &mf.ActivityCount, &mf.TotalActivityCount, &mf.Complexity,
+				&mf.Excluded, &mf.ApplyEntityAccess)
 			if err != nil {
 				ctx.recordQueryError("Microflows (row scan)", err)
 				continue
@@ -772,11 +780,51 @@ type Enumeration struct {
 	Folder        string
 	Description   string
 	ValueCount    int
+	// Values in ordinal order. Without them a rule could not resolve
+	// getCaption(Module.Enum.Value) (mendixlabs/mxcli#1310, ako/mxcli#1453).
+	Values []EnumerationValue
+}
+
+// EnumerationValue is one value of an enumeration, with its caption in the
+// project's default language.
+type EnumerationValue struct {
+	Name          string
+	QualifiedName string // Module.Enumeration.Value, as refs_from() names it
+	Caption       string
+	Ordinal       int
+}
+
+// enumerationValues reads every enumeration's values in one query, keyed by
+// the enumeration's qualified name. Read before Enumerations iterates, so no
+// second query runs while its rows are open.
+func (ctx *LintContext) enumerationValues() map[string][]EnumerationValue {
+	out := map[string][]EnumerationValue{}
+	rows, err := ctx.db.Query(`
+		SELECT EnumerationQualifiedName, Name, COALESCE(Caption, ''), COALESCE(Ordinal, 0)
+		FROM enumeration_values
+		ORDER BY EnumerationQualifiedName, Ordinal, Name`)
+	if err != nil {
+		ctx.recordQueryError("EnumerationValues", err)
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var enum string
+		var v EnumerationValue
+		if err := rows.Scan(&enum, &v.Name, &v.Caption, &v.Ordinal); err != nil {
+			ctx.recordQueryError("EnumerationValues (row scan)", err)
+			continue
+		}
+		v.QualifiedName = enum + "." + v.Name
+		out[enum] = append(out[enum], v)
+	}
+	return out
 }
 
 // Enumerations returns an iterator over all enumerations (excluding system modules).
 func (ctx *LintContext) Enumerations() iter.Seq[Enumeration] {
 	return func(yield func(Enumeration) bool) {
+		values := ctx.enumerationValues()
 		rows, err := ctx.db.Query(fmt.Sprintf(`
 			SELECT en.Id, en.Name, en.QualifiedName, en.ModuleName, en.Folder,
 			       en.Description, en.ValueCount
@@ -802,6 +850,7 @@ func (ctx *LintContext) Enumerations() iter.Seq[Enumeration] {
 			}
 			en.Folder = folder.String
 			en.Description = desc.String
+			en.Values = values[en.QualifiedName]
 
 			if ctx.IsExcluded(en.ModuleName) {
 				continue

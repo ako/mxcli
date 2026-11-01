@@ -2,6 +2,8 @@
 
 package codec
 
+import "github.com/mendixlabs/mxcli/modelsdk/canon"
+
 // TypeDefaults captures the serialization defaults Studio Pro applies to a
 // freshly-created element of a given $Type but that the gen New<Type>()
 // constructors do not yet set — the "applyDefaults" gap (engalar Fix 4 TODO).
@@ -80,36 +82,33 @@ func FreshGUIDRegistrations() map[string][]string {
 	return out
 }
 
-// listMarkers maps a child element $Type to the leading typed-array marker
-// Studio Pro writes for a PartList of that element type. Most domain-model
-// member lists use 3 (the encoder default); some — notably the IndexedAttribute
-// list inside an EntityIndex — use a different version marker. Confirmed against
-// real Studio-Pro 11.x BSON (mx-test-projects/test7-app: IdxProbe index uses 2).
-var listMarkers = map[string]int32{}
-
 // RegisterListMarker declares the typed-array marker for PartLists whose child
-// elements are of childType. Without registration the encoder emits 3.
+// elements are of childType. Without registration the encoder emits 3. Most
+// domain-model member lists use 3; some — notably the IndexedAttribute list
+// inside an EntityIndex — use a different version marker. Confirmed against
+// real Studio-Pro 11.x BSON (mx-test-projects/test7-app: IdxProbe index uses 2).
+//
+// The table lives in canon (canon.RegisterChildListMarker), beside the
+// owner/key table every write applies.
 func RegisterListMarker(childType string, marker int32) {
-	listMarkers[childType] = marker
+	canon.RegisterChildListMarker(childType, marker)
 }
 
-// propertyListMarkers maps an owning $Type and PartList key to its marker. It
+// RegisterPropertyListMarker declares the typed-array marker for the PartList
+// stored under key on elements of ownerType. It takes precedence over a
+// child-type RegisterListMarker and also covers the list when it is empty. It
 // exists for lists whose marker depends on WHERE the list sits rather than on
 // what it holds: a Forms$DesignPropertyValue list is marker 3 as a
 // Forms$Appearance's DesignProperties and marker 2 as a
 // Forms$CompoundDesignPropertyValue's Properties (measured: 1821/1821 and
 // 373/373 across Studio Pro-authored documents in a Mendix 11.13.0 app), so a
 // RegisterListMarker on the child type cannot express it.
-var propertyListMarkers = map[string]map[string]int32{}
-
-// RegisterPropertyListMarker declares the typed-array marker for the PartList
-// stored under key on elements of ownerType. It takes precedence over a
-// child-type RegisterListMarker and also covers the list when it is empty.
+//
+// Register only a measured marker: every write applies it to the stored lists
+// the encoder does not rebuild too (canon.NormalizeListMarkers,
+// ako/mxcli#1640), where a wrong one would rewrite what Studio Pro stored.
 func RegisterPropertyListMarker(ownerType, key string, marker int32) {
-	if propertyListMarkers[ownerType] == nil {
-		propertyListMarkers[ownerType] = map[string]int32{}
-	}
-	propertyListMarkers[ownerType][key] = marker
+	canon.RegisterPropertyListMarker(ownerType, key, marker)
 }
 
 // mandatoryPropertyLists marks the owner/key pairs Studio Pro serializes on
@@ -136,12 +135,11 @@ func isMandatoryPropertyList(ownerType, key string) bool {
 }
 
 func lookupPropertyListMarker(ownerType, key string) (int32, bool) {
-	m, ok := propertyListMarkers[ownerType][key]
-	return m, ok
+	return canon.PropertyListMarker(ownerType, key)
 }
 
 func lookupListMarker(childType string) int32 {
-	if m, ok := listMarkers[childType]; ok {
+	if m, ok := canon.ChildListMarker(childType); ok {
 		return m
 	}
 	return 3
