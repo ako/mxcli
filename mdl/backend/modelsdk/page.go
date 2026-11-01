@@ -27,15 +27,7 @@ import (
 // ListPageHeaders lists every page's ID, container, name and Excluded flag
 // without decoding any page.
 func (b *Backend) ListPageHeaders() ([]types.DocumentHeader, error) {
-	hs, err := mprread.ListUnitHeaders[*genPg.Page](b.reader)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]types.DocumentHeader, len(hs))
-	for i, h := range hs {
-		out[i] = types.DocumentHeader(h)
-	}
-	return out, nil
+	return unitHeaders[*genPg.Page](b)
 }
 
 func (b *Backend) ListPages() ([]*pages.Page, error) {
@@ -78,17 +70,13 @@ func pageTemplateFromGen(pt *genPg.PageTemplate, containerID model.ID) *pages.Pa
 	return out
 }
 
+// GetPage decodes the page whose ID is id, and no other (#1850).
 func (b *Backend) GetPage(id model.ID) (*pages.Page, error) {
-	units, err := listUnits[*genPg.Page](b)
-	if err != nil {
+	u, ok, err := mprread.UnitByID[*genPg.Page](b.reader, id)
+	if err != nil || !ok {
 		return nil, err
 	}
-	for _, u := range units {
-		if model.ID(u.Element.ID()) == id {
-			return pageFromGen(u.Element, u.ContainerID), nil
-		}
-	}
-	return nil, nil
+	return pageFromGen(u.Element, u.ContainerID), nil
 }
 
 // ListSnippets reads snippet units (count + identity is what SHOW MODULES needs;
@@ -100,39 +88,65 @@ func (b *Backend) ListSnippets() ([]*pages.Snippet, error) {
 	}
 	out := make([]*pages.Snippet, 0, len(units))
 	for _, u := range units {
-		s := &pages.Snippet{
-			ContainerID:   u.ContainerID,
-			Name:          u.Element.Name(),
-			Documentation: u.Element.Documentation(),
-			Excluded:      u.Element.Excluded(),
-		}
-		s.ID = model.ID(u.Element.ID())
-		// Populate declared parameters — the page builder reads these to validate
-		// and wire SNIPPETCALL argument mappings (without them every parameterised
-		// snippet call writes an empty argument → CE1571 in Studio Pro).
-		for _, el := range u.Element.ParametersItems() {
-			sp, ok := el.(*genPg.SnippetParameter)
-			if !ok {
-				continue
-			}
-			p := &pages.SnippetParameter{Name: sp.Name()}
-			p.ID = model.ID(sp.ID())
-			// Entity or primitive — a snippet parameter's ParameterType is the
-			// polymorphic DataTypes$DataType, the same as a page parameter's.
-			// Reading only the ObjectType arm made every primitive parameter
-			// read back as an untyped one (mendixlabs/mxcli#1028).
-			if pt := sp.ParameterType(); pt != nil {
-				if ot, ok := pt.(*genDT.ObjectType); ok {
-					p.EntityName = ot.EntityQualifiedName()
-				} else {
-					p.Type = pt.TypeName()
-				}
-			}
-			s.Parameters = append(s.Parameters, p)
-		}
-		out = append(out, s)
+		out = append(out, snippetFromGen(u))
 	}
 	return out, nil
+}
+
+// GetSnippet decodes the snippet whose ID is id, and no other (#1850). nil when
+// there is none.
+func (b *Backend) GetSnippet(id model.ID) (*pages.Snippet, error) {
+	u, ok, err := mprread.UnitByID[*genPg.Snippet](b.reader, id)
+	if err != nil || !ok {
+		return nil, err
+	}
+	return snippetFromGen(u), nil
+}
+
+// ListSnippetHeaders lists every snippet's ID, container, name and Excluded
+// flag without decoding any snippet.
+func (b *Backend) ListSnippetHeaders() ([]types.DocumentHeader, error) {
+	return unitHeaders[*genPg.Snippet](b)
+}
+
+// ListLayoutHeaders lists every layout's ID, container, name and Excluded flag
+// without decoding any layout.
+func (b *Backend) ListLayoutHeaders() ([]types.DocumentHeader, error) {
+	return unitHeaders[*genPg.Layout](b)
+}
+
+func snippetFromGen(u mprread.Unit[*genPg.Snippet]) *pages.Snippet {
+	s := &pages.Snippet{
+		ContainerID:   u.ContainerID,
+		Name:          u.Element.Name(),
+		Documentation: u.Element.Documentation(),
+		Excluded:      u.Element.Excluded(),
+	}
+	s.ID = model.ID(u.Element.ID())
+	// Populate declared parameters — the page builder reads these to validate
+	// and wire SNIPPETCALL argument mappings (without them every parameterised
+	// snippet call writes an empty argument → CE1571 in Studio Pro).
+	for _, el := range u.Element.ParametersItems() {
+		sp, ok := el.(*genPg.SnippetParameter)
+		if !ok {
+			continue
+		}
+		p := &pages.SnippetParameter{Name: sp.Name()}
+		p.ID = model.ID(sp.ID())
+		// Entity or primitive — a snippet parameter's ParameterType is the
+		// polymorphic DataTypes$DataType, the same as a page parameter's.
+		// Reading only the ObjectType arm made every primitive parameter
+		// read back as an untyped one (mendixlabs/mxcli#1028).
+		if pt := sp.ParameterType(); pt != nil {
+			if ot, ok := pt.(*genDT.ObjectType); ok {
+				p.EntityName = ot.EntityQualifiedName()
+			} else {
+				p.Type = pt.TypeName()
+			}
+		}
+		s.Parameters = append(s.Parameters, p)
+	}
+	return s
 }
 
 // ListBuildingBlocks reads Pages$BuildingBlock units. Read-only: the codec engine
@@ -250,18 +264,22 @@ func (b *Backend) ListLayouts() ([]*pages.Layout, error) {
 	}
 	out := make([]*pages.Layout, 0, len(units))
 	for _, u := range units {
-		l := &pages.Layout{
-			ContainerID:   u.ContainerID,
-			Name:          u.Element.Name(),
-			Documentation: u.Element.Documentation(),
-			LayoutType:    layoutTypeOf(u.Element),
-			Native:        layoutIsNative(u.Element),
-			Class:         appearanceClassOf(u.Element),
-		}
-		l.ID = model.ID(u.Element.ID())
-		out = append(out, l)
+		out = append(out, layoutFromGen(u))
 	}
 	return out, nil
+}
+
+func layoutFromGen(u mprread.Unit[*genPg.Layout]) *pages.Layout {
+	l := &pages.Layout{
+		ContainerID:   u.ContainerID,
+		Name:          u.Element.Name(),
+		Documentation: u.Element.Documentation(),
+		LayoutType:    layoutTypeOf(u.Element),
+		Native:        layoutIsNative(u.Element),
+		Class:         appearanceClassOf(u.Element),
+	}
+	l.ID = model.ID(u.Element.ID())
+	return l
 }
 
 // appearanceClassOf reads the layout's own CSS class.
@@ -308,17 +326,13 @@ func layoutIsNative(l *genPg.Layout) bool {
 }
 
 // GetLayout returns a single layout by ID (shallow).
+// GetLayout decodes the layout whose ID is id, and no other (#1850).
 func (b *Backend) GetLayout(id model.ID) (*pages.Layout, error) {
-	layouts, err := b.ListLayouts()
-	if err != nil {
+	u, ok, err := mprread.UnitByID[*genPg.Layout](b.reader, id)
+	if err != nil || !ok {
 		return nil, err
 	}
-	for _, l := range layouts {
-		if l.ID == id {
-			return l, nil
-		}
-	}
-	return nil, nil
+	return layoutFromGen(u), nil
 }
 
 // LayoutPlaceholders returns the placeholder names a layout declares.
