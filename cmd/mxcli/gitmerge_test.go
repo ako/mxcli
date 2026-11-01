@@ -627,3 +627,30 @@ func TestJunkPath_CoversMergePlanTemplate(t *testing.T) {
 		t.Error("a project-folder plan template must be junk too")
 	}
 }
+
+// The engine prints its per-unit conflict list only with -v, as one JSON
+// array on one stdout line; the parser must find it in the engine's noise
+// and keep only what needs a human decision.
+func TestParseEngineConflicts_FindsArrayInEngineNoise(t *testing.T) {
+	mxOut := "Merging...\n" + `[{"UnitId":"0131b342-0000-0000-0000-000000000001","UnitName":null,"ModuleName":"FeedbackModule","ContainmentName":"DomainModel","Type":"MergeContents","TreeConflict":"None","ConflictResolutionDetails":"ManualResolutionRequired"},{"UnitId":"6a912436-0000-0000-0000-000000000002","UnitName":"ACT_Theirs","ModuleName":"MyFirstModule","ContainmentName":"Documents","Type":"AddFromHead","TreeConflict":"None","ConflictResolutionDetails":"AutoResolved"}]` + "\nDone.\n"
+	cs := parseEngineConflicts(mxOut)
+	if len(cs) != 2 || cs[0].UnitID != "0131b342-0000-0000-0000-000000000001" || cs[1].Type != "AddFromHead" {
+		t.Fatalf("parsed: %+v", cs)
+	}
+}
+
+func TestParseEngineConflicts_NoneYieldsNil(t *testing.T) {
+	if cs := parseEngineConflicts("Merge successful.\n"); cs != nil {
+		t.Errorf("want nil, got %+v", cs)
+	}
+}
+
+// Only ManualResolutionRequired entries need a decision; entries without a
+// unit id say nothing decidable and are skipped.
+func TestEngineManualIDs_FiltersAutoResolvedAndEmpty(t *testing.T) {
+	cs := parseEngineConflicts(`[{"UnitId":"aaa","ConflictResolutionDetails":"ManualResolutionRequired"},{"UnitId":"","ConflictResolutionDetails":"ManualResolutionRequired"},{"UnitId":"bbb","ConflictResolutionDetails":"AutoResolved"}]`)
+	ids := engineManualIDs(cs)
+	if len(ids) != 1 || ids[0] != "aaa" {
+		t.Errorf("manual ids: %v", ids)
+	}
+}

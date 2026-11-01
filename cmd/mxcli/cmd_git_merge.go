@@ -495,6 +495,50 @@ func conflictedUnitIDs(model []string) []string {
 	return ids
 }
 
+// engineUnitConflict is one entry of the engine's per-unit conflict list,
+// printed only with `-v` as one JSON array on one stdout line. Only
+// ManualResolutionDetails "ManualResolutionRequired" needs a decision;
+// "AutoResolved" entries are already merged.
+type engineUnitConflict struct {
+	UnitID                    string  `json:"UnitId"`
+	UnitName                  *string `json:"UnitName"`
+	ModuleName                string  `json:"ModuleName"`
+	ContainmentName           string  `json:"ContainmentName"`
+	Type                      string  `json:"Type"`
+	TreeConflict              string  `json:"TreeConflict"`
+	ConflictResolutionDetails string  `json:"ConflictResolutionDetails"`
+}
+
+// parseEngineConflicts finds the engine's conflict list in its output: the
+// last line that parses as a JSON array of objects. nil when the engine
+// printed none — the caller falls back to git's conflicted-file list.
+func parseEngineConflicts(mxOut string) []engineUnitConflict {
+	var found []engineUnitConflict
+	for _, line := range strings.Split(mxOut, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "[") {
+			continue
+		}
+		var cs []engineUnitConflict
+		if err := json.Unmarshal([]byte(line), &cs); err == nil && len(cs) > 0 {
+			found = cs
+		}
+	}
+	return found
+}
+
+// engineManualIDs keeps the entries that need a human decision; entries
+// without a unit id say nothing decidable and are skipped.
+func engineManualIDs(cs []engineUnitConflict) []string {
+	var ids []string
+	for _, c := range cs {
+		if c.ConflictResolutionDetails == "ManualResolutionRequired" && c.UnitID != "" {
+			ids = append(ids, c.UnitID)
+		}
+	}
+	return ids
+}
+
 // --- property-level conflict report and the per-unit plan -------------------
 
 type mxDiffChange struct {
