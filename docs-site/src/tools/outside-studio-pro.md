@@ -268,9 +268,14 @@ it is copied back, so the engine owns the `.mpr`:
   Length: 100 → 150" on ours, "→ 200" on theirs). Then decide:
   `--plan <file>` resolves **per unit** from the plan template written beside
   the .mpr (`<mpr>.merge-plan.json`, which `mxcli git commit` never stages):
-  set `"take"` to `ours`/`theirs` per unit, and the `.mpr` index is repaired
-  from the mixed files (modified-on-both units only; added/deleted/moved
-  conflicts go to Studio Pro). `--ours` or `--theirs` takes one side of every
+  set `"take"` to `ours`/`theirs` per unit. The engine runs again and the plan
+  decides **only the units it left open** — everything the engine merged
+  stays merged, so the template names just those units, and a plan that names
+  more or fewer (stale, or edited by hand) is refused. Each planned unit is
+  taken whole from its side, its conflict marker cleared (Studio Pro reports
+  a marker left in the index as CE0137), and the `.mpr` index repaired from
+  the files (modified-on-both units only; added/deleted/moved conflicts go to
+  Studio Pro). `--ours` or `--theirs` takes one side of every
   conflicted unit, hash-gated: when the sides' document sets differ (one side
   added or deleted a unit), committing a whole side would orphan the other
   side's documents, so the commit is refused and the merge aborted. Any other

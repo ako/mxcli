@@ -61,9 +61,14 @@ the engine chokes on the conflicted state. Its result is copied back:
     "New type > Length: 100 → 150" on ours, "→ 200" on theirs). Then decide:
       --plan <file>  resolve per unit from the plan template written beside
                      the .mpr (<mpr>.merge-plan.json): set "take" to
-                     "ours"/"theirs" per unit; the .mpr index is repaired
-                     from the mixed files. Modified-on-both units only —
-                     added/deleted/moved conflicts go to Studio Pro.
+                     "ours"/"theirs" per unit. The engine runs again and the
+                     plan decides only the units it left open — everything
+                     it merged stays merged, so the plan must name exactly
+                     those units (a stale or hand-widened plan is refused).
+                     Each planned unit is taken whole from its side, its
+                     conflict marker cleared, and the .mpr index repaired.
+                     Modified-on-both units only — added/deleted/moved
+                     conflicts go to Studio Pro.
       --ours / --theirs   take one side of every conflicted unit
                      (deterministic; mx is not consulted again). The .mpr is
                      taken from that side too and the result is hash-checked:
@@ -159,7 +164,8 @@ type mxRunners struct {
 //     always the best outcome — and is committed with the note.
 //  3. What the engine reports as ManualResolutionRequired (exit 2) is never
 //     merged silently: with no strategy the merge is aborted and both sides'
-//     changes are printed for review; `--plan` then resolves per unit, and
+//     changes are printed for review; `--plan` then resolves the units the
+//     engine left open, over the engine's own result, and
 //     `--ours`/`--theirs` take one side of every conflicted unit, hash-gated
 //     so a side that would drop or orphan documents is refused. Any other
 //     engine exit is a failure, not a decision: reported, aborted cleanly.
@@ -191,7 +197,7 @@ func mergeRun(mprPath, ref, message, strategy, plan string, push bool, runners m
 	}
 
 	if plan != "" {
-		return applyPlan(root, repo, abs, mprPath, ref, plan, message, branch, push, out)
+		return applyPlan(root, repo, abs, mprPath, ref, plan, message, branch, push, runners, out)
 	}
 
 	// A merge already in progress is resumed, not re-run: a previous run may
@@ -265,49 +271,17 @@ func mergeRun(mprPath, ref, message, strategy, plan string, push bool, runners m
 	// never the working tree mid-merge — the engine chokes on the conflicted
 	// state (measured: it exits 129 when theirs deleted a document). Its
 	// result lands in MINE and is copied back.
-	tmp, err := os.MkdirTemp("", "mxcli-gitmerge-")
+	revs, err := checkoutRevisions(root, ref, baseSha, oursSha, theirsSha)
 	if err != nil {
 		return err
 	}
-	baseDir := filepath.Join(tmp, "base")
-	oursDir := filepath.Join(tmp, "ours")
-	theirsDir := filepath.Join(tmp, "theirs")
-	if _, err := gitOutIn(root, nil, "worktree", "add", "--detach", baseDir, baseSha); err != nil {
-		os.RemoveAll(tmp)
-		return fmt.Errorf("check out the merge base: %w", err)
-	}
-	if _, err := gitOutIn(root, nil, "worktree", "add", "--detach", oursDir, oursSha); err != nil {
-		_, _ = gitOutIn(root, nil, "worktree", "remove", "--force", baseDir)
-		os.RemoveAll(tmp)
-		return fmt.Errorf("check out HEAD: %w", err)
-	}
-	if _, err := gitOutIn(root, nil, "worktree", "add", "--detach", theirsDir, theirsSha); err != nil {
-		_, _ = gitOutIn(root, nil, "worktree", "remove", "--force", baseDir)
-		_, _ = gitOutIn(root, nil, "worktree", "remove", "--force", oursDir)
-		os.RemoveAll(tmp)
-		return fmt.Errorf("check out %s: %w", ref, err)
-	}
-	cleanWorktrees := func() {
-		_, _ = gitOutIn(root, nil, "worktree", "remove", "--force", baseDir)
-		_, _ = gitOutIn(root, nil, "worktree", "remove", "--force", oursDir)
-		_, _ = gitOutIn(root, nil, "worktree", "remove", "--force", theirsDir)
-		_ = os.RemoveAll(tmp)
-	}
+	tmp, baseDir, oursDir, theirsDir := revs.tmp, revs.baseDir, revs.oursDir, revs.theirsDir
+	cleanWorktrees := revs.cleanup
 
 	version := projectMendixVersion(mprPath)
 	fmt.Fprintf(out, "Model files conflict (%s); merging the model with mx %s…\n",
 		strings.Join(shortNames(model), ", "), version)
-	// File form: the engine takes the three revisions' project files; MINE is
-	// the clean worktree at HEAD.
-	code, mxOut, runErr := runners.merge(
-		filepath.Join(baseDir, filepath.FromSlash(repo.MPRPath)),
-		filepath.Join(oursDir, filepath.FromSlash(repo.MPRPath)),
-		filepath.Join(theirsDir, filepath.FromSlash(repo.MPRPath)),
-		[3]string{baseSha, oursSha, theirsSha},
-	)
-	if s := strings.TrimSpace(mxOut); s != "" {
-		fmt.Fprintln(out, s)
-	}
+	code, mxOut, runErr := revs.runEngine(runners, repo, out)
 	if runErr != nil {
 		cleanWorktrees()
 		return abortMerge(root, fmt.Errorf("mx merge failed to run: %w", runErr))
@@ -325,13 +299,15 @@ func mergeRun(mprPath, ref, message, strategy, plan string, push bool, runners m
 		// the human decides. The unit list follows the engine's own conflict
 		// list — git's can differ (a stale one-side index makes the engine
 		// content-merge a unit git sees as changed). Without a parsable
-		// list, fall back to git's conflicted units: err toward showing work
-		// rather than hiding it.
-		manual := engineManualIDs(parseEngineConflicts(mxOut))
+		// list, the units the engine's result marks; without those, git's
+		// conflicted units: err toward showing work rather than hiding it.
+		// --plan reads the same set back, so the template it is given
+		// matches what it checks the plan against.
+		oursMpr := filepath.Join(oursDir, filepath.FromSlash(repo.MPRPath))
+		manual := engineDecisions(mxOut, oursMpr)
 		if len(manual) == 0 {
 			manual = conflictedUnitIDs(model)
 		}
-		oursMpr := filepath.Join(oursDir, filepath.FromSlash(repo.MPRPath))
 		if runners.diff != nil {
 			oursJSON := filepath.Join(tmp, "ours-diff.json")
 			theirsJSON := filepath.Join(tmp, "theirs-diff.json")
@@ -381,6 +357,95 @@ func mergeRun(mprPath, ref, message, strategy, plan string, push bool, runners m
 	}
 	cleanWorktrees()
 	return nil
+}
+
+// mergeRevisions are clean worktrees of a merge's three revisions — the
+// engine's BASE, MINE (ours, at HEAD) and THEIRS — under one temp folder.
+type mergeRevisions struct {
+	root, tmp                   string
+	baseDir, oursDir, theirsDir string
+	shas                        [3]string
+}
+
+// checkoutRevisions checks the merge's three revisions out as detached
+// worktrees; cleanup removes them again.
+func checkoutRevisions(root, ref, baseSha, oursSha, theirsSha string) (*mergeRevisions, error) {
+	tmp, err := os.MkdirTemp("", "mxcli-gitmerge-")
+	if err != nil {
+		return nil, err
+	}
+	m := &mergeRevisions{
+		root: root, tmp: tmp,
+		baseDir:   filepath.Join(tmp, "base"),
+		oursDir:   filepath.Join(tmp, "ours"),
+		theirsDir: filepath.Join(tmp, "theirs"),
+		shas:      [3]string{baseSha, oursSha, theirsSha},
+	}
+	if _, err := gitOutIn(root, nil, "worktree", "add", "--detach", m.baseDir, baseSha); err != nil {
+		os.RemoveAll(tmp)
+		return nil, fmt.Errorf("check out the merge base: %w", err)
+	}
+	if _, err := gitOutIn(root, nil, "worktree", "add", "--detach", m.oursDir, oursSha); err != nil {
+		_, _ = gitOutIn(root, nil, "worktree", "remove", "--force", m.baseDir)
+		os.RemoveAll(tmp)
+		return nil, fmt.Errorf("check out HEAD: %w", err)
+	}
+	if _, err := gitOutIn(root, nil, "worktree", "add", "--detach", m.theirsDir, theirsSha); err != nil {
+		_, _ = gitOutIn(root, nil, "worktree", "remove", "--force", m.baseDir)
+		_, _ = gitOutIn(root, nil, "worktree", "remove", "--force", m.oursDir)
+		os.RemoveAll(tmp)
+		return nil, fmt.Errorf("check out %s: %w", ref, err)
+	}
+	return m, nil
+}
+
+func (m *mergeRevisions) cleanup() {
+	_, _ = gitOutIn(m.root, nil, "worktree", "remove", "--force", m.baseDir)
+	_, _ = gitOutIn(m.root, nil, "worktree", "remove", "--force", m.oursDir)
+	_, _ = gitOutIn(m.root, nil, "worktree", "remove", "--force", m.theirsDir)
+	_ = os.RemoveAll(m.tmp)
+}
+
+// runEngine runs the engine in file form — the three revisions' project
+// files, MINE the clean worktree at HEAD — and echoes what it printed. Its
+// result lands in MINE.
+func (m *mergeRevisions) runEngine(runners mxRunners, repo *gitNoteRepo, out io.Writer) (int, string, error) {
+	mprIn := func(dir string) string { return filepath.Join(dir, filepath.FromSlash(repo.MPRPath)) }
+	code, mxOut, err := runners.merge(mprIn(m.baseDir), mprIn(m.oursDir), mprIn(m.theirsDir), m.shas)
+	if s := strings.TrimSpace(mxOut); s != "" {
+		fmt.Fprintln(out, s)
+	}
+	return code, mxOut, err
+}
+
+// engineDecisions is the set of units the engine left for a human after an
+// exit 2: the ManualResolutionRequired entries of its -v list or, when it
+// printed no list, the units its result (mineMpr) marks as conflicted.
+func engineDecisions(mxOut, mineMpr string) []string {
+	if ids := engineManualIDs(parseEngineConflicts(mxOut)); len(ids) > 0 {
+		return ids
+	}
+	marks, err := conflictMarkers(mineMpr)
+	if err != nil {
+		return nil
+	}
+	var ids []string
+	for _, c := range marks {
+		ids = append(ids, c.UnitID)
+	}
+	return ids
+}
+
+// conflictMarkers lists the units a project's index marks as conflicted —
+// what the engine writes for a decision it did not make, and what Studio Pro
+// reports as CE0137 until it is gone.
+func conflictMarkers(mprPath string) ([]mpr.UnitConflict, error) {
+	r, err := mpr.Open(mprPath)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return r.UnitConflicts()
 }
 
 // copyEngineResult copies the engine's merged model files — the .mpr and
@@ -744,11 +809,20 @@ func writePlanTemplate(mprPath, baseSha, oursSha, theirsSha string, unitIDs []st
 }
 
 // applyPlan re-runs the merge unless one is already in progress (it must
-// conflict the same way), checks the plan against those revisions, resolves
-// per unit, repairs the .mpr index from the mixed files and commits — with
-// the note. Every refusal after the merge started aborts it: a half-done
-// merge makes Studio Pro re-run it (and choke) on every open.
-func applyPlan(root string, repo *gitNoteRepo, mprAbs, mprPath, ref, planPath, message, branch string, push bool, out io.Writer) error {
+// conflict the same way), checks the plan against those revisions, runs the
+// engine again and resolves over its result: everything the engine merged
+// stays merged, and each unit it left open takes the plan's side — whole,
+// from that side's commit — with its conflict marker cleared. The .mpr index
+// is repaired from the files and the merge committed with the note. Every
+// refusal after the merge started aborts it: a half-done merge makes Studio
+// Pro re-run it (and choke) on every open.
+//
+// The plan must name exactly the units the engine left open. Resolving from
+// git's two sides instead — ours for every conflicted file, theirs for the
+// planned units — took a unit the engine had merged (an entity each side
+// added to one domain model) from ours, dropping theirs' change to it
+// without the plan ever naming it.
+func applyPlan(root string, repo *gitNoteRepo, mprAbs, mprPath, ref, planPath, message, branch string, push bool, runners mxRunners, out io.Writer) error {
 	raw, err := os.ReadFile(planPath)
 	if err != nil {
 		return fmt.Errorf("read plan: %w", err)
@@ -781,14 +855,6 @@ func applyPlan(root string, repo *gitNoteRepo, mprAbs, mprPath, ref, planPath, m
 		return abortMerge(root, errors.New("stale plan: the merge revisions moved since it was written; delete it and re-run the merge to regenerate"))
 	}
 
-	conflicted := nulFields(gitOutOr(root, "diff", "--name-only", "--diff-filter=U", "-z"))
-	var model []string
-	for _, p := range conflicted {
-		if isModelPath(repo, p) {
-			model = append(model, p)
-		}
-	}
-
 	// Every planned unit must be modified on both sides; anything else
 	// (added on one side, deleted, moved) only Studio Pro can decide.
 	baseSnap, err := repo.snapshot(baseSha)
@@ -816,36 +882,99 @@ func applyPlan(root string, repo *gitNoteRepo, mprAbs, mprPath, ref, planPath, m
 		take[u.ID] = u.Take
 	}
 
-	// Ours everywhere, then the planned units from theirs.
-	for _, p := range model {
-		if _, err := gitOutIn(root, nil, "checkout", "--ours", "--", p); err != nil {
-			return abortMerge(root, fmt.Errorf("take the ours version of %s: %w", p, err))
+	// The engine again, over clean worktrees as in the merge itself: the plan
+	// decides only what it leaves open.
+	revs, err := checkoutRevisions(root, ref, baseSha, oursSha, theirsSha)
+	if err != nil {
+		return abortMerge(root, err)
+	}
+	defer revs.cleanup()
+	fmt.Fprintf(out, "Merging the model with mx %s; the plan decides what the engine leaves open…\n", projectMendixVersion(mprPath))
+	code, mxOut, runErr := revs.runEngine(runners, repo, out)
+	switch {
+	case runErr != nil:
+		return abortMerge(root, fmt.Errorf("mx merge failed to run: %w", runErr))
+	case code == 0:
+		return abortMerge(root, errors.New("the engine now merges the model without a decision — the plan is unnecessary; re-run without --plan"))
+	case code != 2:
+		return abortMerge(root, fmt.Errorf("mx merge failed (exit %d); the merge is aborted — if it persists, resolve in Studio Pro (Version Control › Merge Changes Here)", code))
+	}
+	open := engineDecisions(mxOut, filepath.Join(revs.oursDir, filepath.FromSlash(repo.MPRPath)))
+	if len(open) == 0 {
+		return abortMerge(root, errors.New("the engine stopped on a decision but named no unit; resolve in Studio Pro (Version Control › Merge Changes Here)"))
+	}
+	isOpen := map[string]bool{}
+	for _, id := range open {
+		isOpen[id] = true
+		if _, planned := take[id]; !planned {
+			return abortMerge(root, fmt.Errorf("plan: unit %s is left for a decision by the engine and the plan does not decide it — delete the plan and re-run without --plan to regenerate it", shortCommit(id)))
 		}
 	}
-	for _, id := range conflictedUnitIDs(model) {
-		if take[id] != "theirs" {
-			continue
+	for _, u := range plan.Units {
+		if !isOpen[u.ID] {
+			return abortMerge(root, fmt.Errorf("plan: unit %s is merged without a decision by the engine — remove it from the plan: taking a side there drops the other side's change to it", shortCommit(u.ID)))
 		}
-		p := path.Join(repo.Contents, id[:2], id[2:4], id+".mxunit")
-		if _, err := gitOutIn(root, nil, "checkout", "--theirs", "--", p); err != nil {
-			return abortMerge(root, fmt.Errorf("take the theirs version of %s: %w", p, err))
-		}
-		fmt.Fprintf(out, "  %s: theirs\n", shortCommit(id))
 	}
-	// The .mpr index is ours; the mixed unit files have different bytes, so
-	// the hashes are rewritten from the files — files are the truth. The
-	// gate refuses (and aborts) when the sides' document sets differ: a unit
-	// theirs added is not in ours' .mpr, and committing would orphan it.
+
+	// The engine's result first, then each planned unit whole from its
+	// side's commit, its marker cleared. The hashes are rewritten from the
+	// files — files are the truth — and the gate refuses (and aborts) a
+	// result whose index and files disagree on which units exist.
+	if err := copyEngineResult(root, repo, revs.oursDir); err != nil {
+		return abortMerge(root, fmt.Errorf("copy the engine's merge result: %w", err))
+	}
+	var decided []string
+	for _, u := range plan.Units {
+		sha := oursSha
+		if u.Take == "theirs" {
+			sha = theirsSha
+		}
+		p := path.Join(repo.Contents, u.ID[:2], u.ID[2:4], u.ID+".mxunit")
+		if _, err := gitOutIn(root, nil, "checkout", sha, "--", p); err != nil {
+			return abortMerge(root, fmt.Errorf("take the %s version of %s: %w", u.Take, p, err))
+		}
+		decided = append(decided, u.ID)
+		fmt.Fprintf(out, "  %s: %s\n", shortCommit(u.ID), u.Take)
+	}
+	if err := clearDecidedMarkers(mprAbs, decided); err != nil {
+		return abortMerge(root, err)
+	}
 	if err := repairOrRefuse(root, mprPath, out); err != nil {
 		return err
 	}
+	// Nothing may be committed still marked: Studio Pro would report the
+	// project as mid-conflict (CE0137) on every open.
+	marks, err := conflictMarkers(mprAbs)
+	if err != nil {
+		return abortMerge(root, fmt.Errorf("read the merge conflict markers: %w", err))
+	}
+	if len(marks) > 0 {
+		var ids []string
+		for _, c := range marks {
+			ids = append(ids, shortCommit(c.UnitID))
+		}
+		return abortMerge(root, fmt.Errorf("refusing to commit: the index still marks unit(s) %s as conflicted; resolve in Studio Pro (Version Control › Merge Changes Here)", strings.Join(ids, ", ")))
+	}
 
-	args := []string{"add", "--"}
-	args = append(args, model...)
-	if _, err := gitOutIn(root, nil, args...); err != nil {
+	if _, err := gitOutIn(root, nil, "add", "-A", "--",
+		filepath.FromSlash(repo.MPRPath), filepath.FromSlash(repo.Contents)); err != nil {
 		return abortMerge(root, fmt.Errorf("stage the resolved model files: %w", err))
 	}
 	return commitTheMerge(root, repo, nil, message, branch, push, out)
+}
+
+// clearDecidedMarkers records the planned units as decided in the index: their
+// files now hold the chosen side, so the engine's marker on them goes.
+func clearDecidedMarkers(mprPath string, ids []string) error {
+	w, err := mpr.NewWriter(mprPath)
+	if err != nil {
+		return fmt.Errorf("open project: %w", err)
+	}
+	defer w.Close()
+	if _, err := w.ClearContentsConflicts(ids); err != nil {
+		return fmt.Errorf("clear the decided units' conflict markers: %w", err)
+	}
+	return nil
 }
 
 func changeStatuses(changes []mxModelChange) map[string]string {

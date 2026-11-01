@@ -6,6 +6,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -97,6 +98,96 @@ func TestGitMergeIntegration_PropertyConflictNeedsDecisionAborts(t *testing.T) {
 	}
 }
 
+// --plan over the engine's own result: each side adds an entity to
+// MyFirstModule's domain model — a unit the engine merges by itself — and
+// both retitle the same page, which it leaves for a decision. The plan the
+// first run writes names only the page; applying it must keep both entities
+// and commit an index with no conflict marker left (`mx check` reports
+// CE0137 while one is). Resolving from git's two sides instead took the
+// domain model from ours and lost theirs' entity, with the plan never
+// naming that unit.
+func TestGitMergeIntegration_PlanKeepsWhatTheEngineMerged(t *testing.T) {
+	dir, mpr, bin := mergeIntegrationRepo(t)
+
+	applyPage(t, bin, dir, mpr, "Shared", "Base title")
+	commitAll(t, dir, "base adds Shared")
+	gitIn(t, dir, "switch", "-q", "-c", "side")
+	applyMDL(t, bin, dir, mpr, "TheirsOnly", "mdl 1;\ncreate non-persistent entity MyFirstModule.TheirsOnly (Code: String(50));\n")
+	applyPage(t, bin, dir, mpr, "Shared", "Theirs retitle")
+	commitAll(t, dir, "side adds TheirsOnly, retitles Shared")
+	gitIn(t, dir, "switch", "-q", "main")
+	applyMDL(t, bin, dir, mpr, "OursOnly", "mdl 1;\ncreate non-persistent entity MyFirstModule.OursOnly (Name: String(50));\n")
+	applyPage(t, bin, dir, mpr, "Shared", "Ours retitle")
+	commitAll(t, dir, "main adds OursOnly, retitles Shared")
+	// Control: the title is distinctive — only the page carries it (the
+	// scaffold's own units say "Main title", for one).
+	if n := unitFilesContaining(t, dir, "Ours retitle"); n != 1 {
+		t.Fatalf("%d unit files carry ours' title before the merge, want 1 (the page)", n)
+	}
+
+	runners := mxRunners{merge: realMxMerge, diff: realMxDiff}
+	var first bytes.Buffer
+	if err := mergeRun(mpr, "side", "", "", "", false, runners, &first); err == nil {
+		t.Fatalf("the page conflict must stop for a decision\n%s", first.String())
+	}
+	raw, err := os.ReadFile(mpr + ".merge-plan.json")
+	if err != nil {
+		t.Fatalf("no plan template: %v\n%s", err, first.String())
+	}
+	_ = os.Remove(mpr + ".merge-plan.json") // working material, never committed
+	var plan mergePlanTemplate
+	if err := json.Unmarshal(raw, &plan); err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Units) != 1 {
+		t.Fatalf("the template must name only the unit the engine left open (the page), got %+v\n%s", plan.Units, first.String())
+	}
+	plan.Units[0].Take = "theirs"
+	edited, _ := json.Marshal(plan)
+	planPath := filepath.Join(t.TempDir(), "plan.json")
+	if err := os.WriteFile(planPath, edited, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := mergeRun(mpr, "side", "", "", planPath, false, runners, &out); err != nil {
+		t.Fatalf("mergeRun --plan: %v\n%s", err, out.String())
+	}
+	parents := strings.Fields(gitOutT(t, dir, "rev-list", "--parents", "-n", "1", "HEAD"))
+	if len(parents) != 3 {
+		t.Fatalf("want a two-parent merge commit, got %v", parents)
+	}
+	if st := gitOutT(t, dir, "status", "--porcelain"); strings.TrimSpace(st) != "" {
+		t.Errorf("working tree not clean after the merge:\n%s", st)
+	}
+	for _, name := range []string{"OursOnly", "TheirsOnly", "Theirs retitle"} {
+		if unitFilesContaining(t, dir, name) == 0 {
+			t.Errorf("no unit file carries %q: the plan's merge lost it", name)
+		}
+	}
+	if unitFilesContaining(t, dir, "Ours retitle") != 0 {
+		t.Error("the page still carries ours' title: the plan said theirs")
+	}
+	if marks, err := conflictMarkers(mpr); err != nil || len(marks) != 0 {
+		t.Errorf("merge conflict markers committed: %+v (%v)", marks, err)
+	}
+	mxPath, err := docker.ResolveMxForVersion("", projectMendixVersion(mpr))
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := exec.Command(mxPath, "check", mpr)
+	docker.PrepareMxCommand(check)
+	// The scaffold's own errors make the exit code meaningless here; what
+	// matters is that the check loaded the project and found no conflict.
+	checkOut, _ := check.CombinedOutput()
+	if !bytes.Contains(checkOut, []byte("Loading the mpr file")) {
+		t.Fatalf("mx check never loaded the project, so its silence on CE0137 proves nothing:\n%s", checkOut)
+	}
+	if bytes.Contains(checkOut, []byte("CE0137")) {
+		t.Errorf("mx check still reports the merge conflict (CE0137):\n%s", checkOut)
+	}
+}
+
 // mergeIntegrationRepo scaffolds a real Mendix project (`mx create-project`)
 // in a hermetic git repository and returns its dir, .mpr path and a built
 // mxcli binary for applying MDL. The project and the binary live in SHORT
@@ -177,13 +268,19 @@ func scaffoldProject(t *testing.T, dir string) {
 // project content, and committing it would conflict on both sides.
 func applyPage(t *testing.T, bin, dir, mpr, name, title string) {
 	t.Helper()
+	applyMDL(t, bin, dir, mpr, name, fmt.Sprintf("mdl 1;\ncreate or modify page MyFirstModule.%s (title: '%s', layout: Atlas_Core.Atlas_Default) {\n  dynamictext t1 (content: '%s')\n};\n", name, title, title))
+}
+
+// applyMDL applies one MDL script the same way; what names the change in a
+// failure message.
+func applyMDL(t *testing.T, bin, dir, mpr, what, mdl string) {
+	t.Helper()
 	f, err := os.CreateTemp("", "mxpage")
 	if err != nil {
 		t.Fatal(err)
 	}
 	script := f.Name()
 	t.Cleanup(func() { os.Remove(script) })
-	mdl := fmt.Sprintf("mdl 1;\ncreate or modify page MyFirstModule.%s (title: '%s', layout: Atlas_Core.Atlas_Default) {\n  dynamictext t1 (content: '%s')\n};\n", name, title, title)
 	if _, err := f.WriteString(mdl); err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +292,7 @@ func applyPage(t *testing.T, bin, dir, mpr, name, title string) {
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("apply %s: %v\n%s", name, err, stderr.String())
+		t.Fatalf("apply %s: %v\n%s", what, err, stderr.String())
 	}
 }
 

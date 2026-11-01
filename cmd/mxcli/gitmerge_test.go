@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mendixlabs/mxcli/modelsdk/mpr"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
@@ -494,50 +496,187 @@ func TestGitMerge_SideTakingResolves(t *testing.T) {
 	}
 }
 
-// A plan resolves per unit: tDM from ours, tMf from theirs — one merge commit,
-// hashes repaired from the mixed files, note attached.
-func TestGitMerge_PlanMixesPerUnit(t *testing.T) {
-	dir, mprPath := twoUnitConflictRepo(t)
-	doctorEnv(t, dir)
-	base := strings.TrimSpace(gitOutT(t, dir, "merge-base", "HEAD", "side"))
-	ours := strings.TrimSpace(gitOutT(t, dir, "rev-parse", "HEAD"))
-	theirs := strings.TrimSpace(gitOutT(t, dir, "rev-parse", "side"))
-	plan := fmt.Sprintf(`{"base":%q,"ours":%q,"theirs":%q,"units":[{"id":%q,"take":"ours"},{"id":%q,"take":"theirs"}]}`,
-		base, ours, theirs, tDM, tMf)
-	planPath := filepath.Join(dir, "merge-plan.json")
-	if err := os.WriteFile(planPath, []byte(plan), 0o644); err != nil {
-		t.Fatal(err)
-	}
+// engineMarker is what `mx merge` writes into ContentsConflicts for a unit it
+// left for a decision (measured, mx 11.13); every other row holds an empty
+// string.
+const engineMarker = `{"Conflicts":[{"ID":"00000000-0000-0000-0000-000000000000","HeadModification":"Change","MineModification":"Change"}]}`
 
-	noMx := mxRunners{merge: func(base, mine, theirs string, shas [3]string) (int, string, error) {
-		t.Fatal("--plan must not consult mx")
-		return 0, "", nil
-	}}
-	var out bytes.Buffer
-	if err := mergeRun(mprPath, "side", "", "", planPath, false, noMx, &out); err != nil {
-		t.Fatalf("mergeRun --plan: %v\n%s", err, out.String())
-	}
-	assertUnitHas := func(id, key string, want bool) {
-		t.Helper()
-		raw, err := os.ReadFile(filepath.Join(dir, unitRel(id)))
+// engineDecides simulates `mx merge` stopping on a decision (exit 2): it
+// writes result into MINE as the merged project, marks the manual units in
+// MINE's index the way the engine does, and prints the -v list naming manual
+// units ManualResolutionRequired and auto units AutoResolved.
+func engineDecides(t *testing.T, result map[string]tUnit, manual, auto []string) mxMergeRunner {
+	return func(base, mine, theirs string, shas [3]string) (int, string, error) {
+		writeProject(t, filepath.Dir(mine), "11.13.0", result)
+		db, err := sql.Open("sqlite", mine)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := bytes.Contains(raw, []byte(key)); got != want {
-			t.Errorf("%s contains %q = %v, want %v", id, key, got, want)
+		defer db.Close()
+		var list []string
+		for _, id := range manual {
+			if _, err := db.Exec(`UPDATE Unit SET ContentsConflicts = ? WHERE UnitID = ?`, engineMarker, mpr.IDToBsonBinary(id).Data); err != nil {
+				t.Fatal(err)
+			}
+			list = append(list, `{"UnitId":"`+id+`","Type":"MergeContents","TreeConflict":"None","ConflictResolutionDetails":"ManualResolutionRequired"}`)
 		}
+		for _, id := range auto {
+			list = append(list, `{"UnitId":"`+id+`","Type":"MergeContents","TreeConflict":"None","ConflictResolutionDetails":"AutoResolved"}`)
+		}
+		return 2, "Merging MPRs.\n[" + strings.Join(list, ",") + "]\nConflicts found during merging.", nil
 	}
-	assertUnitHas(tDM, "DocA", true)
-	assertUnitHas(tDM, "DocB", false)
-	assertUnitHas(tMf, "DocB", true)
-	assertUnitHas(tMf, "DocA", false)
+}
+
+// writePlanFor writes a plan for the merge in progress in dir — outside the
+// repository, so it never shows in the working tree — taking each unit from
+// the given side.
+func writePlanFor(t *testing.T, dir string, take map[string]string) string {
+	t.Helper()
+	plan := mergePlanTemplate{
+		Base:   strings.TrimSpace(gitOutT(t, dir, "merge-base", "HEAD", "side")),
+		Ours:   strings.TrimSpace(gitOutT(t, dir, "rev-parse", "HEAD")),
+		Theirs: strings.TrimSpace(gitOutT(t, dir, "rev-parse", "side")),
+	}
+	for id, side := range take {
+		plan.Units = append(plan.Units, planUnit{ID: id, Take: side})
+	}
+	raw, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(t.TempDir(), "merge-plan.json")
+	if err := os.WriteFile(p, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func assertUnitHas(t *testing.T, dir, id, key string, want bool) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(dir, unitRel(id)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := bytes.Contains(raw, []byte(key)); got != want {
+		t.Errorf("%s contains %q = %v, want %v", id, key, got, want)
+	}
+}
+
+// assertPlanMergeCommitted checks what every successful plan must leave: one
+// two-parent merge commit, a clean working tree, an index whose hashes match
+// the files, and no merge conflict marker left in it.
+func assertPlanMergeCommitted(t *testing.T, dir, mprPath string) {
+	t.Helper()
 	parents := strings.Fields(gitOutT(t, dir, "rev-list", "--parents", "-n", "1", "HEAD"))
 	if len(parents) != 3 {
 		t.Fatalf("want a two-parent merge commit, got %v", parents)
 	}
-	var out2 bytes.Buffer
-	if err := fixHashes(mprPath, false, &out2); err != nil {
-		t.Errorf("hashes drift after the plan merge: %v\n%s", err, out2.String())
+	if st := gitOutT(t, dir, "status", "--porcelain"); strings.TrimSpace(st) != "" {
+		t.Errorf("working tree not clean after the plan merge:\n%s", st)
+	}
+	var out bytes.Buffer
+	if err := fixHashes(mprPath, false, &out); err != nil {
+		t.Errorf("hashes drift after the plan merge: %v\n%s", err, out.String())
+	}
+	r, err := mpr.Open(mprPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	if marks, err := r.UnitConflicts(); err != nil || len(marks) != 0 {
+		t.Errorf("merge conflict markers left in the committed index: %+v (%v)", marks, err)
+	}
+}
+
+// A plan resolves per unit: the engine left both units for a decision, and
+// the plan takes tDM from ours and tMf from theirs — one merge commit, hashes
+// repaired from the files, both markers cleared.
+func TestGitMerge_PlanMixesPerUnit(t *testing.T) {
+	dir, mprPath := twoUnitConflictRepo(t)
+	doctorEnv(t, dir)
+	// The engine's result for undecided units: ours' content, marked.
+	result := baseUnits(t)
+	result[tDM] = tUnit{tMod, unitDoc(t, "DomainModels$DomainModel", "", mainSideKey)}
+	result[tMf] = tUnit{tMod, unitDoc(t, "Microflows$Microflow", "ACT_Save", mainSideKey)}
+	planPath := writePlanFor(t, dir, map[string]string{tDM: "ours", tMf: "theirs"})
+
+	mx := mxRunners{merge: engineDecides(t, result, []string{tDM, tMf}, nil)}
+	var out bytes.Buffer
+	if err := mergeRun(mprPath, "side", "", "", planPath, false, mx, &out); err != nil {
+		t.Fatalf("mergeRun --plan: %v\n%s", err, out.String())
+	}
+	assertUnitHas(t, dir, tDM, "DocA", true)
+	assertUnitHas(t, dir, tDM, "DocB", false)
+	assertUnitHas(t, dir, tMf, "DocB", true)
+	assertUnitHas(t, dir, tMf, "DocA", false)
+	assertPlanMergeCommitted(t, dir, mprPath)
+}
+
+// The plan decides only what the engine could not. Here the engine merged
+// tDM on its own (both sides' keys in its result) and left tMf for a
+// decision; a plan deciding tMf must keep the engine's tDM. Taking tDM from
+// ours instead drops theirs' change to it without the plan ever naming it —
+// measured with real mx: an entity each side added to the same domain model
+// is AutoResolved, while both sides editing one entity's documentation is not,
+// and the plan's commit lost theirs' entity.
+func TestGitMerge_PlanKeepsWhatTheEngineMerged(t *testing.T) {
+	dir, mprPath := twoUnitConflictRepo(t)
+	doctorEnv(t, dir)
+	result := baseUnits(t)
+	result[tDM] = tUnit{tMod, unitDoc(t, "DomainModels$DomainModel", "", mainSideKey, sideKey)}
+	result[tMf] = tUnit{tMod, unitDoc(t, "Microflows$Microflow", "ACT_Save", mainSideKey)}
+	planPath := writePlanFor(t, dir, map[string]string{tMf: "theirs"})
+
+	mx := mxRunners{merge: engineDecides(t, result, []string{tMf}, []string{tDM})}
+	var out bytes.Buffer
+	if err := mergeRun(mprPath, "side", "", "", planPath, false, mx, &out); err != nil {
+		t.Fatalf("mergeRun --plan: %v\n%s", err, out.String())
+	}
+	assertUnitHas(t, dir, tDM, "DocA", true)
+	assertUnitHas(t, dir, tDM, "DocB", true) // theirs' change, merged by the engine
+	assertUnitHas(t, dir, tMf, "DocB", true)
+	assertUnitHas(t, dir, tMf, "DocA", false)
+	assertPlanMergeCommitted(t, dir, mprPath)
+}
+
+// A plan must decide exactly the units the engine left for a decision: one it
+// leaves out would be committed with the engine's marker still in the index
+// (CE0137 in Studio Pro), and one the engine merged on its own would undo
+// that merge. Both are refused, and the refusal aborts the merge.
+func TestGitMerge_PlanMustMatchTheEnginesDecisions(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		manual, auto []string
+		take         map[string]string
+		want         string
+	}{
+		{"leaves out an undecided unit", []string{tDM, tMf}, nil,
+			map[string]string{tMf: "theirs"}, "does not decide"},
+		{"decides a unit the engine merged", []string{tMf}, []string{tDM},
+			map[string]string{tDM: "ours", tMf: "theirs"}, "merged without a decision"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, mprPath := twoUnitConflictRepo(t)
+			doctorEnv(t, dir)
+			result := baseUnits(t)
+			result[tDM] = tUnit{tMod, unitDoc(t, "DomainModels$DomainModel", "", mainSideKey)}
+			result[tMf] = tUnit{tMod, unitDoc(t, "Microflows$Microflow", "ACT_Save", mainSideKey)}
+			planPath := writePlanFor(t, dir, tc.take)
+			before := strings.TrimSpace(gitOutT(t, dir, "rev-parse", "HEAD"))
+
+			mx := mxRunners{merge: engineDecides(t, result, tc.manual, tc.auto)}
+			var out bytes.Buffer
+			err := mergeRun(mprPath, "side", "", "", planPath, false, mx, &out)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want a refusal mentioning %q, got %v\n%s", tc.want, err, out.String())
+			}
+			if got := strings.TrimSpace(gitOutT(t, dir, "rev-parse", "HEAD")); got != before {
+				t.Errorf("HEAD moved despite the refusal: %s", got)
+			}
+			if _, mhErr := gitOut(dir, "rev-parse", "--verify", "--quiet", "MERGE_HEAD"); mhErr == nil {
+				t.Error("MERGE_HEAD still present: the refusal must abort the merge")
+			}
+		})
 	}
 }
 
