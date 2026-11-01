@@ -53,8 +53,8 @@ func (b *Backend) SaveAll() error {
 }
 
 // concordDeleteDocument removes a standalone document (enumeration, microflow,
-// page) via Concord's delete_document. PED has no delete tool, so DROP of these
-// document types is only possible through Concord.
+// page) via Concord's delete_document — the DROP path for servers without
+// ped_delete_document (before 11.16), and deleteDocument's fallback.
 func (b *Backend) concordDeleteDocument(moduleName, docName string) error {
 	_, err := b.concordCall("delete_document", map[string]any{
 		"module_name":   moduleName,

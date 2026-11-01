@@ -35,8 +35,8 @@ func (b *Backend) UpdateNanoflow(nf *microflows.Nanoflow) error {
 	return errCreatePathUnbuilt("nanoflow", nf.Name)
 }
 
-// DeleteNanoflow drops an existing nanoflow via Concord's delete_document (PED has
-// no delete tool), like microflows. Requires --mcp-concord.
+// DeleteNanoflow drops an existing nanoflow via deleteDocument: ped_delete_document where Studio Pro has it (11.16+), else
+// Concord (--mcp-concord).
 func (b *Backend) DeleteNanoflow(id model.ID) error {
 	nf, err := b.GetNanoflow(id)
 	if err != nil {
@@ -46,7 +46,7 @@ func (b *Backend) DeleteNanoflow(id model.ID) error {
 	if err != nil {
 		return fmt.Errorf("resolve module for nanoflow %q: %w", nf.Name, err)
 	}
-	return b.concordDeleteDocument(modName, nf.Name)
+	return b.deleteDocument(nanoflowDocType, modName, nf.Name)
 }
 
 // Nanoflow reads delegate to the local reader (nanoflows can't be created over MCP,
