@@ -44,7 +44,8 @@ func setupModuleFilterDB(t *testing.T) catalog.CatalogDB {
 	_, err = db.Exec(`CREATE TABLE microflows (
 		Id TEXT, Name TEXT, QualifiedName TEXT, ModuleName TEXT, Folder TEXT,
 		MicroflowType TEXT, Description TEXT, ReturnType TEXT,
-		ParameterCount INTEGER, ActivityCount INTEGER, TotalActivityCount INTEGER DEFAULT 0, Complexity INTEGER
+		ParameterCount INTEGER, ActivityCount INTEGER, TotalActivityCount INTEGER DEFAULT 0, Complexity INTEGER,
+			Excluded INTEGER DEFAULT 0, ApplyEntityAccess INTEGER DEFAULT 0
 	)`)
 	if err != nil {
 		t.Fatalf("create microflows table: %v", err)
@@ -63,7 +64,7 @@ func setupModuleFilterDB(t *testing.T) catalog.CatalogDB {
 			mod+"_e", mod+"_Entity", mod+".Entity", mod); err != nil {
 			t.Fatalf("insert entity for %s: %v", mod, err)
 		}
-		if _, err := db.Exec(`INSERT INTO microflows VALUES (?, ?, ?, ?, '', 'Microflow', '', '', 0, 0, 0, 0)`,
+		if _, err := db.Exec(`INSERT INTO microflows (Id, Name, QualifiedName, ModuleName, Folder, MicroflowType, Description, ReturnType, ParameterCount, ActivityCount, TotalActivityCount, Complexity) VALUES (?, ?, ?, ?, '', 'Microflow', '', '', 0, 0, 0, 0)`,
 			mod+"_mf", mod+"_Flow", mod+".Flow", mod); err != nil {
 			t.Fatalf("insert microflow for %s: %v", mod, err)
 		}

@@ -11,11 +11,11 @@ description: "Write custom Starlark lint rules in .claude/lint-rules/ that run b
 | lines | section |
 |---|---|
 | 25-67 | Rule File Structure |
-| 68-161 | Available Query Functions |
-| 162-606 | Object Properties |
-| 607-620 | Helper Functions |
-| 621-707 | Common Patterns |
-| 708-716 | Validation |
+| 68-163 | Available Query Functions |
+| 164-543 | Object Properties |
+| 544-557 | Helper Functions |
+| 558-644 | Common Patterns |
+| 645-653 | Validation |
 
 <!-- /skill-index -->
 # Writing Custom Starlark Lint Rules
@@ -74,6 +74,7 @@ Without this, a rule that reads a full-only table under a fast build gets
 | `pages()` | list of page | All non-system pages |
 | `enumerations()` | list of enumeration | All non-system enumerations |
 | `constants()` | list of constant | All non-system constants |
+| `constant_values()` | list of constant_value | The constant values the run configurations set (Settings → Configurations), in constant then configuration order. A configuration that does not override a constant has no entry: it runs on the constant's `default_value` |
 | `widgets()` | list of widget | All non-system page and snippet widgets (full catalog — auto-detected) |
 | `snippets()` | list of snippet | All non-system snippets |
 | `scheduled_events()` | list of scheduled_event | All non-system scheduled events (requires MPR reader) |
@@ -95,6 +96,7 @@ Without this, a rule that reads a full-only table under a fast build gets
 | `module_roles()` | list of module_role | All module roles (deduplicated from role mappings) |
 | `role_mappings()` | list of role_mapping | User role to module role assignments |
 | `project_security()` | project_security or None | Project-level security settings (requires MPR reader) |
+| `project_settings()` | project_settings or None | Project-wide settings a guideline rule checks: default language, OQL version, Java version, hash algorithm, time zone, rounding, decimal scale, optimistic locking, foreign keys, web client (requires MPR reader; `None` without one) |
 | `languages()` | list of language | The languages **enabled** in the project settings, in settings order (requires MPR reader; `[]` without one). Use it to scope per-language checks: `strings()` has a row for every stored translation, including languages the project never enabled |
 | `xpath_expressions()` | list of xpath_expression | All XPath constraint expressions in the catalog (access rules, retrieve actions, widgets) (full catalog — auto-detected) |
 | `modules()` | list of module | The user's modules (not System, not Marketplace), with their domain model's documentation |
@@ -228,6 +230,8 @@ def check():
 | `complexity` | int | McCabe cyclomatic complexity |
 | `document_noun` | string | `"microflow"`, `"nanoflow"` or `"rule"` — for mid-sentence use in a message |
 | `document_noun_title` | string | `"Microflow"`, `"Nanoflow"` or `"Rule"` — for `document_type=` and a message that opens with it |
+| `excluded` | bool | "Exclude from project": the flow is not built or run. Most guideline rules should skip it |
+| `apply_entity_access` | bool | The flow's "Apply entity access" setting. Always `false` for a nanoflow, which has no such setting (entity access always applies there) |
 
 ### page
 | Property | Type | Example |
@@ -252,6 +256,15 @@ def check():
 | `folder` | string | `"enumerations"` — folder path within module |
 | `description` | string | Documentation text |
 | `value_count` | int | Number of enum values |
+| `values` | list of enumeration_value | The values in ordinal order; `[]` for an enumeration without any |
+
+### enumeration_value
+| Property | Type | Example |
+|----------|------|---------|
+| `name` | string | `"Slow"` |
+| `qualified_name` | string | `"Sales.ApiTimeout.Slow"` — the name `refs_from()` and an expression's `getCaption(Sales.ApiTimeout.Slow)` use |
+| `caption` | string | Caption in the project's default language: `"400"` |
+| `ordinal` | int | Position in the enumeration, from 0 |
 
 ### constant
 | Property | Type | Example |
@@ -264,6 +277,15 @@ def check():
 | `description` | string | Documentation text |
 | `default_value` | string | `"https://example.com"` |
 | `exposed_to_client` | bool | `true` if constant is exposed to client |
+
+### constant_value
+Returned by `constant_values()`, one per constant a run configuration overrides.
+
+| Property | Type | Example |
+|----------|------|---------|
+| `constant` | string | `"MyModule.AppBaseUrl"` — the constant's qualified name |
+| `configuration` | string | `"Default"` — the run configuration's name |
+| `value` | string | `"https://test.example.com"` |
 
 **widget** — the struct returned by `widgets()` — identity, references, tree
 position (`parent_widget_id`, `depth`), appearance (`class_name`, `style`) and
@@ -515,94 +537,9 @@ def count_not(node):
 | `timeout` | int | Configured timeout in milliseconds; `0` when none is set |
 | `module_name` | string | `"Sales"` |
 
-### permission
+The `permission` struct `permissions()` and `permissions_for()` return is in [catalog-tables.md](catalog-tables.md#permission).
 
-Returned by `permissions()` (all types) or `permissions_for()` (entity-specific).
-
-| Property | Type | Example |
-|----------|------|---------|
-| `module_role_name` | string | `"Sales.Admin"` — qualified, so it compares directly against `user_role.module_roles` |
-| `element_type` | string | `"ENTITY"`, `"MICROFLOW"`, `"NANOFLOW"`, `"PAGE"`, `"ODATA_SERVICE"` (from `permissions()` only) |
-| `element_name` | string | `"Sales.Customer"` |
-| `module_name` | string | `"Sales"` |
-| `entity_name` | string | `"Sales.Customer"` (from `permissions_for()` only) |
-| `access_type` | string | `"CREATE"`, `"READ"`, `"WRITE"`, `"DELETE"` (entity), `"EXECUTE"` (microflow, nanoflow), `"VIEW"` (page), `"ACCESS"` (OData service), `"MEMBER_READ"`, `"MEMBER_WRITE"` |
-| `member_name` | string | Attribute name (for MEMBER_READ/MEMBER_WRITE) |
-| `xpath_constraint` | string | XPath constraint or empty |
-| `is_constrained` | bool | True if XPath constraint is set |
-| `default_member_access_rights` | string | The rule's "default rights for new members": `"None"`, `"ReadOnly"` or `"ReadWrite"`. Empty for non-entity permissions |
-
-### user_role
-| Property | Type | Example |
-|----------|------|---------|
-| `name` | string | `"Administrator"` |
-| `description` | string | The role's documentation in Project Security; `""` when none |
-| `is_anonymous` | bool | True if this is the anonymous/guest role |
-| `module_roles` | list of string | `["Sales.Admin", "HR.Viewer"]` |
-| `check_security` | bool | Studio Pro's per-role "Check security" flag |
-| `manage_all_roles` | bool | The role may hand out every user role |
-| `manage_users_without_roles` | bool | The role may manage users that have no role |
-| `manageable_roles` | list of string | The user roles this role may hand out, when not all |
-
-### module_role
-| Property | Type | Example |
-|----------|------|---------|
-| `name` | string | `"Sales.Admin"` — qualified module role name |
-| `module_name` | string | `"Sales"` |
-| `description` | string | Module role description |
-
-### role_mapping
-| Property | Type | Example |
-|----------|------|---------|
-| `user_role_name` | string | `"Administrator"` |
-| `module_role_name` | string | `"Sales.Admin"` |
-| `module_name` | string | `"Sales"` |
-
-### reference
-| Property | Type | Example |
-|----------|------|---------|
-| `source_type` | string | The document the edge comes FROM, upper-case: `"MICROFLOW"`, `"NANOFLOW"`, `"RULE"`, `"PAGE"`, `"SNIPPET"`, `"ENTITY"`, `"ASSOCIATION"`, `"WORKFLOW"`, `"NAVIGATION"`, `"SCHEDULED_EVENT"`, `"PUBLISHED_REST_OPERATION"`, `"PUBLISHED_REST_SERVICE"`, `"PUBLISHED_ODATA_SERVICE"`, `"CONSUMED_ODATA_SERVICE"`, `"BUSINESS_EVENT_SERVICE"`, `"PROJECT_SETTINGS"`, `"IMPORT_MAPPING"`, `"EXPORT_MAPPING"`, `"MESSAGE_DEFINITION_COLLECTION"`, `"MESSAGE_DEFINITION"` |
-| `source_id` | string | Source UUID |
-| `source_name` | string | `"Sales.ACT_Customer_Create"` |
-| `target_type` | string | What it points AT, upper-case: `"ENTITY"`, `"ASSOCIATION"`, `"MICROFLOW"`, `"NANOFLOW"`, `"RULE"`, `"PAGE"`, `"LAYOUT"`, `"WORKFLOW"`, `"WIDGET"`, `"JAVA_ACTION"`, `"JAVASCRIPT_ACTION"`, `"REST_OPERATION"`, `"REGULAR_EXPRESSION"`, `"ATTRIBUTE"`, `"ENUMERATION"`, `"ENUMERATION_VALUE"`. `LAYOUT`, `WIDGET`, `ATTRIBUTE`, `ENUMERATION` and `ENUMERATION_VALUE` are only ever targets; `SCHEDULED_EVENT`, `PROJECT_SETTINGS` and the service types only ever sources |
-| `target_id` | string | Target UUID |
-| `target_name` | string | `"Sales.Customer"`; three-part for an attribute or an enumeration value: `"Sales.Order.Total"`, `"Sales.OrderStatus.Open"` |
-| `ref_kind` | string | How it references: `"call"`, `"create"`, `"retrieve"`, `"change"`, `"delete"`, `"commit"` (a commit action, or a create/change that commits — beside its `"create"`/`"change"` edge; a commit of a variable whose entity the flow cannot tell has no edge), `"show_page"`, `"datasource"`, `"action"`, `"layout"`, `"parameter"`, `"return"`, `"generalize"`, `"associate"`, `"home_page"`, `"login_page"`, `"menu_item"`, `"calculate"`, `"schedule"`, `"validate"`, `"settings"`, `"widget"`, `"sync"`, `"publish"` (a published REST operation, OData resource or action, or a service's authentication microflow), `"event"` (an entity event or a business event handler), `"member"` (binds/reads/writes an attribute or navigates an association), `"xpath"` (an XPath constraint names it), `"type"` (typed as an enumeration), `"value"` (an expression names an enumeration value), `"mapping"` (an import/export mapping maps the entity, or a message definition exposes it), `"split"` (a decision branches on an object being the entity) — lower-case, unlike the types above. Attribute names used only through a variable in a free-text expression (`$Order/Total`) have no edge |
-| `module_name` | string | Source module |
-
-### project_security
-
-Returned by `project_security()`. Returns `none` if no MPR reader is available.
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `security_level` | string | `"CheckNothing"` (Off), `"CheckFormsAndMicroflows"` (Prototype), `"CheckEverything"` (Production) |
-| `enable_demo_users` | bool | Whether demo users are enabled |
-| `enable_guest_access` | bool | Whether anonymous/guest access is enabled |
-| `check_security` | bool | Whether security checking is active |
-| `strict_mode` | bool | Strict security mode |
-| `anonymous_user_role` | string | Name of the project's guest user role, the role anonymous users get. Read `enable_guest_access` too: the role name can stay set while guest access is off |
-| `admin_user_name` | string | Name of the administrator account: `"MxAdmin"`. Its password is deliberately not exposed |
-| `admin_user_role` | string | The administrator account's user role: `"Administrator"` |
-| `password_policy` | struct | Nested password policy settings |
-
-#### password_policy (nested in project_security)
-| Property | Type | Description |
-|----------|------|-------------|
-| `min_length` | int | Minimum password length |
-| `require_digit` | bool | Must contain a digit |
-| `require_mixed_case` | bool | Must contain upper and lower case |
-| `require_symbol` | bool | Must contain a symbol |
-
-### language
-
-Returned by `languages()`, one per language enabled in the project settings. A per-language check skips `strings()` rows whose `language` is not among these codes.
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `code` | string | Language code: `"en_US"`, `"nl_NL"` |
-| `is_default` | bool | Whether this is the project's default language |
-| `check_completeness` | bool | Whether Studio Pro checks this language's translations for completeness |
+The structs `user_roles()`, `module_roles()`, `role_mappings()`, `project_security()`, `languages()` and `project_settings()` return — `user_role`, `module_role`, `role_mapping`, `project_security`, `language`, `project_settings` — are in [security-and-settings.md](security-and-settings.md).
 
 ## Helper Functions
 

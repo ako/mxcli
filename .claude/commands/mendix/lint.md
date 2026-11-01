@@ -27,6 +27,10 @@ mxcli lint -p app.mpr --list-rules
 
 # Exclude modules
 mxcli lint -p app.mpr --exclude System --exclude Administration
+
+# Only findings not in a recorded baseline (record it once with --update-baseline)
+mxcli lint -p app.mpr --baseline lint-baseline.json --update-baseline
+mxcli lint -p app.mpr --baseline lint-baseline.json
 ```
 
 ## Built-in Go Rules

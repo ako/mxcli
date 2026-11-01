@@ -36,11 +36,10 @@ func localProject(t *testing.T) string {
 
 // backendFor returns an unconnected Backend pointed at the fake Studio Pro.
 //
-// The dial address is passed explicitly, as connectClient does. An empty one
-// lets defaultDial rewrite 127.0.0.1 to host.docker.internal wherever that name
-// resolves — correct for a real Studio Pro on the host, but inside a devcontainer
-// it sends the request to the Docker host instead of the httptest listener in
-// this container, and Connect fails with "connection refused".
+// The dial address is passed explicitly, as connectClient does, so the test
+// reaches the httptest listener whatever the environment. (Without it the
+// client dials the URL host first and falls back to host.docker.internal only
+// if that fails; see dialPlan.)
 func backendFor(ped *fakePED) *Backend {
 	return New(ped.srv.URL+"/mcp", strings.TrimPrefix(ped.srv.URL, "http://"))
 }

@@ -33,7 +33,8 @@ func setupMicroflowsDB(t *testing.T, rows [][]any) catalog.CatalogDB {
 	_, err = db.Exec(`CREATE TABLE microflows (
 		Id TEXT, Name TEXT, QualifiedName TEXT, ModuleName TEXT, Folder TEXT,
 		MicroflowType TEXT, Description TEXT, ReturnType TEXT,
-		ParameterCount INTEGER, ActivityCount INTEGER, TotalActivityCount INTEGER DEFAULT 0, Complexity INTEGER
+		ParameterCount INTEGER, ActivityCount INTEGER, TotalActivityCount INTEGER DEFAULT 0, Complexity INTEGER,
+			Excluded INTEGER DEFAULT 0, ApplyEntityAccess INTEGER DEFAULT 0
 	)`)
 	if err != nil {
 		t.Fatalf("failed to create microflows table: %v", err)

@@ -391,23 +391,15 @@ func describeNanoflow(ctx *ExecContext, name ast.QualifiedName) error {
 	}
 
 	// Build microflow/nanoflow name lookup (used for call actions)
-	microflowNames := make(map[model.ID]string)
-	allMicroflows, err := ctx.Backend.ListMicroflows()
+	microflowNames, err := flowNames(ctx, h, true)
 	if err != nil {
-		return mdlerrors.NewBackend("list microflows", err)
-	}
-	for _, mf := range allMicroflows {
-		microflowNames[mf.ID] = h.GetQualifiedName(mf.ContainerID, mf.Name)
+		return mdlerrors.NewBackend("list flows", err)
 	}
 
-	// Find the nanoflow
-	allNanoflows, err := ctx.Backend.ListNanoflows()
+	// Find the nanoflow: only the nanoflows of this name are decoded (#1850).
+	allNanoflows, err := nanoflowsNamed(ctx.Backend, name.Name)
 	if err != nil {
 		return mdlerrors.NewBackend("list nanoflows", err)
-	}
-
-	for _, nf := range allNanoflows {
-		microflowNames[nf.ID] = h.GetQualifiedName(nf.ContainerID, nf.Name)
 	}
 
 	// Describe the live nanoflow, not an excluded twin of the same name (#914).
@@ -536,13 +528,13 @@ func describeMicroflowToString(ctx *ExecContext, name ast.QualifiedName) (string
 		}
 	}
 
-	microflowNames := make(map[model.ID]string)
-	allMicroflows, err := ctx.Backend.ListMicroflows()
+	microflowNames, err := flowNames(ctx, h, false)
 	if err != nil {
 		return "", nil, mdlerrors.NewBackend("list microflows", err)
 	}
-	for _, mf := range allMicroflows {
-		microflowNames[mf.ID] = h.GetQualifiedName(mf.ContainerID, mf.Name)
+	allMicroflows, err := microflowsNamed(ctx, name.Name)
+	if err != nil {
+		return "", nil, mdlerrors.NewBackend("list microflows", err)
 	}
 
 	// Describe the live microflow: a module may hold an excluded twin of this
@@ -583,21 +575,13 @@ func describeNanoflowToString(ctx *ExecContext, name ast.QualifiedName) (string,
 		}
 	}
 
-	microflowNames := make(map[model.ID]string)
-	allMicroflows, err := ctx.Backend.ListMicroflows()
+	microflowNames, err := flowNames(ctx, h, true)
 	if err != nil {
-		return "", nil, mdlerrors.NewBackend("list microflows", err)
+		return "", nil, mdlerrors.NewBackend("list flows", err)
 	}
-	for _, mf := range allMicroflows {
-		microflowNames[mf.ID] = h.GetQualifiedName(mf.ContainerID, mf.Name)
-	}
-
-	allNanoflows, err := ctx.Backend.ListNanoflows()
+	allNanoflows, err := nanoflowsNamed(ctx.Backend, name.Name)
 	if err != nil {
 		return "", nil, mdlerrors.NewBackend("list nanoflows", err)
-	}
-	for _, nf := range allNanoflows {
-		microflowNames[nf.ID] = h.GetQualifiedName(nf.ContainerID, nf.Name)
 	}
 
 	// Describe the live nanoflow, not an excluded twin of the same name (#914).
@@ -1553,13 +1537,9 @@ func describeRule(ctx *ExecContext, name ast.QualifiedName) error {
 
 	// A rule's body can call microflows, so the call-target lookup is the same
 	// one the microflow describer builds.
-	microflowNames := make(map[model.ID]string)
-	allMicroflows, err := ctx.Backend.ListMicroflows()
+	microflowNames, err := flowNames(ctx, h, false)
 	if err != nil {
 		return mdlerrors.NewBackend("list microflows", err)
-	}
-	for _, mf := range allMicroflows {
-		microflowNames[mf.ID] = h.GetQualifiedName(mf.ContainerID, mf.Name)
 	}
 
 	allRules, err := ctx.Backend.ListRules()

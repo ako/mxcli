@@ -408,6 +408,7 @@ func (r *StarlarkRule) buildPredeclared() starlark.StringDict {
 		"pages":                 starlark.NewBuiltin("pages", r.builtinPages),
 		"enumerations":          starlark.NewBuiltin("enumerations", r.builtinEnumerations),
 		"constants":             starlark.NewBuiltin("constants", r.builtinConstants),
+		"constant_values":       starlark.NewBuiltin("constant_values", r.builtinConstantValues),
 		"widgets":               starlark.NewBuiltin("widgets", r.builtinWidgets),
 		"refs_to":               starlark.NewBuiltin("refs_to", r.builtinRefsTo),
 		"refs_from":             starlark.NewBuiltin("refs_from", r.builtinRefsFrom),
@@ -448,6 +449,7 @@ func (r *StarlarkRule) buildPredeclared() starlark.StringDict {
 		"role_mappings":    starlark.NewBuiltin("role_mappings", r.builtinRoleMappings),
 		"project_security": starlark.NewBuiltin("project_security", r.builtinProjectSecurity),
 		"languages":        starlark.NewBuiltin("languages", r.builtinLanguages),
+		"project_settings": starlark.NewBuiltin("project_settings", r.builtinProjectSettings),
 
 		// XPath / expression analysis
 		"xpath_expressions": starlark.NewBuiltin("xpath_expressions", r.builtinXPathExpressions),
@@ -636,6 +638,79 @@ func (r *StarlarkRule) builtinConstants(_ *starlark.Thread, _ *starlark.Builtin,
 	}
 
 	return starlark.NewList(constants), nil
+}
+
+// builtinConstantValues returns the constant values the run configurations set
+// (ako/mxcli#1453). A configuration that does not override a constant has no
+// entry: it runs on the constant's default_value.
+func (r *StarlarkRule) builtinConstantValues(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := starlark.UnpackArgs(b.Name(), args, kwargs); err != nil {
+		return nil, err
+	}
+	if r.ctx == nil {
+		return starlark.NewList(nil), nil
+	}
+	var out []starlark.Value
+	for c := range r.ctx.ConstantValues() {
+		out = append(out, starlarkstruct.FromStringDict(starlark.String("constant_value"), starlark.StringDict{
+			"constant":      starlark.String(c.Constant),
+			"configuration": starlark.String(c.Configuration),
+			"value":         starlark.String(c.Value),
+		}))
+	}
+	return starlark.NewList(out), nil
+}
+
+// builtinProjectSettings returns the project-wide settings a guideline rule
+// checks (ako/mxcli#1453), or None when no project is open. Like languages(),
+// it reads the settings from the project rather than a catalog table, so it
+// needs no particular catalog depth; a failed read fails the rule rather than
+// answering defaults a rule would report as the project's.
+func (r *StarlarkRule) builtinProjectSettings(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := starlark.UnpackArgs(b.Name(), args, kwargs); err != nil {
+		return nil, err
+	}
+	if r.ctx == nil || r.ctx.Reader() == nil {
+		return starlark.None, nil
+	}
+	ps, err := r.ctx.Reader().GetProjectSettings()
+	if err != nil {
+		return nil, fmt.Errorf("%s: reading project settings: %w", b.Name(), err)
+	}
+	if ps == nil {
+		return starlark.None, nil
+	}
+	d := starlark.StringDict{
+		"default_language":        starlark.String(""),
+		"use_oql_version_2":       starlark.Bool(false),
+		"java_version":            starlark.String(""),
+		"hash_algorithm":          starlark.String(""),
+		"default_time_zone":       starlark.String(""),
+		"rounding_mode":           starlark.String(""),
+		"decimal_scale":           starlark.MakeInt(0),
+		"optimistic_locking":      starlark.Bool(false),
+		"foreign_key_constraints": starlark.Bool(false),
+		"web_client":              starlark.String(""),
+	}
+	if m := ps.Model; m != nil {
+		d["use_oql_version_2"] = starlark.Bool(m.UseOQLVersion2)
+		d["java_version"] = starlark.String(m.JavaVersion)
+		d["hash_algorithm"] = starlark.String(m.HashAlgorithm)
+		d["default_time_zone"] = starlark.String(m.DefaultTimeZoneCode)
+		d["rounding_mode"] = starlark.String(m.RoundingMode)
+		d["decimal_scale"] = starlark.MakeInt(m.DecimalScale)
+		d["optimistic_locking"] = starlark.Bool(m.EnableDataStorageOptimisticLocking)
+		d["foreign_key_constraints"] = starlark.Bool(m.UseDatabaseForeignKeyConstraints)
+	}
+	if ps.Language != nil {
+		d["default_language"] = starlark.String(ps.Language.DefaultLanguageCode)
+	}
+	if ps.WebUI != nil {
+		// Web UI → UseOptimizedClient: "Yes" is the React client, "No" the
+		// classic one, "MigrationMode" Mendix's mixed mode.
+		d["web_client"] = starlark.String(ps.WebUI.UseOptimizedClient)
+	}
+	return starlarkstruct.FromStringDict(starlark.String("project_settings"), d), nil
 }
 
 // builtinWidgets returns an iterator over widgets.
@@ -1120,6 +1195,10 @@ func microflowToStarlark(mf Microflow) starlark.Value {
 		// Title case matches the document_type spelling Starlark rules use.
 		"document_noun":       starlark.String(mf.DocumentNoun()),
 		"document_noun_title": starlark.String(mf.DocumentNounTitle()),
+		// "Exclude from project": a guideline rule usually skips such a flow,
+		// and could not tell it apart (ako/mxcli#1453).
+		"excluded":            starlark.Bool(mf.Excluded),
+		"apply_entity_access": starlark.Bool(mf.ApplyEntityAccess),
 	})
 }
 
@@ -1179,7 +1258,24 @@ func enumerationToStarlark(e Enumeration) starlark.Value {
 		"folder":         starlark.String(e.Folder),
 		"description":    starlark.String(e.Description),
 		"value_count":    starlark.MakeInt(e.ValueCount),
+		"values":         enumerationValuesToStarlark(e.Values),
 	})
+}
+
+// enumerationValuesToStarlark lists an enumeration's values in ordinal order,
+// each with the qualified name refs_from() uses for it, so a rule can resolve
+// getCaption(Module.Enum.Value) (mendixlabs/mxcli#1310).
+func enumerationValuesToStarlark(values []EnumerationValue) *starlark.List {
+	out := make([]starlark.Value, 0, len(values))
+	for _, v := range values {
+		out = append(out, starlarkstruct.FromStringDict(starlark.String("enumeration_value"), starlark.StringDict{
+			"name":           starlark.String(v.Name),
+			"qualified_name": starlark.String(v.QualifiedName),
+			"caption":        starlark.String(v.Caption),
+			"ordinal":        starlark.MakeInt(v.Ordinal),
+		}))
+	}
+	return starlark.NewList(out)
 }
 
 // constantToStarlark converts a LintConstant to a Starlark struct.
@@ -1271,6 +1367,8 @@ func allPermissionToStarlark(p AllPermission) starlark.Value {
 		"is_constrained":               starlark.Bool(p.IsConstrained),
 		"module_name":                  starlark.String(p.ModuleName),
 		"default_member_access_rights": starlark.String(p.DefaultMemberAccessRights),
+		"access_rule_id":               starlark.String(p.AccessRuleID),
+		"access_rule_index":            starlark.MakeInt(p.AccessRuleIndex),
 	})
 }
 
@@ -1285,6 +1383,9 @@ func permissionToStarlark(p Permission) starlark.Value {
 		"xpath_constraint":             starlark.String(p.XPathConstraint),
 		"is_constrained":               starlark.Bool(p.IsConstrained),
 		"default_member_access_rights": starlark.String(p.DefaultMemberAccessRights),
+		// Rows sharing an access_rule_id are one access rule (ako/mxcli#1437).
+		"access_rule_id":    starlark.String(p.AccessRuleID),
+		"access_rule_index": starlark.MakeInt(p.AccessRuleIndex),
 	})
 }
 

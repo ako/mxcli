@@ -86,6 +86,20 @@ func listUnits[T element.Element](b *Backend) ([]mprread.Unit[T], error) {
 	return mprread.ListUnitsWithContainer[T](b.reader)
 }
 
+// unitHeaders lists the ID, container, name and Excluded flag of every unit of
+// type T without decoding any of them.
+func unitHeaders[T element.Element](b *Backend) ([]types.DocumentHeader, error) {
+	hs, err := mprread.ListUnitHeaders[T](b.reader)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]types.DocumentHeader, len(hs))
+	for i, h := range hs {
+		out[i] = types.DocumentHeader(h)
+	}
+	return out, nil
+}
+
 func (b *Backend) ListUnits() ([]*types.UnitInfo, error) {
 	us, err := b.reader.ListUnits()
 	if err != nil {

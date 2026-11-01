@@ -42,11 +42,12 @@ func TestSEC008CountsOnlyRolesThatReadAPiiMember(t *testing.T) {
 			('a2','Email','e1','FS.Engineer','FS','String',200,0,0,'',0,'')`,
 		`CREATE TABLE permissions (ModuleRoleName TEXT, ElementType TEXT, ElementName TEXT,
 			MemberName TEXT, AccessType TEXT, XPathConstraint TEXT,
-			DefaultMemberAccessRights TEXT, ModuleName TEXT)`,
+			DefaultMemberAccessRights TEXT, ModuleName TEXT,
+			AccessRuleId TEXT, AccessRuleIndex INTEGER)`,
 		// Coordinator reads Email (explicit, qualified member name), Admin reads
 		// it through default rights (bare member name), FieldEngineer reads only
 		// FullName, Requester reads Email but row-scoped.
-		`INSERT INTO permissions VALUES
+		`INSERT INTO permissions (ModuleRoleName, ElementType, ElementName, MemberName, AccessType, XPathConstraint, DefaultMemberAccessRights, ModuleName) VALUES
 			('FS.Coordinator','ENTITY','FS.Engineer',NULL,'READ','','None','FS'),
 			('FS.Coordinator','ENTITY','FS.Engineer','FS.Engineer.FullName','MEMBER_READ','','None','FS'),
 			('FS.Coordinator','ENTITY','FS.Engineer','FS.Engineer.Email','MEMBER_READ','','None','FS'),
