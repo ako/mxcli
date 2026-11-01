@@ -1,5 +1,7 @@
 # Rework `mxcli git merge` per ako's review (PR #1674)
 
+**Status:** Superseded in part. Section A did not hold on Linux: `mx merge` with folder arguments exits 129, and MINE as the working tree mid-merge crashes it, so the engine takes three `.mpr` paths over clean worktrees (the command's help and `docs-site/src/tools/outside-studio-pro.md` describe the shipped design). `--plan` no longer resolves from git's two sides either: it re-runs the engine and decides only the units the engine left open.
+
 Decisions (user, 2026-10-30): switch the engine call to `mx merge` (folder mode);
 keep `--ours`/`--theirs` but limited to conflicted units with a hash gate; one
 push after the rework passes `make ci-local`.
