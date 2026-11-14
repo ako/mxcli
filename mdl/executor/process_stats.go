@@ -30,7 +30,9 @@ type ProcessStats struct {
 	// UnitStoreHits is the reads served from the persisted unit store. With
 	// UnitFileReads it is every read not served from memory, so a command
 	// that reads a unit twice shows here even when no file was opened twice.
-	UnitStoreHits int64 `json:"unit_store_hits,omitempty"`
+	// Always written, zero included: a reader tells a command that made none
+	// from a binary too old to count them by whether the key is there.
+	UnitStoreHits int64 `json:"unit_store_hits"`
 	WritesOffered int   `json:"writes_offered"`
 	WritesWritten int   `json:"writes_written"`
 }
