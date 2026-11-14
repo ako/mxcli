@@ -219,7 +219,11 @@ cat /tmp/stats.jsonl
 ```
 
 One line is appended per project connection closed, so a command that
-reconnects, or starts child mxcli processes, appends several. `writes_written`
+reconnects, or starts child mxcli processes, appends several. A line also has
+`unit_store_hits` when the command read units from the persisted unit store
+(`.mxcli/cache/`) instead of their files: with `unit_file_reads` it is every
+read that was not served from memory, which is how a command that reads the
+same unit twice shows up when no file was opened twice. `writes_written`
 counts stored units rewritten after reconciliation; a newly created document
 is not in it, which is why the benchmark also counts changed files from
 outside.
