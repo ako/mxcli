@@ -9,6 +9,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/mdl/linter"
+	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/modelsdk/meta"
 )
@@ -231,7 +232,7 @@ func namedNameSet(ctx *ExecContext, kind, target string) *nameSet {
 		if err != nil {
 			return newNameSet(nil)
 		}
-		mfs, err := microflowHeaders(ctx)
+		mfs, err := microflowHeadersNamedFold(ctx, short)
 		if err != nil {
 			return newNameSet(nil)
 		}
@@ -239,12 +240,14 @@ func namedNameSet(ctx *ExecContext, kind, target string) *nameSet {
 			add(h, mf.ContainerID, mf.Name)
 		}
 		// As buildMicroflowQualifiedNames: the platform's own, only beside a
-		// listing that has an answer.
-		if len(mfs) > 0 {
-			for _, qn := range meta.SystemMicroflows {
-				if strings.EqualFold(qn, target) {
-					names[qn] = true
-				}
+		// listing that has an answer. Whether it has one is only asked when
+		// the target is one of them.
+		for _, qn := range meta.SystemMicroflows {
+			if !strings.EqualFold(qn, target) {
+				continue
+			}
+			if all, err := microflowHeaders(ctx); err == nil && len(all) > 0 {
+				names[qn] = true
 			}
 		}
 	case "nanoflow":
@@ -275,6 +278,32 @@ func namedNameSet(ctx *ExecContext, kind, target string) *nameSet {
 		return nil
 	}
 	return newNameSet(names)
+}
+
+// microflowHeaderFilter is a backend that lists the microflow headers a name
+// filter accepts without copying the header of every microflow.
+type microflowHeaderFilter interface {
+	ListMicroflowHeadersWhere(keep func(name string) bool) ([]types.DocumentHeader, error)
+}
+
+// microflowHeadersNamedFold is the headers of the microflows whose name
+// folds to short.
+func microflowHeadersNamedFold(ctx *ExecContext, short string) ([]types.DocumentHeader, error) {
+	keep := func(name string) bool { return strings.EqualFold(name, short) }
+	if l, ok := ctx.Backend.(microflowHeaderFilter); ok {
+		return l.ListMicroflowHeadersWhere(keep)
+	}
+	all, err := microflowHeaders(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []types.DocumentHeader
+	for _, h := range all {
+		if keep(h.Name) {
+			out = append(out, h)
+		}
+	}
+	return out, nil
 }
 
 // domainModelNameSet is the entity or association names of the modules called
