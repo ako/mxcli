@@ -223,6 +223,12 @@ func catalogCurrent(ctx *ExecContext, mode string) bool {
 	if err != nil || info == nil {
 		return false
 	}
+	// A catalog that records no build mode, or a session with no project file,
+	// was not built from the project (a test hands one in): there is nothing
+	// to compare it against or rebuild it from, so it answers as before.
+	if info.BuildMode == "" || ctx.MprPath == "" {
+		return true
+	}
 	if catalogModeRank(info.BuildMode) < catalogModeRank(mode) {
 		return false
 	}
