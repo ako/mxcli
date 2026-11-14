@@ -33,6 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - **`check --references` resolves `System.ShowHomePage`** (ako/mxcli#2247, mendixlabs/mxcli#1857) — a menu item calling it, as `describe navigation` prints for the Home item of many starter apps, was "microflow not found". The System module's microflows ship with the platform and are now known (measured on Mendix 11.12.6: `ShowHomePage` is its only one).
+- **The built-in System images can be referenced** (ako/mxcli#2235, mendixlabs/mxcli#1848) — `Image: 'System.Images.Completed'` and the other images of `System.Images` and `System.WorkflowImages` were "image collection not found" in `check` and `exec`, although `mx check` accepts them. A misspelt System collection is still refused.
 
 - **`mxcli git merge` exits 3 when it stops for a decision, and cleans up its plan template** (ako/mxcli#2240, mendixlabs/mxcli#1854) — a model conflict the engine leaves open, or text conflicts left for manual resolution, exited 1 like a real failure, so a script could not tell them apart. They now exit **3**; failures stay 1 (2 is mxcli's usage-error code, so it is not reused). The `<mpr>.merge-plan.json` template beside the project is removed once the merge commits, instead of turning up in the next `git add -A`; a plan file passed from another path is left alone.
 
