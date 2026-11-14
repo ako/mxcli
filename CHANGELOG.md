@@ -32,6 +32,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **`check` refuses an audit field's declared name in a widget expression** (ako/mxcli#2253) — with `ChangedDate: AutoChangedDate` on the entity, `Visible: $currentObject/ChangedDate != empty` passed `check` and `exec` and failed the build with CE0117: the member is the system attribute. The error names the spelling that builds — `changedDate`, `createdDate`, `System.owner`, `System.changedBy` (measured on Mendix 11.12.6).
+
 - **`check --references` resolves `System.ShowHomePage`** (ako/mxcli#2247, mendixlabs/mxcli#1857) — a menu item calling it, as `describe navigation` prints for the Home item of many starter apps, was "microflow not found". The System module's microflows ship with the platform and are now known (measured on Mendix 11.12.6: `ShowHomePage` is its only one).
 - **The built-in System images can be referenced** (ako/mxcli#2235, mendixlabs/mxcli#1848) — `Image: 'System.Images.Completed'` and the other images of `System.Images` and `System.WorkflowImages` were "image collection not found" in `check` and `exec`, although `mx check` accepts them. A misspelt System collection is still refused.
 - **`sync-java-deps` accepts a newer patch Gradle resolved** (ako/mxcli#2248, mendixlabs/mxcli#1858) — a declared `bcprov-jdk18on:1.81` vendored as `bcprov-jdk18on-1.81.1.jar` was reported "still missing from vendorlib/". A newer release of the same major.minor now satisfies the declaration, and a dependency that is really missing names the versions vendorlib does hold.
