@@ -1,0 +1,15 @@
+mdl 1;
+-- CONTROL for published-odata-binary-attribute.fail.mdl: every attribute type MxBuild
+-- 11.16.1 exposes clean in a published OData service. Binary is the only one it refuses.
+create enumeration MyFirstModule.PtLevel (Low 'Low', High 'High');
+create persistent entity MyFirstModule.PtAll (
+  Code: string(36) unique, H: hashedstring, I: integer, L: long, De: decimal, B: boolean,
+  D: datetime, An: autonumber default 1, Lvl: enumeration(MyFirstModule.PtLevel), Photo: binary
+);
+create module role MyFirstModule.PtApiUser;
+create published odata service MyFirstModule.PtApi (path: 'odata/ptapi/', version: '1.0.0', ODataVersion: OData4, namespace: 'My.PtApi', ServiceName: 'PtApi', Authentication: (basic))
+{
+  publish entity MyFirstModule.PtAll as 'Alls' (ReadMode: source, InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported)
+  expose (Code (KEY), H, I, L, De, B, D, An, Lvl);
+};
+grant access on published odata service MyFirstModule.PtApi to MyFirstModule.PtApiUser;
