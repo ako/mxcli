@@ -447,6 +447,8 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 	violations = append(violations, ValidateMappingHandlerTypes(prog, project)...)
 	// A `split type` without its subject's own entity, with a duplicate, or with an entity that is not a specialization (CE0090/CE0771/CE0774).
 	violations = append(violations, ValidateInheritanceSplits(prog, project)...)
+	// `call external action` naming an action the consumed service's contract does not have (CE7251).
+	violations = append(violations, ValidateExternalActionNames(prog, project)...)
 
 	// Flag a REST client operation whose Body/Response mapping clause has no
 	// `{ ... }` body — Mendix cannot reference a mapping document from an
