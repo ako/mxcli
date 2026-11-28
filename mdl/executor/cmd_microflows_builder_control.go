@@ -27,8 +27,10 @@ func (fb *flowBuilder) addIfStatement(s *ast.IfStmt) model.ID {
 	// Calculate branch width (max of both branches)
 	branchWidth := max(thenBounds.Width, elseBounds.Width)
 	elseColumn := fb.layoutStyle().IfElse == IfElseColumn && ifHasElse(s)
+	var columnBounds Bounds
 	if elseColumn {
-		branchWidth = elseColumnBranchWidth(thenBounds, fb.measurer.measureColumn(s.ElseBody))
+		columnBounds = fb.measurer.measureColumn(s.ElseBody)
+		branchWidth = elseColumnBranchWidth(thenBounds, columnBounds)
 	}
 	if branchWidth == 0 {
 		branchWidth = HorizontalSpacing / 2
@@ -183,6 +185,7 @@ func (fb *flowBuilder) addIfStatement(s *ast.IfStmt) model.ID {
 
 	if hasElseBody {
 		// IF WITH ELSE: TRUE path horizontal (happy path), FALSE path below
+		thenFirst := len(fb.objects)
 		fb.posX = thenStartX
 		fb.posY = centerY
 		fb.endsWithReturn = false
@@ -303,7 +306,7 @@ func (fb *flowBuilder) addIfStatement(s *ast.IfStmt) model.ID {
 		fb.posY = elseCenterY
 		var column *elseColumnCursor
 		if elseColumn {
-			column = fb.startElseColumn(splitX, centerY+thenH/2+BranchGap)
+			column = fb.startElseColumn(splitX, elseColumnTop(splitX, centerY, columnBounds, fb.objects[thenFirst:]))
 		}
 		fb.endsWithReturn = false
 

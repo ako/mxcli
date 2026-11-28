@@ -192,6 +192,39 @@ func objectsExtent(objects []microflows.MicroflowObject) (top, bottom int, ok bo
 	return top, bottom, ok
 }
 
+// elseColumnTop is the top edge of an ELSE column hung under the split at
+// (splitX, centerY): the first row under the decision, unless something the
+// TRUE body drew stands in the column's band — from half an activity left of
+// the split to the column's measured width and a lane gap past it — in which case
+// BranchGap under the lowest such thing.
+//
+// It used to be BranchGap under the TRUE body's whole measured height. That
+// height includes the columns of IFs nested in the TRUE body, which stand at
+// their own decisions' x, right of this column; so each outer column began under
+// every inner one, a staircase as deep as the nesting (ako/mxcli#2650).
+func elseColumnTop(splitX, centerY int, column Bounds, then []microflows.MicroflowObject) int {
+	top := centerY + ActivityHeight/2 + BranchGap
+	left := splitX - ActivityWidth/2
+	right := left + max(column.Width, ActivityWidth) + laneGap
+	for _, o := range then {
+		if o == nil {
+			continue
+		}
+		p := o.GetPosition()
+		w, h := ActivityWidth, ActivityHeight
+		if ws, ok := o.(interface{ GetSize() model.Size }); ok {
+			if sz := ws.GetSize(); sz.Width > 0 && sz.Height > 0 {
+				w, h = sz.Width, sz.Height
+			}
+		}
+		if p.X+w/2 <= left || p.X-w/2 >= right {
+			continue
+		}
+		top = max(top, p.Y+h/2+BranchGap)
+	}
+	return top
+}
+
 // measureColumn measures an ELSE body stacked as a column: as wide as its widest
 // statement, as tall as all of them with RowGap between. A RETURN draws an end
 // event at the bottom.
