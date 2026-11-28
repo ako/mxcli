@@ -32,6 +32,9 @@ begin
     log info 'small 1';
     log info 'small 2';
   end if;
+  if $N > 5 then
+    log info 'over five';
+  end if;
   log info 'ok';
   return true;
 end;

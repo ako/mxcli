@@ -55,6 +55,23 @@ func ifHasElse(s *ast.IfStmt) bool {
 	return s.HasElse && !lastStmtIsReturn(s.ThenBody)
 }
 
+// withColumnElse returns s as the layout draws it under style. Under
+// true-right-else-column an IF without ELSE whose THEN carries on is drawn as one
+// with an empty ELSE: TRUE on the centre line, the empty FALSE down from the
+// split and back up into the merge. Left as it was, it kept the default's shape
+// — TRUE in a lane below, FALSE on the line — the one IF the style turned the
+// other way round (ako/mxcli#2636). The model is the same either way: an empty
+// ELSE is the false flow into the merge. A guard is left alone; where its
+// branch goes is the guard setting's.
+func withColumnElse(style flowLayout, s *ast.IfStmt) *ast.IfStmt {
+	if style.IfElse != IfElseColumn || ifHasElse(s) || len(s.ThenBody) == 0 || lastStmtIsReturn(s.ThenBody) {
+		return s
+	}
+	c := *s
+	c.HasElse = true
+	return &c
+}
+
 // ifJoinsNothingAtTail reports whether addIfStatement, building s as the last
 // statement of a loop body, leaves out its merge: an IF/ELSE whose two branches
 // both carry on there ends the iteration either way (mendixlabs/mxcli#884).
