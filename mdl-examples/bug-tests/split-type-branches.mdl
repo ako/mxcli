@@ -1,0 +1,46 @@
+mdl 1;
+-- CONTROL for split-type-invalid-branches.fail.mdl: `split type` shapes MxBuild 11.16.1
+-- builds clean. A subtype may be left out; only the subject's own entity is required.
+create persistent entity MyFirstModule.StAnimal (Name: string(50));
+create persistent entity MyFirstModule.StDog extends MyFirstModule.StAnimal (Bark: string(50));
+create persistent entity MyFirstModule.StCat extends MyFirstModule.StAnimal (Meow: string(50));
+create persistent entity MyFirstModule.StOther (X: string(5));
+create microflow MyFirstModule.StAll ($A: MyFirstModule.StAnimal) returns boolean begin
+  @start(100, 200)
+  @position(400, 200)
+  split type $A
+    when MyFirstModule.StDog then
+      log info node 'n' 'StDog';
+    when MyFirstModule.StCat then
+      log info node 'n' 'StCat';
+    when MyFirstModule.StAnimal then
+      log info node 'n' 'StAnimal';
+    when (empty) then
+      log info node 'n' 'none';
+  end split;
+  return true;
+end;
+create microflow MyFirstModule.StSubtypeLeftOut ($A: MyFirstModule.StAnimal) returns boolean begin
+  @start(100, 200)
+  @position(400, 200)
+  split type $A
+    when MyFirstModule.StDog then
+      log info node 'n' 'StDog';
+    when MyFirstModule.StAnimal then
+      log info node 'n' 'StAnimal';
+    when (empty) then
+      log info node 'n' 'none';
+  end split;
+  return true;
+end;
+create microflow MyFirstModule.StDogSubject ($A: MyFirstModule.StDog) returns boolean begin
+  @start(100, 200)
+  @position(400, 200)
+  split type $A
+    when MyFirstModule.StDog then
+      log info node 'n' 'StDog';
+    when (empty) then
+      log info node 'n' 'none';
+  end split;
+  return true;
+end;

@@ -307,8 +307,10 @@ func init() {
 			"  WHEN (empty) THEN                  -- the NULL-object branch, not a default\n" +
 			"    ...\n" +
 			"END SPLIT;\n\n" +
-			"Both take `WHEN ... THEN` branches. `SPLIT TYPE` needs one per subtype AND\n" +
-			"the base entity; its `(empty)` branch is the null object and covers no type.\n" +
+			"Both take `WHEN ... THEN` branches. `SPLIT TYPE` needs a branch for the\n" +
+			"subject's own entity (CE0090); a subtype may be left out (MxBuild 11.16.1).\n" +
+			"Branch only on that entity or a specialization (CE0774), each once (CE0771):\n" +
+			"check reports all three as MDL109. The `(empty)` branch is the null object.\n" +
 			"Legacy `CASE Module.Entity` / `ELSE` inside SPLIT TYPE still parse (MDL065).",
 		Example: "CASE $Order/Status\n  WHEN Draft, Submitted THEN\n    LOG INFO 'Not shipped yet';\n  WHEN Approved THEN\n    LOG INFO 'Ready to ship';\n  WHEN (empty) THEN\n    LOG INFO 'No status';\nEND CASE;\n\nSPLIT TYPE $Animal\n  WHEN Zoo.Dog THEN\n    LOG INFO 'woof';\n  WHEN Zoo.Cat THEN\n    LOG INFO 'meow';\n  WHEN Zoo.Animal THEN\n    LOG INFO 'some other animal';\n  WHEN (empty) THEN\n    LOG INFO 'no animal at all';\nEND SPLIT;",
 		SeeAlso: []string{"microflow.control-flow", "microflow.variables"},
