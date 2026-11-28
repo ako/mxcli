@@ -327,9 +327,7 @@ func (m *Mutator) SetWidgetNamedAction(widgetRef, propertyKey string, action pag
 	}
 	obj := bsonnav.DGetDoc(result.widget, "Object")
 	if obj == nil {
-		return fmt.Errorf("widget %q (%s) is not a pluggable widget and has no named action slots — "+
-			"a built-in widget's click action is set with `set (Action: …) on %s`",
-			widgetRef, widgetTypeName(result.widget), widgetRef)
+		return m.setBuiltInEventAction(result.widget, widgetRef, propertyKey, action)
 	}
 
 	keys, kinds := pluggablePropertyTypes(result.widget)
@@ -367,6 +365,70 @@ func (m *Mutator) SetWidgetNamedAction(widgetRef, propertyKey string, action pag
 	}
 	return fmt.Errorf("widget %q has no action slot %q — its action slots are: %s",
 		widgetRef, propertyKey, slotList(actionSlots))
+}
+
+// builtInEventActions are the event actions a built-in input stores beside its
+// click action: the MDL name CREATE PAGE reads (`OnChange:`) and the key the
+// widget stores it under. Studio Pro's Events section, in its order.
+var builtInEventActions = []struct{ key, stored string }{
+	{"OnChange", "OnChangeAction"},
+	{"OnEnter", "OnEnterAction"},
+	{"OnLeave", "OnLeaveAction"},
+	{"OnEnterKeyPress", "OnEnterKeyPressAction"},
+}
+
+// setBuiltInEventAction writes one of a built-in widget's event actions — a
+// text box's OnChangeAction, say — addressed by its MDL name or its stored
+// one. Before ako/mxcli#2602 every such key was refused as "not a pluggable
+// widget", and the refusal pointed at `set (Action: …)`, which addresses the
+// click action a text box does not have.
+//
+// The key is written only where the stored widget holds it, for the reason
+// SetWidgetAction gives: Studio Pro throws on a property its type does not
+// know, while mxbuild builds it clean.
+func (m *Mutator) setBuiltInEventAction(widget bson.D, widgetRef, propertyKey string, action pages.ClientAction) error {
+	var has []string
+	stored := ""
+	for _, ev := range builtInEventActions {
+		present := false
+		for _, e := range widget {
+			if e.Key == ev.stored {
+				present = true
+				break
+			}
+		}
+		if present {
+			has = append(has, ev.key)
+		}
+		if strings.EqualFold(propertyKey, ev.key) || strings.EqualFold(propertyKey, ev.stored) {
+			stored = ev.stored
+			if !present {
+				stored = "-"
+			}
+		}
+	}
+	switch stored {
+	case "":
+		hint := "a built-in widget's click action is set with `set (Action: …) on " + widgetRef + "`"
+		if len(has) > 0 {
+			hint = "its event actions are: " + strings.Join(has, ", ") + "; " + hint
+		}
+		return fmt.Errorf("widget %q (%s) is not a pluggable widget and has no action %q — %s",
+			widgetRef, widgetTypeName(widget), propertyKey, hint)
+	case "-":
+		events := "none"
+		if len(has) > 0 {
+			events = strings.Join(has, ", ")
+		}
+		return fmt.Errorf("widget %q (%s) has no %s action — its event actions are: %s",
+			widgetRef, widgetTypeName(widget), propertyKey, events)
+	}
+	serialized := m.deps.SerializeClientAction(action)
+	if serialized == nil {
+		return fmt.Errorf("unsupported action type %T", action)
+	}
+	bsonnav.DSet(widget, stored, serialized)
+	return nil
 }
 
 // pluggablePropertyTypes maps a pluggable widget's PropertyType IDs to their
