@@ -383,4 +383,3 @@ func TestIfElseColumn_IfWithoutElseKeepsTrueOnTheCentreLine(t *testing.T) {
 		t.Errorf("guard: TRUE activity at %v, want below the split at %v", p, split.GetPosition())
 	}
 }
-
