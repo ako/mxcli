@@ -388,6 +388,7 @@ func (m *layoutMeasurer) measureIfStatement(s *ast.IfStmt) Bounds {
 // centre, as if that were its left edge, and came out 45px short: the merge of an
 // enclosing IF stood inside the activity after it (ako/mxcli#1773).
 func (m *layoutMeasurer) measureIf(s *ast.IfStmt, atTail bool) Bounds {
+	s = withColumnElse(m.layoutStyle(), s)
 	// Measure THEN branch
 	thenBounds := m.measureBranch(s.ThenBody)
 

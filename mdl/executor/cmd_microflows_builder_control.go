@@ -19,6 +19,7 @@ import (
 // When a branch ends with RETURN, it terminates at its own EndEvent and does not
 // connect to the merge. When both branches end with RETURN, no merge is created.
 func (fb *flowBuilder) addIfStatement(s *ast.IfStmt) model.ID {
+	s = withColumnElse(fb.layoutStyle(), s)
 	// First, measure the branches to know how much space they need
 	thenBounds := fb.measurer.measureBranch(s.ThenBody)
 	elseBounds := fb.measurer.measureBranch(s.ElseBody)
@@ -406,6 +407,11 @@ func (fb *flowBuilder) addIfStatement(s *ast.IfStmt) model.ID {
 				// Explicit empty ELSE body: the split still needs a configured
 				// false case when both branches converge at the merge.
 				flow := newDownwardFlowWithCase(splitID, mergeID, "false")
+				if column != nil {
+					// Down from the split and back up into the merge, under the
+					// TRUE body rather than through it (ako/mxcli#2636).
+					flow.DestinationConnectionIndex = AnchorBottom
+				}
 				applyUserAnchors(flow, falseBranchAnchor, falseBranchAnchor)
 				fb.flows = append(fb.flows, flow)
 			}

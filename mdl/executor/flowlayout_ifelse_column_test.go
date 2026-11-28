@@ -333,3 +333,53 @@ func TestIfElseColumn_AppliesInsideALoopBody(t *testing.T) {
 		}
 	}
 }
+
+// ako/mxcli#2636: under true-right-else-column an IF without ELSE whose THEN
+// carries on is drawn as one with an empty ELSE — TRUE on the centre line, the
+// empty FALSE straight down from the split and back up into the merge. It used
+// to keep the default's shape, with TRUE in a lane below.
+func TestIfElseColumn_IfWithoutElseKeepsTrueOnTheCentreLine(t *testing.T) {
+	noElse := &ast.IfStmt{Condition: &ast.LiteralExpr{Kind: ast.LiteralBoolean, Value: true}, ThenBody: logStatements(1)}
+	stmts := append([]ast.MicroflowStatement{noElse}, logStatements(1)...)
+	fb := buildWithLayout(t, stmts, columnLayout())
+
+	split, _ := firstOfType[*microflows.ExclusiveSplit](fb.objects)
+	merge, ok := firstOfType[*microflows.ExclusiveMerge](fb.objects)
+	if !ok {
+		t.Fatal("no merge")
+	}
+	acts := activityIDs(fb.objects)
+	then := objectByIDIn(fb.objects, acts[0])
+	sp := split.GetPosition()
+	if then.GetPosition().Y != sp.Y || then.GetPosition().X <= sp.X {
+		t.Errorf("TRUE activity at %v, want right of the split at %v on its line", then.GetPosition(), sp)
+	}
+	if merge.GetPosition().Y != sp.Y || merge.GetPosition().X <= then.GetPosition().X {
+		t.Errorf("merge at %v, want on the centre line past the TRUE activity", merge.GetPosition())
+	}
+	if f := flowFrom(fb.flows, split.GetID(), "true"); f == nil || f.OriginConnectionIndex != AnchorRight || f.DestinationID != then.GetID() {
+		t.Errorf("TRUE flow = %+v, want split right -> TRUE activity", f)
+	}
+	if f := flowFrom(fb.flows, split.GetID(), "false"); f == nil || f.DestinationID != merge.GetID() ||
+		f.OriginConnectionIndex != AnchorBottom || f.DestinationConnectionIndex != AnchorBottom {
+		t.Errorf("FALSE flow = %+v, want split bottom -> merge bottom", f)
+	}
+	assertNoOverlap(t, fb.objects)
+
+	// Control: the default style keeps TRUE in the lane below.
+	fb = buildWithLayout(t, stmts, &flowLayout{})
+	split, _ = firstOfType[*microflows.ExclusiveSplit](fb.objects)
+	if p := objectByIDIn(fb.objects, activityIDs(fb.objects)[0]).GetPosition(); p.Y <= split.GetPosition().Y {
+		t.Errorf("default style: TRUE activity at %v, want below the split at %v", p, split.GetPosition())
+	}
+
+	// A guard is not this case: its THEN ends the flow, and the guard setting
+	// decides where it goes.
+	guard := &ast.IfStmt{Condition: &ast.LiteralExpr{Kind: ast.LiteralBoolean, Value: true},
+		ThenBody: append(logStatements(1), &ast.ReturnStmt{})}
+	fb = buildWithLayout(t, append([]ast.MicroflowStatement{guard}, logStatements(1)...), columnLayout())
+	split, _ = firstOfType[*microflows.ExclusiveSplit](fb.objects)
+	if p := objectByIDIn(fb.objects, activityIDs(fb.objects)[0]).GetPosition(); p.Y <= split.GetPosition().Y {
+		t.Errorf("guard: TRUE activity at %v, want below the split at %v", p, split.GetPosition())
+	}
+}
