@@ -279,8 +279,9 @@ type InheritanceSplitCase struct {
 //
 // ElseBody is Mendix's `(empty)` outgoing flow — the branch taken when the
 // object is NULL. It is NOT a default for unmatched types: mxbuild demands a
-// flow for every subtype and for the base entity regardless (CE0090), and
-// omitting this one is CE0089. It is spelled `when (empty) then`; `else` is
+// flow for the subject's own entity regardless (CE0090; on 11.13.0 for every
+// subtype as well, on 11.16.1 only for the base), and omitting this one is
+// CE0089 — which is why the builder always emits it. It is spelled `when (empty) then`; `else` is
 // the legacy spelling that reads as a default and is not one (mxcli #913).
 type InheritanceSplitStmt struct {
 	Variable    string // Variable name without $ prefix
