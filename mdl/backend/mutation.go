@@ -107,7 +107,10 @@ type PageMutator interface {
 
 	// SetWidgetNamedAction writes an action into a pluggable widget's action
 	// slot addressed by the widget's own property key (e.g. the File Uploader's
-	// createFileAction). Refuses a key that is not an action-typed property.
+	// createFileAction), or into one of a built-in input's event actions
+	// (OnChange, OnEnter, OnLeave, OnEnterKeyPress — by that name or the stored
+	// one) where the stored widget has it (ako/mxcli#2602). Refuses a key that
+	// is neither.
 	SetWidgetNamedAction(widgetRef string, propertyKey string, action pages.ClientAction) error
 
 	// SetColumnProperty sets a property on a column within a grid widget.

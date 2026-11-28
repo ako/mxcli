@@ -181,8 +181,7 @@ set (Action: call microflow Module.ACT_Other) on btnSave
 set (Action: SAVE CHANGES CLOSE PAGE) on btnSave
 set (Action: SHOW PAGE Module.DetailPage) on btnEdit
 
--- Retarget ONE named action slot of a pluggable widget, by the widget's own
--- property key (the same key `create page` takes: `createFileAction: …`).
+-- ONE named action slot of a pluggable widget, by its property key (as `create page` takes it):
 set ('createFileAction': call microflow Module.ACT_CreateFile) on fileUploader1
 set ('onSelectionChange': show page Module.Detail) on dgOrders
 
@@ -214,6 +213,7 @@ so a silent write would build cleanly and then fail to open.
 |----------|-------------|------------|---------|
 | `Action` (alias `onClick`) | Widgets with an on-click action: ACTIONBUTTON, LINKBUTTON, CONTAINER, LISTVIEW, STATICIMAGE, DYNAMICIMAGE — and a pluggable widget's click slot (GALLERY / DATAGRID row click). A gallery row click on a single-click selection is refused under `mdl 1;` (MDL-WIDGET36): add `onClickTrigger: 'double'` to the SET, or `replace` the gallery with `Selection: None` | Any `create page` action expression | `set (Action: call microflow M.ACT_Go) on card1` |
 | `'<slotKey>'` | Pluggable widgets — any **action-typed** property (File Uploader `createFileAction`, DataGrid 2 `onSelectionChange`, …) | Any `create page` action expression | `set ('createFileAction': call microflow M.ACT_Create) on fileUploader1` — refused, naming the widget's action slots, if the key is not action-typed |
+| `OnChange`, `OnEnter`, `OnLeave`, `OnEnterKeyPress` | Built-in inputs: TEXTBOX, TEXTAREA, DATEPICKER, DROPDOWN, CHECKBOX, RADIOBUTTONS (`OnEnterKeyPress`: TEXTBOX only). The stored names (`OnChangeAction`, …) work too | Any `create page` action expression | `set (OnChange: call microflow M.OCH_Amount(Entry = $currentObject)) on txtAmount` — refused, naming the widget's event actions, if it has no such event |
 | `caption` | ACTIONBUTTON, LINKBUTTON | String | `set (caption: 'Submit') on btnSave` |
 | `content` | DYNAMICTEXT | String | `set (content: 'New Heading') on txtTitle` |
 | `RenderMode` | DYNAMICTEXT | Text, Paragraph, H1–H6 (any case; another value is refused, naming the set) | `set (RenderMode: H2) on txtTitle` |

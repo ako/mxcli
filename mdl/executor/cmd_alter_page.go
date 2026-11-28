@@ -559,7 +559,8 @@ func applySetProperties(ctx *ExecContext, mutator backend.PageMutator, op *ast.S
 			}
 		} else if isActionValue {
 			// Any other key carrying an action is a pluggable widget's NAMED
-			// action slot — `set 'createFileAction' = microflow M.F` (#995).
+			// action slot — `set 'createFileAction' = microflow M.F` (#995) —
+			// or a built-in input's event action, `set (OnChange: …)` (#2602).
 			// Same builder as `Action`; the mutator checks the key is an
 			// action-typed property of the stored widget. Through
 			// SetWidgetProperty it would be stringified into a PrimitiveValue.
