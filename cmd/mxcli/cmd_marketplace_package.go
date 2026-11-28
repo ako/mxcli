@@ -43,11 +43,13 @@ read it back.
     its usage and write nothing.
 
 The mx must be the Mendix version of the project: a package made by another
-version than the app it comes from is refused, naming both versions. mx is taken
-from, in order, an mx on PATH, a Studio Pro install and the mxbuild cache, so a
-different version can be found first; 'mxcli setup mxbuild --version <version>'
-installs the right one. --mxbuild-path is the override: with it a mismatch is
-allowed, with a warning on stderr.
+version than the app it comes from is refused, naming both versions. An
+installed or cached mx of the project's release is taken first, before an mx on
+PATH; without one, mx is taken from an mx on PATH, a Studio Pro install or the
+mxbuild cache, so a different version can be found, and
+'mxcli setup mxbuild --version <version>' installs the right one. --mxbuild-path
+is the override: the folder must hold an mx, and with it a mismatch is allowed,
+with a warning on stderr.
 
 mx writes into the project it is given (theme-cache/, deployment/sass/, the
 module's themesource/ folder), so it runs on a temporary copy; the project on
@@ -143,6 +145,10 @@ var packageProjectInfo = func(mprPath string) (version string, modules []string,
 
 var resolveMxForPackage = docker.ResolveMxForVersion
 
+// localMxForPackage finds an installed or cached mx of exactly a version, never
+// one on PATH (docker.LocalMxForVersion); injected for tests.
+var localMxForPackage = docker.LocalMxForVersion
+
 // mxBinaryVersion reports the Mendix version of an mx binary, "" when unknown.
 var mxBinaryVersion = docker.MxBinaryVersion
 
@@ -208,9 +214,9 @@ func runPackage(ctx context.Context, opts packageOptions, stdout, stderr io.Writ
 			return nil, fmt.Errorf("--mxbuild-path %s: %w", opts.MxBuildPath, err)
 		}
 	}
-	mxPath, err := resolveMxForPackage(opts.MxBuildPath, version)
+	mxPath, err := packageMxPath(opts.MxBuildPath, version, opts.ProjectPath)
 	if err != nil {
-		return nil, fmt.Errorf("locate mx for Mendix %s: %w\nhint: run 'mxcli setup mxbuild -p %s'", version, err, opts.ProjectPath)
+		return nil, err
 	}
 	mxVersion, err := checkMxVersion(mxPath, version, opts.MxBuildPath != "", stderr)
 	if err != nil {
@@ -320,6 +326,30 @@ func mxArgs(opts packageOptions, packageDir, targetMpr, module string) []string 
 // Mendix version than the app it comes from. override is true when the user named
 // the mx with --mxbuild-path; then the same findings are only warned about on
 // stderr (which --json leaves alone).
+// packageMxPath finds the mx a package is made with (ako/mxcli#2652).
+//
+// Without --mxbuild-path an installed or cached mx of exactly the project's
+// release comes first: ResolveMxForVersion tries PATH before it, so another
+// version's mx on PATH made the export refuse although the right toolchain was
+// installed. With it, only an mx under that path may be used — the resolver
+// falls back to PATH when the folder holds none, and the override would then
+// export with an mx nobody named. The same rule as git merge (#2644).
+func packageMxPath(mxbuildPath, version, projectPath string) (string, error) {
+	if mxbuildPath == "" && version != "" {
+		if exact := localMxForPackage(version); exact != "" {
+			return exact, nil
+		}
+	}
+	mxPath, err := resolveMxForPackage(mxbuildPath, version)
+	if err != nil {
+		return "", fmt.Errorf("locate mx for Mendix %s: %w\nhint: run 'mxcli setup mxbuild -p %s'", version, err, projectPath)
+	}
+	if mxbuildPath != "" && !pathWithin(mxPath, mxbuildPath) {
+		return "", fmt.Errorf("no mx in %s (the mx found instead, %s, was not named by --mxbuild-path)", mxbuildPath, mxPath)
+	}
+	return mxPath, nil
+}
+
 func checkMxVersion(mxPath, projectVersion string, override bool, stderr io.Writer) (string, error) {
 	got := mxBinaryVersion(mxPath)
 	if projectVersion == "" {
@@ -340,8 +370,8 @@ func checkMxVersion(mxPath, projectVersion string, override bool, stderr io.Writ
 		return got, nil
 	}
 	return "", fmt.Errorf("%s.\nA package made by another Mendix version than the app it comes from is refused.\n"+
-		"hint: run 'mxcli setup mxbuild --version %s' to install the matching toolchain (an mx on PATH is used before it,\n"+
-		"so take that one off PATH); to use this mx on purpose, pass --mxbuild-path", problem, projectVersion)
+		"hint: run 'mxcli setup mxbuild --version %s' to install the matching toolchain (an installed mx of the\n"+
+		"project's release is used before one on PATH); to use this mx on purpose, pass --mxbuild-path", problem, projectVersion)
 }
 
 // mxDescription names the mx for the progress line: its path, and its version when known.
