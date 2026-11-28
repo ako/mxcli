@@ -253,6 +253,13 @@ would compute prints `@size(w, h)`, as does a `while true` loop-head merge or a
 size prints it as `@merge(x, y, w, h)`. Studio Pro draws merges at 90×60, so a
 flow from Studio Pro keeps its boxes when it is dropped and created again.
 
+An activity or a decision resized in Studio Pro prints `@size(w, h)` too —
+anything other than 120×60 for an activity or a `split type`, or 90×60 for a
+decision — and the
+same annotation gives a generated one its size. `CREATE OR MODIFY` resizes the
+stored box when the script states another `@size`; a statement without one
+keeps the box it is stored with, as one without `@position` keeps its place.
+
 Whether an annotation is needed is not guessed from the coordinates. `DESCRIBE`
 builds the flow again from its own output, exactly as `CREATE OR MODIFY` would
 (nothing is written), and every node that lands elsewhere keeps its annotation.

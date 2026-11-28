@@ -115,10 +115,24 @@ func (fb *flowBuilder) applyAnnotations(activityID model.ID, ann *ast.ActivityAn
 	}
 
 	// Find the object by ID for @caption, @color, and @excluded
-	if ann.HasCaption() || ann.Color != "" || ann.Excluded || ann.Documentation != nil {
+	if ann.HasCaption() || ann.Color != "" || ann.Excluded || ann.Documentation != nil || ann.Size != nil {
 		for _, obj := range fb.objects {
 			if obj.GetID() != activityID {
 				continue
+			}
+			// @size (ako/mxcli#2589): an activity's or a decision's box, as
+			// Studio Pro stores a resized one. A loop's is applied where its box
+			// is fitted to its body, and a merge's where it is made.
+			if sz := ann.Size; sz != nil && sz.Width > 0 && sz.Height > 0 {
+				box := model.Size{Width: sz.Width, Height: sz.Height}
+				switch o := obj.(type) {
+				case *microflows.ActionActivity:
+					o.SetSize(box)
+				case *microflows.ExclusiveSplit:
+					o.SetSize(box)
+				case *microflows.InheritanceSplit:
+					o.SetSize(box)
+				}
 			}
 			// @documentation (ako/mxcli#2328): the four kinds that store it.
 			if ann.Documentation != nil {

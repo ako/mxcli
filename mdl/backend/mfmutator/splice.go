@@ -1302,6 +1302,31 @@ func (m *Mutator) FitLoop(target model.ID, size *model.Size, minimum model.Size)
 	return nil
 }
 
+// Resize sets the box of the activity or decision target (ako/mxcli#2589). It
+// keeps its centre — RelativeMiddlePoint is the centre — so its flows' ends
+// stay where they are drawn.
+func (m *Mutator) Resize(target model.ID, size model.Size) error {
+	g := m.graph()
+	x, err := g.anyNode(target)
+	if err != nil {
+		return err
+	}
+	switch x.typ {
+	case "Microflows$ActionActivity", "Microflows$ExclusiveSplit", "Microflows$InheritanceSplit":
+	default:
+		return fmt.Errorf("%s is not an activity or a decision; only those take @size here", describeNode(x))
+	}
+	want := point{size.Width, size.Height}
+	if want == x.size {
+		return nil
+	}
+	if !dSet(x.doc, "Size", want.String()) {
+		return fmt.Errorf("%s stores no size", describeNode(x))
+	}
+	x.size = want
+	return nil
+}
+
 // Pin records that the script states a node is drawn at at
 // (mendixlabs/mxcli#1598, case 6). A point rather than a node: the node there
 // may be one a later fragment places, at the position its statement states.

@@ -1017,7 +1017,9 @@ func init() {
 			"@merge(x, y)                          -- the implicit merge that closes a split\n" +
 			"@merge(x, y, w, h)                    -- … and its box, when not the default 40x40\n" +
 			"@size(w, h)                           -- a LOOP's box, a `while true`'s loop-head merge,\n" +
-			"                                      -- or a `merge <label>`'s box; left out, computed\n" +
+			"                                      -- or a `merge <label>`'s box; left out, computed;\n" +
+			"                                      -- on an activity or a decision, a resized box\n" +
+			"                                      -- (default 120x60 / 90x60); left out, kept as stored\n" +
 			"@anchor(from: bottom, to: top, true: (…), false: (…))  -- on an IF: to = its incoming flow,\n" +
 			"                                      -- from = the flow leaving its closing merge\n" +
 			"@anchor(true: (to: top))              -- one branch's edge; either side may be left out\n" +

@@ -58,6 +58,7 @@ type flowMove struct {
 	to       model.Point
 	what     string
 	fit      *loopFit
+	resize   *model.Size // the box an activity or a decision is drawn at (@size, ako/mxcli#2589)
 	optional bool
 }
 
@@ -91,6 +92,12 @@ func patch(ctx *ExecContext, a *alterFlowContext, ops []*ast.AlterFlowOperation,
 			if mv.fit != nil {
 				if err := mut.FitLoop(mv.id, mv.fit.size, model.Size{Width: MinLoopWidth, Height: MinLoopHeight}); err != nil {
 					return fmt.Errorf("fit the %s to its body: %w", mv.what, err)
+				}
+				continue
+			}
+			if mv.resize != nil {
+				if err := mut.Resize(mv.id, *mv.resize); err != nil {
+					return fmt.Errorf("resize the %s: %w", mv.what, err)
 				}
 				continue
 			}
@@ -153,7 +160,8 @@ func (pd *patchDiff) moved(d, s ast.MicroflowStatement) error {
 	if loopStatements(s) != nil || loopStatements(d) != nil {
 		return pd.movedInLoop(d, s)
 	}
-	clear := func(a *ast.ActivityAnnotations) { a.Position = nil }
+	// The statement's own box is resized by movedNode too (ako/mxcli#2589).
+	clear := func(a *ast.ActivityAnnotations) { a.Position, a.Size = nil, nil }
 	if !declaredMatches(withAnnotations(d, clear), withAnnotations(s, clear)) {
 		return cannotSplice("a node inside the %s is moved; the splice moves the nodes of the flow and of an if's branches, "+
 			"not those inside a loop body or an error handler", describeAt(s))
@@ -211,6 +219,36 @@ func (pd *patchDiff) fitLoop(id model.ID, d, s ast.MicroflowStatement) {
 	pd.moves = append(pd.moves, flowMove{id: id, fit: fit, what: describeAt(s)})
 }
 
+// resizedNode records the resize movedNode describes.
+func (pd *patchDiff) resizedNode(d, s ast.MicroflowStatement, da, sa *ast.ActivityAnnotations) error {
+	if da == nil || da.Size == nil || da.Size.Width <= 0 || da.Size.Height <= 0 {
+		return nil
+	}
+	if sa != nil && sa.Size != nil && *sa.Size == *da.Size {
+		return nil
+	}
+	if _, ok := d.(*ast.MergeStmt); ok {
+		return nil
+	}
+	c, err := pd.loc.locate(s)
+	if err != nil {
+		return err
+	}
+	switch d.(type) {
+	case *ast.LoopStmt, *ast.WhileStmt:
+		// A loop's box is fitted to the size it states.
+		pd.fitLoop(c.ID, d, s)
+		return nil
+	}
+	for _, mv := range pd.moves {
+		if mv.resize != nil && mv.id == c.ID {
+			return nil
+		}
+	}
+	pd.moves = append(pd.moves, flowMove{id: c.ID, resize: &model.Size{Width: da.Size.Width, Height: da.Size.Height}, what: describeAt(s)})
+	return nil
+}
+
 // mutatorNodeGone reports whether err is the mutator's "not in the flow" for a
 // node an operation took out.
 func mutatorNodeGone(err error) bool {
@@ -219,8 +257,16 @@ func mutatorNodeGone(err error) bool {
 
 // movedNode records a move of the stored statement's own node when the
 // declared one states a position it is not drawn at.
+//
+// It records a resize too, when the declared statement states an @size its
+// activity or decision is not drawn at (ako/mxcli#2589). A statement without
+// one keeps its stored box, as one without @position keeps its place. A
+// loop's box is fitLoop's, and a merge's is the merge's own.
 func (pd *patchDiff) movedNode(d, s ast.MicroflowStatement) error {
 	da, sa := statementAnnotations(d), statementAnnotations(s)
+	if err := pd.resizedNode(d, s, da, sa); err != nil {
+		return err
+	}
 	if da == nil || da.Position == nil {
 		return nil
 	}

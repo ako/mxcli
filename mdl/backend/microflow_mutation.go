@@ -145,6 +145,10 @@ type MicroflowMutator interface {
 	// The box keeps its centre. Used when the script moves the body's nodes
 	// (ako/mxcli#2564); a box that would be drawn over another node is refused.
 	FitLoop(target model.ID, size *model.Size, minimum model.Size) error
+	// Resize sets the box an activity or a decision target is drawn at, and
+	// nothing else: it keeps its centre, and its flows their ends, sides and
+	// curves (@size, ako/mxcli#2589). A loop is refused — FitLoop sizes it.
+	Resize(target model.ID, size model.Size) error
 	// Pin says the script states that a node is drawn at the point at — a
 	// stored node, or one a fragment places there. An insert or replace that
 	// would move the node drawn there to make room is refused instead, so the

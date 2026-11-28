@@ -1144,6 +1144,28 @@ func captionIsCondition(split *microflows.ExclusiveSplit) bool {
 	return ok && split.Caption == cond.Expression
 }
 
+// resizedBox returns an activity's or a split's box when it is not the size
+// the builder draws it — 120x60 for an activity and a `split type`, 90x60 for
+// a decision, which are Studio Pro's activity and decision defaults — and
+// false for every other object or a default box.
+func resizedBox(obj microflows.MicroflowObject) (model.Size, bool) {
+	var def model.Size
+	switch obj.(type) {
+	case *microflows.ActionActivity, *microflows.InheritanceSplit:
+		// The builder draws a `split type` at an activity's size.
+		def = model.Size{Width: ActivityWidth, Height: ActivityHeight}
+	case *microflows.ExclusiveSplit:
+		def = model.Size{Width: SplitWidth, Height: SplitHeight}
+	default:
+		return model.Size{}, false
+	}
+	sz := objectSize(obj)
+	if sz.Width <= 0 || sz.Height <= 0 || sz == def {
+		return model.Size{}, false
+	}
+	return sz, true
+}
+
 // emitObjectAnnotations emits @position, @caption, @color, @annotation, and
 // @anchor lines for a microflow object before its statement.
 //
@@ -1170,6 +1192,12 @@ func emitObjectAnnotations(
 		if loop, ok := obj.(*microflows.LoopedActivity); ok && loop.Size.Width > 0 && loop.Size.Height > 0 {
 			*lines = append(*lines, indentStr+fmt.Sprintf("@size(%d, %d)", loop.Size.Width, loop.Size.Height))
 		}
+	}
+	// A resized activity or decision (ako/mxcli#2589). Only a box that is not
+	// the builder's default is authored, and only that one is printed — a size
+	// is no position, so it is kept whether or not the position is derived.
+	if sz, ok := resizedBox(obj); ok {
+		*lines = append(*lines, indentStr+fmt.Sprintf("@size(%d, %d)", sz.Width, sz.Height))
 	}
 
 	if flowsByOrigin != nil && flowsByDest != nil {
