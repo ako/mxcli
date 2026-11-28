@@ -1,0 +1,19 @@
+mdl 1;
+-- NEGATIVE TEST — `mxcli check` must REFUSE this file (MDL110), with no project.
+--
+-- A published OData service that exposes a Binary attribute, the entity's own and an
+-- inherited one. `check` and `exec` accepted both, and the build reported
+--
+--   [CE5013] "Binary attribute 'Photo' cannot be exposed through an OData entity."
+--
+-- Measured on MxBuild 11.16.1. Every other attribute type exposes clean; see
+-- published-odata-attribute-types.mdl.
+create persistent entity MyFirstModule.PbBase (Data: binary, Title: string(50));
+create persistent entity MyFirstModule.PbChild extends MyFirstModule.PbBase (Code: string(36) unique, Photo: binary);
+create module role MyFirstModule.PbApiUser;
+create published odata service MyFirstModule.PbApi (path: 'odata/pbapi/', version: '1.0.0', ODataVersion: OData4, namespace: 'My.PbApi', ServiceName: 'PbApi', Authentication: (basic))
+{
+  publish entity MyFirstModule.PbChild as 'Children' (ReadMode: source, InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported)
+  expose (Code (KEY), Photo, Data);
+};
+grant access on published odata service MyFirstModule.PbApi to MyFirstModule.PbApiUser;
