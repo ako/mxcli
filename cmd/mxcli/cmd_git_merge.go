@@ -110,9 +110,11 @@ version (PATH, the mxcli cache, or the Studio Pro installation), and a model
 merge runs only on an mx of that exact release: another Mendix version's
 engine would write this project's model, so an mx of another version, or one
 whose version cannot be told, is refused before it runs (the merge is
-aborted, nothing is committed). Install the matching one with
+aborted, nothing is committed). An installed mx of the project's release is
+used before an mx on PATH. Install the matching one with
 'mxcli setup mxbuild --version <project version>'. --mxbuild-path names the
-mx to use on purpose; with it a version mismatch is only warned about.`,
+mx to use on purpose: it must hold an mx, and with it a version mismatch is
+only warned about.`,
 	Example: `  mxcli git merge feature/orders -p app.mpr
   mxcli git merge origin/main -p app.mpr --push
   mxcli git merge feature/orders -p app.mpr --theirs   # after reviewing the report
@@ -656,9 +658,10 @@ func projectMendixVersion(mprPath string) string {
 	return v
 }
 
-// resolveMxForMerge and mergeMxVersion are injected for tests.
+// resolveMxForMerge, localMxForMerge and mergeMxVersion are injected for tests.
 var (
 	resolveMxForMerge = docker.ResolveMxForVersion
+	localMxForMerge   = docker.LocalMxForVersion
 	mergeMxVersion    = docker.MxBinaryVersion
 )
 
@@ -674,29 +677,74 @@ type mxLookup func(mprPath string) (string, error)
 // another Mendix version's. The version check makes that a refusal, the way
 // `mxcli new` and `marketplace package` already treat a substituted mx. With
 // --mxbuild-path (override) the same findings are warned about once on stderr.
+//
+// Without --mxbuild-path an installed or cached mx of exactly the project's
+// release is taken first: ResolveMxForVersion tries PATH before it, so an mx of
+// another version on PATH made the merge refuse although the right engine was
+// installed (ako/mxcli#2644). With it, the override covers only an mx under
+// that path — the resolver falls back to PATH when the folder holds none, and
+// the override would then run an mx nobody named.
 func mergeMxLookup(mxbuildPath string, stderr io.Writer) mxLookup {
 	warned := false
+	warn := func(format string, args ...any) {
+		if !warned {
+			fmt.Fprintf(stderr, "warning: "+format+"\n", args...)
+			warned = true
+		}
+	}
 	return func(mprPath string) (string, error) {
 		version := projectMendixVersion(mprPath)
+		if mxbuildPath == "" && version != "" {
+			if exact := localMxForMerge(version); exact != "" {
+				return exact, nil
+			}
+		}
 		mxPath, err := resolveMxForMerge(mxbuildPath, version)
 		if err != nil {
 			return "", fmt.Errorf("no mx for Mendix %s: %w (model conflicts need it)\nhint: run 'mxcli setup mxbuild --version %s'", version, err, version)
+		}
+		if mxbuildPath != "" && !pathWithin(mxPath, mxbuildPath) {
+			return "", fmt.Errorf("no mx in %s (the mx found instead, %s, was not named by --mxbuild-path)", mxbuildPath, mxPath)
+		}
+		if version == "" {
+			warn("the project's Mendix version is unknown, so the version of %s was not checked", mxPath)
+			return mxPath, nil
 		}
 		problem := mergeMxProblem(mxPath, version)
 		if problem == "" {
 			return mxPath, nil
 		}
 		if mxbuildPath != "" {
-			if !warned {
-				fmt.Fprintf(stderr, "warning: %s; going on because --mxbuild-path was given\n", problem)
-				warned = true
-			}
+			warn("%s; going on because --mxbuild-path was given", problem)
 			return mxPath, nil
 		}
 		return "", fmt.Errorf("%s.\nA model merge by another Mendix version's engine than the project's is refused.\n"+
-			"hint: run 'mxcli setup mxbuild --version %s' to install the matching mx (an mx on PATH is used before it,\n"+
-			"so take that one off PATH); to use this mx on purpose, pass --mxbuild-path", problem, version)
+			"hint: run 'mxcli setup mxbuild --version %s' to install the matching mx (an installed mx of the\n"+
+			"project's release is used before one on PATH); to use this mx on purpose, pass --mxbuild-path", problem, version)
 	}
+}
+
+// pathWithin reports whether path lies under dir, symbolic links resolved: an
+// mx the --mxbuild-path folder holds (in it or in its modeler/ subfolder). A
+// dir naming a file — the mxbuild binary itself — stands for its folder, where
+// the resolver finds mx beside it.
+func pathWithin(path, dir string) bool {
+	if p, err := filepath.EvalSymlinks(path); err == nil {
+		path = p
+	}
+	if d, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = d
+	}
+	if info, err := os.Stat(dir); err == nil && !info.IsDir() {
+		dir = filepath.Dir(dir)
+	}
+	absPath, err1 := filepath.Abs(path)
+	absDir, err2 := filepath.Abs(dir)
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	rel, err := filepath.Rel(absDir, absPath)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // mergeMxProblem says why the mx at mxPath must not merge a project of

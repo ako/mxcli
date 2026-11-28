@@ -259,10 +259,11 @@ chokes on the conflicted state); the engine writes its result into MINE and
 it is copied back, so the engine owns the `.mpr`. The engine must be the
 project's own Mendix release: an mx of another version (an `mx` on PATH, or
 the only cached download), or one whose version cannot be told, is refused
-before it runs and the merge is aborted. Install the matching one with
+before it runs and the merge is aborted. An installed or cached mx of the
+project's release is used before an `mx` on PATH. Install the matching one with
 `mxcli setup mxbuild --version <project version>`, which is the usual first
 step on a Linux container or CI runner; `--mxbuild-path` names an mx on
-purpose, and then a mismatch is only a warning:
+purpose (the folder must hold one), and then a mismatch is only a warning:
 
 - what the engine auto-resolves is copied back, hash-checked, staged and
   committed as the normal two-parent merge commit, with the note attached.

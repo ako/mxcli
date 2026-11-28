@@ -15,8 +15,11 @@ import (
 // (the project fixtures are 11.13.0), and restores the real lookup afterwards.
 func stubMergeMx(t *testing.T, mxPath, version string) *[]string {
 	t.Helper()
-	origResolve, origVersion := resolveMxForMerge, mergeMxVersion
-	t.Cleanup(func() { resolveMxForMerge, mergeMxVersion = origResolve, origVersion })
+	origResolve, origVersion, origLocal := resolveMxForMerge, mergeMxVersion, localMxForMerge
+	t.Cleanup(func() { resolveMxForMerge, mergeMxVersion, localMxForMerge = origResolve, origVersion, origLocal })
+	// No exact-version install, so the lookup falls through to the resolver
+	// (and an mx cached on the machine running the test cannot leak in).
+	localMxForMerge = func(string) string { return "" }
 	var asked []string
 	resolveMxForMerge = func(mxbuildPath, preferred string) (string, error) {
 		asked = append(asked, preferred)
