@@ -50,8 +50,8 @@ type FlowLayoutResult struct {
 	Objects int    // objects in the flow
 	Moved   int    // objects whose position or size changed
 	Flows   int    // sequence flows whose anchors or curve changed
-	// Restyled says the flow's @mxcli-layout documentation line changed: it is
-	// now laid out in a different style than the one it recorded.
+	// Restyled says an @mxcli-layout documentation line an older release wrote
+	// was removed (ako/mxcli#2635).
 	Restyled bool
 	Refused  string // why the flow was left alone; empty when it was laid out
 }
@@ -141,14 +141,10 @@ func layoutFlow(ctx *ExecContext, kind string, name ast.QualifiedName, dryRun bo
 	}
 	patched := plan.apply(doc)
 	res.Moved, res.Flows = plan.movedObjects, plan.changedFlows
-	// The flow now records the style it was laid out in (flowlayout_config.go).
-	// Only the marker line changes; the rest of the documentation is the stored
-	// text, not the description's normal form of it.
-	style, err := ctx.ProjectFlowLayout()
-	if err != nil {
-		return res, fmt.Errorf("layout config: %w", err)
-	}
-	res.Restyled = setLayoutString(patched, "Documentation", withFlowLayoutMarker(stored.documentation, *style))
+	// A marker line an older release wrote goes (flowlayout_config.go). Only that
+	// line changes; the rest of the documentation is the stored text, not the
+	// description's normal form of it.
+	res.Restyled = setLayoutString(patched, "Documentation", withoutFlowLayoutMarker(stored.documentation))
 	if !res.Changed() || dryRun {
 		return res, nil
 	}

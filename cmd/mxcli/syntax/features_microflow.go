@@ -1130,9 +1130,11 @@ func init() {
 			"    case-split: first-right-rest-columns\n" +
 			"    guard: true-right               # early return on the line\n" +
 			"    wrap: off                       # or max-row-width: <px>\n" +
-			"`mxcli layout config` shows the style in force. A flow drawn in a non-default\n" +
-			"style carries a `@mxcli-layout: …` line in its /** … */ documentation: keep\n" +
-			"it when copying a described flow, never write one by hand. (ako/mxcli#1832)",
+			"`mxcli layout config` shows the style in force. Nothing about the style is\n" +
+			"stored in the flow: DESCRIBE judges positions against the project style, and a\n" +
+			"flow drawn in another prints the @position lines that keep it. An\n" +
+			"`@mxcli-layout: …` documentation line from an older release is honoured once and\n" +
+			"removed on the next write; never write one. (ako/mxcli#1832, #2635)",
 		Example: "create microflow MyModule.ACT_Flow (\n  @position(145, 0)\n  $In: String\n)\nreturns String as $Out\nbegin\n" +
 			"  @start(145, 100)\n  @position(200, 100)\n  @anchor(from: bottom)\n" +
 			"  @curve(from: (40, -90), to: (-40, 90))\n  declare $Tmp String = $In;\n" +
