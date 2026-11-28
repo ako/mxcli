@@ -65,21 +65,21 @@ To try a style without committing it, pass `--style`:
 mxcli layout flows -p app.mpr --module Sales --style true-right-false-down --dry-run
 ```
 
-### The style a flow was drawn in travels with it
+### The style lives in the project, not in the flow
 
-A flow laid out in a style other than the default gets one line at the end of
-its documentation, which Studio Pro shows in the documentation pane:
+mxcli writes nothing about the style into a flow. `DESCRIBE` judges which
+positions are derived against the project's style — the one `CREATE OR MODIFY`
+rebuilds the description in — so a describe → exec round trip is exact. A flow
+drawn in another style (in Studio Pro, with `--style`, or before the project
+changed its file) describes with the `@position` lines of the places that
+style chose, and executing that description puts them back.
 
-```
-@mxcli-layout: if-else=true-right-else-column
-```
-
-`DESCRIBE` and `CREATE OR MODIFY` use that line for that flow, whatever the
-project file says now. So a flow drawn in one style describes without `@position`
-noise after the project switches to another, and its description rebuilds the
-same geometry. Laying a flow out in the default style removes the line. If the
-line is deleted or unreadable, nothing breaks: `DESCRIBE` then prints the
-positions it can no longer derive, and a warning says why.
+Releases before ako/mxcli#2635 recorded a non-default style as an
+`@mxcli-layout: …` line at the end of the flow's documentation. A flow that
+still carries one is read as before — described and rebuilt in the style it
+records — and the next write of that flow, or `mxcli layout flows`, removes the
+line. Deleting it in Studio Pro is also fine: the flow then describes with the
+positions the project style would not derive.
 
 ## What changes
 
@@ -90,8 +90,8 @@ nothing but layout changes:
 - positions of parameters and notes (a note keeps its size);
 - the connection sides and curves of sequence flows.
 
-- the `@mxcli-layout:` line in the flow's documentation (above) — the rest of
-  the documentation is left byte for byte.
+- an `@mxcli-layout:` line an older release left in the flow's documentation
+  (above) is removed — the rest of the documentation is left byte for byte.
 
 Element IDs, captions, expressions and every property MDL cannot express are
 left exactly as stored. That is also why this works on flows drawn in Studio

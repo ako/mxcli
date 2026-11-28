@@ -2,19 +2,20 @@
 
 // Package executor - where a flow's layout style comes from.
 //
-// Two places, in this order (ako/mxcli#1832):
+// The project's committed layout-config.yaml, looked up the way lint-config.yaml
+// is; no file is the default style. A canonical DESCRIBE judges a position
+// "derived" against that same style, because it is the style `create or modify`
+// rebuilds the description in — so a describe → exec round trip is exact.
 //
-//  1. The flow's own documentation, when it carries an `@mxcli-layout:` line.
-//     That line records the style the flow was last laid out with, so a
-//     describe → exec round trip rebuilds the same geometry whatever the project
-//     says now, and canonical DESCRIBE judges a position "derived" against the
-//     style that actually drew it.
-//  2. Otherwise the project's committed layout-config.yaml, looked up the way
-//     lint-config.yaml is. No file is the default style.
-//
-// A flow laid out under a style other than the default gets the line; under the
-// default it loses it. So a project with no config file writes exactly what it
-// always wrote.
+// Nothing about the style is stored in the flow (ako/mxcli#2635). Until then a
+// flow laid out in a style other than the default carried an `@mxcli-layout:`
+// line in its Documentation, which is the modeler's text: Studio Pro shows it and
+// generated documentation copies it. A flow that still carries one is read as
+// before — DESCRIBE and the next write lay it out in the style it records — and
+// that write removes the line, so a project sheds them as its flows are
+// rewritten. A flow drawn in a style other than the project's now describes with
+// the positions that style put where the project's would not; the round trip
+// stays exact, only louder.
 package executor
 
 import (
@@ -39,9 +40,10 @@ const (
 	maxRowWidthLimit = 20000
 )
 
-// flowLayoutMarker starts the documentation line that records a flow's style.
-// It is plain documentation text: the visitor keeps it inside `/** … */`
-// verbatim and never reads it as an annotation.
+// flowLayoutMarker starts the documentation line older releases wrote to record a
+// flow's style. It is plain documentation text: the visitor keeps it inside
+// `/** … */` verbatim and never reads it as an annotation. mxcli reads it and
+// removes it, and never writes it (ako/mxcli#2635).
 const flowLayoutMarker = "@mxcli-layout:"
 
 // flowLayoutConfigName is the project file holding the layout style.
@@ -291,34 +293,20 @@ func flowLayoutFromDocumentation(doc string) (l flowLayout, found bool, err erro
 	return flowLayout{}, false, nil
 }
 
-// withFlowLayoutMarker returns doc with its marker line set for l: any marker
-// line is removed, and one is appended for a style other than the default. The
-// rest of the documentation is kept byte for byte; only blank lines the removed
-// marker leaves at the end go with it.
-func withFlowLayoutMarker(doc string, l flowLayout) string {
-	_, found, _ := flowLayoutFromDocumentation(doc)
-	value := l.markerValue()
-	if !found && value == "" {
+// withoutFlowLayoutMarker returns doc without its marker line. Documentation
+// with none is returned byte for byte; otherwise only the marker line goes, with
+// the blank lines it leaves at the end.
+func withoutFlowLayoutMarker(doc string) string {
+	if _, found, _ := flowLayoutFromDocumentation(doc); !found {
 		return doc
 	}
-	out := doc
-	if found {
-		var kept []string
-		for line := range strings.SplitSeq(doc, "\n") {
-			if !isFlowLayoutMarkerLine(line) {
-				kept = append(kept, line)
-			}
+	var kept []string
+	for line := range strings.SplitSeq(doc, "\n") {
+		if !isFlowLayoutMarkerLine(line) {
+			kept = append(kept, line)
 		}
-		out = strings.TrimRight(strings.Join(kept, "\n"), "\r\n\t ")
 	}
-	if value == "" {
-		return out
-	}
-	line := flowLayoutMarker + " " + value
-	if out == "" {
-		return line
-	}
-	return out + "\n" + line
+	return strings.TrimRight(strings.Join(kept, "\n"), "\r\n\t ")
 }
 
 // ProjectFlowLayout returns the style new flows are laid out with: the
@@ -344,9 +332,10 @@ func (ctx *ExecContext) ProjectFlowLayout() (*flowLayout, error) {
 }
 
 // resolveFlowLayout decides the style a flow is built with from its final
-// documentation, and returns the documentation with the marker set for that
-// style. A marked flow keeps its recorded style; an unmarked one gets the
-// project's. A marker that does not parse is warned about and treated as absent.
+// documentation, and returns the documentation without a marker line. A flow
+// that still carries one (written by an older release) is built in the style it
+// records, once — the line goes with this write; any other gets the project's.
+// A marker that does not parse is warned about and treated as absent.
 //
 // keepRecorded false ignores the marker: `mxcli layout flows` re-lays a flow out
 // in the project style (or --style), which is the point of running it.
@@ -354,7 +343,7 @@ func resolveFlowLayout(ctx *ExecContext, doc string, keepRecorded bool) (*flowLa
 	if keepRecorded {
 		l, found, err := flowLayoutFromDocumentation(doc)
 		if found && err == nil {
-			return &l, withFlowLayoutMarker(doc, l), nil
+			return &l, withoutFlowLayoutMarker(doc), nil
 		}
 		if found && err != nil && ctx != nil && ctx.Output != nil {
 			fmt.Fprintf(ctx.Output, "Warning: ignoring the flow's %s line: %v\n", flowLayoutMarker, err)
@@ -364,13 +353,16 @@ func resolveFlowLayout(ctx *ExecContext, doc string, keepRecorded bool) (*flowLa
 	if err != nil {
 		return nil, doc, fmt.Errorf("layout config: %w", err)
 	}
-	return l, withFlowLayoutMarker(doc, *l), nil
+	return l, withoutFlowLayoutMarker(doc), nil
 }
 
-// describingFlowLayout records, for the description of one flow, the style its
-// documentation says it was laid out in, and returns the function that restores
-// what was recorded before. The describer reads a shape only that style draws
-// as the statement that drew it (flowLooksLikeGuardContinuation).
+// describingFlowLayout records, for the description of one flow, the style it
+// is read in, and returns the function that restores what was recorded before:
+// the style a marker line records, else the project's — the one `create or
+// modify` rebuilds the description in. The describer reads a shape only that
+// style draws as the statement that drew it (flowLooksLikeGuardContinuation).
+// A project config that does not load reads as the default; the build reports
+// it.
 func (ctx *ExecContext) describingFlowLayout(doc string) func() {
 	if ctx == nil {
 		return func() {}
@@ -379,6 +371,8 @@ func (ctx *ExecContext) describingFlowLayout(doc string) func() {
 	ctx.describedFlowLayout = nil
 	if l, found, err := flowLayoutFromDocumentation(doc); found && err == nil {
 		ctx.describedFlowLayout = &l
+	} else if l, err := ctx.ProjectFlowLayout(); err == nil && l != nil {
+		ctx.describedFlowLayout = l
 	}
 	return func() { ctx.describedFlowLayout = prev }
 }

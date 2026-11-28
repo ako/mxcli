@@ -8,10 +8,11 @@ import (
 	"testing"
 )
 
-// ako/mxcli#1832: a flow laid out in a style records it, and a canonical
-// DESCRIBE judges its positions against that style — whatever style the project
-// is in when it is described. With the record gone the same description keeps
-// every position it can no longer derive, which is the control.
+// ako/mxcli#1832, #2635: a canonical DESCRIBE judges a flow's positions against
+// the project's style, the one `create or modify` rebuilds the description in.
+// Nothing is written into the flow's documentation. Described after the project
+// moves to another style, the same flow keeps every position that style would
+// not derive, which is the control.
 
 const styledFlowsMDL = `
 create microflow MyFirstModule.ACT_Styled ($N: Integer) returns Boolean
@@ -50,7 +51,7 @@ begin
 end;
 `
 
-func TestDescribeUsesTheRecordedLayoutStyle(t *testing.T) {
+func TestDescribeJudgesPositionsAgainstTheProjectStyle(t *testing.T) {
 	for _, preset := range []string{"true-right-false-down"} {
 		for _, guard := range []bool{false, true} {
 			style := preset
@@ -68,17 +69,24 @@ func TestDescribeUsesTheRecordedLayoutStyle(t *testing.T) {
 					exec.flowLayoutOverride = &l
 				}
 				run(t, exec, styledFlowsMDL)
-				// The project is back on the default style; the flows record theirs.
+				describes := []string{"describe microflow MyFirstModule.ACT_Styled", "describe nanoflow MyFirstModule.NAV_Styled"}
+				for _, d := range describes {
+					mdl := describeText(t, exec, out, d)
+					if strings.Contains(mdl, flowLayoutMarker) {
+						t.Fatalf("%s: wrote a %s line:\n%s", d, flowLayoutMarker, mdl)
+					}
+					if got := layoutLines(mdl); len(got) > 0 {
+						t.Errorf("%s printed layout annotations under the project style: %v\n%s", d, got, mdl)
+					}
+				}
+				// Control: in a project on the default style the same flows are
+				// not derivable, so their positions are printed.
 				if err := exec.SetFlowLayoutStyle(""); err != nil {
 					t.Fatal(err)
 				}
-				for _, d := range []string{"describe microflow MyFirstModule.ACT_Styled", "describe nanoflow MyFirstModule.NAV_Styled"} {
-					mdl := describeText(t, exec, out, d)
-					if !strings.Contains(mdl, flowLayoutMarker) {
-						t.Fatalf("%s: no %s line:\n%s", d, flowLayoutMarker, mdl)
-					}
-					if got := layoutLines(mdl); len(got) > 0 {
-						t.Errorf("%s printed layout annotations under the recorded style: %v\n%s", d, got, mdl)
+				for _, d := range describes {
+					if got := layoutLines(describeText(t, exec, out, d)); len(got) == 0 {
+						t.Errorf("%s: no layout annotations under a style that did not draw it", d)
 					}
 				}
 			})
@@ -127,12 +135,9 @@ func TestDescribeKeepsCaseOrderInCaseColumns(t *testing.T) {
 		t.Fatal(err)
 	}
 	run(t, exec, styledCaseSplitsMDL)
-	if err := exec.SetFlowLayoutStyle(""); err != nil {
-		t.Fatal(err)
-	}
 	mdl := describeText(t, exec, out, "describe microflow MyFirstModule.ACT_Cases")
 	if got := layoutLines(mdl); len(got) > 0 {
-		t.Errorf("printed layout annotations under the recorded style: %v\n%s", got, mdl)
+		t.Errorf("printed layout annotations under the project style: %v\n%s", got, mdl)
 	}
 	// The cases come back in the order they were written, not the order a
 	// column's sides would sort them in.
@@ -146,7 +151,7 @@ func TestDescribeKeepsCaseOrderInCaseColumns(t *testing.T) {
 	}
 }
 
-func TestDescribeUsesTheRecordedWrap(t *testing.T) {
+func TestDescribeJudgesWrapAgainstTheProjectStyle(t *testing.T) {
 	var body strings.Builder
 	for i := 0; i < 30; i++ {
 		fmt.Fprintf(&body, "  log info 'step %d';\n", i)
@@ -158,13 +163,12 @@ func TestDescribeUsesTheRecordedWrap(t *testing.T) {
 			style := l
 			exec.flowLayoutOverride = &style
 			run(t, exec, mdl)
-			exec.flowLayoutOverride = nil
 			got := describeText(t, exec, out, "describe microflow MyFirstModule.ACT_Long")
-			if l.markerValue() != "" && !strings.Contains(got, flowLayoutMarker+" "+l.markerValue()) {
-				t.Fatalf("no marker for %s:\n%s", l, got)
+			if strings.Contains(got, flowLayoutMarker) {
+				t.Fatalf("wrote a marker for %s:\n%s", l, got)
 			}
 			if lines := layoutLines(got); len(lines) > 0 {
-				t.Errorf("printed layout annotations under the recorded style: %v", lines)
+				t.Errorf("printed layout annotations under the project style: %v", lines)
 			}
 		})
 	}

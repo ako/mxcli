@@ -38,15 +38,14 @@ out every microflow and nanoflow in a module.
 Positions change: activity and event positions and sizes, parameter
 positions, and the anchors and curves of sequence flows. Content, element IDs
 and everything else about the flow are left exactly as stored, apart from
-the one documentation line described next.
+an '@mxcli-layout:' documentation line, which releases before ako/mxcli#2635
+wrote and this command removes.
 
 The style is the project's layout-config.yaml (in .claude/ or next to the
 .mpr; see 'mxcli layout config'), or the default when there is none. --style
-lays out in a preset instead, to try one. Each flow laid out in a style other
-than the default records it as an '@mxcli-layout:' line in its documentation,
-which DESCRIBE and CREATE OR MODIFY then keep using for that flow; laying it out
-in the default removes the line. That line is the one thing besides positions
-this command writes.
+lays out in a preset instead, to try one. Nothing records the style in the
+flow: DESCRIBE and CREATE OR MODIFY use the project's, so a flow laid out with
+--style in another one describes with the positions that style chose.
 
 A flow whose description does not rebuild into the same graph — something MDL
 cannot yet express — is skipped with the reason, never laid out by guesswork.
@@ -258,9 +257,9 @@ func layoutFlowTargets(out io.Writer, exec *executor.Executor, targets []flowTar
 			fmt.Fprintf(out, "%s: moved %d of %d objects, re-anchored %d flows\n", res.Name, res.Moved, res.Objects, res.Flows)
 		}
 		if res.Restyled && res.Refused == "" {
-			verb := "updates"
+			verb := "removes"
 			if layoutDryRun {
-				verb = "would update"
+				verb = "would remove"
 			}
 			fmt.Fprintf(out, "%s: %s the %s line in its documentation\n", res.Name, verb, "@mxcli-layout:")
 		}

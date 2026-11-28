@@ -71,38 +71,27 @@ func TestFindFlowLayoutConfig_PrefersClaudeDir(t *testing.T) {
 	}
 }
 
-func TestFlowLayoutMarker(t *testing.T) {
-	column := flowLayout{IfElse: IfElseColumn}
+// ako/mxcli#2635: the style is never written into the flow's documentation; a
+// line an older release wrote is removed, and the rest kept byte for byte.
+func TestWithoutFlowLayoutMarker(t *testing.T) {
 	const line = "@mxcli-layout: if-else=true-right-else-column"
-
-	for _, c := range []struct {
-		name   string
-		doc    string
-		layout flowLayout
-		want   string
-	}{
-		{"default leaves undocumented flow alone", "", flowLayout{}, ""},
-		{"default leaves documentation byte for byte", "Submits.\r\n  trailing  ", flowLayout{}, "Submits.\r\n  trailing  "},
-		{"style on an undocumented flow", "", column, line},
-		{"style appended", "Submits the order.", column, "Submits the order.\n" + line},
-		{"style replaced, not duplicated", "Submits.\n" + line, column, "Submits.\n" + line},
-		{"older marker replaced", "Submits.\n@mxcli-layout: if-else=lanes", column, "Submits.\n" + line},
-		{"default removes the marker", "Submits.\n" + line, flowLayout{}, "Submits."},
-		{"default removes a lone marker", line, flowLayout{}, ""},
+	for _, c := range []struct{ name, doc, want string }{
+		{"undocumented flow", "", ""},
+		{"documentation byte for byte", "Submits.\r\n  trailing  ", "Submits.\r\n  trailing  "},
+		{"marker removed", "Submits.\n" + line, "Submits."},
+		{"lone marker removed", line, ""},
+		{"marker in the middle", "Submits.\n" + line + "\nThen returns.", "Submits.\nThen returns."},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			got := withFlowLayoutMarker(c.doc, c.layout)
+			got := withoutFlowLayoutMarker(c.doc)
 			if got != c.want {
 				t.Fatalf("got %q, want %q", got, c.want)
 			}
-			// What is written reads back as the style it records.
-			back, found, err := flowLayoutFromDocumentation(got)
-			if err != nil || back != c.layout || found != (c.layout != flowLayout{}) {
-				t.Fatalf("read back %+v found=%v err=%v, want %+v", back, found, err, c.layout)
+			if _, found, _ := flowLayoutFromDocumentation(got); found {
+				t.Fatalf("%q still has a marker", got)
 			}
-			// Writing it again changes nothing (ADR-0008).
-			if again := withFlowLayoutMarker(got, c.layout); again != got {
-				t.Fatalf("second write %q differs from first %q", again, got)
+			if again := withoutFlowLayoutMarker(got); again != got {
+				t.Fatalf("second pass %q differs from first %q", again, got)
 			}
 		})
 	}
@@ -113,17 +102,18 @@ func TestResolveFlowLayout(t *testing.T) {
 	writeLayoutConfig(t, dir, "flows:\n  preset: true-right-false-down\n")
 	ctx := &ExecContext{MprPath: filepath.Join(dir, "app.mpr"), Output: &strings.Builder{}}
 
-	// Unmarked flow: the project's style, and the marker is written.
+	// Unmarked flow: the project's style, and the documentation is left alone
+	// (ako/mxcli#2635 — it used to gain a marker line).
 	l, doc, err := resolveFlowLayout(ctx, "Submits.", true)
-	if err != nil || l.IfElse != IfElseColumn || !strings.HasSuffix(doc, "if-else=true-right-else-column") {
+	if err != nil || l.IfElse != IfElseColumn || doc != "Submits." {
 		t.Fatalf("unmarked: %+v %q %v", l, doc, err)
 	}
 
-	// A flow recording the default (no line can say so) is unmarked; one recording
-	// a style keeps it whatever the project says.
+	// A flow an older release marked is built in the style it records, once: the
+	// line goes with this write, whatever the project says.
 	ctx2 := &ExecContext{MprPath: filepath.Join(t.TempDir(), "app.mpr"), Output: &strings.Builder{}}
 	l, doc, err = resolveFlowLayout(ctx2, "Submits.\n@mxcli-layout: if-else=true-right-else-column", true)
-	if err != nil || l.IfElse != IfElseColumn || !strings.Contains(doc, flowLayoutMarker) {
+	if err != nil || l.IfElse != IfElseColumn || doc != "Submits." {
 		t.Fatalf("recorded style in a default project: %+v %q %v", l, doc, err)
 	}
 
@@ -140,6 +130,19 @@ func TestResolveFlowLayout(t *testing.T) {
 	if err != nil || l.IfElse != IfElseLanes || doc != "Submits." || !strings.Contains(out.String(), "Warning") {
 		t.Fatalf("bad marker: %+v %q %v, output %q", l, doc, err, out.String())
 	}
+
+	// DESCRIBE reads an unmarked flow in the project's style — the one create or
+	// modify rebuilds it in — and a marked one in the style it records.
+	restore := ctx.describingFlowLayout("Submits.")
+	if ctx.describedFlowLayout == nil || ctx.describedFlowLayout.IfElse != IfElseColumn {
+		t.Fatalf("unmarked flow described in %+v, want the project style", ctx.describedFlowLayout)
+	}
+	restore()
+	restore = ctx2.describingFlowLayout("Submits.\n@mxcli-layout: case-split=first-right-rest-columns")
+	if ctx2.describedFlowLayout == nil || ctx2.describedFlowLayout.CaseSplit != CaseSplitColumns {
+		t.Fatalf("marked flow described in %+v, want the recorded style", ctx2.describedFlowLayout)
+	}
+	restore()
 
 	// A broken project config is an error, not a silent default.
 	bad := t.TempDir()
