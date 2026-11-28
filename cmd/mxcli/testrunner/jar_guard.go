@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // jarGuard keeps the running runtime's project.jar readable across an
@@ -18,8 +19,12 @@ import (
 // attach drives rewrites the file in place — same size, new bytes — so the
 // next class the runtime had not loaded yet failed with NoClassDefFoundError,
 // caused by "ZipFile invalid LOC header (bad signature)". The test microflows
-// an attach injects add no Java, so the rebuilt jar holds the same classes:
-// putting the original bytes back leaves the runtime reading what it opened.
+// an attach injects add no Java the runtime needs, so putting the original
+// bytes back leaves the runtime reading what it opened. They do change one
+// class: Mendix generates a call stub per microflow in each module's
+// proxies/microflows/Microflows class (measured on 11.16.0: MxTest's grew from
+// 860 to 1128 bytes, the jar's only changed entry), which sameJarEntries
+// therefore leaves out.
 type jarGuard struct {
 	path string
 	data []byte
@@ -66,7 +71,7 @@ func (g *jarGuard) settle() (changed bool, err error) {
 
 // sameJarEntries reports whether two jars hold the same entries with the same
 // contents (by CRC-32 and size), whatever order or timestamps they were written
-// with.
+// with, microflow proxies aside (isMicroflowProxy).
 func sameJarEntries(a, b []byte) (bool, error) {
 	ea, err := jarEntries(a)
 	if err != nil {
@@ -99,7 +104,21 @@ func jarEntries(data []byte) (map[string]jarEntrySum, error) {
 	}
 	out := make(map[string]jarEntrySum, len(r.File))
 	for _, f := range r.File {
+		if isMicroflowProxy(f.Name) {
+			continue
+		}
 		out[f.Name] = jarEntrySum{f.CRC32, f.UncompressedSize64}
 	}
 	return out, nil
+}
+
+// isMicroflowProxy reports whether a jar entry is a module's generated
+// microflow call stubs. A new microflow, an injected test microflow among
+// them, adds a method there, but the runtime runs microflows by name, and the
+// test endpoint calls them with Core.microflowCall: only Java that calls the
+// new stub needs the new class, and that Java is a changed class of its own,
+// which the comparison still sees. Without this, every --attach on a Mendix
+// version that recompiles the proxy for it was refused as a Java change.
+func isMicroflowProxy(name string) bool {
+	return strings.HasSuffix(name, "/proxies/microflows/Microflows.class")
 }

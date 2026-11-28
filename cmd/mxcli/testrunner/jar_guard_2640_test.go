@@ -11,11 +11,15 @@ import (
 	"time"
 )
 
+// testProxy is MxTest's generated microflow proxy, the class an injected test
+// microflow adds a call stub to.
+const testProxy = "mxtest/proxies/microflows/Microflows.class"
+
 func jarOf(t *testing.T, stamp time.Time, files map[string]string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
-	for _, name := range []string{"a/A.class", "b/B.class", "c/C.class"} {
+	for _, name := range []string{"a/A.class", "b/B.class", "c/C.class", testProxy} {
 		body, ok := files[name]
 		if !ok {
 			continue
@@ -76,6 +80,31 @@ func TestJarGuard_2640(t *testing.T) {
 	}
 	if now, _ := os.ReadFile(jar); !bytes.Equal(now, orig) {
 		t.Error("the running app's jar was not put back after a Java change")
+	}
+
+	// The attach's own change on Mendix 11.15/11.16, where its build recompiles
+	// the proxies: MxTest's microflow proxy gains the injected test microflow's
+	// call stub, and nothing else changes. That is no Java the running runtime
+	// needs, so nothing is refused, and its jar still goes back.
+	withProxy := jarOf(t, time.Date(2026, 11, 28, 9, 0, 0, 0, time.UTC),
+		map[string]string{"a/A.class": "AAAA", "b/B.class": "BBBB", testProxy: "stubs for 2 microflows"})
+	_ = os.WriteFile(jar, withProxy, 0o644)
+	g = guardProjectJar(mpr)
+	_ = os.WriteFile(jar, jarOf(t, time.Now(),
+		map[string]string{"a/A.class": "AAAA", "b/B.class": "BBBB", testProxy: "stubs for 3 microflows, one a test"}), 0o644)
+	if changed, err := g.settle(); err != nil || changed {
+		t.Errorf("only the microflow proxy changed: changed=%v err=%v, want unchanged", changed, err)
+	}
+	if now, _ := os.ReadFile(jar); !bytes.Equal(now, withProxy) {
+		t.Error("the jar the runtime opened was not put back after a proxy-only change")
+	}
+
+	// Control: the proxy changing beside a real class is still a Java change.
+	g = guardProjectJar(mpr)
+	_ = os.WriteFile(jar, jarOf(t, time.Now(),
+		map[string]string{"a/A.class": "CHANGED", "b/B.class": "BBBB", testProxy: "stubs for 3 microflows"}), 0o644)
+	if changed, err := g.settle(); err != nil || !changed {
+		t.Errorf("a class and the proxy changed: changed=%v err=%v, want changed", changed, err)
 	}
 
 	// No jar: nothing to guard.
