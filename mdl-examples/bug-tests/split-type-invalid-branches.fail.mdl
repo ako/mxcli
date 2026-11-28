@@ -1,0 +1,60 @@
+mdl 1;
+-- NEGATIVE TEST — `mxcli check` must REFUSE this file (MDL109), with no project.
+--
+-- A `split type` the build rejects. `check` and `exec` accepted all three and the
+-- build reported, one per microflow:
+--
+--   [CE0090] "The 'MyFirstModule.StAnimal' value should be configured for an outgoing flow."
+--   [CE0774] "Value is not entity 'MyFirstModule.StAnimal' or a specialization."
+--   [CE0771] "Value is already handled by another sequence flow."
+--
+-- Measured on MxBuild 11.16.1. Only the subject's own entity needs a branch: a missing
+-- subtype builds clean (see split-type-branches.mdl), and the `(empty)` branch is the null
+-- object, not a default.
+create persistent entity MyFirstModule.StAnimal (Name: string(50));
+create persistent entity MyFirstModule.StDog extends MyFirstModule.StAnimal (Bark: string(50));
+create persistent entity MyFirstModule.StCat extends MyFirstModule.StAnimal (Meow: string(50));
+create persistent entity MyFirstModule.StOther (X: string(5));
+create microflow MyFirstModule.StNoBase ($A: MyFirstModule.StAnimal) returns boolean begin
+  @start(100, 200)
+  @position(400, 200)
+  split type $A
+    when MyFirstModule.StDog then
+      log info node 'n' 'StDog';
+    when MyFirstModule.StCat then
+      log info node 'n' 'StCat';
+    when (empty) then
+      log info node 'n' 'none';
+  end split;
+  return true;
+end;
+create microflow MyFirstModule.StUnrelated ($A: MyFirstModule.StAnimal) returns boolean begin
+  @start(100, 200)
+  @position(400, 200)
+  split type $A
+    when MyFirstModule.StDog then
+      log info node 'n' 'StDog';
+    when MyFirstModule.StAnimal then
+      log info node 'n' 'StAnimal';
+    when MyFirstModule.StOther then
+      log info node 'n' 'StOther';
+    when (empty) then
+      log info node 'n' 'none';
+  end split;
+  return true;
+end;
+create microflow MyFirstModule.StTwice ($A: MyFirstModule.StAnimal) returns boolean begin
+  @start(100, 200)
+  @position(400, 200)
+  split type $A
+    when MyFirstModule.StDog then
+      log info node 'n' 'StDog';
+    when MyFirstModule.StDog then
+      log info node 'n' 'StDog';
+    when MyFirstModule.StAnimal then
+      log info node 'n' 'StAnimal';
+    when (empty) then
+      log info node 'n' 'none';
+  end split;
+  return true;
+end;

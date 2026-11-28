@@ -1875,7 +1875,7 @@ func (v *microflowValidator) checkInheritanceSplitSpelling(stmt *ast.Inheritance
 		v.addViolation("MDL065", linter.SeverityWarning,
 			fmt.Sprintf("split type '$%s' uses `else`, which reads as a default branch and is not one: "+
 				"it is Mendix's `(empty)` flow, taken when the object is null. Mendix still requires an "+
-				"outgoing flow for every subtype and for the base entity (CE0090)", stmt.Variable),
+				"outgoing flow for the subject's own entity (CE0090)", stmt.Variable),
 			"Write `when (empty) then …` instead — same flow, accurate name. "+
 				"To handle unmatched types, add a `when <BaseEntity> then …` branch.")
 	}
