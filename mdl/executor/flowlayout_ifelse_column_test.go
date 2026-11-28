@@ -383,3 +383,55 @@ func TestIfElseColumn_IfWithoutElseKeepsTrueOnTheCentreLine(t *testing.T) {
 		t.Errorf("guard: TRUE activity at %v, want below the split at %v", p, split.GetPosition())
 	}
 }
+
+// ako/mxcli#2650: nested IFs whose ELSE columns stand at different x start all
+// of them on the first row under the decisions. Each outer column used to start
+// under the deepest point of the THEN body, inner columns included, so four
+// guards made a staircase down to y=1080.
+func TestIfElseColumn_NestedElseColumnsShareTheFirstRow(t *testing.T) {
+	ret := func() ast.MicroflowStatement { return &ast.ReturnStmt{} }
+	innermost := ifElse([]ast.MicroflowStatement{ret()}, append(logStatements(2), ret()))
+	c := ifElse([]ast.MicroflowStatement{innermost}, append(logStatements(1), ret()))
+	b := ifElse([]ast.MicroflowStatement{c}, append(logStatements(1), ret()))
+	a := ifElse([]ast.MicroflowStatement{b}, append(logStatements(1), ret()))
+	fb := buildWithLayout(t, []ast.MicroflowStatement{a}, columnLayout())
+	assertNoOverlap(t, fb.objects)
+
+	var splits []microflows.MicroflowObject
+	for _, o := range fb.objects {
+		if _, ok := o.(*microflows.ExclusiveSplit); ok {
+			splits = append(splits, o)
+		}
+	}
+	if len(splits) != 4 {
+		t.Fatalf("want 4 splits, got %d", len(splits))
+	}
+	// The first ELSE element of each decision is the false flow's destination.
+	row := -1
+	for _, s := range splits {
+		f := flowFrom(fb.flows, s.GetID(), "false")
+		if f == nil {
+			t.Fatalf("split at %v has no false flow", s.GetPosition())
+		}
+		p := objectByIDIn(fb.objects, f.DestinationID).GetPosition()
+		if p.X != s.GetPosition().X {
+			t.Errorf("ELSE of the split at %v starts at %v, want in its column", s.GetPosition(), p)
+		}
+		if row == -1 {
+			row = p.Y
+		}
+		if p.Y != row {
+			t.Errorf("ELSE of the split at %v starts at y=%d, want the shared first row y=%d", s.GetPosition(), p.Y, row)
+		}
+	}
+}
+
+// Control for #2650: a column that would run into the THEN body's own column
+// still starts under it. Here the outer ELSE holds an IF/ELSE, which reaches
+// right into the inner split's column.
+func TestIfElseColumn_ElseColumnStillClearsTheThenBody(t *testing.T) {
+	inner := ifElse(logStatements(1), logStatements(3))
+	outerElse := []ast.MicroflowStatement{ifElse(logStatements(2), logStatements(1))}
+	fb := buildWithLayout(t, []ast.MicroflowStatement{ifElse([]ast.MicroflowStatement{inner}, outerElse)}, columnLayout())
+	assertNoOverlap(t, fb.objects)
+}
