@@ -35,13 +35,17 @@ type packageFake struct {
 	mxVersionUnknown bool   // the version of that mx cannot be told
 	gotMxbuildPath   string // the --mxbuild-path resolution was given
 	inspectCopy      func(workDir string)
+
+	localMx        string // an installed mx of exactly the project's release, "" for none (#2652)
+	resolveOutside bool   // with --mxbuild-path, resolution falls back to an mx outside it (PATH)
+	ranMx          string // the mx the package was made with
 }
 
 func installPackageFake(t *testing.T, f *packageFake) {
 	t.Helper()
-	origInfo, origResolve, origMx, origVer := packageProjectInfo, resolveMxForPackage, mxCreateModulePackageCmd, mxBinaryVersion
+	origInfo, origResolve, origMx, origVer, origLocal := packageProjectInfo, resolveMxForPackage, mxCreateModulePackageCmd, mxBinaryVersion, localMxForPackage
 	t.Cleanup(func() {
-		packageProjectInfo, resolveMxForPackage, mxCreateModulePackageCmd, mxBinaryVersion = origInfo, origResolve, origMx, origVer
+		packageProjectInfo, resolveMxForPackage, mxCreateModulePackageCmd, mxBinaryVersion, localMxForPackage = origInfo, origResolve, origMx, origVer, origLocal
 	})
 	if f.version == "" {
 		f.version = "11.12.5"
@@ -50,18 +54,32 @@ func installPackageFake(t *testing.T, f *packageFake) {
 		f.mxVersion = f.version
 	}
 	packageProjectInfo = func(string) (string, []string, error) { return f.version, f.modules, nil }
+	// The machine running the test may have an mx cached; only f.localMx counts.
+	localMxForPackage = func(version string) string {
+		if version == f.version {
+			return f.localMx
+		}
+		return ""
+	}
 	resolveMxForPackage = func(mxbuildPath, version string) (string, error) {
 		f.gotMxbuildPath = mxbuildPath
 		f.mx = "mx-stub@" + version
+		if mxbuildPath != "" && !f.resolveOutside {
+			f.mx = filepath.Join(mxbuildPath, "modeler", "mx") // the mx the named folder holds
+		}
 		return f.mx, nil
 	}
-	mxBinaryVersion = func(string) string {
+	mxBinaryVersion = func(mxPath string) string {
+		if f.localMx != "" && mxPath == f.localMx {
+			return f.version
+		}
 		if f.mxVersionUnknown {
 			return ""
 		}
 		return f.mxVersion
 	}
-	mxCreateModulePackageCmd = func(_ context.Context, _ string, args []string, out io.Writer) (int, error) {
+	mxCreateModulePackageCmd = func(_ context.Context, mxPath string, args []string, out io.Writer) (int, error) {
+		f.ranMx = mxPath
 		f.calls = append(f.calls, args)
 		if f.inspectCopy != nil {
 			f.inspectCopy(filepath.Dir(args[len(args)-2])) // args end with <work.mpr> <module>
