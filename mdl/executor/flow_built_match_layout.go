@@ -46,12 +46,16 @@ import (
 type layoutStatements struct {
 	points  map[model.Point]bool
 	anchors bool
+	// sizes are the boxes the flow states with @size. A built object drawn at
+	// one has its size compared even where its position is the layout pass's:
+	// an @size changed in place is a change (ako/mxcli#2589).
+	sizes map[model.Size]bool
 }
 
 // declaredLayout collects what d states of its drawing, at any depth — loop
 // bodies and error handlers included.
 func declaredLayout(d *flowDecl) layoutStatements {
-	l := layoutStatements{points: map[model.Point]bool{}}
+	l := layoutStatements{points: map[model.Point]bool{}, sizes: map[model.Size]bool{}}
 	add := func(p *ast.Position) {
 		if p != nil {
 			l.points[model.Point{X: p.X, Y: p.Y}] = true
@@ -71,6 +75,9 @@ func declaredLayout(d *flowDecl) layoutStatements {
 				add(v.Position)
 				add(v.Merge)
 				add(v.Start)
+				if v.Size != nil {
+					l.sizes[model.Size{Width: v.Size.Width, Height: v.Size.Height}] = true
+				}
 				for _, notes := range [][]ast.MicroflowAnnotation{v.Notes, v.FreeNotes} {
 					for _, n := range notes {
 						add(n.Position)
@@ -282,6 +289,11 @@ func (c *builtComparer) layoutField(t reflect.Type, f string, v reflect.Value) b
 		switch f {
 		case "Position", "Size", "RelativeMiddle":
 			pos, _ := v.FieldByName("Position").Interface().(model.Point)
+			if f == "Size" {
+				if sz, _ := v.FieldByName("Size").Interface().(model.Size); c.stated.sizes[sz] {
+					return false
+				}
+			}
 			return !c.stated.points[pos]
 		}
 	case sequenceFlowType:

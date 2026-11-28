@@ -185,7 +185,7 @@ func TestLayoutFlow_DryRunWritesNothing(t *testing.T) {
 }
 
 // layoutAnnotationLine is a DESCRIBE line that only pins geometry.
-var layoutAnnotationLine = regexp.MustCompile(`^\s*@(position|anchor|curve|merge|start)\b`)
+var layoutAnnotationLine = regexp.MustCompile(`^\s*@(position|anchor|curve|merge|start|size)\b`)
 
 // notePosition is the placement inside an @annotation line; its size stays.
 var notePosition = regexp.MustCompile(`,?\s*position:\s*\(\s*-?\d+\s*,\s*-?\d+\s*\)`)

@@ -2309,11 +2309,14 @@ func patchSummary(ops []*ast.AlterFlowOperation, edited map[*ast.AlterFlowOperat
 	}
 	// A loop box fitted to its moved body is reported as what it is, not as
 	// another node moved (ako/mxcli#2564).
-	var moved, fitted int
+	var moved, fitted, resized int
 	for _, mv := range moves {
-		if mv.fit != nil {
+		switch {
+		case mv.fit != nil:
 			fitted++
-		} else {
+		case mv.resize != nil:
+			resized++
+		default:
 			moved++
 		}
 	}
@@ -2322,7 +2325,7 @@ func patchSummary(ops []*ast.AlterFlowOperation, edited map[*ast.AlterFlowOperat
 		n    int
 		verb string
 	}{{ins, "inserted"}, {edit, "edited in place"}, {rep, "replaced with new element IDs"}, {drop, "dropped"}, {moved, "moved"},
-		{fitted, "loop box fitted"}} {
+		{fitted, "loop box fitted"}, {resized, "resized"}} {
 		if p.n > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", p.n, p.verb))
 		}

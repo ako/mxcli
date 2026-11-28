@@ -59,7 +59,10 @@ const (
 
 // positionFields are the geometry fields of a statement's annotations that
 // say where its node is drawn, as opposed to how its flows are.
-var positionFields = map[string]bool{"Position": true, "Start": true}
+//
+// Size is one too: the box a node is drawn at, which the patch makes by
+// resizing the stored node (ako/mxcli#2589).
+var positionFields = map[string]bool{"Position": true, "Start": true, "Size": true}
 
 // The geometry is what stripFlowLayout clears for `mxcli layout flows`; a
 // note's size is included here because the writer defaults it when absent.
